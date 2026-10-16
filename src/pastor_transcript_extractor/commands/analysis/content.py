@@ -3758,3 +3758,16 @@ def analysis_source_unit_repair(
             console.print(f"Aggregate bound: {sum(r['G2_G3_upper_bound'] for r in sizes)} / 20000.",markup=False)
     except (ValueError,OSError,KeyError,RuntimeError) as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@analysis_app.command("collector-retrieval-design", help="Verify the provider-free G2/G3 retrieval design proposal; no implementation, model loading or evaluation.")
+def analysis_collector_retrieval_design(
+    check_only: bool = typer.Option(False, "--check-only", help="Read-only verification of proposal authority, hashes, baseline pins and proposed candidate bounds."),
+) -> None:
+    from pastor_transcript_extractor import collector_retrieval_design as design
+    try:
+        plan, packet = design.verify()
+        console.print(f"Collector retrieval design: PROPOSAL_ONLY; provider_requests=0; implementation/execution unauthorized. Fingerprint: {packet['content_fingerprint']}", markup=False)
+        console.print(f"Review: {design.HERE / 'PROPOSAL.md'}", markup=False)
+    except (ValueError, OSError, KeyError) as error:
+        raise typer.BadParameter(str(error)) from error

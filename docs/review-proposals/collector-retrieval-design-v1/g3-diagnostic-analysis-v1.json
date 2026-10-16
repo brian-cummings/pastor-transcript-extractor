@@ -1,0 +1,366 @@
+{
+  "version": "prospective-g3-granularity-diagnostic-v1",
+  "status": "PROPOSED_NOT_NEW_GOLD",
+  "frozen_reference_sha256": "63958c501f100671a043ee1ed2afac7830d2c0c9654450e456d67c8d285e7f04",
+  "counts": {
+    "dependent_completion_required": 8,
+    "independently_assertable_cores_or_parallel_acts": 16,
+    "repetition_event_identity_not_wide_target": 2,
+    "nested_modeled_speech_requires_scope_review": 1
+  },
+  "rows": [
+    {
+      "reference_id": "F3R951-G3-012",
+      "frozen_role": {
+        "start": 14402,
+        "end": 14474,
+        "text": "Therefore, if they say to you, look, he is in the desert. Do not go out."
+      },
+      "source_namespace": "reported_local",
+      "analysis": "dependent_completion_required",
+      "proposal": "Proposed dependency/completion probe: preserve condition, referent, required answer/content or qualification. This category does not assert the full historical target must become one future act; independent residual acts may split.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R951-G3-013",
+      "frozen_role": {
+        "start": 14481,
+        "end": 14531,
+        "text": "Look, he is in the inner rooms. Do not believe it."
+      },
+      "source_namespace": "reported_local",
+      "analysis": "dependent_completion_required",
+      "proposal": "Proposed dependency/completion probe: preserve condition, referent, required answer/content or qualification. This category does not assert the full historical target must become one future act; independent residual acts may split.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R951-G3-030",
+      "frozen_role": {
+        "start": 40800,
+        "end": 40856,
+        "text": "Now I want you to think about this question. Where Lord?"
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "dependent_completion_required",
+      "proposal": "Proposed dependency/completion probe: preserve condition, referent, required answer/content or qualification. This category does not assert the full historical target must become one future act; independent residual acts may split.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R951-G3-036",
+      "frozen_role": {
+        "start": 53811,
+        "end": 53932,
+        "text": "the second coming is our deliverance. deliverance. Our deliverance from sin and suffering from the tyranny of this world."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "dependent_completion_required",
+      "proposal": "Proposed dependency/completion probe: preserve condition, referent, required answer/content or qualification. This category does not assert the full historical target must become one future act; independent residual acts may split.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-003",
+      "frozen_role": {
+        "start": 5805,
+        "end": 5852,
+        "text": "You better call Jesus. He can't do you no good."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "dependent_completion_required",
+      "proposal": "Proposed dependency/completion probe: preserve condition, referent, required answer/content or qualification. This category does not assert the full historical target must become one future act; independent residual acts may split.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-026",
+      "frozen_role": {
+        "start": 15744,
+        "end": 15995,
+        "text": "Whatever you did in the past, brothers and sisters, I don't don't care what road you went down, how tough it was, how you was mistreated, how you did things you shouldn't have done. God will forgive you and give you a clean slate if you're aligned to."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "dependent_completion_required",
+      "proposal": "Proposed dependency/completion probe: preserve condition, referent, required answer/content or qualification. This category does not assert the full historical target must become one future act; independent residual acts may split.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-030",
+      "frozen_role": {
+        "start": 17188,
+        "end": 17297,
+        "text": "Go to him and pray daily. Tell him that you really want to receive his perfect life instead of a sinful life."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "dependent_completion_required",
+      "proposal": "Proposed dependency/completion probe: preserve condition, referent, required answer/content or qualification. This category does not assert the full historical target must become one future act; independent residual acts may split.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-043",
+      "frozen_role": {
+        "start": 22799,
+        "end": 23010,
+        "text": "Don't have to worry about cancer and TB, diabetes, and all of Don't worry no more about that. But you have to live right here first. YOU CAN'T JUMP THERE. You have to live according to what does sayeth the Lord."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "dependent_completion_required",
+      "proposal": "Proposed dependency/completion probe: preserve condition, referent, required answer/content or qualification. This category does not assert the full historical target must become one future act; independent residual acts may split.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R951-G3-010",
+      "frozen_role": {
+        "start": 12571,
+        "end": 12642,
+        "text": "Let not your heart be troubled. You believe in God, believe also in me."
+      },
+      "source_namespace": "reported_local",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R951-G3-020",
+      "frozen_role": {
+        "start": 31328,
+        "end": 31620,
+        "text": "They will not be as we remember them them sick with sickly bodies. >> They will be changed with perfect perfect bodies. We will be changed. The aches and pains will be gone. Our bad hip or or any ills that we have completely gone and all will be restored. Everything we lost will be restored."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R951-G3-022",
+      "frozen_role": {
+        "start": 34947,
+        "end": 35084,
+        "text": "God is not out to get us or to surprise surprise surprise us in anything. He's he's giving us plenty of time to make that final decision."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R951-G3-027",
+      "frozen_role": {
+        "start": 39750,
+        "end": 39826,
+        "text": "You are not welcome here. You are never to step foot on this property again."
+      },
+      "source_namespace": "reported_local",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R951-G3-038",
+      "frozen_role": {
+        "start": 54906,
+        "end": 54972,
+        "text": "Deception comes from everywhere. You cannot trust anybody but God."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R951-G3-040",
+      "frozen_role": {
+        "start": 55282,
+        "end": 55370,
+        "text": "Do not be deceived as Jesus said. Believe what you've just heard straight from his word."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-001",
+      "frozen_role": {
+        "start": 2917,
+        "end": 2995,
+        "text": "Have Jesus in your heart. Keep him in your forefront. And you'll be all right."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-004",
+      "frozen_role": {
+        "start": 6570,
+        "end": 6672,
+        "text": "Luther, get up off of your knees. It's not there. You can't buy salvation. It comes from Jesus Christ."
+      },
+      "source_namespace": "reported_local",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-005",
+      "frozen_role": {
+        "start": 6916,
+        "end": 7045,
+        "text": "Even when you don't know him, he's still there to protect you. He's there to keep you and lead you and guide you into all truths."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-009",
+      "frozen_role": {
+        "start": 9368,
+        "end": 9432,
+        "text": "when you come to church, have your Bible. Have your sword ready."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-013",
+      "frozen_role": {
+        "start": 10330,
+        "end": 10383,
+        "text": "We can't look at these things. Keep our eye on Jesus."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-014",
+      "frozen_role": {
+        "start": 10700,
+        "end": 10745,
+        "text": "You better get Jesus. We better follow Jesus."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-023",
+      "frozen_role": {
+        "start": 13643,
+        "end": 13848,
+        "text": "Understand God love you and want to save you. God is not some kind of cop waiting to catch you in sin and condemn you to the horrors of hell. God want to embrace you and keep you and hold you and love you."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-031",
+      "frozen_role": {
+        "start": 17876,
+        "end": 18043,
+        "text": "If you want eternal life, get the son. If you want eternal life, acknowledge that you're a sinner. Repent, believe in Christ crucified at Golgotha just because of you."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-033",
+      "frozen_role": {
+        "start": 19211,
+        "end": 19425,
+        "text": "You can't get righteous in the night club.\nclub. You can't get righteous in the strip joint.\njoint. You can't get righteous in the ball game jumping up and down.\nYou can't FIND IT'S NOT THERE. That's Satan's house."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-048",
+      "frozen_role": {
+        "start": 26309,
+        "end": 26418,
+        "text": "Always remember to look for Look for Jesus. He's the only one can take you through and carry you to eternity."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "independently_assertable_cores_or_parallel_acts",
+      "proposal": "Proposed decomposition review: each independently sufficient directed act/proposition gets a core; parallel reasons/reassurances stay source context unless needed for the act claim. Do not broaden the target solely to match the historical multi-act reference.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R951-G3-041",
+      "frozen_role": {
+        "start": 55399,
+        "end": 55454,
+        "text": "Bring out your cards. Bring out your cards as we close."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "repetition_event_identity_not_wide_target",
+      "proposal": "Keep each exact occurrence available; a prospectively reviewed same-event group may prevent double counting. Repetition is not a requirement to merge both clauses into one semantic target.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R1094-G3-019",
+      "frozen_role": {
+        "start": 13042,
+        "end": 13100,
+        "text": "recognize that you're a sinner. Recognize you're a sinner."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "repetition_event_identity_not_wide_target",
+      "proposal": "Keep each exact occurrence available; a prospectively reviewed same-event group may prevent double counting. Repetition is not a requirement to merge both clauses into one semantic target.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    },
+    {
+      "reference_id": "F3R951-G3-034",
+      "frozen_role": {
+        "start": 51575,
+        "end": 51738,
+        "text": "Whatever it is, we need to be like those those those men, those righteous men to say, he can save us. But even if he doesn't, I don't care. I will not forsake him."
+      },
+      "source_namespace": "current_preacher",
+      "analysis": "nested_modeled_speech_requires_scope_review",
+      "proposal": "Current invitation to emulate reported speakers contains modeled first-person speech. Retain nested quotation as context for an exact outer call; unresolved outer/inner scope defers compatible credit. No automatic voice/adoption transfer.",
+      "historical_score": "MISS_UNCHANGED",
+      "new_reference": null
+    }
+  ],
+  "qualification": "Single-reviewer design triage, not accepted semantic labels, automatic parse truth or historical rescoring. Definitions must be approved and then applied independently to fresh full-source census.",
+  "content_fingerprint": "35c1bc5b1f56ac640aa2e44396c0fc3fa53d946e8dac845e66f7ad7c3a377043"
+}

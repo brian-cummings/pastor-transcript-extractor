@@ -1,0 +1,88 @@
+{
+  "version": "retrieval-design-test-spec-v1",
+  "status": "SPECIFICATION_ONLY_NOT_EXECUTED_REPAIR_TESTS",
+  "scenarios": [
+    {
+      "id": "G2-concept",
+      "synthetic_input": "The text names a hard heart. Later: They could hear the words yet remained unwilling to yield.",
+      "required_assertion": "A mocked concept rank retrieves the remote pair without gloss terms; actual encoder effectiveness remains an empirical question."
+    },
+    {
+      "id": "G2-direction",
+      "synthetic_input": "The lamp is the testimony. The testimony illuminates the path.",
+      "required_assertion": "Keep anchor and explanation direction distinct; reverse proposal never inherits support."
+    },
+    {
+      "id": "G2-partition",
+      "synthetic_input": "The passage says be watchful, and the speaker adds that vigilance requires testing a claim.",
+      "required_assertion": "Exact clause cut hypotheses include a quote and its gloss without assigning the whole mixed sentence to Bible voice."
+    },
+    {
+      "id": "G2-completion",
+      "synthetic_input": "The passage states a condition. Its consequent follows. The preacher supplies an explanation.",
+      "required_assertion": "Required complete role retained; narrow/maximal alternatives consume shared budget, never a Cartesian product."
+    },
+    {
+      "id": "G2-topic-distractor",
+      "synthetic_input": "One paragraph describes a lamp. Another advertises lamps for the hall.",
+      "required_assertion": "High similarity is a retrieval hypothesis; it cannot manufacture an explanatory edge or Bible provenance."
+    },
+    {
+      "id": "G2-far-frame",
+      "synthetic_input": "A relevant pair exceeds the fixed 6000-character complete frame.",
+      "required_assertion": "Record frame-bound deferral; no discontinuous-frame workaround or context deletion."
+    },
+    {
+      "id": "G3-dependent",
+      "synthetic_input": "If you feel abandoned. Remember I am with you.",
+      "required_assertion": "Propose qualification-preserving completion across a punctuation seam; never export unconditional reassurance by dropping the condition."
+    },
+    {
+      "id": "G3-separate",
+      "synthetic_input": "Open your notebooks. Sing the next verse.",
+      "required_assertion": "Two independent targets; same speaker/recipient alone cannot merge them."
+    },
+    {
+      "id": "G3-repeat",
+      "synthetic_input": "Take a seat. Please take a seat.",
+      "required_assertion": "Two exact occurrences; optional same-event hypothesis, never two certified recurrence observations."
+    },
+    {
+      "id": "G3-prayer-switch",
+      "synthetic_input": "Please stand with us. Lord, give us courage.",
+      "required_assertion": "Separate congregation instruction and God-directed prayer; ambiguous switch remains unestablished."
+    },
+    {
+      "id": "G3-report",
+      "synthetic_input": "Mara told her brother: Do not give up. I now ask you to join us.",
+      "required_assertion": "Reported-local act and current instruction retain separate targets and reporting identity in envelopes."
+    },
+    {
+      "id": "G3-narration",
+      "synthetic_input": "I comforted him and we left.",
+      "required_assertion": "No narrated act becomes exact addressed speech from geometry or rank."
+    },
+    {
+      "id": "G3-nested",
+      "synthetic_input": "We should resolve as she did: I will remain faithful.",
+      "required_assertion": "Outer current exhortation and inner modeled voice distinguished; unsupported adoption cannot cross admission."
+    },
+    {
+      "id": "coordinates",
+      "synthetic_input": "ASR text with no stops, Unicode quotes and repeated words.",
+      "required_assertion": "Canonical byte/string policy unchanged; offsets round-trip exactly; no generated text enters roles."
+    },
+    {
+      "id": "budget",
+      "synthetic_input": "Dense many-clause text and repeated identical embedding scores.",
+      "required_assertion": "Stable source-coordinate ties; bounded emissions and comparisons; every displaced/deferred hypothesis accounted for."
+    },
+    {
+      "id": "authority",
+      "synthetic_input": "A maximally positive model answer on an incompatible candidate.",
+      "required_assertion": "Existing A1 typed export, deserialization and consumer path still reject unsupported provenance; proposal adds no authority."
+    }
+  ],
+  "separation": "Deterministic tests inject ranks, clause dependencies and provenance ambiguities; they prove plumbing/bounds only. They do not prove real parsing, embedding recall, semantic accuracy or containment generalization.",
+  "content_fingerprint": "bd19166f68b1ca6516f4a861631b2e638e9b6bfbd19b183b966567f14835def7"
+}

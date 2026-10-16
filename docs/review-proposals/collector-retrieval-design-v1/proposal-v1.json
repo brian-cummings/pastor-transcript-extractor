@@ -1,0 +1,96 @@
+{
+  "version": "collector-retrieval-design-v1",
+  "status": "PROPOSAL_ONLY",
+  "decision_fingerprint": "d6a954d348e4576b120ea6d3605f977039aee1f6171d95c31d147c2e79502be9",
+  "authorization": {
+    "proposal_preparation": true,
+    "repair_implementation": false,
+    "dataset_execution": false,
+    "local_encoder_execution": false,
+    "provider_calls": false,
+    "source_selection": false,
+    "reference_changes": false,
+    "collection": false,
+    "projection_scoring": false
+  },
+  "mechanisms": {
+    "G2": [
+      "source-coordinate role lattice with at most three descriptors per frozen unit",
+      "bounded dependency-completion alternatives, not all adjacent pairs",
+      "replace local/gloss-only pair selection with reserved structural and source-wide concept retrieval lanes",
+      "both directed orientations retain separate identities; no explanatory truth or Bible voice assigned"
+    ],
+    "G3": [
+      "minimal independently sufficient addressed act core",
+      "mandatory condition/negation/content completion across punctuation when needed",
+      "separate speaker/recipient switches, prayer, narration and nested modeled speech",
+      "repetition occurrence identity separated from same-event grouping"
+    ]
+  },
+  "budget": {
+    "N": "number of units produced by unchanged Source-unit Repair V1",
+    "role_descriptors_max_per_N": 3,
+    "G2_emissions_max_per_N": 8,
+    "G2_lanes": {
+      "local_complete_roles": 2,
+      "within_unit_partition": 2,
+      "nonlocal_concept_pairs": 4
+    },
+    "G3_emissions_max_per_N": 2,
+    "source_candidate_ceiling": 12000,
+    "total_candidate_ceiling": 20000,
+    "max_frame_chars": 6000,
+    "max_envelope_chars": 6000,
+    "G1_source_ceiling": 200,
+    "index_vectors_max_per_N": 3,
+    "exact_similarity_comparisons_max_per_source": 8000000
+  },
+  "retrieval_model": {
+    "proposed": "sentence-transformers/all-MiniLM-L6-v2",
+    "role": "local frozen retrieval ranking only, never semantic/admission authority",
+    "model_card": "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2",
+    "installed_or_executed": false,
+    "artifact_lock": "Required before any model loading: immutable upstream revision, every weight/tokenizer/config digest, runtime/version, pooling, token limit, CPU numerical and tie policy",
+    "long_text": "No silent tokenizer truncation. Bounded ranking chunks map to complete canonical role; over-budget roles defer, never clip evidence.",
+    "frozen_selection": "One model, no V3 outcome-based selection/training or hyperparameter search",
+    "fallback": "Missing unlocked artifact or comparison budget overflow stops the affected source preflight; no lexical fallback labeled the proposed design"
+  },
+  "invariants": [
+    "canonical_coordinates",
+    "target_envelope_separation",
+    "no_source_truth_from_rank",
+    "complete_directed_roles",
+    "mandatory_qualification_preserved",
+    "no_scope_transfer",
+    "shared_emission_budget",
+    "review_authority_unchanged",
+    "frozen_results_immutable",
+    "no_new_sources_before_substantive_change"
+  ],
+  "confirmation": {
+    "new_sources_selected_now": false,
+    "source_only_before_provider": true,
+    "policy_approval_before_census": true,
+    "inventory_before_census": true,
+    "thresholds_unchanged": true,
+    "full_source_census": true,
+    "target_envelope_review": true,
+    "controls_and_burden": true,
+    "semantic_execution_separate_decision": true
+  },
+  "implementation_recommendation": "Authorize a bounded core/adapter implementation plus synthetic tests only after reviewing this design and prospective G3 reference policy. Lock the single proposed local retrieval artifact before model execution. Prepare a separately approved provider-free retired-source development command for Brian; no model execution, development evaluation or fresh source selection is implied by implementation approval.",
+  "pins": {
+    "docs/review-proposals/fresh-discovery-readiness-v3/source-review-v3.json": "d3239ecba2edcde48fbf1cef99a414236576ee8d118e8d1b7bbd6ab0abdec432",
+    "docs/review-proposals/fresh-discovery-readiness-v3/references-v3.json": "63958c501f100671a043ee1ed2afac7830d2c0c9654450e456d67c8d285e7f04",
+    "docs/review-proposals/fresh-discovery-readiness-v3/target-review-protocol-v3.json": "29593f6d99b46723375a51436eafab783f4ebd4388697dd7870b44a1d7dd0706",
+    "src/pastor_transcript_extractor/evidence_supply_source_unit_repair.py": "c6efa2dafd4ed9dd0302996dcdc28093e1d83c956229f0278cb8c029d391e4c4",
+    "src/pastor_transcript_extractor/evidence_supply_collector_v4_1.py": "24f51ec62f684773fbed56a8d278caaa1a3555deefe01adea09484721f259255",
+    "docs/review-proposals/fresh-discovery-readiness-v3/authorization-v3.1.json": "7dbfee37f7437fc9bec23e953a0348aa667afbd773685b6e42071e8d6e3b6c2e",
+    "src/pastor_transcript_extractor/g3_atomic_admission.py": "4f801acb2c69737454122ea6f6d78e4e0bf38abd6dc7ad8298ea6a010c190376",
+    "src/pastor_transcript_extractor/evidence_boundary_admission.py": "affafed4add3ff01ce7bab0cc5e0d93575ef80897093d66b70b175ae55418803",
+    "src/pastor_transcript_extractor/sermon_g1_feasibility_review.py": "b4f5982b6960a199717d8aeb5cafb29685f679b1d76f8bf32b44a95f9144b2fd",
+    "src/pastor_transcript_extractor/sermon_g2_feasibility_review.py": "7032118c48657f91a38301ce90664da69070b6c648ab0f7bfdd51ee4c970270e",
+    "src/pastor_transcript_extractor/sermon_g3_feasibility_review.py": "3f3b54d7e27921bfdd63f0b022776fa2fbf5601d76eed60520d3fdd14fd0c92e"
+  },
+  "content_fingerprint": "5ed7a150c60f70088d6b643b9f66d56e726c696b680de972b34b7d5fb903367e"
+}

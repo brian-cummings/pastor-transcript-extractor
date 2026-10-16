@@ -3730,6 +3730,23 @@ pte analysis source-unit-repair [OPTIONS]
 | `--base-dir PATH` | Application data directory. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis collector-retrieval-design`
+
+Verify the provider-free G2/G3 retrieval design proposal; no implementation, model loading or evaluation.
+
+#### Usage
+
+```console
+pte analysis collector-retrieval-design [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--check-only` | Read-only verification of proposal authority, hashes, baseline pins and proposed candidate bounds. | no | False |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis show`
 
 Inspect persisted sermon measurements and Scripture evidence.

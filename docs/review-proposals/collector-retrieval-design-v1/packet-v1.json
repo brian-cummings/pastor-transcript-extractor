@@ -1,0 +1,13 @@
+{
+  "version": "collector-retrieval-review-packet-v1",
+  "files": {
+    "docs/review-proposals/collector-retrieval-design-v1/g3-diagnostic-analysis-v1.json": "2e60787f632ec5f38725a524a6dc7a44894c779141c77384eb08fd7c566e638e",
+    "docs/review-proposals/collector-retrieval-design-v1/synthetic-test-plan-v1.json": "e5de2f4ba2e6544054b33031f9be01ab0c3b472438613cdd3a6edf65a1d6d07a",
+    "docs/review-proposals/collector-retrieval-design-v1/proposal-v1.json": "14cebcc0cf182f924d1945d02fbad5338a47163a8c3e32e0e4db0637cf55c458",
+    "docs/review-proposals/collector-retrieval-design-v1/PROPOSAL.md": "bb8a9931e06987da8cdffae76197abbdf47914107f2ca88e359fe832fefd56c1",
+    "docs/review-proposals/collector-retrieval-design-v1/decision-v1.json": "0a5c298be00f979dbe4816290cf92ffbb214f4734e741cf5ffb5477b4826d43d",
+    "src/pastor_transcript_extractor/collector_retrieval_design.py": "603013ca1562709b001e7e386888a5e0b0d9b6b2bc168d52d539beaf1b411fcf",
+    "tests/test_collector_retrieval_design.py": "d2eff36177dd83cf00f2f6631a278bcbd8c3fb051872028538053a749785763a"
+  },
+  "content_fingerprint": "0e96d75c547f02bb84a22436212dc56980a099f042c029538ca10fefd263ddbf"
+}

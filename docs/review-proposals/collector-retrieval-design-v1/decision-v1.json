@@ -1,0 +1,29 @@
+{
+  "version": "fresh-v3-accepted-next-design-v1",
+  "decision_owner": "Brian",
+  "decision_date": "2026-10-16",
+  "authority": "Explicit attached user decision",
+  "authority_text_sha256": "76bb8c1dae7f30e378af448caaf733dc61916e0033d2ea014f808485934cbd2f",
+  "accepted": {
+    "Fresh_V3": "scoped_FAIL",
+    "G1_assurance": "HOLD",
+    "Source_unit_Repair_V1": "bounded_infrastructure_success_frozen",
+    "V4_raw": "FAIL",
+    "V4_containment": "HOLD",
+    "A1": "bounded_atomic_local_PASS_unchanged"
+  },
+  "retirement": "Fresh V3 development diagnostics only; no unchanged-collector confirmation",
+  "authorized": {
+    "proposal_preparation": true,
+    "repair_implementation": false,
+    "dataset_execution": false,
+    "local_encoder_execution": false,
+    "provider_calls": false,
+    "source_selection": false,
+    "reference_changes": false,
+    "collection": false,
+    "projection_scoring": false
+  },
+  "source_review_sha256": "d3239ecba2edcde48fbf1cef99a414236576ee8d118e8d1b7bbd6ab0abdec432",
+  "content_fingerprint": "d6a954d348e4576b120ea6d3605f977039aee1f6171d95c31d147c2e79502be9"
+}
