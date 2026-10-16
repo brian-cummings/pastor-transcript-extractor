@@ -3416,6 +3416,22 @@ pte analysis g2-feasibility-review [OPTIONS]
 | `--revision TEXT` | Frozen pilot revision: v1 or the single adjudicated v2 cycle.  [default: v1] | no | v1 |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis evidence-supply-boundary-repair-proposal`
+
+Verify the provider-free V4 boundary/admission proposal and deterministic design assertions; no repairs or inference.
+
+#### Usage
+
+```console
+pte analysis evidence-supply-boundary-repair-proposal [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis evidence-supply-boundary-audit`
 
 Verify the authored V3 source audit against frozen cases and sealed local receipts; no provider calls.

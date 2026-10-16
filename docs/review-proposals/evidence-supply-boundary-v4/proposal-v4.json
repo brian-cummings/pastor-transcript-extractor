@@ -1,0 +1,58 @@
+{
+  "version": "boundary-v4-repair-proposal",
+  "date": "2026-10-15",
+  "status": "PROPOSED_implementation_and_revalidation_NOT_authorized",
+  "decision_owner": "Brian",
+  "parent_input_fingerprint": "44a8d902e90fc5183a689c5f8bebcc052d45ff053fecf93f54c6482cbc01565b",
+  "parent_audit_fingerprint": "264f254a27b2f8d389c1b1a935e735017c5c7ebc602b6ec767cc60c605f628f8",
+  "authorization": {
+    "proposal": true,
+    "production_repairs": false,
+    "provider_calls": false,
+    "discovery": false,
+    "collection": false,
+    "projection_scoring": false
+  },
+  "pins": {
+    "docs/review-proposals/evidence-supply-boundary-v3/input-v3.json": "c50eab6a3095d6ca8278955f2247c5e4d44581118514d6594ecebc08a8c0cafd",
+    "docs/review-proposals/evidence-supply-boundary-v3/CRITERIA.md": "e0246959001856463e9d6d766596a73ae3badcc8ec749ccf4d919bbb128439d8",
+    "docs/review-proposals/evidence-supply-boundary-v3/source-audit-v3.json": "e4bdafb83e919b338b424d65f49dd0ffd686946efaaabe5e49eb33b6adbd116a",
+    "docs/review-proposals/evidence-supply-boundary-v3/acceptance-decision-v3.json": "097bc9f80bfee815469fbdcc757eaf70117ae3e84315f0e49f84f491c9ea2cf8",
+    "src/pastor_transcript_extractor/evidence_supply_boundary_validation.py": "03c80f28611c451baca9b246b1340af94a1329bf4e4edb7582be1892ee99ac5a",
+    "src/pastor_transcript_extractor/evidence_supply_collector_design.py": "1aa7db0c7fe834cc549f38aefeb968e17d5a75ba521d58aee3415e926989a9fe"
+  },
+  "artifacts": {
+    "invariant-spec-v4.json": "0b693df8ec3fa103c5e2dbca37e5d9ff7f5516f8f4ed1e2dc0d32c50a53f0098",
+    "check-design-v4.json": "6f7b5a280a9a355bcccbe6ffc47754afe8f8d09e08ec2b4dac50c3a26c5754b5",
+    "context-exhibits-v4.json": "be90a8e9b371141946d6980c3ca8722b3986549c3d32e476594517d352c9d6d9",
+    "PROPOSAL.md": "231017e6fc585b65c49fc37b1aa5cbd4cdc0c8c549c8e0a10b76fa0599e58580",
+    "CHECK_DESIGN.md": "cf1e8b7f7857eaaa52795d18a236b80d7a049e1a3591793f99bde079290bcf75"
+  },
+  "source_ids": [
+    1200,
+    421,
+    4050,
+    4430,
+    350,
+    1046
+  ],
+  "semantic_revalidation": {
+    "original_cases": 21,
+    "original_requests": 33,
+    "additional_checks": 6,
+    "additional_requests": 4,
+    "maximum_new_requests": 37,
+    "model": "jev-1.13.0",
+    "selected_option_probability_gate": 0.8,
+    "automatic_retries": 0,
+    "budget_status": "not_frozen_no_execution_authority",
+    "additional_check_accounting": "Six forward comparisons: R004 ambiguity/R073 gate/R077 fragment share base-case requests; new R004 gloss, R058 complete gloss and R077 full promise add 1+1+2 requests."
+  },
+  "limitations": [
+    "Development sources only; no discovery or general provenance-extraction performance claim",
+    "Specification witnesses are not a production guard or trusted attestations",
+    "No output may be repaired by auditor substitution; unknown remains unknown",
+    "No usable-item counts, recurrence or corpus economics"
+  ],
+  "content_fingerprint": "af7d7e01300de14fef2879fad348a6a1b10b97b384296c077e640f47c2d7c070"
+}

@@ -1,5 +1,40 @@
 # Handoff Notes
 
+## Brian accepted V3 boundary FAIL; V4 repair proposal ready — 2026-10-15
+
+Brian has [accepted and closed the V3 boundary-integrity FAIL](review-proposals/evidence-supply-boundary-v3/acceptance-decision-v3.md).
+The frozen audit remains unchanged; its historical pending-decision statements are
+superseded by the bound human decision. Discovery readiness remains closed.
+
+The [V4 repair proposal](review-proposals/evidence-supply-boundary-v4/PROPOSAL.md)
+is **proposal only**: a source-envelope sidecar preserving exact semantic targets,
+independent source-review witnesses, and a central typed admission boundary with
+enforced G2 Bible-source/explanatory-edge and G3 source/recipient/adoption checks.
+It preserves V3 phase coordinates and binding isolation. No repairs, request builder
+changes, provider calls, ranker work, collection or projection have been implemented.
+Closed G1/G2/G3 questions/options/model/thresholds remain unchanged.
+
+The packet includes 21 exact context exhibits, six versioned forward comparisons
+(R004/R058/R073/R077), seven failure-mechanism denial witnesses, and 55 deterministic
+specification assertions. These tests check the proposed necessary-condition design;
+they are not production guard enforcement or semantic accuracy tests. Missing or
+conflicting provenance denies admission even with maximal model positives; explicit
+positive controls prevent an all-deny specification. Actual source-review acceptance
+is required; exhibit Booleans are not attestation credentials. Automatic provenance
+resolution/review throughput remains unestablished.
+
+```sh
+pte analysis evidence-supply-boundary-repair-proposal
+```
+
+Recommendation: approve the narrow envelope/admission implementation and focused
+runtime integration tests next. A later separately frozen/authorized semantic panel
+would retain all 21 original diagnostic geometries and add three role variants:
+**33 + 4 = 37 maximum requests**, with original versus forward comparisons separate.
+No implementation, execution, spending or receipt-reuse authority is granted by the
+proposal. Brian's current authorization is preparation of this proposal only.
+Continue to hold discovery, broader collection and pastor projection/comparison/scoring.
+
 ## V3 semantic panel source-audited: boundary FAIL recommended — 2026-10-15
 
 The [authored source audit](review-proposals/evidence-supply-boundary-v3/source-audit-v3.md)

@@ -3128,6 +3128,24 @@ def analysis_g2_feasibility_review(
 
 
 @analysis_app.command(
+    "evidence-supply-boundary-repair-proposal",
+    help="Verify the provider-free V4 boundary/admission proposal and deterministic design assertions; no repairs or inference.",
+)
+def analysis_evidence_supply_boundary_repair_proposal() -> None:
+    from pastor_transcript_extractor import evidence_supply_boundary_repair_proposal as proposal
+
+    try:
+        review = proposal.verify()
+    except (ValueError, OSError, KeyError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"V4 proposal verified: {review['context_exhibits']} source-context exhibits; "
+                  f"{review['forward_checks']} forward checks; {review['specification_assertions']} design assertions.", markup=False)
+    console.print("Brian accepted V3 boundary-integrity FAIL. Proposal only: no repair implementation, "
+                  "provider calls, discovery, collection or projection authorized.", markup=False)
+    console.print(f"Review: {proposal.HERE / 'PROPOSAL.md'}", markup=False)
+
+
+@analysis_app.command(
     "evidence-supply-boundary-audit",
     help="Verify the authored V3 source audit against frozen cases and sealed local receipts; no provider calls.",
 )

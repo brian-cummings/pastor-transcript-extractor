@@ -50,6 +50,7 @@ GROUP_COMMANDS = {
         "evidence-supply-collector-design",
         "evidence-supply-boundary-validation",
         "evidence-supply-boundary-audit",
+        "evidence-supply-boundary-repair-proposal",
         "evidence-supply-source-audit",
         "g1-feasibility-review",
         "g2-feasibility-review",

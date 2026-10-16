@@ -1,0 +1,169 @@
+{
+  "version": "boundary-v4-forward-check-proposal",
+  "parent_input_fingerprint": "44a8d902e90fc5183a689c5f8bebcc052d45ff053fecf93f54c6482cbc01565b",
+  "frozen_V3_unchanged": true,
+  "rows": [
+    {
+      "check_id": "B4-R004-ambiguity-control",
+      "parent_case_id": "B3-R004",
+      "change": "Retain exact endpoints as a rhetorical application diagnostic; allow safe no-link/withholding rather than force explanation.",
+      "endpoints": {
+        "left": {
+          "start": 11259,
+          "end": 11291,
+          "text": "For our citizenship is in heaven"
+        },
+        "right": {
+          "start": 11623,
+          "end": 11652,
+          "text": "So, where is your citizenship"
+        }
+      },
+      "proposed_expected": {
+        "explains_text": [
+          "not_linked",
+          "unclear"
+        ]
+      },
+      "reason": "Citizenship question restates/applies rather than clearly explaining its anchor.",
+      "status": "PROPOSED_not_accepted_not_scored"
+    },
+    {
+      "check_id": "B4-R004-explicit-gloss",
+      "parent_case_id": "B3-R004",
+      "change": "Add a separate explicit Ephesians gloss, not a replacement score.",
+      "endpoints": {
+        "left": {
+          "start": 11472,
+          "end": 11514,
+          "text": "you are no longer strangers and foreigners"
+        },
+        "right": {
+          "start": 11516,
+          "end": 11548,
+          "text": "that means to the kingdom of God"
+        }
+      },
+      "proposed_expected": {
+        "explains_text": [
+          "linked"
+        ]
+      },
+      "reason": "Explicit gloss supplies a discriminating positive near the disputed rhetorical question.",
+      "status": "PROPOSED_not_accepted_not_scored"
+    },
+    {
+      "check_id": "B4-R058-complete-gloss",
+      "parent_case_id": "B3-R058",
+      "change": "Keep doubts-question anchor; complete the exact explanatory right endpoint.",
+      "endpoints": {
+        "left": {
+          "start": 3028,
+          "end": 3065,
+          "text": "And why do doubts rise in your hearts"
+        },
+        "right": {
+          "start": 3089,
+          "end": 3219,
+          "text": "The doubts that what the women have said that He was alive, and the doubts about Cleopas and his friends saying that He was alive."
+        }
+      },
+      "proposed_expected": {
+        "explains_text": [
+          "linked"
+        ]
+      },
+      "reason": "V3 right endpoint ends before content of the women/Cleopas report.",
+      "status": "PROPOSED_not_accepted_not_scored"
+    },
+    {
+      "check_id": "B4-R073-gated-withholding",
+      "parent_case_id": "B3-R073",
+      "change": "Keep endpoints and raw option inventory. Separate allowed gated unclear from raw unresolved in the prepared stance comparison.",
+      "endpoints": {
+        "circumstance": {
+          "start": 17611,
+          "end": 17626,
+          "text": "He had no peace"
+        },
+        "utterance": {
+          "start": 17666,
+          "end": 17693,
+          "text": "Maybe you should do penance"
+        }
+      },
+      "proposed_expected": {
+        "adoption": [
+          "not_adopted_report",
+          "unclear"
+        ]
+      },
+      "reason": "The existing probability gate emits unclear; unresolved is a raw choice. No output normalization or question change.",
+      "status": "PROPOSED_not_accepted_not_scored"
+    },
+    {
+      "check_id": "B4-R077-fragment-control",
+      "parent_case_id": "B3-R077",
+      "change": "Retain exact conditional fragment as an insufficient-reassurance diagnostic.",
+      "endpoints": {
+        "circumstance": {
+          "start": 29666,
+          "end": 29698,
+          "text": "I don't think God can forgive me"
+        },
+        "utterance": {
+          "start": 29776,
+          "end": 29800,
+          "text": "if you confess your sins"
+        }
+      },
+      "proposed_expected": {
+        "reassurance": [
+          "not_observed",
+          "unclear"
+        ]
+      },
+      "reason": "The promise is outside the exact V3 utterance; context cannot lend it to the fragment.",
+      "status": "PROPOSED_not_accepted_not_scored"
+    },
+    {
+      "check_id": "B4-R077-complete-promise",
+      "parent_case_id": "B3-R077",
+      "change": "Add separately identified full conditional promise, retaining its condition verbatim.",
+      "endpoints": {
+        "circumstance": {
+          "start": 29666,
+          "end": 29698,
+          "text": "I don't think God can forgive me"
+        },
+        "utterance": {
+          "start": 29776,
+          "end": 29890,
+          "text": "if you confess your sins, he is faithful and just to forgive your sins and to cleanse you from all unrighteousness"
+        }
+      },
+      "proposed_expected": {
+        "reassurance": [
+          "observed"
+        ],
+        "voice": [
+          "quoted_or_reported"
+        ],
+        "addressee": [
+          "reported_person"
+        ],
+        "adoption": [
+          "not_adopted_report",
+          "unclear"
+        ],
+        "recipient_circumstance_binding": [
+          "bound_in_target",
+          "bound_context_resolved"
+        ]
+      },
+      "reason": "Actual historical reassurance is measurable only with the promised forgiveness included.",
+      "status": "PROPOSED_not_accepted_not_scored"
+    }
+  ],
+  "content_fingerprint": "db3701215c88ee5a7b61f5a0a7e440f2afef1c3f8fcde832985d0cdeaa2eb617"
+}
