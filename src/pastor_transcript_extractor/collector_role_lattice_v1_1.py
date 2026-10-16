@@ -17,6 +17,8 @@ REPORT = old.REPORT
 QUALIFIER = re.compile(r'\b(?:if|unless|until|provided|although|because|whenever|when|except|otherwise|even though|as long as|only|but)\b', re.I)
 COMPLEMENT = re.compile(r'(?:\b(?:that|to|from|with|of|for|as|than|whether|not|never|cannot|can.t|don.t|won.t)[;,.!?]?|[:,])\s*[“"\']?\s*$', re.I)
 REFERENTIAL = re.compile(r'^(?:(?:and|but|then|so)\s+)?(?:he|she|they|it|this|that|these|those)\b|\b(?:tell|ask|remember|memorize|believe|trust|follow|do)\s+(?:him|her|them|it|this|that)\b', re.I)
+SPEECH_FRAME = re.compile(r'\b(?:say|said|says|tell|told|ask|asked|pray|prayed|resolve|decide|repeat|answer|answered)\b', re.I)
+FIRST_PERSON = re.compile(r'^[,;:\s“”\"\']*(?:I|we)\b',re.I)
 DEPENDENT = re.compile(r'^(?:(?:and|but|then|so)\s+)?(?:if|unless|when|whenever|because|until|provided|although|even|otherwise|except|only|which|who|whose|where|what|from)\b', re.I)
 
 
@@ -31,16 +33,28 @@ def components(source, nodes, *, deadline=None, route="G3"):
     Larger completions remain hypotheses requiring semantic/source review.
     """
     raw = _parts(source, nodes)
+    # Frozen retrieval-unit seams are not evidence that qualification scope
+    # ended. Preserve the enclosing punctuation parent's detected qualification;
+    # a leading dependent parent also needs the next parent's completion.
+    parents=substrate.frozen.source_sentences(source)
+    scopes=[]
+    for i,parent in enumerate(parents):
+        if QUALIFIER.search(parent['text']):
+            end=parent['end']
+            if old.DEPENDENT.search(parent['text'].lstrip('“"\'')) and i+1<len(parents):
+                end=parents[i+1]['end']
+            scopes.append((parent['start'],end))
     links = []
     for (_, a), (_, b) in zip(raw, raw[1:]):
         # Embedded qualifications share a source unit; leading/trailing
         # dependent clauses and required complements can cross unit seams.
-        same = next(n for n in nodes if n['start'] <= a['start'] < n['end'])['end'] >= b['end']
         reasons = []
-        if same and (QUALIFIER.search(a['text']) or QUALIFIER.search(b['text'])):
+        if any(lo<=a['start'] and b['end']<=hi for lo,hi in scopes):
             reasons.append('qualification_preservation')
         if old.DEPENDENT.search(a['text'].lstrip('“"\'')) or DEPENDENT.search(b['text'].lstrip('“"\'')):
             reasons.append('dependent_continuation')
+        if SPEECH_FRAME.search(a['text']) and FIRST_PERSON.search(b['text']):
+            reasons.append('outer_speech_or_modelled_content')
         if COMPLEMENT.search(a['text']) or a['text'].rstrip().endswith('?'):
             reasons.append('required_complement_or_response')
         if route == 'G3' and REFERENTIAL.search(b['text'].lstrip('“"\'')):

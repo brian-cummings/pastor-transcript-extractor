@@ -84,6 +84,12 @@ def require_execution(packet, approve_input, operation):
             or decision['provider_calls_authorized'] is not False
             or decision['source_selection_authorized'] is not False
             or decision['collection_projection_authorized'] is not False
+            or decision.get('attempts')!=1
+            or decision.get('development_video_ids')!=packet['development_video_ids']
+            or decision.get('resources')!=packet['resources']
+            or any(decision.get(k) is not False for k in ('semantic_admission_threshold_changes_authorized',
+                'automatic_provenance_authorized','model_comparison_training_authorized','reference_specific_tuning_authorized'))
+            or decision.get('local_encoder_execution_authorized') is not True
             or decision[operation] is not True):
         raise ValueError('Separate execution authority mismatches this packet')
     return decision

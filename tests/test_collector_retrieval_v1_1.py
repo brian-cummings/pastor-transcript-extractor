@@ -1,5 +1,4 @@
 """Prospective synthetic invariants only; no dataset or real encoder execution."""
-from copy import deepcopy
 import json
 from pathlib import Path
 import tempfile
@@ -42,6 +41,8 @@ class RoleTests(unittest.TestCase):
                'You may leave; but you must return before dark.',
                'Read the passage; if you have not read it, memorize the words.',
                'You should decide: “I will remain faithful.”',
+               'We should resolve as she did. I will remain faithful.',
+               'I told him, I will remain faithful.',
                'You must not; trust strangers.')
         for text in texts:
             with self.subTest(text=text):
@@ -65,6 +66,12 @@ class RoleTests(unittest.TestCase):
         self.assertEqual(2,len(g['G3_displacements']))
         self.assertTrue(all(d['structural_dependency_status']=='completed_no_detected_open_dependency' for d in g['G3_displacements']))
         self.assertTrue(all(d['semantic_act_status']=='unmeasured_requires_source_review' for d in g['G3_displacements']))
+
+    def test_oversized_dependency_defers_without_partial_G3_targets(self):
+        text='If the path is blocked, '+('you must remain where you are, '*250)+'wait.'
+        g=lattice.build(source(text))
+        self.assertFalse(g['G3_hypotheses'])
+        self.assertTrue(any(d['reason']=='dependency_exceeds_frame_bound' for d in g['deferred']))
 
     def test_coordinate_exactness_unicode_no_substrate_changes(self):
         s=source('“Open a book”; sing a verse. '+('alpha '*220))
@@ -142,6 +149,20 @@ class SealAndWorkflowTests(unittest.TestCase):
         with patch.object(workflow,'EXECUTION',historical.EXECUTION),patch.object(workflow.design,'sealed',return_value=decision):
             with self.assertRaisesRegex(ValueError,'mismatches'):
                 workflow.require_execution(dict(content_fingerprint='new',artifact_lock_fingerprint='same'),'new','development_execution_authorized')
+
+    def test_prospective_authority_must_bind_exact_resources_and_one_attempt(self):
+        packet=dict(content_fingerprint='new',artifact_lock_fingerprint='locked',development_video_ids=[999],resources={'ceiling':1})
+        decision=dict(status='AUTHORIZED',decision_owner='Brian',input_fingerprint='new',artifact_lock_fingerprint='locked',
+            provider_calls_authorized=False,source_selection_authorized=False,collection_projection_authorized=False,
+            semantic_admission_threshold_changes_authorized=False,automatic_provenance_authorized=False,
+            model_comparison_training_authorized=False,reference_specific_tuning_authorized=False,
+            local_encoder_execution_authorized=True,development_execution_authorized=True,
+            attempts=1,development_video_ids=[999],resources={'ceiling':1})
+        with patch.object(workflow,'EXECUTION',historical.EXECUTION),patch.object(workflow.design,'sealed',return_value=decision):
+            self.assertEqual(decision,workflow.require_execution(packet,'new','development_execution_authorized'))
+            decision['attempts']=2
+            with self.assertRaisesRegex(ValueError,'mismatches'):
+                workflow.require_execution(packet,'new','development_execution_authorized')
 
     def test_real_workflow_roundtrip_resume_seals_before_reference_matching(self):
         from pastor_transcript_extractor import collector_recall_repair_v4_1 as matching
