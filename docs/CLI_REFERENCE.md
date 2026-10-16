@@ -3416,6 +3416,28 @@ pte analysis g2-feasibility-review [OPTIONS]
 | `--revision TEXT` | Frozen pilot revision: v1 or the single adjudicated v2 cycle.  [default: v1] | no | v1 |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis collector-recall-repair`
+
+Check or run the bounded provider-free Collector V4 development comparison; no semantic inference.
+
+#### Usage
+
+```console
+pte analysis collector-recall-repair [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--check-only` | Read-only verification of repair code, authority and frozen diagnostic inputs. | no | False |
+| `--run-development` | Run only the three retired Fresh V1 sources as development diagnostics; no providers. | no | False |
+| `--approve-input TEXT` | Exact prepared repair fingerprint required with --run-development. | no | — |
+| `--prepare-confirmation` | After development review, select a new metadata-only fresh manifest; no confirmation execution. | no | False |
+| `--approve-development-result TEXT` | Reviewed development result fingerprint required for fresh source selection. | no | — |
+| `--base-dir PATH` | Application data directory for source artifacts and runtime results. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis fresh-discovery-readiness`
 
 Prepare or verify the authorized bounded fresh-source discovery packet; no provider execution.

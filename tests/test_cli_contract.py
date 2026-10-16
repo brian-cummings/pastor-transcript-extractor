@@ -56,6 +56,7 @@ GROUP_COMMANDS = {
         "g3-atomic-admission-review",
         "g3-atomic-admission-replay",
         "fresh-discovery-readiness",
+        "collector-recall-repair",
         "evidence-supply-source-audit",
         "g1-feasibility-review",
         "g2-feasibility-review",

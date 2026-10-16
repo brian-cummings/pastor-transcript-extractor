@@ -3127,6 +3127,37 @@ def analysis_g2_feasibility_review(
         raise typer.BadParameter(str(error)) from error
 
 
+@analysis_app.command("collector-recall-repair", help="Check or run the bounded provider-free Collector V4 development comparison; no semantic inference.")
+def analysis_collector_recall_repair(
+    check_only: bool = typer.Option(False, "--check-only", help="Read-only verification of repair code, authority and frozen diagnostic inputs."),
+    run_development: bool = typer.Option(False, "--run-development", help="Run only the three retired Fresh V1 sources as development diagnostics; no providers."),
+    approve_input: str | None = typer.Option(None, "--approve-input", help="Exact prepared repair fingerprint required with --run-development."),
+    prepare_confirmation: bool = typer.Option(False, "--prepare-confirmation", help="After development review, select a new metadata-only fresh manifest; no confirmation execution."),
+    approve_development_result: str | None = typer.Option(None, "--approve-development-result", help="Reviewed development result fingerprint required for fresh source selection."),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for source artifacts and runtime results."),
+) -> None:
+    from pastor_transcript_extractor import collector_recall_repair as repair
+    if (sum((check_only,run_development,prepare_confirmation))>1
+            or bool(approve_input)!=run_development
+            or bool(approve_development_result)!=prepare_confirmation):
+        raise typer.BadParameter("Choose one mode; execution/selection requires its exact fingerprint")
+    try:
+        if run_development:
+            result=repair.run_development(base_dir,approve_input)
+            console.print(repair.render(result),markup=False)
+            console.print(f"Results: {repair.directory(base_dir) / result['repair_input_fingerprint'] / 'results-v4.json'}",markup=False)
+            console.print(f"Development result fingerprint: {result['content_fingerprint']}",markup=False)
+        elif prepare_confirmation:
+            manifest=repair.prepare_confirmation(base_dir,approve_development_result)
+            console.print(f"Fresh confirmation manifest prepared: {manifest['content_fingerprint']}; no discovery, references or providers.",markup=False)
+        else:
+            packet,_=repair.verify(base_dir)
+            console.print(f"Collector V4 repair verified: {packet['content_fingerprint']}; development only, provider_requests=0.",markup=False)
+            console.print(f"Review: {repair.HERE / 'IMPLEMENTATION-REVIEW.md'}",markup=False)
+    except (ValueError,OSError,KeyError,RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @analysis_app.command(
     "fresh-discovery-readiness",
     help="Prepare or verify the authorized bounded fresh-source discovery packet; no provider execution.",

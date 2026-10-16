@@ -1,0 +1,63 @@
+{
+  "version": "collector-recall-repair-input-v4",
+  "status": "READY_FOR_BRIAN_DEVELOPMENT_COMPARISON",
+  "authorization_sha256": "b1bf80bed00a1b33caececd53b401be1f4b2f29fb41bb6555061b32492382a98",
+  "development_video_ids": [
+    1565,
+    1450,
+    1618
+  ],
+  "frozen_reference_sha256": "8d2ab9df5e2c9bc027b54504095806ef804ea7c8812f7040a94d99e4a2ad254c",
+  "policy": {
+    "version": "source-boundary-factorization-v4",
+    "source_candidate_ceiling": 12000,
+    "total_candidate_ceiling": 20000,
+    "G1_source_ceiling": 200,
+    "max_frame_chars": 6000,
+    "episode_chars": 4000,
+    "G2_per_sentence_bound": 12,
+    "G2_boundary_widths": [
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        1
+      ],
+      [
+        2,
+        2
+      ]
+    ],
+    "G2_same_sentence_slots": 2,
+    "G2_remote_slots": 2,
+    "G3_per_sentence_bound": 2,
+    "continuation_sentences": 4,
+    "continuation_chars": 1000,
+    "G1_preceding_sentences": 1,
+    "G1_following_sentences": 2,
+    "G1_max_target_chars": 1800
+  },
+  "code_hashes": {
+    "src/pastor_transcript_extractor/evidence_supply_collector_v4.py": "532adca98bb2120625dc5a04a7a103dc7301431a4ec50d3a421c5b598926ddc6",
+    "src/pastor_transcript_extractor/collector_recall_repair.py": "3eea0d45d37cc2b21fe5cb1b8d04eb85cd04bc0cee9ede3d457a73e491ff1d0f",
+    "tests/test_evidence_supply_collector_v4.py": "c14a53cc66891b8835f2c3f4ab44b02b0272af593eed8f5fa8bfada770e6f60c",
+    "tests/test_collector_recall_repair.py": "db9299be6657a09f7feeb22e1d24d4271e56a3da640d3656ff2eb9f444719be3"
+  },
+  "provider_calls_authorized": false,
+  "semantic_admission_changes_authorized": false,
+  "confirmation_execution_authorized": false,
+  "development_metric": "Exact frozen source roles and required-source-span containment upper bounds; report recovery/regression against unchanged baseline.",
+  "reference_policy": "Frozen 97 definite opportunities, two unresolved and 47 controls remain unchanged. Development outcomes are not held-out generalization.",
+  "semantic_false_positive_policy": "Report new geometries, reference-unmatched candidates and known control contacts as review-work proxies. Semantic false-positive count is unknown without source/candidate audit; never interpret unmatched as false.",
+  "advancement_policy": "Codex reviews material recovery of demonstrated classes, regressions, bounded growth and control burden after Brian runs the comparison. No fixed .80 development gate and no automatic PASS. Then prepare metadata-only fresh selection; confirmation execution is separately held.",
+  "corpus_and_semantic_evaluation_authorized": false,
+  "validation_executor": "Brian",
+  "provider_requests": 0,
+  "content_fingerprint": "f1a75376089cd79153524643d975d435b3598f33082de0026a4753cd22ebe780"
+}

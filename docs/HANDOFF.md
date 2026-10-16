@@ -1,5 +1,50 @@
 # Handoff Notes
 
+## Collector V4 repair implemented; Brian's development run next — 2026-10-16
+
+Brian [accepted Fresh V1 discovery FAIL / G1 HOLD](review-proposals/fresh-discovery-readiness-v1/acceptance-decision-v1.md)
+and declined its semantic/provider run. Sources 1565/1450/1618 are retired as confirmation
+material. A separate bounded Collector V4 repair is implemented under Brian's
+[authorization](review-proposals/evidence-supply-collector-v4/authorization-v4.json).
+See the [implementation review](review-proposals/evidence-supply-collector-v4/IMPLEMENTATION-REVIEW.md)
+and [input](review-proposals/evidence-supply-collector-v4/repair-input-v4.json).
+
+New source-only collector: complete oriented sentence-boundary G2 role hypotheses,
+full prefix/suffix gloss cuts and bounded nonlocal gloss hypotheses; universal G3
+sentence nomination plus bounded continuation hypotheses, without circumstance
+multiplication; narrow G1 topic-neighborhood nomination with full framing and unchanged
+phrase-pool ceilings. Candidates are hypotheses, never attested Bible/act/assurance
+facts. Mixed/neighboring-act risk in grouped targets remains subject to unchanged
+source/target/provenance review. Semantic questions, .80 gates, V4/A1 admission/export/
+consumer code, old collector and frozen references are unchanged. No rank score tuning,
+source-specific rules, candidate-ceiling increase, provider calls or production effect.
+
+**Development dataset comparison has not run.** Per AGENTS.md Brian executes:
+
+```sh
+pte analysis collector-recall-repair --run-development --approve-input f1a75376089cd79153524643d975d435b3598f33082de0026a4753cd22ebe780
+```
+
+Read-only `--check-only` passed. Results/natural inventory go under the configured
+application base `evaluation/collector-recall-repair-v4/<input fingerprint>/`.
+They preserve all 97 definite reference opportunities, two unresolved cases and 47
+controls; report recoveries/regressions/remaining misses, candidate counts/growth,
+deferrals, new geometries and known-control contacts. Role/span coverage is an upper
+bound; unmatched candidates and control contacts are burden proxies, not semantic
+false positives. No false-positive precision, safe-envelope/admitted yield or human
+throughput is claimed. No fixed .80 development PASS gate.
+
+Codex owns interpretation after Brian returns output. Assess material failure-class
+recovery, regressions and bounded burden; then use the prepared metadata-only Fresh V2
+selector with the exact reviewed result fingerprint. That selector has NOT run and
+confirmation execution remains held. It excludes all previous development and Fresh V1
+primary/reserve channels, seals 3 primary / 1 technical reserve without looking at
+opportunities, and never replaces valid poor-performing sermons. Confirmation requires
+fresh source validation, source-only inventory before new census, and separate scope.
+No more containment development or semantic tuning. Collection, projection/scoring,
+automatic attestation and the 790-item V2 audit remain unauthorized.
+
+
 ## Fresh provider-free preparation complete; discovery FAIL recommended — 2026-10-16
 
 Brian authorized preparation with per-source recall gating only at **>=5 definite

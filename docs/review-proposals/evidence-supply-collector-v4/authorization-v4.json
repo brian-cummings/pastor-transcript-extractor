@@ -5,7 +5,6 @@
   "decision_date": "2026-10-16",
   "acceptance_fingerprint": "5f159be2c1a7b4e154a2414325cf0e48f1e50b949710c8b5708791209d3f59c2",
   "acceptance_sha256": "7aa4eb09d90cde68af9f5133bb7054f6c61d13bf02854140da1d8a9e24e0bc97",
-  "diagnostic_reference_fingerprint": "8d2ab9df5e2c9bc027b54504095806ef804ea7c8812f7040a94d99e4a2ad254c",
   "development_video_ids": [
     1565,
     1450,
@@ -23,5 +22,6 @@
   "broader_collection_projection": false,
   "development_recall_is_generalization": false,
   "dataset_validation_executor": "Brian",
-  "content_fingerprint": "8ebf5580f32528890d78cd95a20ae01c72241559d2548fe73f7eed5d2d4147c2"
+  "diagnostic_reference_sha256": "8d2ab9df5e2c9bc027b54504095806ef804ea7c8812f7040a94d99e4a2ad254c",
+  "content_fingerprint": "b43e5b9163560d39e17a8c5a3306a81413825cbb607683bbfc3b64ba0133c253"
 }
