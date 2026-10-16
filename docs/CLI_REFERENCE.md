@@ -3762,6 +3762,7 @@ pte analysis collector-retrieval [OPTIONS]
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
 | `--check-only` | Verify implementation authority, artifact manifest and pinned files without model loading. | no | False |
+| `--verify-audit` | Verify sealed development source-audit bindings; no model loading or evaluation. | no | False |
 | `--preflight` | Source identity and structural unit/resource upper bounds only; no candidate generation or model loading. | no | False |
 | `--acquire-model` | Acquire only locked model artifacts, after separate fingerprint-bound authorization. | no | False |
 | `--run-development` | Run only the sealed retired-source development packet, after separate authorization; never providers. | no | False |

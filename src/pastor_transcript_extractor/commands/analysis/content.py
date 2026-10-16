@@ -3776,6 +3776,7 @@ def analysis_collector_retrieval_design(
 @analysis_app.command("collector-retrieval", help="Verify/preflight the bounded G2/G3 implementation; model acquisition and development execution need separate authorization.")
 def analysis_collector_retrieval(
     check_only: bool = typer.Option(False, "--check-only", help="Verify implementation authority, artifact manifest and pinned files without model loading."),
+    verify_audit: bool = typer.Option(False, "--verify-audit", help="Verify sealed development source-audit bindings; no model loading or evaluation."),
     preflight: bool = typer.Option(False, "--preflight", help="Source identity and structural unit/resource upper bounds only; no candidate generation or model loading."),
     acquire_model: bool = typer.Option(False, "--acquire-model", help="Acquire only locked model artifacts, after separate fingerprint-bound authorization."),
     run_development: bool = typer.Option(False, "--run-development", help="Run only the sealed retired-source development packet, after separate authorization; never providers."),
@@ -3783,11 +3784,17 @@ def analysis_collector_retrieval(
     base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for future locked artifacts, checkpoints and results."),
 ) -> None:
     from pastor_transcript_extractor import collector_retrieval_workflow as workflow
-    if sum((check_only,preflight,acquire_model,run_development))>1 or bool(approve_input)!=bool(acquire_model or run_development):
+    if sum((check_only,verify_audit,preflight,acquire_model,run_development))>1 or bool(approve_input)!=bool(acquire_model or run_development):
         raise typer.BadParameter("Choose one mode; acquisition/development requires its exact fingerprint and separate authorization")
     try:
         packet=workflow.verify()
-        if preflight:
+        if verify_audit:
+            from pastor_transcript_extractor import collector_retrieval_audit as audit
+            review=audit.verify(base_dir)
+            console.print(f"Development source audit: {review['recommendation']}; fingerprint={review['content_fingerprint']}; provider_requests=0.",markup=False)
+            console.print(f"Review: {workflow.HERE / 'DEVELOPMENT-SOURCE-AUDIT.md'}",markup=False)
+            return
+        elif preflight:
             rows=workflow.preflight(packet)
             for row in rows:
                 console.print(f"Source {row['video_id']}: {row['unit_count']} frozen units; G2/G3 bound {row['G2_G3_max']}; comparisons <= {row['comparisons_max']}; encoded tokens <= {row['encoded_tokens_max']}.", markup=False)
@@ -3798,7 +3805,11 @@ def analysis_collector_retrieval(
             result=workflow.run_development(base_dir,approve_input)
             console.print(f"Development diagnostic complete: {result['content_fingerprint']}; provider_requests=0. Codex source audit is next.", markup=False)
         else:
-            console.print(f"Bounded implementation verified: {packet['content_fingerprint']}; model acquisition/loading and development execution remain separately held; provider_requests=0.", markup=False)
+            state="separately held"
+            if workflow.EXECUTION.exists():
+                workflow.require_execution(packet,packet['content_fingerprint'],'development_execution_authorized')
+                state="authorized for the exact one-attempt development scope; no execution in this check"
+            console.print(f"Bounded implementation verified: {packet['content_fingerprint']}; runtime/model/development: {state}; provider_requests=0.", markup=False)
         console.print(f"Review: {workflow.HERE / 'IMPLEMENTATION-REVIEW.md'}", markup=False)
     except (ValueError,OSError,KeyError,RuntimeError,ImportError) as error:
         raise typer.BadParameter(str(error)) from error
