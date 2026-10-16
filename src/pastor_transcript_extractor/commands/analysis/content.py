@@ -3138,13 +3138,15 @@ def analysis_evidence_supply_boundary_v4_audit(
 
     try:
         report = audit.verify(base_dir)
+        accepted = audit.accepted_decision(report)
     except (ValueError, OSError, KeyError, RuntimeError) as error:
         raise typer.BadParameter(str(error)) from error
     summary = report['admission_summary']
     console.print(f"Audit verified: {report['audited_cases']} cases / {report['audited_fields']} fields; "
                   f"{summary['admitted']} supported local G2 items; {summary['unsupported_admitted']} unsupported admitted; provider_requests=0.", markup=False)
-    console.print("Recommendations: raw-semantic FAIL; containment HOLD. No current or reported G3 item admitted: "
-                  "all 13 actual G3 boundary decisions are withheld. Brian's final decisions pending; discovery remains closed.", markup=False)
+    console.print("Raw-semantic FAIL; containment HOLD. " +
+                  ("Brian accepted both decisions. " if accepted else "Brian's final decisions pending. ") +
+                  "No current or reported G3 item admitted; discovery remains closed.", markup=False)
     console.print(f"Review: {audit.HERE / 'source-audit-v4.md'}", markup=False)
 
 

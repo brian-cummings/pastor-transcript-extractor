@@ -1,0 +1,22 @@
+{
+  "version": "semantic-boundary-v4-human-decision",
+  "decision_date": "2026-10-15",
+  "decision_owner": "Brian",
+  "status": "RAW_FAIL_CONTAINMENT_HOLD",
+  "closed": true,
+  "raw_semantic_status": "FAIL",
+  "containment_status": "HOLD",
+  "audit_fingerprint": "231be5a6f455d6b339253aefb887e60155af5625c5a6243a6ec4f8dcfd6e69f5",
+  "audit_file_sha256": "361938c9a3576cf2763b6a20d7b95c0434f86856c7725bdfa16b11cca0afe185",
+  "input_fingerprint": "3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c",
+  "human_instruction": "Accept the V4 source audit recommendations: raw-semantic FAIL and containment HOLD. Preserve the seven confirmed critical raw fields and all existing quarantines; do not reinterpret this decision as containment PASS or FAIL.",
+  "accepted_scope": "Frozen V4 panel only; all raw measurements, source-review findings, two G2 admissions and 22 quarantines preserved. HOLD records missing current and reported G3 anti-vacuity positives.",
+  "authorized_next": "Provider-free review and prospective versioned proposal for existing G3 sufficiency/admission interface using the same V4 receipts and source-review evidence only.",
+  "repair_implementation_authorized": false,
+  "provider_calls_authorized": false,
+  "new_semantic_run_authorized": false,
+  "automatic_attestation_authorized": false,
+  "discovery_readiness": "closed",
+  "collection_projection_scoring_authorized": false,
+  "content_fingerprint": "25cbd58a88a0bc95bcf7e25bebd1a74cc1e692b6bc5bceafe0e5a90e4469316e"
+}

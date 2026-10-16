@@ -19,6 +19,23 @@ REVIEW = HERE / 'source-review-v4.json'
 ACCEPTANCE = HERE / 'source-review-acceptance-v4.json'
 
 
+def accepted_decision(report):
+    """Separate human gate decision; never rewrite the historical audit/review."""
+    path = AUDIT.with_name('acceptance-decision-v4.json')
+    if not path.exists():
+        return None
+    decision = gate.sealed(path)
+    if (decision['audit_fingerprint'] != report['content_fingerprint']
+            or decision['audit_file_sha256'] != panel.old.frozen.v1.file_hash(AUDIT)
+            or decision['input_fingerprint'] != report['input_fingerprint']
+            or decision['raw_semantic_status'] != 'FAIL'
+            or decision['containment_status'] != 'HOLD' or decision['closed'] is not True
+            or decision['repair_implementation_authorized'] is not False
+            or decision['provider_calls_authorized'] is not False):
+        raise ValueError('Invalid V4 human decision binding')
+    return decision
+
+
 def validate_coverage(report, packet, review, measurements):
     records = report['records']
     if [r['case_id'] for r in records] != [c['case_id'] for c in packet['cases']]:
@@ -158,4 +175,5 @@ def verify(base_dir=None):
             or report['raw_semantic_recommendation'] != 'FAIL' or report['containment_recommendation'] != 'HOLD'
             or report['final_raw_semantic_decision'] is not None or report['final_containment_decision'] is not None):
         raise ValueError('Admission summary or pending gate decision changed')
+    accepted_decision(report)
     return report

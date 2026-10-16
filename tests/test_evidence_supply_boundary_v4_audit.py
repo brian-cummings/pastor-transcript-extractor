@@ -6,6 +6,8 @@ verification separately validates the real sealed receipts and admission replay.
 from copy import deepcopy
 import json
 from types import SimpleNamespace
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
@@ -88,5 +90,26 @@ class V4AuditTests(unittest.TestCase):
         self.assertEqual(0,result.exit_code,result.output)
         self.assertIn('containment HOLD',' '.join(result.output.split()))
         self.assertIn('provider_requests=0',' '.join(result.output.split()))
+        self.assertIn('Brian accepted both decisions', ' '.join(result.output.split()))
         result=CliRunner().invoke(app,['analysis','evidence-supply-boundary-v4-audit','--execute'])
         self.assertNotEqual(0,result.exit_code)
+
+    def test_human_decision_preserves_hold_and_historical_audit(self):
+        decision = audit.accepted_decision(self.report)
+        self.assertEqual('FAIL', decision['raw_semantic_status'])
+        self.assertEqual('HOLD', decision['containment_status'])
+        self.assertFalse(decision['repair_implementation_authorized'])
+        self.assertIsNone(self.report['final_containment_decision'])
+
+    def test_resealed_retroactive_pass_is_rejected(self):
+        decision = deepcopy(audit.accepted_decision(self.report))
+        decision['containment_status'] = 'PASS'
+        decision.pop('content_fingerprint')
+        decision['content_fingerprint'] = audit.panel.old.frozen.fp(decision)
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'acceptance-decision-v4.json').write_text(json.dumps(decision))
+            with patch.object(audit, 'AUDIT', root / audit.AUDIT.name):
+                with patch.object(audit.panel.old.frozen.v1, 'file_hash', return_value=decision['audit_file_sha256']):
+                    with self.assertRaisesRegex(ValueError, 'human decision'):
+                        audit.accepted_decision(self.report)
