@@ -3178,6 +3178,8 @@ def analysis_collector_recall_repair(
     help="Prepare or verify the authorized bounded fresh-source discovery packet; no provider execution.",
 )
 def analysis_fresh_discovery_readiness(
+    revision: str = typer.Option("v1", "--revision", help="Fresh-source packet revision: v1 historical or v2 frozen Collector V4.1 confirmation."),
+    include_reserve: bool = typer.Option(False, "--include-reserve", help="With V2 --source-preview only, prepare the technical reserve for source validation."),
     check_only: bool = typer.Option(False, "--check-only", help="Verify the prepared proposal only; this workflow has no evaluation execution mode."),
     source_preview: bool = typer.Option(False, "--source-preview", help="Prepare the authorized three normalized source snapshots for boundary validation; no discovery or providers."),
     freeze_inventory: bool = typer.Option(False, "--freeze-inventory", help="Freeze source-only candidates/envelopes/queue before any reference census; no providers."),
@@ -3188,8 +3190,26 @@ def analysis_fresh_discovery_readiness(
     from pastor_transcript_extractor import fresh_discovery_readiness as review
 
     try:
+        if revision not in {"v1","v2"}:
+            raise ValueError("Revision must be v1 or v2")
+        if include_reserve and (revision!="v2" or not source_preview):
+            raise ValueError("--include-reserve requires --revision v2 --source-preview")
         if sum((check_only,source_preview,freeze_inventory,prepare_packet,verify_preparation))>1:
             raise ValueError("Choose one provider-free mode")
+        if revision == "v2":
+            from pastor_transcript_extractor import fresh_discovery_confirmation as confirmation
+            if source_preview:
+                ids=confirmation.preview(base_dir,include_reserve)
+                console.print(f"Prepared V2 source previews: {ids}; provider_requests=0.",markup=False)
+            elif freeze_inventory:
+                fingerprint=confirmation.freeze(base_dir)
+                console.print(f"Frozen V2 natural inventory: {fingerprint}; provider_requests=0. No candidate/match results displayed before census.",markup=False)
+            elif prepare_packet or verify_preparation:
+                raise ValueError("V2 census/match review is not yet prepared; no provider execution is available")
+            else:
+                manifest,_=confirmation.verify(base_dir)
+                console.print(f"Fresh V2 source/collector bindings verified: {manifest['content_fingerprint']}; provider_requests=0.",markup=False)
+            return
         if verify_preparation:
             from pastor_transcript_extractor import fresh_discovery_results as results
             report=results.verify_preparation(base_dir)

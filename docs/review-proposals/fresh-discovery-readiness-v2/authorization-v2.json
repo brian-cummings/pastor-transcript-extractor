@@ -1,0 +1,63 @@
+{
+  "version": "fresh-v2-provider-free-authorization",
+  "status": "AUTHORIZED",
+  "decision_owner": "Brian",
+  "decision_date": "2026-10-16",
+  "development_acceptance_sha256": "baf05ba831fb66a671f1421d3f8c44ad2ba81dd30bad43d935367e8f7eae776e",
+  "source_manifest_sha256": "93f918ad9ed430fff5ba72275d086b05199dad7b441979f4b65bd19087aba489",
+  "repair_input_fingerprint": "8a619033a9319d224d642fc475f1cbd67986919c74d5c0388662ae787a64e54e",
+  "collector_frozen": true,
+  "preparation_authorized": true,
+  "source_validation_and_technical_reserve": true,
+  "source_only_inventory_freeze_before_census": true,
+  "independent_full_source_census": true,
+  "matching_and_source_only_results": true,
+  "semantic_packet_preparation_if_discovery_passes": true,
+  "provider_calls_authorized": false,
+  "tuning_authorized": false,
+  "collection_projection_authorized": false,
+  "criteria": {
+    "aggregate_recall": 0.8,
+    "aggregate_sufficient_envelope_recall": 0.8,
+    "per_source_recall": 0.8,
+    "per_source_minimum": 5,
+    "small_cells": "diagnostic",
+    "aggregate_floors": {
+      "G1_assurance": 5,
+      "G2_explanation": 10,
+      "G3_current": 5,
+      "G3_reported": 3
+    },
+    "manual_envelope_repair_max": 0.2,
+    "unresolved_review_deferral_max": 0.2,
+    "median_active_candidate_review_minutes_max": 5,
+    "active_review_budget_minutes": 480
+  },
+  "bounds": {
+    "G2_G3_per_source": 12000,
+    "G2_G3_total": 20000,
+    "G1_per_source": 200,
+    "characters_per_source": 150000,
+    "characters_total": 300000,
+    "semantic_units_per_source": 40,
+    "semantic_units_total": 120,
+    "semantic_requests_max": 240,
+    "retries": 0
+  },
+  "semantic_queue": {
+    "G1": 10,
+    "G2": 15,
+    "G3": 15
+  },
+  "holds": [
+    "no provider inference",
+    "no collector tuning",
+    "no semantic/admission changes",
+    "no collection",
+    "no production or automatic attestation",
+    "no recurrence/rates",
+    "no projection/comparison/scoring",
+    "no 790-item V2 audit"
+  ],
+  "content_fingerprint": "08bd2900e25fe7c8090285589e28de727a103ced55ae90ffe0f1a9a90bacdf1b"
+}

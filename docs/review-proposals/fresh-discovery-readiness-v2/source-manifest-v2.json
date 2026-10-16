@@ -1,0 +1,124 @@
+{
+  "version": "fresh-discovery-source-manifest-v2",
+  "selection_salt": "fresh-discovery-readiness-v2:",
+  "prepared_at_utc": "2026-10-16T13:36:11.914130+00:00",
+  "repair_input_fingerprint": "8a619033a9319d224d642fc475f1cbd67986919c74d5c0388662ae787a64e54e",
+  "development_result_fingerprint": "3d950a35c636af3bf94d1acc38f4ee71b2f1872b382d42993bacfe4506b75ddf",
+  "selection_sql": "select v.id,v.source_id,v.pastor_id,v.youtube_video_id,v.title,v.duration_seconds,p.slug,t.id transcript_id,t.raw_text_path,t.source_kind,e.id extraction_id,e.proposed_json_path,e.proposed_text_path from videos v join pastors p on p.id=v.pastor_id join transcript_artifacts t on t.id=(select max(id) from transcript_artifacts where video_id=v.id and artifact_kind='source') join extraction_results e on e.id=(select max(id) from extraction_results where video_id=v.id) where v.source_id not in (33,44) and v.duration_seconds between 1200 and 4200 and not exists(select 1 from sermon_analysis_runs a where a.video_id=v.id)",
+  "excluded_source_ids": [
+    32,
+    33,
+    44,
+    48,
+    60,
+    66
+  ],
+  "excluded_video_ids": [
+    350,
+    421,
+    1046,
+    1200,
+    1450,
+    1565,
+    1618,
+    4050,
+    4069,
+    4430
+  ],
+  "sources": [
+    {
+      "source_id": 56,
+      "pastor_id": 51,
+      "youtube_video_id": "W0BMnirGu60",
+      "title": "2025 Christmas Piano Recital",
+      "duration_seconds": 1581,
+      "slug": "churchdb-200",
+      "transcript_id": 1436,
+      "raw_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-200/videos/W0BMnirGu60/raw/captions.txt",
+      "source_kind": "captions",
+      "extraction_id": 1422,
+      "proposed_json_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-200/videos/W0BMnirGu60/extracted/proposed.json",
+      "proposed_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-200/videos/W0BMnirGu60/extracted/proposed.md",
+      "video_id": 1363,
+      "selection_sha256": "00a40655c3def22687fc411f3ce6fd687854819e4ad3eee2edd5e7b4a3187add",
+      "role": "primary",
+      "file_hashes": {
+        "raw_text_path": "8b1bb916a93ab7702fce9848c8e272f71d68ca3f532f442484d1156c678ac84f",
+        "proposed_json_path": "062325a707119726f677b7b683ea464ce572c259c775d579cbdc4353f979688e",
+        "proposed_text_path": "9f9ba06d7c09b6517cd35dee314ab2ee421b58f8c54ceb9a783aeb1bf4936a22"
+      }
+    },
+    {
+      "source_id": 36,
+      "pastor_id": 31,
+      "youtube_video_id": "ygRCpUFFkfE",
+      "title": "Renewed Vision",
+      "duration_seconds": 4129,
+      "slug": "churchdb-115",
+      "transcript_id": 814,
+      "raw_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-115/videos/ygRCpUFFkfE/raw/captions.txt",
+      "source_kind": "captions",
+      "extraction_id": 689,
+      "proposed_json_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-115/videos/ygRCpUFFkfE/extracted/proposed.json",
+      "proposed_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-115/videos/ygRCpUFFkfE/extracted/proposed.md",
+      "video_id": 610,
+      "selection_sha256": "02723f6eb0ccbf36627d9d5e50ad1bd14913dd0e7036e6e42c34f8e674b91869",
+      "role": "primary",
+      "file_hashes": {
+        "raw_text_path": "f1e39563fc510070f4f784b922fb82a2dfbb0352d1c11becd8925ed895563658",
+        "proposed_json_path": "8c9436cc172658412e16605796779b56953f2d1af970278e9645fa86a839739d",
+        "proposed_text_path": "8b6746cf00d9cdb1606b1c21feb7a3ba8943dfd8fb669b7e73ae1eb556428b22"
+      }
+    },
+    {
+      "source_id": 7,
+      "pastor_id": 2,
+      "youtube_video_id": "wPpmxl-G2PM",
+      "title": "July 4, 2020 Worship Service",
+      "duration_seconds": 3452,
+      "slug": "dgrady",
+      "transcript_id": 2117,
+      "raw_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/dgrady/videos/wPpmxl-G2PM/raw/captions.txt",
+      "source_kind": "captions",
+      "extraction_id": 1818,
+      "proposed_json_path": "/Users/briancummings/Documents/PastorSearchData/pastors/dgrady/videos/wPpmxl-G2PM/extracted/proposed.json",
+      "proposed_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/dgrady/videos/wPpmxl-G2PM/extracted/proposed.md",
+      "video_id": 2298,
+      "selection_sha256": "028132d13e9500724ee4f97e93304fe5806183bc2398307773ff7ac2ab64320f",
+      "role": "primary",
+      "file_hashes": {
+        "raw_text_path": "29292f98e01ece5d6c04e3931aeb239f2a522c11b54756eb275fdf4c0fc246ab",
+        "proposed_json_path": "d84a824c3e5b89253cf2080bfacf664712b052799903e2917ace33c2e4a0fb9a",
+        "proposed_text_path": "17ca389edd216b7be9c23749a183395e13abddd114669437feaeebbf1b910b4b"
+      }
+    },
+    {
+      "source_id": 8,
+      "pastor_id": 3,
+      "youtube_video_id": "R-jPnOmOcp4",
+      "title": "Listening on the road to Emmaus | 08.1.26 | Bruce Galbraith",
+      "duration_seconds": 2141,
+      "slug": "jfowler",
+      "transcript_id": 2648,
+      "raw_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/jfowler/videos/R-jPnOmOcp4/raw/whisper.txt",
+      "source_kind": "local_asr",
+      "extraction_id": 2470,
+      "proposed_json_path": "/Users/briancummings/Documents/PastorSearchData/pastors/jfowler/videos/R-jPnOmOcp4/extracted/proposed.json",
+      "proposed_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/jfowler/videos/R-jPnOmOcp4/extracted/proposed.md",
+      "video_id": 2325,
+      "selection_sha256": "02a7b51e10070bc567aced707adfe50a3e3db47e68b8e38853dd23d1daf488e3",
+      "role": "technical_reserve_only",
+      "file_hashes": {
+        "raw_text_path": "9d248664e34529b20edcef11abb6365d9c012d3f5c278eaff78be49dbae298f9",
+        "proposed_json_path": "7dcf4990b88200cac0b18c192bacfc815c41d69e314ddbc36ef1ac71d7ca6d98",
+        "proposed_text_path": "dc0977bce3ef99154822e4f55da2180439fcfcce32e1755c77252ce2938318dd"
+      }
+    }
+  ],
+  "discovery_executed": false,
+  "references_constructed": false,
+  "provider_calls_authorized": false,
+  "confirmation_execution_authorized": false,
+  "selection_note": "Metadata-only salted hash order, distinct channels, same duration/disposition/title/file rules; all old primary/reserve and development channels excluded. No opportunity-based selection or swapping. Technical duplicate/boundary validation pending before confirmation freeze.",
+  "content_fingerprint": "bbf3046d687288d787fd5f3368ce8ac041530659440ddbb2d480079bfc58d768"
+}
