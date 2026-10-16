@@ -3416,6 +3416,23 @@ pte analysis g2-feasibility-review [OPTIONS]
 | `--revision TEXT` | Frozen pilot revision: v1 or the single adjudicated v2 cycle.  [default: v1] | no | v1 |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis g3-atomic-admission-review`
+
+Verify the provider-free G3 sufficiency proposal against V4 evidence; no new admission policy execution or writes.
+
+#### Usage
+
+```console
+pte analysis g3-atomic-admission-review [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--base-dir PATH` | Authorized application data directory holding the existing V4 receipts. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis evidence-supply-boundary-v4-audit`
 
 Verify the receipt-bound V4 source audit and replay admission/consumer paths; no providers or writes.

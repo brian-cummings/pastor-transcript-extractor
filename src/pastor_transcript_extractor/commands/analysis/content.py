@@ -3128,6 +3128,26 @@ def analysis_g2_feasibility_review(
 
 
 @analysis_app.command(
+    "g3-atomic-admission-review",
+    help="Verify the provider-free G3 sufficiency proposal against V4 evidence; no new admission policy execution or writes.",
+)
+def analysis_g3_atomic_admission_review(
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Authorized application data directory holding the existing V4 receipts."),
+) -> None:
+    from pastor_transcript_extractor import g3_atomic_admission_review as review
+
+    try:
+        proposal = review.verify(base_dir)
+    except (ValueError, OSError, KeyError, RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"Proposal verified: {len(proposal['records'])} design assessments; "
+                  "R018-current / R053-reported are prospective controls only. provider_requests=0.", markup=False)
+    console.print("V4 remains raw FAIL / containment HOLD; all original quarantines preserved. "
+                  "A1 policy implementation and validation remain unauthorized.", markup=False)
+    console.print(f"Review: {review.HERE / 'PROPOSAL.md'}", markup=False)
+
+
+@analysis_app.command(
     "evidence-supply-boundary-v4-audit",
     help="Verify the receipt-bound V4 source audit and replay admission/consumer paths; no providers or writes.",
 )

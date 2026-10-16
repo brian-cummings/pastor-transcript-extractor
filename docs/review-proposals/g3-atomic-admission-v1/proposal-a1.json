@@ -1,0 +1,952 @@
+{
+  "version": "g3-atomic-admission-interface-proposal-v1",
+  "date": "2026-10-15",
+  "status": "PROPOSAL_ONLY",
+  "decision_owner": "Brian",
+  "parent_input_fingerprint": "3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c",
+  "parent_audit_fingerprint": "231be5a6f455d6b339253aefb887e60155af5625c5a6243a6ec4f8dcfd6e69f5",
+  "parent_decision_fingerprint": "25cbd58a88a0bc95bcf7e25bebd1a74cc1e692b6bc5bceafe0e5a90e4469316e",
+  "accepted_v4_decisions": {
+    "raw_semantic": "FAIL",
+    "containment": "HOLD"
+  },
+  "authorization": {
+    "review_proposal": true,
+    "implementation": false,
+    "provider_calls": false,
+    "new_semantic_run": false,
+    "claim_review_acceptance": false,
+    "discovery_collection_projection": false
+  },
+  "proposed_policy_version": "g3-atomic-admission-a1",
+  "proposed_item_version": "reviewed-atomic-local-evidence-a1",
+  "proposed_witness_version": "receipt-bound-atomic-act-sufficiency-a1",
+  "selected_probability_threshold": 0.8,
+  "shared_boundary_question": {
+    "instructions": {
+      "task": "Is enough local target treatment supplied to judge this utterance and circumstance connection? Context cannot supply omitted address. This does not certify complete episode boundaries.",
+      "boundary": "Judge only candidate.utterance in target_text, using the surrounding target to interpret it. Other target sentences do not supply an act absent from this utterance. Leading/trailing context may identify a referent but cannot supply an act or circumstance connection. Reported/rejected person-directed acts can exist without preacher adoption. Address to God is not address to a person. No opposite act is synthesized from rejection. Each question is independent; no empathy, outcome, pastor trait or quality judgment. Preserve conditions and limits in the source, not as inferred benefit."
+    },
+    "criteria": {
+      "local_sufficient": "Enough local evidence to decide, including definite absence of address/binding.",
+      "continuation_required": "Required act, connection or referent remains outside target evidence.",
+      "unclear": "Local sufficiency unresolved."
+    }
+  },
+  "scope_finding": "Shared utterance-and-circumstance sufficiency is broader than the exported atomic-act claim; causal reason for model withholding is unestablished.",
+  "guardrails": {
+    "measurements_immutable": true,
+    "questions_unchanged": true,
+    "threshold_unchanged": true,
+    "G2_admission_unchanged": true,
+    "no_V4_retroactive_PASS": true,
+    "raw_provenance_required": true,
+    "all_observed_acts_reviewed": true,
+    "no_context_lent_act": true,
+    "no_circumstance_claim": true,
+    "original_quarantines_unchanged": true,
+    "proposed_witness_has_no_authority": true
+  },
+  "atomic_route_requirements": [
+    "New accepted policy/item/witness versions; never treat V4 review acceptance as A1 authority.",
+    "Preserve receipt, model, questions, roles, phase isolation, source-envelope, accepted-review and export/deserialize/consume identity checks.",
+    "Keep source context_complete and exact target_complete requirements; missing act, condition, referent or source introduction blocks. Full source outside supplied envelope cannot repair missing supplied evidence.",
+    "Every actually observed act must already pass the frozen .80 measurement gate and have independent claim-specific source support in the exact utterance. Unknown acts remain unknown. Any unsupported positive blocks the row.",
+    "Actual voice, addressee and adoption remain definite at .80, agree with reviewed origin, and satisfy the existing current/reported namespace rules. Review cannot replace unknown or incompatible measured provenance.",
+    "Require a separately accepted receipt-bound claim-sufficiency witness enumerating the exact exported acts, role spans, conditions/limits, source and recipient identity evidence, source stance, completeness rationale and explicit exclusions. Generic target_complete alone is insufficient.",
+    "For the atomic-only route, boundary may be gated local_sufficient or unclear; unclear supplies no positive sufficiency authority. A definite continuation_required or any other boundary decision blocks this route. Ignore low-probability argmax as an admission vote.",
+    "Only the broader shared boundary requirement is replaced for this new route by affirmative claim-scoped sufficiency. No replacement of actual act/voice/recipient/adoption decisions or relationship decisions.",
+    "Retain narration/God vetoes, null-circumstance consistency and rejection of unsupported positive relevance/binding. Withheld relations stay withheld; a raw relation disagreement cannot be hidden by omitting its export.",
+    "Export only observed acts, exact utterance and conditions, provenanced current or reported namespace, atomic-only scope and review/policy identities. circumstance_claim, pastor_projection and quality_score remain null; circumstance pointers in raw roles confer no relation claim.",
+    "Re-admit under the same accepted A1 authority on export, deserialization and consumption; old readers reject A1 schema and new readers cannot silently upgrade V4 items. No adapter or fallback may bypass sufficiency."
+  ],
+  "pins": {
+    "docs/review-proposals/evidence-supply-boundary-v4/source-audit-v4.json": "361938c9a3576cf2763b6a20d7b95c0434f86856c7725bdfa16b11cca0afe185",
+    "docs/review-proposals/evidence-supply-boundary-v4/source-review-v4.json": "45806142049aa174281f1dc2d3820292eb4bbeedfa23a5671e247e251c81770d",
+    "docs/review-proposals/evidence-supply-boundary-v4/source-review-acceptance-v4.json": "d3b47dbdf8d0499ecb6839a9de03b2345dc1aab8185b22ef807cdd8d43d5eaf2",
+    "docs/review-proposals/evidence-supply-boundary-v4/acceptance-decision-v4.json": "103a081a651b1e6dc97c6dc78003def41bb7e162797553f963e5b327fa8b4eef",
+    "docs/review-proposals/evidence-supply-boundary-v4/input-v4.json": "14b341361533604df1d165463c337af69db23e4dd8e9bd3a368c93794448a405",
+    "docs/review-proposals/evidence-supply-boundary-v4/execution-authorization-v4.json": "a0f932e2542a20c1b6926d1af723a163535953f886852ee333b6326e81c57d17",
+    "src/pastor_transcript_extractor/evidence_boundary_admission.py": "affafed4add3ff01ce7bab0cc5e0d93575ef80897093d66b70b175ae55418803",
+    "src/pastor_transcript_extractor/evidence_supply_boundary_v4.py": "2ee30a5222ca4c53c324d54c831d4ac87fe9701e4de99b6736c7adc894498057",
+    "src/pastor_transcript_extractor/sermon_g3_feasibility_review.py": "3f3b54d7e27921bfdd63f0b022776fa2fbf5601d76eed60520d3fdd14fd0c92e",
+    "src/pastor_transcript_extractor/sermon_g3_feasibility_revision.py": "4884ae019abd9f71f620fdb587e994e664185cd3cf96b8dc62bb5891c7254d08"
+  },
+  "records": [
+    {
+      "case_id": "B4-R021",
+      "capability": "G2",
+      "measurement_fingerprint": "758203083ade22eb615767ea4d63a91bb2207590da5603967eae6754e027648c",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "reading_or_unresolved_explanatory_edge",
+          "unsupported_left_voice",
+          "unsupported_right_voice"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "local_sufficient",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.87,
+        "confidence": 0.8
+      },
+      "unchanged_blockers": [
+        "reading_or_unresolved_explanatory_edge",
+        "unsupported_left_voice",
+        "unsupported_right_voice"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R023",
+      "capability": "G2",
+      "measurement_fingerprint": "42f8c9619fe319e3373f548055ff49708fbb4c5b5d7fa47c863f319c7cc33888",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "unsupported_left_voice"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "local_sufficient",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.99,
+        "confidence": 0.98
+      },
+      "unchanged_blockers": [
+        "unsupported_left_voice"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R005",
+      "capability": "G2",
+      "measurement_fingerprint": "bf74db077b7b7cec150ca453954902b7870195641a5cd1972f05d5324894321c",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "unresolved_context_or_target",
+          "raw_boundary_not_sufficient",
+          "no_measured_explanation",
+          "ineligible_or_unknown_Bible_anchor",
+          "reading_or_unresolved_explanatory_edge",
+          "unsupported_left_voice",
+          "unsupported_right_voice",
+          "unsupported_adoption",
+          "no_measured_adoption"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "continuation_required",
+        "raw_choice": "continuation_required",
+        "selected_probability": 0.81,
+        "confidence": 0.72
+      },
+      "unchanged_blockers": [
+        "unresolved_context_or_target",
+        "raw_boundary_not_sufficient",
+        "no_measured_explanation",
+        "ineligible_or_unknown_Bible_anchor",
+        "reading_or_unresolved_explanatory_edge",
+        "unsupported_left_voice",
+        "unsupported_right_voice",
+        "unsupported_adoption",
+        "no_measured_adoption"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R003",
+      "capability": "G2",
+      "measurement_fingerprint": "d5a5bf417e28e223dc3d69266d3fb7d0f5885fd6dd00cb0dd9cab45ea7b9b965",
+      "original_admission": {
+        "status": "admitted_local_only",
+        "reasons": [],
+        "item": {
+          "circumstance_claim": null,
+          "measurement_fingerprint": "d5a5bf417e28e223dc3d69266d3fb7d0f5885fd6dd00cb0dd9cab45ea7b9b965",
+          "namespace": "G2_adopted_bible_explanation",
+          "packet_fingerprint": "3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c",
+          "pastor_projection": null,
+          "positive_facts": {
+            "explains_text": "linked"
+          },
+          "quality_score": null,
+          "review_decision_sha256": "d3b47dbdf8d0499ecb6839a9de03b2345dc1aab8185b22ef807cdd8d43d5eaf2",
+          "roles": {
+            "left": {
+              "end": 10622,
+              "start": 10590,
+              "text": "the kingdom of heaven is at hand"
+            },
+            "right": {
+              "end": 11050,
+              "start": 11005,
+              "text": "The kingdom of heaven is the kingdom of grace"
+            }
+          },
+          "source_voice": {
+            "adoption": "own_or_adopted",
+            "left_voice": "quoted_or_reported",
+            "right_voice": "preacher"
+          },
+          "version": "reviewed-local-evidence-v4"
+        }
+      },
+      "original_boundary": {
+        "decision": "local_sufficient",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.8,
+        "confidence": 0.7
+      },
+      "unchanged_blockers": [],
+      "proposed_disposition": "G2_existing_admission_unchanged",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R004",
+      "capability": "G2",
+      "measurement_fingerprint": "4da96fc72998d9ed9d842d96e2294d07dca8f882f6f7be9e2f9732c5c62a3caa",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "no_measured_explanation",
+          "reading_or_unresolved_explanatory_edge"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "local_sufficient",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.8,
+        "confidence": 0.7
+      },
+      "unchanged_blockers": [
+        "no_measured_explanation",
+        "reading_or_unresolved_explanatory_edge"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R008",
+      "capability": "G2",
+      "measurement_fingerprint": "e9083c0db439e75d510bdc145d0525c73a3e1308d36c03d58e96da1950e0f485",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "no_measured_explanation"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "local_sufficient",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.81,
+        "confidence": 0.72
+      },
+      "unchanged_blockers": [
+        "no_measured_explanation"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R080",
+      "capability": "G2",
+      "measurement_fingerprint": "d0ccf407161ae114de245aa3e6e4556d213bd28817e95b654ae113ba54b4d655",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "ineligible_or_unknown_Bible_anchor",
+          "unsupported_right_voice",
+          "unsupported_adoption",
+          "no_measured_adoption"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "local_sufficient",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.95,
+        "confidence": 0.92
+      },
+      "unchanged_blockers": [
+        "ineligible_or_unknown_Bible_anchor",
+        "unsupported_right_voice",
+        "unsupported_adoption",
+        "no_measured_adoption"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R043",
+      "capability": "G2",
+      "measurement_fingerprint": "8f4ed261bf842b91f2eb8fce1b58e936be8288cc06002b81f9a2a89385cd5db4",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "raw_boundary_not_sufficient",
+          "no_measured_explanation",
+          "ineligible_or_unknown_Bible_anchor",
+          "unsupported_adoption",
+          "no_measured_adoption"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.71,
+        "confidence": 0.56
+      },
+      "unchanged_blockers": [
+        "raw_boundary_not_sufficient",
+        "no_measured_explanation",
+        "ineligible_or_unknown_Bible_anchor",
+        "unsupported_adoption",
+        "no_measured_adoption"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R058",
+      "capability": "G2",
+      "measurement_fingerprint": "beeaa77a77f9620d1bb6a4f5411bc36fd582dd3177c6c0081ebe5b09b2c28e65",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "unresolved_context_or_target",
+          "raw_boundary_not_sufficient",
+          "no_measured_explanation",
+          "unsupported_right_voice",
+          "unsupported_adoption",
+          "no_measured_adoption"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.6,
+        "confidence": 0.4
+      },
+      "unchanged_blockers": [
+        "unresolved_context_or_target",
+        "raw_boundary_not_sufficient",
+        "no_measured_explanation",
+        "unsupported_right_voice",
+        "unsupported_adoption",
+        "no_measured_adoption"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R038",
+      "capability": "G3",
+      "measurement_fingerprint": "8016695a52f50270f4adbf6b44d5433eacba16e066bcbaf9ec2dcb63e2bdc1b4",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "raw_boundary_not_sufficient",
+          "unsupported_addressee",
+          "unsupported_adoption",
+          "no_measured_act",
+          "incompatible_source_recipient_adoption_scope"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.51,
+        "confidence": 0.27
+      },
+      "unchanged_blockers": [
+        "unsupported_addressee",
+        "unsupported_adoption",
+        "no_measured_act",
+        "incompatible_source_recipient_adoption_scope"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R092",
+      "capability": "G3",
+      "measurement_fingerprint": "01edb0c81289339e873b4ab02a37478e722480af9223ec4a6da3a782f511f3e4",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "unresolved_context_or_target",
+          "raw_boundary_not_sufficient",
+          "unsupported_addressee",
+          "incompatible_source_recipient_adoption_scope"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "continuation_required",
+        "selected_probability": 0.61,
+        "confidence": 0.41
+      },
+      "unchanged_blockers": [
+        "unresolved_context_or_target",
+        "unsupported_addressee",
+        "incompatible_source_recipient_adoption_scope"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R103",
+      "capability": "G3",
+      "measurement_fingerprint": "a0ba07c5aef5f6740bee3b98ea554568ac1f48812a648fe0f32a974a56e6002f",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "raw_boundary_not_sufficient",
+          "unsupported_addressee",
+          "incompatible_source_recipient_adoption_scope"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.59,
+        "confidence": 0.38
+      },
+      "unchanged_blockers": [
+        "unsupported_addressee",
+        "incompatible_source_recipient_adoption_scope"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R053",
+      "capability": "G3",
+      "measurement_fingerprint": "d3ac5b75f8e90cab07a08d01af39bc658add160337f2315c46ca749f728f75a2",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "raw_boundary_not_sufficient"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.62,
+        "confidence": 0.43
+      },
+      "unchanged_blockers": [],
+      "proposed_disposition": "eligible_only_after_separate_policy_and_claim_review_acceptance",
+      "proposed_namespace": "G3_reported_local_act",
+      "proposed_acts": [
+        "reassurance",
+        "challenge"
+      ],
+      "claim_sufficiency_exhibit": {
+        "status": "PROPOSED_NOT_ADMISSION_AUTHORITY",
+        "scope": "atomic_act_only",
+        "exact_utterance": {
+          "start": 37591,
+          "end": 37643,
+          "text": "do not therefore be grieved or angry with yourselves"
+        },
+        "source_envelope": {
+          "start": 37063,
+          "end": 37940,
+          "text": "Then Joseph said to his brothers, \"I am Joseph\nJoseph Bill. I can only imagine the look on their face, you know, jaw hitting the floor, eyeballs popping out, ears perking up. What in the world is going He speaks now in their language, right? Does my father still live? But his brothers could not answer him. They were dismayed in his presence. I can only imagine, right? Joseph said to his brothers, \"Please come near to me.\" So they came near. Then he said, \"I am Joseph, your brother, whom you sold into Egypt.\nEgypt. But now do not therefore be grieved or angry with yourselves.\" Listen to this spirit of forgiveness. Right? Does he have the right to be mad at his brothers? Does he have the right to punish them? Yeah. Doesn't he? Listen to this attitude and spirit of forgiveness.\nforgiveness. Do not therefore be grieved or angry with yourselves because you sold me here."
+        },
+        "source_support": {
+          "start": 36163,
+          "end": 38840,
+          "text": " we can't do that we cannot leave Benjamin behind it is impossible for us to do this finally Judah pleads for Benjamin you can see him kneeling down before Joseph didn't know who he is right and this is what he said now therefore please let your servant remain instead of the lad so he offers himself self as a slave to Joseph in place of Benjamin. Let the lad go up with his brothers. For how shall I go up to my father Jacob, if the lad is not with me, lest perhaps I see the evil that would come upon my father? Did Judah have a change of heart? Did he show he had a change of heart? He's offering himself as a slave in place of Benjamin. Joseph is convinced that his brothers have had a change of heart. Right?\nRight? This couldn't hold back. He wept aloud. So loud that the Egyptians in the house of Pharaoh heard it.\nit. And the brothers are like, \"What's going on?\" You know what is going on? Then Joseph said to his brothers, \"I am Joseph\nJoseph Bill. I can only imagine the look on their face, you know, jaw hitting the floor, eyeballs popping out, ears perking up. What in the world is going He speaks now in their language, right? Does my father still live? But his brothers could not answer him. They were dismayed in his presence. I can only imagine, right? Joseph said to his brothers, \"Please come near to me.\" So they came near. Then he said, \"I am Joseph, your brother, whom you sold into Egypt.\nEgypt. But now do not therefore be grieved or angry with yourselves.\" Listen to this spirit of forgiveness. Right? Does he have the right to be mad at his brothers? Does he have the right to punish them? Yeah. Doesn't he? Listen to this attitude and spirit of forgiveness.\nforgiveness. Do not therefore be grieved or angry with yourselves because you sold me here. For God sent me before you to preserve life. And God sent me before you to preserve a posterity for you in the earth and to save your lives by a great deliverance. Right?\nRight? So now it was not you who sent me here but God. and he has made me a father to Pharaoh and lord of all his house and a ruler throughout all the land of Egypt. Notice what Ellen White says here, which I think it's a powerful statement. The life of Joseph illustrates the life of Christ.\nChrist. Can you name a sin recorded in the Bible about Joseph?\nabout Joseph? Of course, we've all sinned and fallen short of the glory of God, right? Joseph had too. We just don't know what it was. There's no record of a sin that he committed in the Bible. Notice this comparison, right? Notice this comparison. Mickey, you ready? Here we go.\nwe go. Joseph was a shepherd, right? I'm I got the Bible verses up there in red. I don't wan"
+        },
+        "provenance": {
+          "origin": "reported",
+          "voice": "quoted_or_reported",
+          "addressee": "reported_person",
+          "adoption": "not_adopted_report"
+        },
+        "complete_for_each_exported_act": true,
+        "no_omitted_act_or_qualifier_required": true,
+        "context_used_only_for_identity_stance_and_interpretation": true,
+        "circumstance_claim": null,
+        "rationale": "The exact forgiving directive itself offers reassurance and calls the brothers away from grief/anger. The supplied envelope explicitly identifies Joseph addressing his brothers. No current congregation application is exported. The later because you sold me here occurrence supports context review but is not inserted into the exact utterance or exported as a measured circumstance connection."
+      }
+    },
+    {
+      "case_id": "B4-R078",
+      "capability": "G3",
+      "measurement_fingerprint": "8dff366ac10d140314bebc9267428a40f0a29072a3838211572f18a9ae6c1aa7",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "raw_boundary_not_sufficient",
+          "narration_veto",
+          "no_supported_addressed_human_utterance",
+          "unsupported_voice",
+          "unsupported_addressee",
+          "unsupported_adoption",
+          "unsupported_positive_act",
+          "incompatible_source_recipient_adoption_scope"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.54,
+        "confidence": 0.31
+      },
+      "unchanged_blockers": [
+        "narration_veto",
+        "no_supported_addressed_human_utterance",
+        "unsupported_voice",
+        "unsupported_addressee",
+        "unsupported_adoption",
+        "unsupported_positive_act",
+        "incompatible_source_recipient_adoption_scope"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R018",
+      "capability": "G3",
+      "measurement_fingerprint": "699994e8ad9c763d2c6e994bda1751b2a5b05a3ab455720d07332d152d18ac91",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "raw_boundary_not_sufficient"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.64,
+        "confidence": 0.46
+      },
+      "unchanged_blockers": [],
+      "proposed_disposition": "eligible_only_after_separate_policy_and_claim_review_acceptance",
+      "proposed_namespace": "G3_current_preacher_act",
+      "proposed_acts": [
+        "challenge",
+        "invitation"
+      ],
+      "claim_sufficiency_exhibit": {
+        "status": "PROPOSED_NOT_ADMISSION_AUTHORITY",
+        "scope": "atomic_act_only",
+        "exact_utterance": {
+          "start": 30207,
+          "end": 30249,
+          "text": "Are you willing to surrender all to Christ"
+        },
+        "source_envelope": {
+          "start": 30183,
+          "end": 30394,
+          "text": "this is the call today. Are you willing to surrender all to Christ? Are you willing to commit to searching for treasure by reading the Bible every day?\nday? If you are, then let's stand and sing hymn number 272."
+        },
+        "source_support": {
+          "start": 29283,
+          "end": 31294,
+          "text": " beliefs. And what H.P. Hughes said was, \"I'll bring 100 people to bring evidence about what the gospel can do to a changed life. I'll bring 100 people. Uh Charles Bradlaugh, you bring 100 people, too. So, you I'll bring my 100, you bring your 100. Well, you you can't come up with 100? I'll tell you what. I'll bring I'll bring my 100, you only have to bring 50. You can't come up with 50? I'll tell you what. I'll bring my 100, you only have to come up with 20. You only have to come up with 10.\nHe couldn't he come up with one. And so, he withdrew his challenge to have this public debate. Christ makes the difference, doesn't it? Christ makes the difference. And I think it's amazing to me how sometimes we don't allow God to make the difference in our lives because we don't spend time digging for these truths in the word of God. Let's commit to do that. Amen. Let's commit to do that. So,\nSo, this is the call today. Are you willing to surrender all to Christ? Are you willing to commit to searching for treasure by reading the Bible every day?\nday? If you are, then let's stand and sing hymn number 272.\n>> All stand as we sing 272.\n>> Give me the Bible, [singing and music] star of gladness gleaming, to cheer >> [singing and music] music] >> the heart\n>> the heart alone and tempest-tossed. No storm can hide >> [singing]\n>> [singing] >> that peaceful [music] radiance beaming, beaming, since Jesus came to seek and [music] save the lost. Give\nGive me the [singing] Bible, holy message shining, thy\nthy light shall guide me in the [singing and music] narrow way. Precept and promise, law and [music] love combining,\nlove combining, till night [singing] shall vanish in eternal day. >> [music]\n>> [music] >> Give [singing] me the Bible, Bible, when my heart is broken, when sin [singing] and grief have filled my soul with fear. Give [singing] me the precious [music] words my Jesus spoken, hold up his lamp to show my Savior [singing] near.\n[singing] [music]\n[music and singing]\n[music] [singing]\n[sin"
+        },
+        "provenance": {
+          "origin": "present_preacher",
+          "voice": "preacher",
+          "addressee": "direct_current_listener",
+          "adoption": "own_or_adopted"
+        },
+        "complete_for_each_exported_act": true,
+        "no_omitted_act_or_qualifier_required": true,
+        "context_used_only_for_identity_stance_and_interpretation": true,
+        "circumstance_claim": null,
+        "rationale": "The complete question itself requests surrender to Christ. The supplied introduction this is the call today and following congregational response establish present preacher address, without borrowing the neighboring Bible-study invitation. Export only the exact surrender question and its measured challenge/invitation acts; no asserted life circumstance or response outcome."
+      }
+    },
+    {
+      "case_id": "B4-R057",
+      "capability": "G3",
+      "measurement_fingerprint": "075f320cca66a24096cb2e384d43d6d4a6519fa96099bc4b4feffcd58aab34b0",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "raw_boundary_not_sufficient",
+          "no_measured_act"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.6,
+        "confidence": 0.4
+      },
+      "unchanged_blockers": [
+        "no_measured_act"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R073",
+      "capability": "G3",
+      "measurement_fingerprint": "4df3cca579d0795efd414289f587841e65c97735f421cace4f7073e53544bcd0",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "raw_boundary_not_sufficient",
+          "unsupported_voice",
+          "unsupported_addressee",
+          "unsupported_adoption",
+          "incompatible_source_recipient_adoption_scope"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "continuation_required",
+        "selected_probability": 0.58,
+        "confidence": 0.37
+      },
+      "unchanged_blockers": [
+        "unsupported_voice",
+        "unsupported_addressee",
+        "unsupported_adoption",
+        "incompatible_source_recipient_adoption_scope"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R077",
+      "capability": "G3",
+      "measurement_fingerprint": "b3dd02beed95f4862f6182b46d35be302285294ded966951e7b14c2779824eb5",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "unresolved_context_or_target",
+          "raw_boundary_not_sufficient",
+          "unsupported_voice",
+          "unsupported_addressee",
+          "no_measured_act",
+          "unsupported_circumstance_relevance",
+          "incompatible_source_recipient_adoption_scope"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.59,
+        "confidence": 0.38
+      },
+      "unchanged_blockers": [
+        "unresolved_context_or_target",
+        "unsupported_voice",
+        "unsupported_addressee",
+        "no_measured_act",
+        "unsupported_circumstance_relevance",
+        "incompatible_source_recipient_adoption_scope"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R111",
+      "capability": "G3",
+      "measurement_fingerprint": "1aeebbb196a18ed497b9e4a858a89f3a2968fd16842f805a407ece9173e7061b",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "raw_boundary_not_sufficient",
+          "unsupported_voice",
+          "unsupported_addressee",
+          "unsupported_adoption",
+          "incompatible_source_recipient_adoption_scope"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.51,
+        "confidence": 0.27
+      },
+      "unchanged_blockers": [
+        "unsupported_voice",
+        "unsupported_addressee",
+        "unsupported_adoption",
+        "incompatible_source_recipient_adoption_scope"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R114",
+      "capability": "G3",
+      "measurement_fingerprint": "dbce8917a1351865d222cf182e0d692d69ef437d3b9acda31815319d34b8ca0a",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "raw_boundary_not_sufficient",
+          "unsupported_voice",
+          "unsupported_addressee",
+          "unsupported_adoption",
+          "incompatible_source_recipient_adoption_scope"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.59,
+        "confidence": 0.38
+      },
+      "unchanged_blockers": [
+        "unsupported_voice",
+        "unsupported_addressee",
+        "unsupported_adoption",
+        "incompatible_source_recipient_adoption_scope"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R076",
+      "capability": "G3",
+      "measurement_fingerprint": "acf72a82cea30d593388b2d6fbaf204d9036077893172a11e9a246443a0b60d5",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "unresolved_context_or_target",
+          "raw_boundary_not_sufficient",
+          "no_supported_addressed_human_utterance",
+          "unsupported_voice",
+          "unsupported_addressee",
+          "no_measured_act",
+          "incompatible_source_recipient_adoption_scope"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "continuation_required",
+        "selected_probability": 0.56,
+        "confidence": 0.34
+      },
+      "unchanged_blockers": [
+        "unresolved_context_or_target",
+        "no_supported_addressed_human_utterance",
+        "unsupported_voice",
+        "unsupported_addressee",
+        "no_measured_act",
+        "incompatible_source_recipient_adoption_scope"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R004-explicit-gloss",
+      "capability": "G2",
+      "measurement_fingerprint": "e3768e29b0446bc4429926710019cec4b7ba1d4ae19f162db6463dd7e646e0da",
+      "original_admission": {
+        "status": "admitted_local_only",
+        "reasons": [],
+        "item": {
+          "circumstance_claim": null,
+          "measurement_fingerprint": "e3768e29b0446bc4429926710019cec4b7ba1d4ae19f162db6463dd7e646e0da",
+          "namespace": "G2_adopted_bible_explanation",
+          "packet_fingerprint": "3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c",
+          "pastor_projection": null,
+          "positive_facts": {
+            "explains_text": "linked"
+          },
+          "quality_score": null,
+          "review_decision_sha256": "d3b47dbdf8d0499ecb6839a9de03b2345dc1aab8185b22ef807cdd8d43d5eaf2",
+          "roles": {
+            "left": {
+              "end": 11514,
+              "start": 11472,
+              "text": "you are no longer strangers and foreigners"
+            },
+            "right": {
+              "end": 11548,
+              "start": 11516,
+              "text": "that means to the kingdom of God"
+            }
+          },
+          "source_voice": {
+            "adoption": "own_or_adopted",
+            "left_voice": "quoted_or_reported",
+            "right_voice": "preacher"
+          },
+          "version": "reviewed-local-evidence-v4"
+        }
+      },
+      "original_boundary": {
+        "decision": "local_sufficient",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.82,
+        "confidence": 0.73
+      },
+      "unchanged_blockers": [],
+      "proposed_disposition": "G2_existing_admission_unchanged",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R058-complete-gloss",
+      "capability": "G2",
+      "measurement_fingerprint": "9559aef6451d28245135c3187423c414f1f8e4e5a37540a2a85962f21ade075f",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "unsupported_right_voice",
+          "unsupported_adoption",
+          "no_measured_adoption"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "local_sufficient",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.92,
+        "confidence": 0.88
+      },
+      "unchanged_blockers": [
+        "unsupported_right_voice",
+        "unsupported_adoption",
+        "no_measured_adoption"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    },
+    {
+      "case_id": "B4-R077-complete-promise",
+      "capability": "G3",
+      "measurement_fingerprint": "d387bec5b6d3306efa8926e342ec31e64870f8b6f48cc8fdb794ed837ab40ace",
+      "original_admission": {
+        "status": "quarantined",
+        "reasons": [
+          "raw_boundary_not_sufficient",
+          "unsupported_addressee",
+          "incompatible_source_recipient_adoption_scope"
+        ],
+        "item": null
+      },
+      "original_boundary": {
+        "decision": "unclear",
+        "raw_choice": "local_sufficient",
+        "selected_probability": 0.67,
+        "confidence": 0.51
+      },
+      "unchanged_blockers": [
+        "unsupported_addressee",
+        "incompatible_source_recipient_adoption_scope"
+      ],
+      "proposed_disposition": "remains_blocked",
+      "proposed_namespace": null,
+      "proposed_acts": [],
+      "claim_sufficiency_exhibit": null
+    }
+  ],
+  "future_validation": {
+    "status": "NOT_AUTHORIZED",
+    "mode": "prospective_policy_replay_of_existing_receipts_only",
+    "provider_requests": 0,
+    "receipts": 37,
+    "cases": 24,
+    "positive_controls": [
+      "B4-R018",
+      "B4-R053"
+    ],
+    "required_negative_controls": [
+      "B4-R021",
+      "B4-R080",
+      "B4-R078",
+      "B4-R073",
+      "B4-R111",
+      "B4-R114",
+      "B4-R076",
+      "B4-R077",
+      "B4-R077-complete-promise",
+      "B4-R103",
+      "B4-R057"
+    ],
+    "criteria": [
+      "Actual typed export/deserialization/consumer admits R018 as current and R053 as reported with every exported act independently source-supported.",
+      "All seven critical raw fields and all remaining incompatible/unknown/truncated cases stay blocked; G2 outputs exactly the existing two.",
+      "No relation, outcome, pastor-level conclusion or unknown provenance is synthesized; all raw decisions/distributions remain byte-identical.",
+      "Missing/unknown or wrong-claim witnesses, policy/receipt/envelope mismatches and foreign namespaces are rejected on each real path.",
+      "Any unsupported admitted item FAIL; missing either supported G3 family HOLD; complete supported positives and zero unsupported/unresolved admissions permit only a scoped A1 containment recommendation.",
+      "A1 result cannot change V4 FAIL/HOLD or establish general containment, automatic provenance resolution, discovery recall, review throughput or corpus economics."
+    ]
+  },
+  "limitations": [
+    "Development-fixture design evidence only; no A1 guard implemented or executed and no new admitted item exists.",
+    "Claim-specific witnesses remain source-controlled safety-oracle work; scalable automatic provenance and review throughput are unestablished.",
+    "Same receipts can test prospective policy enforcement and anti-vacuity, not independent semantic generalization or post-selection error rates.",
+    "No evidence establishes why Jev withheld the combined boundary; even null-circumstance R018 withholds.",
+    "No new semantic experiment, V5, question revision, lower threshold, retrieval tuning, discovery/collection, 790-item V2 audit, recurrence/rates or projection/comparison/scoring."
+  ],
+  "content_fingerprint": "e0165fab14bbd1a952c86f58ed16f27cf3ac111bf0faab4cff716561272337cd"
+}

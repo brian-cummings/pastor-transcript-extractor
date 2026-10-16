@@ -1,5 +1,59 @@
 # Handoff Notes
 
+## V4 decisions accepted; atomic G3 sufficiency proposal A1 ready — 2026-10-15
+
+Brian accepted **raw semantics FAIL / containment HOLD**. The separate
+[gate decision](review-proposals/evidence-supply-boundary-v4/acceptance-decision-v4.json)
+binds the original audit and leaves its seven critical raw fields, two G2 admissions
+and 22 quarantines unchanged. The historical audit and delegated local source-review
+acceptance are not rewritten. The paid V4 gate is closed; no execution is available.
+
+The authorized provider-free interface review is complete:
+[proposal](review-proposals/g3-atomic-admission-v1/PROPOSAL.md) and
+[bound design assessment](review-proposals/g3-atomic-admission-v1/proposal-a1.json).
+The shared boundary question combines utterance and circumstance sufficiency, while
+the minimal G3 export asserts no circumstance connection. This scope mismatch is
+real; why Jev withheld is unestablished (even null-circumstance R018 withholds).
+
+Recommend a prospective **g3-atomic-admission-a1** policy with distinct item/witness
+versions and affirmative receipt-bound, claim-specific sufficiency review. Keep .80,
+raw answers, questions, measured acts/voice/recipient/adoption, phase isolation,
+identity checks, narration/God exclusions and unsupported relation vetoes unchanged.
+Only broad boundary withholding can be superseded for this atomic-only claim scope;
+it is not changed into a positive measurement. A definite continuation-required
+boundary remains blocked. Generic target completeness alone is insufficient.
+
+R018 (current challenge/invitation) and R053 (Joseph's reported reassurance/challenge)
+are the only proposed additional controls; both are still actually quarantined.
+R078/R073/R111/R114 retain narration/provenance blockers. R076 remains God/incomplete,
+R077 fragment incomplete, full R077 recipient unresolved, and other withheld acts or
+provenance remain unavailable. G2 is unchanged. Proposed source exhibits are not
+accepted A1 authority and the V4 review acceptance cannot authorize them.
+
+```sh
+pte analysis g3-atomic-admission-review
+```
+
+This command verifies the authored proposal, accepted V4 decision, pinned semantics
+and real unchanged V4 replay against all original receipts. It has no A1 admission,
+witness-acceptance, write or provider path. It passed; 45 focused tests passed across
+V4 audit, proposal binding, CLI contract and CLI reference. Tests of the proposal
+checker do not prove an unimplemented A1 admission invariant.
+
+**Next decision:** approve the small A1 policy/witness/item implementation and focused
+integration tests, then prepare a separately authorized fingerprint-bound provider-free
+policy replay using the same 24 cases / 37 receipts. Actual export/deserialization/
+consumer must admit the two supported G3 families, preserve the two G2 outputs and
+block every unsupported/unknown item. Unsupported admission FAIL; missing either
+G3 family HOLD. A successful later decision applies only to A1 reviewed atomic local
+evidence on this development panel, never retroactive V4 PASS or general safety.
+
+No policy implementation or prospective replay is authorized yet. No provider run,
+V5, automatic attestation, semantic/threshold/ranker tuning, discovery/collection,
+790-item V2 audit, recurrence/rates or projection/comparison/scoring. Generalization,
+automatic provenance and review throughput remain unestablished. Runtime receipts
+remain outside the repository; preserve the unrelated untracked historical V2 outputs.
+
 ## V4 source audit complete: raw FAIL / containment HOLD recommended — 2026-10-15
 
 Brian completed all 37 authorized requests. All sealed receipts and charge accounting
