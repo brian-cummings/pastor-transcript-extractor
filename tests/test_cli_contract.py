@@ -59,6 +59,7 @@ GROUP_COMMANDS = {
         "collector-recall-repair",
         "collector-retrieval-design",
         "collector-retrieval",
+        "collector-retrieval-repair",
         "source-unit-repair",
         "evidence-supply-source-audit",
         "g1-feasibility-review",

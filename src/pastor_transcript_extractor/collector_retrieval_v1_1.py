@@ -175,7 +175,7 @@ def discover(source, encoder, *, deadline=None):
     return dict(source_id=source['video_id'], nodes=nodes, candidates=candidates, G1_candidates=g1,
         descriptors=graph['descriptors'], G2_primary=primary, G2_role_construction=graph['G2_role_construction'], deferred=deferred, search_diagnostics=diagnostics,
         retrieval_trace=ranking, composition_trace=composition,
-        G3_displacements=graph['G3_displacements'], lattice_diagnostics=graph['diagnostics'],
+        G3_construction=graph['G3_hypotheses'], G3_displacements=graph['G3_displacements'], lattice_diagnostics=graph['diagnostics'],
         resource_counts=dict(comparisons=comparisons, descriptors=len(vectors),
             encoder_tokens=getattr(encoder,'tokens',0)-token_start, encoder_calls=len(vectors)),
         budget_proof=dict(**size, sentence_count=len(nodes), actual_candidates=len(candidates), lane_counts=dict(lanes),

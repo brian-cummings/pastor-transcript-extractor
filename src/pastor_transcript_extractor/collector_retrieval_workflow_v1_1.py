@@ -45,6 +45,13 @@ def verify():
         path=(design.ROOT/name).resolve()
         if not path.is_relative_to(design.ROOT) or design.file_hash(path)!=digest:
             raise ValueError('V1.1 implementation/baseline pin changed: '+name)
+    manifest=design.sealed(HERE/'review-packet-v1.1.json')
+    if manifest['input_fingerprint']!=packet['content_fingerprint']:
+        raise ValueError('V1.1 review packet input mismatch')
+    for name,digest in manifest['files'].items():
+        path=(design.ROOT/name).resolve()
+        if not path.is_relative_to(design.ROOT) or design.file_hash(path)!=digest:
+            raise ValueError('V1.1 review artifact changed: '+name)
     return packet
 
 
@@ -171,7 +178,7 @@ def run_development(base_dir=None, approve_input=None):
                 budget_proof=col['budget_proof'],search_diagnostics=col['search_diagnostics'],
                 G3_displacements=col['G3_displacements'],lattice_diagnostics=col['lattice_diagnostics'],
                 resource_counts=col['resource_counts'],descriptors=col['descriptors'],
-                G2_primary=col['G2_primary'],G2_role_construction=col['G2_role_construction'],retrieval_trace=col['retrieval_trace'],composition_trace=col['composition_trace']))
+                G3_construction=col['G3_construction'],G2_primary=col['G2_primary'],G2_role_construction=col['G2_role_construction'],retrieval_trace=col['retrieval_trace'],composition_trace=col['composition_trace']))
         natural=prep.seal(dict(version='collector-retrieval-development-natural-v1.1',input_fingerprint=packet['content_fingerprint'],execution_authorization_fingerprint=decision['content_fingerprint'],
             source_files=packet['source_files'],inventories=inventories,provider_requests=0,confirmation_evidence=False,
             P1_policy='prospective_only_no_historical_reference_rewrite'))
