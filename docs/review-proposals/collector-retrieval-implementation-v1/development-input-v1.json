@@ -1,0 +1,84 @@
+{
+  "version": "collector-retrieval-development-input-v1",
+  "status": "PREPARED_EXECUTION_HELD",
+  "implementation_authorization_sha256": "57a350093679fa58910dca9ef8c65498a27e39d91d2dc13b2304e982feebe280",
+  "artifact_lock_fingerprint": "28c31ab7a6e18f035eefcea14c0aa24104dad5ad057084c2f53f57616830fb7a",
+  "policy": {
+    "version": "directed-role-atomic-core-retrieval-v1",
+    "G2_per_unit": 8,
+    "G3_per_unit": 2,
+    "descriptors_per_unit": 3,
+    "local_lane_per_unit": 2,
+    "partition_lane_per_unit": 2,
+    "concept_lane_per_unit": 4,
+    "source_candidate_ceiling": 12000,
+    "total_candidate_ceiling": 20000,
+    "G1_source_ceiling": 200,
+    "max_frame_chars": 6000,
+    "max_envelope_chars": 6000,
+    "comparisons_per_source": 8000000
+  },
+  "reference_path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v3/references-v3.json",
+  "reference_sha256": "63958c501f100671a043ee1ed2afac7830d2c0c9654450e456d67c8d285e7f04",
+  "source_files": {
+    "520": {
+      "path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v3/sources/520.reviewed.json",
+      "sha256": "b054d513801658ae3f3714d01ec97e3e2935b9e079ea354a15404b1fd15dcfe8"
+    },
+    "1094": {
+      "path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v3/sources/1094.reviewed.json",
+      "sha256": "38e2a34e1c2902b1a6309e832475d17346ce2db8f19a9dd0dd9e85e97390460e"
+    },
+    "951": {
+      "path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v3/sources/951.reviewed.json",
+      "sha256": "41bbf9407d041b299981cabc310ddb8ffc9dd84dedb64d7f3a55b42bc6a2d676"
+    }
+  },
+  "development_video_ids": [
+    520,
+    1094,
+    951
+  ],
+  "source_scope": "Exactly three retired Fresh V3 sources; no other sources, no P1 reannotation or historical rescoring during automatic execution",
+  "resources": {
+    "wall_time_seconds_max": 1800,
+    "wall_time_enforcement": "cooperative checks between local operations; not an OS hard kill",
+    "inventory_bytes_max": 268435456,
+    "runtime_output_bytes_max": 1073741824,
+    "provider_requests_max": 0,
+    "model_download_bytes": 91104751,
+    "runtime_wheel_bytes": 38891385,
+    "encoder_batch_size": 1,
+    "token_limit": 256,
+    "source_candidate_ceiling": 12000,
+    "total_candidate_ceiling": 20000
+  },
+  "pins": {
+    "docs/review-proposals/fresh-discovery-readiness-v3/source-review-v3.json": "d3239ecba2edcde48fbf1cef99a414236576ee8d118e8d1b7bbd6ab0abdec432",
+    "docs/review-proposals/fresh-discovery-readiness-v3/references-v3.json": "63958c501f100671a043ee1ed2afac7830d2c0c9654450e456d67c8d285e7f04",
+    "docs/review-proposals/fresh-discovery-readiness-v3/target-review-protocol-v3.json": "29593f6d99b46723375a51436eafab783f4ebd4388697dd7870b44a1d7dd0706",
+    "src/pastor_transcript_extractor/evidence_supply_source_unit_repair.py": "c6efa2dafd4ed9dd0302996dcdc28093e1d83c956229f0278cb8c029d391e4c4",
+    "src/pastor_transcript_extractor/evidence_supply_collector_v4_1.py": "24f51ec62f684773fbed56a8d278caaa1a3555deefe01adea09484721f259255",
+    "docs/review-proposals/fresh-discovery-readiness-v3/authorization-v3.1.json": "7dbfee37f7437fc9bec23e953a0348aa667afbd773685b6e42071e8d6e3b6c2e",
+    "src/pastor_transcript_extractor/g3_atomic_admission.py": "4f801acb2c69737454122ea6f6d78e4e0bf38abd6dc7ad8298ea6a010c190376",
+    "src/pastor_transcript_extractor/evidence_boundary_admission.py": "affafed4add3ff01ce7bab0cc5e0d93575ef80897093d66b70b175ae55418803",
+    "src/pastor_transcript_extractor/sermon_g1_feasibility_review.py": "b4f5982b6960a199717d8aeb5cafb29685f679b1d76f8bf32b44a95f9144b2fd",
+    "src/pastor_transcript_extractor/sermon_g2_feasibility_review.py": "7032118c48657f91a38301ce90664da69070b6c648ab0f7bfdd51ee4c970270e",
+    "src/pastor_transcript_extractor/sermon_g3_feasibility_review.py": "3f3b54d7e27921bfdd63f0b022776fa2fbf5601d76eed60520d3fdd14fd0c92e",
+    "src/pastor_transcript_extractor/collector_role_lattice.py": "339d3632576ca766d812bd2460b1566969ab2065eb90d95573a02b0e91233551",
+    "src/pastor_transcript_extractor/collector_retrieval.py": "da143be1238af01428b3a867b9f50391f009ac5c75539e8a21f90c6f8ed3eb43",
+    "src/pastor_transcript_extractor/collector_retrieval_encoder.py": "c18c9f31f52014887037796f4a9a7b3e912a9a0a3452f45b0a09d20fd032a21e",
+    "src/pastor_transcript_extractor/collector_retrieval_workflow.py": "99f617df9e1d26d2117e3accafc9530048c826bfac9c73c1452d357651e2f04e",
+    "docs/review-proposals/collector-retrieval-implementation-v1/artifact-lock-v1.json": "540945b93ae5acc53e2a08f4009e45c451dd26fec29de3efba37efee25a6b693",
+    "docs/review-proposals/collector-retrieval-implementation-v1/runtime-requirements-v1.lock": "c1a4fcfb486e288cfc9d60c4c8c27ac7220830ae366ad8948bda5bd96942455a",
+    "docs/review-proposals/collector-retrieval-implementation-v1/P1-policy.md": "f4c3cd6c852c62d3bbd47c3ea03cff65162da7bbe2ef19db23ad81bb8b58126e",
+    "tests/test_collector_retrieval.py": "20a23936b5c57cc51d9d546485e2697e8a5183cbcef5fe031d7c39aba28598c2",
+    "pyproject.toml": "f84fbdda77fc16ab9fd3c50b791aa3061eaeabe722671b31d5a2de7e6bc782dc"
+  },
+  "execution_authorized": false,
+  "model_loading_authorized": false,
+  "provider_calls_authorized": false,
+  "fresh_source_selection_authorized": false,
+  "expected_outcome": "Development diagnostics only; all target/envelope safety and P1 opportunity supply require source audit; no readiness PASS",
+  "content_fingerprint": "85dc5c4bc714c9b839ed7fb2371eec9a247ad4202a7c3a10c22b74b0d6b024ac"
+}

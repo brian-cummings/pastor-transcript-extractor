@@ -58,6 +58,7 @@ GROUP_COMMANDS = {
         "fresh-discovery-readiness",
         "collector-recall-repair",
         "collector-retrieval-design",
+        "collector-retrieval",
         "source-unit-repair",
         "evidence-supply-source-audit",
         "g1-feasibility-review",

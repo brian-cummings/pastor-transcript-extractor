@@ -3747,6 +3747,28 @@ pte analysis collector-retrieval-design [OPTIONS]
 | `--check-only` | Read-only verification of proposal authority, hashes, baseline pins and proposed candidate bounds. | no | False |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis collector-retrieval`
+
+Verify/preflight the bounded G2/G3 implementation; model acquisition and development execution need separate authorization.
+
+#### Usage
+
+```console
+pte analysis collector-retrieval [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--check-only` | Verify implementation authority, artifact manifest and pinned files without model loading. | no | False |
+| `--preflight` | Source identity and structural unit/resource upper bounds only; no candidate generation or model loading. | no | False |
+| `--acquire-model` | Acquire only locked model artifacts, after separate fingerprint-bound authorization. | no | False |
+| `--run-development` | Run only the sealed retired-source development packet, after separate authorization; never providers. | no | False |
+| `--approve-input TEXT` | Exact prepared fingerprint, required for separately authorized acquisition/development. | no | — |
+| `--base-dir PATH` | Application data directory for future locked artifacts, checkpoints and results. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis show`
 
 Inspect persisted sermon measurements and Scripture evidence.

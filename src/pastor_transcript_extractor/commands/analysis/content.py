@@ -3771,3 +3771,34 @@ def analysis_collector_retrieval_design(
         console.print(f"Review: {design.HERE / 'PROPOSAL.md'}", markup=False)
     except (ValueError, OSError, KeyError) as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@analysis_app.command("collector-retrieval", help="Verify/preflight the bounded G2/G3 implementation; model acquisition and development execution need separate authorization.")
+def analysis_collector_retrieval(
+    check_only: bool = typer.Option(False, "--check-only", help="Verify implementation authority, artifact manifest and pinned files without model loading."),
+    preflight: bool = typer.Option(False, "--preflight", help="Source identity and structural unit/resource upper bounds only; no candidate generation or model loading."),
+    acquire_model: bool = typer.Option(False, "--acquire-model", help="Acquire only locked model artifacts, after separate fingerprint-bound authorization."),
+    run_development: bool = typer.Option(False, "--run-development", help="Run only the sealed retired-source development packet, after separate authorization; never providers."),
+    approve_input: str | None = typer.Option(None, "--approve-input", help="Exact prepared fingerprint, required for separately authorized acquisition/development."),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for future locked artifacts, checkpoints and results."),
+) -> None:
+    from pastor_transcript_extractor import collector_retrieval_workflow as workflow
+    if sum((check_only,preflight,acquire_model,run_development))>1 or bool(approve_input)!=bool(acquire_model or run_development):
+        raise typer.BadParameter("Choose one mode; acquisition/development requires its exact fingerprint and separate authorization")
+    try:
+        packet=workflow.verify()
+        if preflight:
+            rows=workflow.preflight(packet)
+            for row in rows:
+                console.print(f"Source {row['video_id']}: {row['unit_count']} frozen units; G2/G3 bound {row['G2_G3_max']}; comparisons <= {row['comparisons_max']}; encoded tokens <= {row['encoded_tokens_max']}.", markup=False)
+            console.print("Structural preflight only; no candidates, matching, model load or provider requests.", markup=False)
+        elif acquire_model:
+            console.print(f"Locked model files verified: {workflow.acquire_model(base_dir,approve_input)}", markup=False)
+        elif run_development:
+            result=workflow.run_development(base_dir,approve_input)
+            console.print(f"Development diagnostic complete: {result['content_fingerprint']}; provider_requests=0. Codex source audit is next.", markup=False)
+        else:
+            console.print(f"Bounded implementation verified: {packet['content_fingerprint']}; model acquisition/loading and development execution remain separately held; provider_requests=0.", markup=False)
+        console.print(f"Review: {workflow.HERE / 'IMPLEMENTATION-REVIEW.md'}", markup=False)
+    except (ValueError,OSError,KeyError,RuntimeError,ImportError) as error:
+        raise typer.BadParameter(str(error)) from error

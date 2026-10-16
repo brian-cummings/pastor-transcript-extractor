@@ -1,0 +1,20 @@
+{
+  "version": "collector-retrieval-implementation-authorization-v1",
+  "status": "AUTHORIZED",
+  "decision_owner": "Brian",
+  "decision_date": "2026-10-16",
+  "authority_text_sha256": "cb43a4102110e2255c44ac1c311188a0d4597d9687733fb0175d3c62ed67a0a5",
+  "design_packet_fingerprint": "0e96d75c547f02bb84a22436212dc56980a099f042c029538ca10fefd263ddbf",
+  "implementation_authorized": true,
+  "P1_approved": true,
+  "P1_policy_sha256": "f4c3cd6c852c62d3bbd47c3ea03cff65162da7bbe2ef19db23ad81bb8b58126e",
+  "development_execution_authorized": false,
+  "model_acquisition_authorized": false,
+  "model_loading_authorized": false,
+  "provider_calls_authorized": false,
+  "source_selection_authorized": false,
+  "automatic_provenance_authorized": false,
+  "measurement_admission_changes_authorized": false,
+  "collection_projection_authorized": false,
+  "content_fingerprint": "eac9c30460ef9420e46f5343849dcbddc843d5772bf07cb35b9cee56681d8830"
+}
