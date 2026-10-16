@@ -1,5 +1,43 @@
 # Handoff Notes
 
+## V3 semantic panel source-audited: boundary FAIL recommended — 2026-10-15
+
+The [authored source audit](review-proposals/evidence-supply-boundary-v3/source-audit-v3.md)
+and [per-field JSON evidence](review-proposals/evidence-supply-boundary-v3/source-audit-v3.json)
+cover all 21 cases / 201 fields / 25 frozen prepared differences. All 33 sealed
+receipts reconstruct the completed result exactly: 74,075 input tokens, 11,722
+output tokens, $0.003111150 model list price. No provider requests during audit.
+Runtime artifacts remain in the configured application data directory; the authored
+source-controlled audit pins them without copying the runtime result directory.
+
+**FAIL under both frozen raw-semantic criteria and Brian's latest containment
+standard; human decision pending.** R078's false raw reassurance is actually vetoed
+by the narration guard. R080 retains a false G2 Bible edge despite preserved
+Desire of Ages attribution; its quarantine label is metadata without an enforced
+G2 output filter. R053 (not automatically flagged), R111 and R114 retain act
+positives with false current-listener identity. R076 retains wrong present voice
+for a past prayer, while correctly identifying God and emitting no definite human
+act. Global `pastor_credit=false` is a procedural hold, not a proven reusable
+provenance guard. Check issues and conservative withholding remain separate from
+these errors; no frozen score or expectation was changed.
+
+Read-only verification:
+
+```sh
+pte analysis evidence-supply-boundary-audit
+```
+
+Recommendation for Brian: accept the audit's FAIL and authorize only preparation
+of a narrow provider-free boundary/admission repair proposal. Preserve reporting
+identity and needed continuation separately from exact targets; specify enforced
+G2 nonbiblical and G3 source/recipient/adoption admission invariants; document
+separately versioned checks for ambiguous/clipped endpoints. Do not implement
+repairs, redesign broadly, rerun providers, optimize discovery, activate collection,
+or project/compare/score pastors on the strength of this report. Closed G1/G2/G3
+contracts and the prior representation-design acceptance remain unchanged.
+Discovery-readiness remains held. No usable-item denominator or corpus economics
+was certified; the 790 non-reference V2 positives remain unaudited.
+
 ## V3 design accepted; small semantic boundary panel ready — 2026-10-15
 
 Brian accepts Collector V3 **as the representation/boundary design only** and

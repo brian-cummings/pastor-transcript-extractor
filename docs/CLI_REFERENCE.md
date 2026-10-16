@@ -3416,6 +3416,23 @@ pte analysis g2-feasibility-review [OPTIONS]
 | `--revision TEXT` | Frozen pilot revision: v1 or the single adjudicated v2 cycle.  [default: v1] | no | v1 |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis evidence-supply-boundary-audit`
+
+Verify the authored V3 source audit against frozen cases and sealed local receipts; no provider calls.
+
+#### Usage
+
+```console
+pte analysis evidence-supply-boundary-audit [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--base-dir PATH` | Application data directory holding the completed V3 panel receipts. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis evidence-supply-boundary-validation`
 
 Prepare/check or explicitly execute the authorized small V3 semantic boundary panel; no discovery/full-source rerun.

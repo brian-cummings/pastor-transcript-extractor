@@ -3128,6 +3128,26 @@ def analysis_g2_feasibility_review(
 
 
 @analysis_app.command(
+    "evidence-supply-boundary-audit",
+    help="Verify the authored V3 source audit against frozen cases and sealed local receipts; no provider calls.",
+)
+def analysis_evidence_supply_boundary_audit(
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory holding the completed V3 panel receipts."),
+) -> None:
+    from pastor_transcript_extractor import evidence_supply_boundary_audit as audit
+
+    try:
+        report = audit.verify(base_dir)
+    except (ValueError, OSError, KeyError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"Audit verified: {report['audited_cases']} cases; {report['audited_fields']} fields; "
+                  f"{report['prepared_differences']} frozen differences; provider_requests=0.", markup=False)
+    console.print("Recommendation: FAIL under frozen semantics and the containment standard. Brian decision pending. "
+                  "Discovery, collection and projection remain held.", markup=False)
+    console.print(f"Review: {audit.AUDIT.with_suffix('.md')}", markup=False)
+
+
+@analysis_app.command(
     "evidence-supply-boundary-validation",
     help="Prepare/check or explicitly execute the authorized small V3 semantic boundary panel; no discovery/full-source rerun.",
 )
