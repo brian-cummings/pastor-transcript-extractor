@@ -3128,6 +3128,26 @@ def analysis_g2_feasibility_review(
 
 
 @analysis_app.command(
+    "fresh-discovery-readiness",
+    help="Verify the bounded fresh-source discovery proposal and pinned source identities; no evaluation, providers or writes.",
+)
+def analysis_fresh_discovery_readiness(
+    check_only: bool = typer.Option(False, "--check-only", help="Verify the prepared proposal only; this workflow has no evaluation execution mode."),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application directory containing the source metadata database."),
+) -> None:
+    from pastor_transcript_extractor import fresh_discovery_readiness as review
+
+    try:
+        plan, manifest = review.verify(base_dir)
+    except (ValueError, OSError, KeyError, RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print("Fresh discovery proposal verified: 3 primary sermons / 1 technical reserve, distinct non-development "
+                  "source channels; provider_requests=0; no discovery evaluation executed.", markup=False)
+    console.print(f"Proposal fingerprint: {plan['content_fingerprint']}", markup=False)
+    console.print(f"Review: {review.HERE / 'PLAN.md'}", markup=False)
+
+
+@analysis_app.command(
     "g3-atomic-admission-replay",
     help="Check, replay or verify the authorized provider-free A1 policy panel using existing V4 receipts.",
 )
@@ -3179,8 +3199,13 @@ def analysis_g3_atomic_admission_review(
     base_dir: Path | None = typer.Option(None, "--base-dir", help="Authorized application data directory holding the existing V4 receipts."),
 ) -> None:
     from pastor_transcript_extractor import g3_atomic_admission_review as review
+    from pastor_transcript_extractor.g3_atomic_admission_decision import accepted_decision
 
     try:
+        if accepted_decision():
+            console.print("Accepted: bounded A1 containment PASS; development-panel work closed. "
+                          "No replay performed. provider_requests=0.", markup=False)
+            return
         proposal = review.verify(base_dir)
     except (ValueError, OSError, KeyError, RuntimeError) as error:
         raise typer.BadParameter(str(error)) from error

@@ -1,5 +1,68 @@
 # Handoff Notes
 
+## A1 PASS accepted and closed; fresh discovery proposal prepared — 2026-10-15
+
+Brian accepted **bounded A1 atomic-local containment PASS** and closed further work
+on the 24-case / 37-receipt development panel. The separate
+[final decision](review-proposals/g3-atomic-admission-v1/acceptance-decision-a1.md)
+binds the exact source audit/input/result and preserves V4 raw FAIL / containment HOLD.
+No further semantic experiment, replay, V5 or model/prompt/threshold tuning is authorized.
+A1 CLI execution now rejects the closed panel; read/check/audit modes report accepted
+closure without invoking old validators or replay. Historical proposal CLI also returns
+closure without executing its old evidence verification. Pinned A1/V4 modules and
+historical artifacts remain unchanged. Do not invoke their direct library replay APIs.
+
+Prepared the separate [fresh discovery/readiness proposal](review-proposals/fresh-discovery-readiness-v1/PLAN.md),
+[JSON plan](review-proposals/fresh-discovery-readiness-v1/plan-v1.json) and
+[source manifest](review-proposals/fresh-discovery-readiness-v1/source-manifest-v1.json).
+Three primary sermons: **1565 / 1450 / 1618**, distinct source channels 66/60/32;
+technical reserve 4069 / channel 48. All development channels 33/44 are excluded.
+Selection uses stable salted hash order, existing availability/disposition metadata
+and no G1/G2/G3 opportunity labels. Files and baseline code are pinned. Metadata and
+exact repository ID checks found no previous semantic evaluation of these recordings;
+this does not prove model-training novelty or population representativeness.
+
+**No fresh discovery evaluation, reference annotation, candidate generation or provider
+execution performed.** Source file identities/existing metadata only were checked.
+The proposal freezes source-only candidates, queue and automatic envelopes before
+independent full-source references. Recall, sufficient-envelope recall, measurement
+withholding, quarantine, reviewed yield and review burden have separate denominators;
+manual rescues never count as natural discovery hits. No source replacement because
+opportunities are rare or results are poor.
+
+The proposed scope covers G2 Bible explanation, G3 atomic current/reported acts and
+the existing narrow G1 assurance/pardon route. It does not validate general theological
+G1 collection. Explicit mechanical integration gap: current admission constructors
+accept only frozen development packets, so fresh-packet validation/envelope preparation
+needs a separately versioned adapter retaining safeguards, not old packet identity
+substitution or guard modification.
+
+Recommended next authorization: bounded **provider-free preparation only** of these
+sources, frozen natural inventory/automatic envelopes, independent complete reference
+inventory and exact semantic preflight/CLI handoff. Proposed later sample is at most
+120 natural candidates / 240 requests, zero retries, with separately authorized exact
+provider budget after preparation. No paid authorization is included. Thresholds are
+prospective pilot judgments, not semantic-contract changes or population guarantees.
+
+```sh
+pte analysis fresh-discovery-readiness --check-only
+```
+
+The checker passed. It only reads proposal/acceptance/source metadata and hashes; no
+old panel replay, discovery, providers or runtime writes. **33 focused tests passed**
+for closure, proposal safeguards and CLI contract/reference; no dataset validation.
+The 20,000 aggregate G2/G3 candidate ceiling, complete-reference requirement, zero
+unsupported admissions and declared review budget prevent a vacuous or selectively
+audited success. Insufficient opportunities or incomplete audit yield route-specific
+HOLD rather than invented positives or replacement. Existing untracked V2 outputs
+remain untouched.
+
+Automatic provenance/sufficiency, review throughput/deferrals, fresh recall, opportunity
+denominators, recurrence/rates, corpus economics and production safety remain
+unestablished. Discovery evaluation execution/tuning, collection, 790-item V2 audit
+and pastor projection/comparison/scoring remain held. Stop iterating on containment;
+next work requires the separate fresh-evidence preparation decision above.
+
 ## A1 implemented and replay audited: bounded containment PASS recommended — 2026-10-15
 
 Brian explicitly authorized **both** narrow A1 implementation and the provider-free

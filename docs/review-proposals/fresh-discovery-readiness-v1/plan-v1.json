@@ -1,0 +1,96 @@
+{
+  "version": "fresh-discovery-readiness-proposal-v1",
+  "status": "PROPOSED_NOT_EXECUTED",
+  "decision_owner": "Brian",
+  "parent_acceptance_fingerprint": "1cedb8ae9612115fdae4c5dd749ec6e2c1b7858c6343d12ec4d21ee86d398017",
+  "source_manifest_fingerprint": "046cbb1f18a53209c330b1ce29db9490a557ecbeb93a813d76ce4639d2db6e49",
+  "authorization": {
+    "proposal_preparation": true,
+    "evaluation_execution": false,
+    "provider_calls": false,
+    "automatic_attestation": false,
+    "discovery_tuning": false,
+    "broader_collection": false,
+    "projection_scoring": false
+  },
+  "scope": {
+    "primary_sources": 3,
+    "reserve_sources": 1,
+    "G1": "existing closed assurance/pardon frames only; no broad theology-position recall claim",
+    "G2": "Bible explanatory edges only",
+    "G3": "current/reported atomic acts; circumstance relations diagnostic only"
+  },
+  "freeze_order": [
+    "Source manifest and baseline code/policy first",
+    "Natural candidate inventory, ranked provider queue and automatic envelopes sealed before references exist",
+    "Independent full-source opportunity inventory and source/provenance/qualifier review before any provider answer",
+    "Match references to frozen candidates without injecting endpoints",
+    "Preflight exact requests and separately authorize any semantic execution",
+    "Source-audit every sampled output, positive, miss, withholding and admission before readiness decision"
+  ],
+  "bounds": {
+    "primary_sermons": 3,
+    "canonical_chars_per_source": 150000,
+    "total_canonical_chars": 300000,
+    "G2_G3_candidates_per_source": 12000,
+    "G2_G3_candidates_total": 20000,
+    "G1_candidates_per_source": 200,
+    "semantic_candidate_units_total": 120,
+    "semantic_candidate_units_per_source": 40,
+    "semantic_requests_max": 240,
+    "automatic_retries": 0,
+    "review_active_minutes_max": 480
+  },
+  "semantic_queue": {
+    "per_source": {
+      "G1": 10,
+      "G2": 15,
+      "G3": 15
+    },
+    "order": "Frozen source-only baseline order, then stable candidate hash for ties. No reference-dependent selection. Unused route quotas remain unused.",
+    "scope": "Inference precision/yield/deferral only for this explicit sampled queue; full candidate-set recall is reported separately."
+  },
+  "proposed_criteria": {
+    "unsupported_admissions_max": 0,
+    "silent_truncation_max": 0,
+    "source_reference_census_complete": true,
+    "per_source_nonempty_route_discovery_recall_min": 0.8,
+    "per_route_aggregate_discovery_recall_min": 0.8,
+    "per_route_auto_sufficient_envelope_recall_min": 0.8,
+    "min_reference_opportunities": {
+      "G1_assurance": 5,
+      "G2_explanation": 10,
+      "G3_current": 5,
+      "G3_reported": 3
+    },
+    "max_manual_envelope_repair_fraction": 0.2,
+    "max_unresolved_review_deferral_fraction": 0.2,
+    "max_median_active_review_minutes_per_candidate": 5,
+    "sampled_supported_current_or_reported_G3_required": true,
+    "decision_owner": "Brian",
+    "criterion_note": "Prospective practical pilot targets, not validated population standards or semantic-contract changes. Low/absent opportunity counts HOLD the corresponding route; never fabricate positives or swap a valid sermon."
+  },
+  "integration_gap": "Current V4/A1 constructors are fingerprint-bound to the closed panel. A versioned fresh-packet validator/adapter and automatic envelope materializer need mechanical preparation and focused synthetic tests before natural-source execution. Never alter old pinned modules or fake a V4 packet identity.",
+  "next_recommended_authorization": "Approve only bounded provider-free fresh-packet preparation: source validation, frozen natural inventories/automatic envelopes, blinded full-source opportunity references and exact semantic preflight. Brian executes any dataset command after the reviewed CLI tie-in is prepared. Provider calls require a separate exact fingerprint/budget decision.",
+  "limitations": [
+    "No fresh recall, reference counts, candidate counts, usable yield, review rates or economics measured yet.",
+    "Source-controlled review remains the safety oracle; automatic envelope sufficiency/provenance can defer but cannot self-authorize admission.",
+    "Three metadata-selected sources do not establish corpus/population generalization.",
+    "Existing G1 discovery only covers specific assurance/pardon frames; general theological position collection remains unvalidated.",
+    "No revision/tuning on the six development sources or the new test set; a failed baseline retires this evaluation set for future tuning validation.",
+    "No recurrence, projection, comparison/scoring, 790 V2 audit or broad collection activation."
+  ],
+  "pins": {
+    "src/pastor_transcript_extractor/evidence_supply_collector_design.py": "1aa7db0c7fe834cc549f38aefeb968e17d5a75ba521d58aee3415e926989a9fe",
+    "src/pastor_transcript_extractor/evidence_supply_revision.py": "e3ec3256723eaeb736e7f786e5c184936e2c8c8075df31be9ff53ebd4d7518c0",
+    "src/pastor_transcript_extractor/evidence_boundary_admission.py": "affafed4add3ff01ce7bab0cc5e0d93575ef80897093d66b70b175ae55418803",
+    "src/pastor_transcript_extractor/g3_atomic_admission.py": "4f801acb2c69737454122ea6f6d78e4e0bf38abd6dc7ad8298ea6a010c190376",
+    "src/pastor_transcript_extractor/sermon_g1_feasibility_review.py": "b4f5982b6960a199717d8aeb5cafb29685f679b1d76f8bf32b44a95f9144b2fd",
+    "src/pastor_transcript_extractor/sermon_g2_feasibility_review.py": "7032118c48657f91a38301ce90664da69070b6c648ab0f7bfdd51ee4c970270e",
+    "src/pastor_transcript_extractor/sermon_g3_feasibility_review.py": "3f3b54d7e27921bfdd63f0b022776fa2fbf5601d76eed60520d3fdd14fd0c92e",
+    "src/pastor_transcript_extractor/sermon_g3_feasibility_revision.py": "4884ae019abd9f71f620fdb587e994e664185cd3cf96b8dc62bb5891c7254d08",
+    "docs/review-proposals/g3-atomic-admission-v1/acceptance-decision-a1.json": "d0e514d22e657a433b46d47652022a8625485d788ec8c6264d2d13363636a595",
+    "docs/review-proposals/g3-atomic-admission-v1/source-audit-a1.json": "f7dd2a3ae7bda115c05c513a03fbdc19ef0dd80803904f4768ff3186aa4623b5"
+  },
+  "content_fingerprint": "8011003fd4c2c50b23541a4541f55d62a4bac767943325bc051c23aa61b8f1b3"
+}

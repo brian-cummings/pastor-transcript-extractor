@@ -73,7 +73,7 @@ class AtomicAdmissionProposalTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'binding'): self.check()
 
     def test_cli_is_read_only_and_explicitly_prospective(self):
-        with patch.object(review, 'verify', return_value=self.proposal), patch.object(
+        with patch('pastor_transcript_extractor.g3_atomic_admission_decision.accepted_decision', return_value=None), patch.object(review, 'verify', return_value=self.proposal), patch.object(
                 review.audit.execution, 'execute', side_effect=AssertionError('provider path forbidden')):
             result = CliRunner().invoke(app, ['analysis', 'g3-atomic-admission-review'])
         self.assertEqual(0, result.exit_code, result.output)

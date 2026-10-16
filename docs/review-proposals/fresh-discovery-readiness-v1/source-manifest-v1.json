@@ -1,0 +1,152 @@
+{
+  "version": "fresh-discovery-source-manifest-v1",
+  "prepared_on": "2026-10-15",
+  "selection_salt": "fresh-discovery-readiness-v1:",
+  "selection_sql": "select v.id,v.source_id,v.pastor_id,v.youtube_video_id,v.title,v.duration_seconds,p.slug,t.id transcript_id,t.raw_text_path,t.source_kind,e.id extraction_id,e.proposed_json_path,e.proposed_text_path from videos v join pastors p on p.id=v.pastor_id join transcript_artifacts t on t.id=(select max(id) from transcript_artifacts where video_id=v.id and artifact_kind='source') join extraction_results e on e.id=(select max(id) from extraction_results where video_id=v.id) where v.source_id not in (33,44) and v.duration_seconds between 1200 and 4200 and not exists(select 1 from sermon_analysis_runs a where a.video_id=v.id)",
+  "metadata_eligible_rows": 713,
+  "selection_rule": "SHA256 ascending of salt + youtube_video_id; distinct source_id; exclude development channels 33/44; recording duration 20\u201370 minutes; latest source transcript and latest extraction files present; existing accepted_sermon/no guest flag; exclude title bible study/bible answers live/Q&A. No G1/G2/G3 candidate or semantic outcome used.",
+  "development_video_ids": [
+    350,
+    421,
+    1046,
+    1200,
+    4050,
+    4430
+  ],
+  "development_source_ids": [
+    33,
+    44
+  ],
+  "sources": [
+    {
+      "source_id": 66,
+      "pastor_id": 61,
+      "youtube_video_id": "hbk24edMa3c",
+      "title": "Stockbridge Grace Tabernacle SDA Church - Noon Power  Hour",
+      "duration_seconds": 3634,
+      "slug": "churchdb-230",
+      "transcript_id": 1593,
+      "raw_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-230/videos/hbk24edMa3c/raw/captions.txt",
+      "source_kind": "captions",
+      "extraction_id": 1605,
+      "proposed_json_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-230/videos/hbk24edMa3c/extracted/proposed.json",
+      "proposed_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-230/videos/hbk24edMa3c/extracted/proposed.md",
+      "video_id": 1565,
+      "role": "primary",
+      "selection_sha256": "00f1572667853043459759cbb5a4e8088db65b2699ed79c1955ca4c142a6412f",
+      "file_hashes": {
+        "raw_text_path": "f89029b48a1f5c1a17973ddb30d3cde18c72183daddea0fafe24080ef1c9e848",
+        "proposed_text_path": "3e85efac1052ed950f939351f227e13dae80206363c6657a8e618944321388f7",
+        "proposed_json_path": "f918c23b157bff279a970ea3d6969e165514c29feadb60caf40de650d8015579"
+      },
+      "existing_disposition": "accepted_sermon",
+      "existing_guest_flag": false,
+      "existing_window_seconds": {
+        "start_seconds": 938.87,
+        "end_seconds": 2479.119
+      },
+      "prior_sermon_analysis_runs": 0
+    },
+    {
+      "source_id": 60,
+      "pastor_id": 55,
+      "youtube_video_id": "BQlIEMj5Umw",
+      "title": "What Really Happened at the Fall?",
+      "duration_seconds": 4058,
+      "slug": "churchdb-209",
+      "transcript_id": 1511,
+      "raw_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-209/videos/BQlIEMj5Umw/raw/captions.txt",
+      "source_kind": "captions",
+      "extraction_id": 1508,
+      "proposed_json_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-209/videos/BQlIEMj5Umw/extracted/proposed.json",
+      "proposed_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-209/videos/BQlIEMj5Umw/extracted/proposed.md",
+      "video_id": 1450,
+      "role": "primary",
+      "selection_sha256": "01573768d1000fc9b7e1c04ff543c6ee2e8c0bec7c130a3fa59afd4bc9b33caf",
+      "file_hashes": {
+        "raw_text_path": "a0077f8e58051e1de0c81f575ac0c7f91e9d5178951bb85cb02f0f08340c2489",
+        "proposed_text_path": "47e4573604ddf86581357ad38c8bdfa25b1d3668b08badf1b0d7598cb02cee99",
+        "proposed_json_path": "ba0ced90dca4b8764f6cf729b6ca66100c6f66899789f873f33e8c85db0d29cd"
+      },
+      "existing_disposition": "accepted_sermon",
+      "existing_guest_flag": false,
+      "existing_window_seconds": {
+        "start_seconds": 1786.95,
+        "end_seconds": 3826.24
+      },
+      "prior_sermon_analysis_runs": 0
+    },
+    {
+      "source_id": 32,
+      "pastor_id": 27,
+      "youtube_video_id": "-ZH4gvr619c",
+      "title": "\"Going Forth Conquering\" by Andre Miller",
+      "duration_seconds": 4140,
+      "slug": "churchdb-105",
+      "transcript_id": 1640,
+      "raw_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-105/videos/-ZH4gvr619c/raw/captions.txt",
+      "source_kind": "captions",
+      "extraction_id": 1658,
+      "proposed_json_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-105/videos/-ZH4gvr619c/extracted/proposed.json",
+      "proposed_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-105/videos/-ZH4gvr619c/extracted/proposed.md",
+      "video_id": 1618,
+      "role": "primary",
+      "selection_sha256": "01e6f85a56b337864abdf5528590f2f83fc39e7fde419b2e642868114e6fd011",
+      "file_hashes": {
+        "raw_text_path": "a93277732a3b5e1a89f453703d889985f6736c1934853a928186fe9ed80b5907",
+        "proposed_text_path": "1e67883e459c7aae6441c69fb6212ed108fd3a0b339eb6e5cf5ed2e5744d0670",
+        "proposed_json_path": "172fa1c1ed725baaa6faa2f61775d40165e4489b2b695e86db6c9bd28aa206d5"
+      },
+      "existing_disposition": "accepted_sermon",
+      "existing_guest_flag": false,
+      "existing_window_seconds": {
+        "start_seconds": 0.0,
+        "end_seconds": 3982.4
+      },
+      "prior_sermon_analysis_runs": 0
+    },
+    {
+      "source_id": 48,
+      "pastor_id": 43,
+      "youtube_video_id": "YvC1F2beE-8",
+      "title": "Keith Parris \"Blessed Assurance\"",
+      "duration_seconds": 1667,
+      "slug": "churchdb-159",
+      "transcript_id": 2338,
+      "raw_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-159/videos/YvC1F2beE-8/raw/captions.txt",
+      "source_kind": "captions",
+      "extraction_id": 2074,
+      "proposed_json_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-159/videos/YvC1F2beE-8/extracted/proposed.json",
+      "proposed_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-159/videos/YvC1F2beE-8/extracted/proposed.md",
+      "video_id": 4069,
+      "role": "technical_reserve_only",
+      "selection_sha256": "02064a77644256292a2e71d4f514e4efdb5d33dd0286bf88684029100a000351",
+      "file_hashes": {
+        "raw_text_path": "0412bbba8d85abcfda2baeea57fe2acbda63448244f2ec80be7c4ab2342a64e5",
+        "proposed_text_path": "ef45c28fddeebb418de01238e2c72df1d2440a4c806054fd381f2bf32addef55",
+        "proposed_json_path": "5174180d9ef6171821e367f4dadef0966a45efb54ab6ac98a25710b924b4467c"
+      },
+      "existing_disposition": "accepted_sermon",
+      "existing_guest_flag": false,
+      "existing_window_seconds": {
+        "start_seconds": 43.07,
+        "end_seconds": 819.2
+      },
+      "prior_sermon_analysis_runs": 0
+    }
+  ],
+  "preceding_metadata_exclusions": [
+    {
+      "video_id": 4239,
+      "reason": "metadata_title_nonsermon_format"
+    },
+    {
+      "video_id": 4205,
+      "reason": "metadata_title_nonsermon_format"
+    }
+  ],
+  "freshness_scope": "No prior sermon_analysis_runs; no explicit video_id/source_video_id or YouTube ID found in prior repository review/test references at preparation. This is project-evaluation freshness, not proof of model-training novelty or independent population sampling.",
+  "freshness_preparation_search": "Exact structured video_id/source_video_id and YouTube-ID search of existing docs/review-proposals and tests before this manifest was written; no matches for the selected four.",
+  "content_status": "Only file identities and existing extraction metadata inspected; no new candidate discovery, opportunity annotation, model classification or natural-source evaluation performed.",
+  "content_fingerprint": "046cbb1f18a53209c330b1ce29db9490a557ecbeb93a813d76ce4639d2db6e49"
+}

@@ -3416,6 +3416,24 @@ pte analysis g2-feasibility-review [OPTIONS]
 | `--revision TEXT` | Frozen pilot revision: v1 or the single adjudicated v2 cycle.  [default: v1] | no | v1 |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis fresh-discovery-readiness`
+
+Verify the bounded fresh-source discovery proposal and pinned source identities; no evaluation, providers or writes.
+
+#### Usage
+
+```console
+pte analysis fresh-discovery-readiness [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--check-only` | Verify the prepared proposal only; this workflow has no evaluation execution mode. | no | False |
+| `--base-dir PATH` | Application directory containing the source metadata database. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis g3-atomic-admission-replay`
 
 Check, replay or verify the authorized provider-free A1 policy panel using existing V4 receipts.
