@@ -3178,8 +3178,9 @@ def analysis_collector_recall_repair(
     help="Prepare or verify the authorized bounded fresh-source discovery packet; no provider execution.",
 )
 def analysis_fresh_discovery_readiness(
-    revision: str = typer.Option("v1", "--revision", help="Fresh-source packet revision: v1 historical or v2 frozen Collector V4.1 confirmation."),
-    include_reserve: bool = typer.Option(False, "--include-reserve", help="With V2 --source-preview only, prepare the technical reserve for source validation."),
+    revision: str = typer.Option("v1", "--revision", help="Fresh-source packet revision: v1 historical, v2 frozen V4.1, or v3 frozen bounded-source-unit repair."),
+    select_sources: bool = typer.Option(False, "--select-sources", help="With V3 only, seal metadata-only primary/reserve selection; existing selection is reused."),
+    include_reserve: bool = typer.Option(False, "--include-reserve", help="With V2/V3 --source-preview only, prepare the technical reserve for source validation."),
     check_only: bool = typer.Option(False, "--check-only", help="Verify the prepared proposal only; this workflow has no evaluation execution mode."),
     source_preview: bool = typer.Option(False, "--source-preview", help="Prepare the authorized three normalized source snapshots for boundary validation; no discovery or providers."),
     freeze_inventory: bool = typer.Option(False, "--freeze-inventory", help="Freeze source-only candidates/envelopes/queue before any reference census; no providers."),
@@ -3190,12 +3191,39 @@ def analysis_fresh_discovery_readiness(
     from pastor_transcript_extractor import fresh_discovery_readiness as review
 
     try:
-        if revision not in {"v1","v2"}:
-            raise ValueError("Revision must be v1 or v2")
-        if include_reserve and (revision!="v2" or not source_preview):
-            raise ValueError("--include-reserve requires --revision v2 --source-preview")
-        if sum((check_only,source_preview,freeze_inventory,prepare_packet,verify_preparation))>1:
+        if revision not in {"v1","v2","v3"}:
+            raise ValueError("Revision must be v1, v2 or v3")
+        if select_sources and revision!="v3":
+            raise ValueError("--select-sources requires --revision v3")
+        if include_reserve and (revision not in {"v2","v3"} or not source_preview):
+            raise ValueError("--include-reserve requires --revision v2 or v3 --source-preview")
+        if sum((select_sources,check_only,source_preview,freeze_inventory,prepare_packet,verify_preparation))>1:
             raise ValueError("Choose one provider-free mode")
+        if revision == "v3":
+            from pastor_transcript_extractor import fresh_discovery_confirmation_v3 as confirmation
+            if select_sources:
+                manifest=confirmation.select_sources(base_dir)
+                console.print(f"Sealed V3 metadata-only selection: {manifest['content_fingerprint']}; no discovery or providers.",markup=False)
+            elif source_preview:
+                ids=confirmation.preview(base_dir,include_reserve)
+                console.print(f"Prepared V3 source previews: {ids}; no discovery or providers.",markup=False)
+            elif freeze_inventory:
+                console.print("Freezing V3 source-only candidates, envelopes and request shapes; no providers. Candidate/match counts remain hidden until the independent census is sealed.",markup=False)
+                fingerprint=confirmation.freeze(base_dir)
+                console.print(f"Frozen V3 source-only inventory: {fingerprint}; provider_requests=0. No candidate/match counts displayed before independent census.",markup=False)
+            elif prepare_packet or verify_preparation:
+                raise ValueError("V3 independent source census and target/envelope review follow Brian's inventory freeze; Codex prepares those artifacts before matching. No provider execution route exists.")
+            else:
+                manifest,_=confirmation.verify(base_dir)
+                console.print(f"V3 preparation verified: {manifest['content_fingerprint']}; provider_requests=0.",markup=False)
+                try:
+                    sources,_=confirmation.validated_sources(base_dir)
+                except FileNotFoundError:
+                    console.print("Technical source validation pending; no inventory execution.",markup=False)
+                else:
+                    sizes=confirmation.size_preflight(sources)
+                    console.print(f"Source-unit structural bounds verified for {len(sizes)} sources; no candidate generation.",markup=False)
+            return
         if revision == "v2":
             from pastor_transcript_extractor import fresh_discovery_confirmation as confirmation
             if source_preview:
