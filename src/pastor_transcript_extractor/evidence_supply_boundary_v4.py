@@ -18,7 +18,8 @@ def build_packet():
     authority = proposal.load_sealed(HERE / 'implementation-authorization-v4.json')
     original = json.loads(old.INPUT.read_text())
     design = proposal.load_sealed(HERE / 'proposal-v4.json')
-    if (authority['proposal_fingerprint'] != design['content_fingerprint']
+    if (authority.get('decision_owner') != 'Brian' or authority.get('status') != 'IMPLEMENTATION_AUTHORIZED'
+            or authority['proposal_fingerprint'] != design['content_fingerprint']
             or authority['proposal_sha256'] != old.frozen.v1.file_hash(HERE / 'proposal-v4.json')
             or authority['implementation_authorized'] is not True
             or authority['provider_calls_authorized'] is not False
@@ -30,6 +31,8 @@ def build_packet():
                                sha256=old.frozen.v1.file_hash(old.frozen.HERE / 'sources' / f'{v}.json')) for v in original['source_ids']}
     sources = {int(v): json.loads((old.frozen.ROOT / info['path']).read_text()) for v, info in source_files.items()}
     contexts = {c['parent_case_id']: c['source_envelope'] for c in contexts}
+    for refinement in proposal.load_sealed(HERE / 'implementation-context-v4.json')['rows']:
+        contexts[refinement['parent_case_id']] = refinement['source_envelope']
     cases, requests = [], []
 
     def add(case_id, parent, roles, comparisons):
@@ -64,7 +67,7 @@ def build_packet():
     pins = dict(original['input_hashes'])
     for path in [old.INPUT, Path(__file__), Path(admission.__file__), HERE / 'implementation-authorization-v4.json',
                  HERE / 'proposal-v4.json', HERE / 'context-exhibits-v4.json', HERE / 'check-design-v4.json', HERE / 'CRITERIA-v4.md',
-                 HERE / 'source-oracle-v4.json']:
+                 HERE / 'source-oracle-v4.json', HERE / 'implementation-context-v4.json']:
         pins[str(path.relative_to(old.frozen.ROOT))] = old.frozen.v1.file_hash(path)
     packet = dict(version='semantic-boundary-panel-v4', status='PREPARED_NOT_AUTHORIZED_FOR_EXECUTION',
                   parent_v3_fingerprint=original['content_fingerprint'], proposal_fingerprint=design['content_fingerprint'],

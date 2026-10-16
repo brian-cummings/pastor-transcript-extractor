@@ -103,7 +103,8 @@ class ReviewAuthority:
         if old.frozen.v1.file_hash(decision_path) != expected_decision_sha256:
             raise ValueError('Untrusted review decision identity')
         review, decision = sealed(review_path), sealed(decision_path)
-        if (decision.get('status') != 'ACCEPTED' or decision.get('closed') is not True
+        if (decision.get('version') != 'source-review-acceptance-v4'
+                or decision.get('status') != 'ACCEPTED' or decision.get('closed') is not True
                 or decision.get('decision_owner') != 'Brian'
                 or decision.get('scope') != 'local_boundary_admission_only'
                 or decision.get('review_file_sha256') != old.frozen.v1.file_hash(review_path)

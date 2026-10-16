@@ -59,7 +59,7 @@ class AdmissionTests(unittest.TestCase):
         review = dict(version='receipt-bound-source-review-v4', packet_fingerprint=self.packet['content_fingerprint'], rows=rows)
         review['content_fingerprint'] = panel.old.frozen.fp(review)
         rp = self.root / 'review.json'; rp.write_text(json.dumps(review))
-        decision = dict(status='ACCEPTED', closed=True, decision_owner='Brian', scope='local_boundary_admission_only',
+        decision = dict(version='source-review-acceptance-v4',status='ACCEPTED', closed=True, decision_owner='Brian', scope='local_boundary_admission_only',
                         packet_fingerprint=self.packet['content_fingerprint'], review_fingerprint=review['content_fingerprint'],
                         review_file_sha256=panel.old.frozen.v1.file_hash(rp))
         decision['content_fingerprint'] = panel.old.frozen.fp(decision)
@@ -215,3 +215,17 @@ class AdmissionTests(unittest.TestCase):
         value['content_fingerprint']=panel.old.frozen.fp({k:v for k,v in value.items() if k!='content_fingerprint'})
         auth.decision_path.write_text(json.dumps(value))
         with self.assertRaises(ValueError):gate.ReviewAuthority.load(auth.review_path,auth.decision_path,panel.old.frozen.v1.file_hash(auth.decision_path))
+
+    def test_unknown_source_support_and_scope_cannot_become_current_credit(self):
+        m=self.measurement('B4-R018',{'invitation':'observed'})
+        for facts in ({'context_complete':None},{'target_complete':False},{'origin':None},
+                      {'voice':None},{'addressee':None},{'adoption':None}):
+            b=gate.Boundary(self.packet,self.authority([m],{'B4-R018':facts}))
+            self.assertIsNone(b.admit(m).item)
+
+    def test_raw_V4_and_serialized_item_cannot_bypass_through_legacy_consumer(self):
+        from pastor_transcript_extractor import observed_profile
+        m=self.measurement('B4-R003');b=gate.Boundary(self.packet,self.authority([m]))
+        item=b.admit(m).item
+        for raw in (m.document,json.loads(item.document_json),json.loads(b.export(item))):
+            with self.assertRaises(ValueError):observed_profile._validate_evidence([raw])

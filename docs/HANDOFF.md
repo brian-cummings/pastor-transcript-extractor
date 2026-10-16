@@ -1,5 +1,47 @@
 # Handoff Notes
 
+## V4 guard implemented; semantic packet ready for separate authorization — 2026-10-15
+
+Brian [authorized the narrow implementation](review-proposals/evidence-supply-boundary-v4/implementation-authorization-v4.json),
+not provider calls or semantic execution. The [implementation and packet review](review-proposals/evidence-supply-boundary-v4/REVIEW-v4.md)
+and [JSON implementation report](review-proposals/evidence-supply-boundary-v4/implementation-review-v4.json)
+are ready. **64 focused tests pass; provider calls = zero.** The actual V4 G2/G3
+interpretation, admission, export, deserialization and local consumer enforce the
+central receipt-bound boundary. Seven critical mechanisms are quarantined under
+injected positives; supported G2/current/reported controls reach the real serialized
+local consumer. Immutable raw outputs are never repaired from review facts.
+
+The [frozen input](review-proposals/evidence-supply-boundary-v4/input-v4.json) has
+24 geometries / **37 maximum requests**; 21 historical diagnostic comparisons and
+six forward comparisons remain separate. Fingerprint:
+`3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c`.
+Ceiling: 2,368,000 input tokens / $0.099456 model list price, zero retries,
+long context off. Same model/questions/options/.80 selected-option gate. V3's
+accepted FAIL and all measurement/consumer contracts remain frozen.
+
+```sh
+pte analysis evidence-supply-boundary-revalidation --check-only
+pte analysis evidence-supply-boundary-revalidation --paid-run-preflight
+```
+
+Checks make no provider requests or runtime writes. All six live source identities
+match. There is **no execute option/provider runner** in this scope. If Brian
+separately authorizes this exact semantic packet, add the bounded ledger/receipt/
+locking/recovery execution tie-in and give Brian the exact run command. Do not
+run or monitor the job. Codex then source-audits all positives, differences and
+unscored failures, prepares the receipt-bound review, and recommends separate
+raw-semantic and containment decisions for Brian.
+
+Prepared [source-oracle notes](review-proposals/evidence-supply-boundary-v4/source-oracle-v4.json)
+are not accepted review authority. No real V4 receipt-bound review or semantic PASS
+exists. Human/source-controlled review is the bounded safety oracle, not an intended
+permanent human-review-all-observations architecture. Automatic provenance resolution,
+review throughput/deferrals, discovery recall and opportunity denominators remain
+unestablished. Minimal local-act exports make no circumstance-conditioned claim.
+No V4-to-legacy consumer bridge or pastor projection was introduced. Discovery,
+collection, automatic attestation, projection/comparison/scoring, recurrence and
+corpus economics remain held; the 790 V2 non-reference positives remain unaudited.
+
 ## Brian accepted V3 boundary FAIL; V4 repair proposal ready — 2026-10-15
 
 Brian has [accepted and closed the V3 boundary-integrity FAIL](review-proposals/evidence-supply-boundary-v3/acceptance-decision-v3.md).

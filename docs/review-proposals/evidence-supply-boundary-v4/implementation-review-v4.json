@@ -1,0 +1,78 @@
+{
+  "version": "boundary-v4-implementation-review",
+  "date": "2026-10-15",
+  "status": "IMPLEMENTED_DETERMINISTIC_CHECKS_PASS_semantic_validation_held",
+  "decision_owner": "Brian",
+  "input_fingerprint": "3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c",
+  "implementation_authorization_fingerprint": "58d14640d1bead41395590d4cd291ff2f04e955bccafcd2293f54b4c785c3e4b",
+  "file_hashes": {
+    "src/pastor_transcript_extractor/evidence_supply_boundary_v4.py": "2ee30a5222ca4c53c324d54c831d4ac87fe9701e4de99b6736c7adc894498057",
+    "src/pastor_transcript_extractor/evidence_boundary_admission.py": "affafed4add3ff01ce7bab0cc5e0d93575ef80897093d66b70b175ae55418803",
+    "tests/test_evidence_boundary_admission.py": "0cbeb9e767159a73980485f3ece194ad34a4084c4ad9599115416807801f888d",
+    "tests/test_evidence_supply_boundary_v4.py": "b542c2b97757345f46354f5d68970b86c65e3e2410e669322679a2d9307c594a",
+    "docs/review-proposals/evidence-supply-boundary-v4/input-v4.json": "14b341361533604df1d165463c337af69db23e4dd8e9bd3a368c93794448a405",
+    "docs/review-proposals/evidence-supply-boundary-v4/CRITERIA-v4.md": "2d044454bb4b3daccf7ea4e1aa92b23aee2aba76defaae6e0da14dd5729f4f85",
+    "docs/review-proposals/evidence-supply-boundary-v4/source-oracle-v4.json": "574afe4a455caa0dbe59eaff31fb3f341db699eafdc0b53c1ea67934a1a036a0",
+    "docs/review-proposals/evidence-supply-boundary-v4/implementation-context-v4.json": "a7a9e6ec7dfedae17025fe86598195bb35223e54bf9ddf12777b7145840a6f15",
+    "docs/review-proposals/evidence-supply-boundary-v4/implementation-authorization-v4.json": "3e0fa52a253a2163b67c0840be39cfb8361ff307dd0395fd8c621d35128ee87a"
+  },
+  "tests": {
+    "command": "python -m unittest tests.test_evidence_boundary_admission tests.test_evidence_supply_boundary_v4 tests.test_evidence_supply_boundary_repair_proposal tests.test_evidence_supply_boundary_audit tests.test_cli_contract tests.test_cli_reference -q",
+    "passed": 64,
+    "failures": 0,
+    "provider_calls": 0,
+    "semantic_revalidation_performed": false
+  },
+  "invariants": {
+    "I1": "Snapshot/code/request/role/envelope/question/model hashes checked; raw measurement rebuilt from sealed receipts; review binding includes exact measurement and receipt identities.",
+    "I2": "Exact target and role spans retained; contiguous source context/envelope, 6000-character deferral without truncation. Prepared context notes cannot authorize export.",
+    "I3": "Actual G2 admission enforces reviewed biblical anchor, explanatory edge, compatible actual voices/adoption and sufficient actual boundary; reading and nonbiblical fixtures denied.",
+    "I4": "Actual G3 admission requires reviewed addressed human utterance and support for every observed act, actual compatible voice/recipient/adoption/boundary; no raw answer correction.",
+    "I5": "Reported and current namespaces distinct; present preacher/current human/actual adopted stance required for current route. God and wrong source scopes blocked. No circumstance claims exported.",
+    "I6": "Canonical phase target/question reconstruction; exact receipt keys and unique decision fields; binding cannot introduce acts or source fields.",
+    "I7": "interpret_receipts routes all G2/G3 usable items through Boundary.admit/export; deserialization and consume_local re-admit. Forged objects, raw rows, unknown schema and stale authority rejected."
+  },
+  "integration_coverage": {
+    "critical_cases_quarantined": [
+      "R021",
+      "R080",
+      "R053",
+      "R078",
+      "R111",
+      "R114",
+      "R076"
+    ],
+    "injected_positive_namespaces": [
+      "G2_adopted_bible_explanation",
+      "G3_current_preacher_act",
+      "G3_reported_local_act"
+    ],
+    "full_fixed_panel_interpreter_exercised_with_injected_receipts": true,
+    "legacy_V1_schema_rejects_V4_raw_and_item_formats": true
+  },
+  "packet": {
+    "geometries": 24,
+    "base_diagnostics": 21,
+    "requests": 37,
+    "forward_comparisons": 6,
+    "maximum_input_tokens": 2368000,
+    "maximum_list_price_usd": "0.099456000",
+    "runtime_directory": "/Users/briancummings/Documents/PastorSearchData/evaluation/evidence-supply-boundary-v4"
+  },
+  "provider_requests_during_implementation": 0,
+  "accepted_source_review_exists": false,
+  "raw_semantic_gate": "NOT_RUN",
+  "containment_semantic_gate": "NOT_RUN",
+  "discovery_readiness": "CLOSED",
+  "limitations": [
+    "Injected tests establish guard enforcement, not model semantic accuracy or general automatic provenance resolution.",
+    "Source-controlled human review is a bounded safety oracle, not a permanent production collection architecture; no automatic attestation built.",
+    "No accepted V4 receipt-bound review exists. Prepared source notes do not constitute usable evidence.",
+    "Minimal G3 local export makes no circumstance-conditioned claim. Independent binding/relevance remains raw and must be audited.",
+    "No V4-to-legacy consumer conversion or pastor projection exists. Historical V1/V2/V3 contracts and evaluation outputs unchanged.",
+    "No provider runner/execute option implemented in this scope. A later authorized execution requires bounded ledger/receipt/recovery support before Brian can run it.",
+    "No discovery recall, opportunity denominators, review throughput, recurrence, corpus economics or 790 non-reference V2 semantic audit established."
+  ],
+  "recommendation": "Review the fixed 37-request V4 semantic packet and authorize it separately if accepted. Only after explicit authorization add the bounded execution tie-in; Brian runs it. Codex then audits every positive/difference/unscored failure, prepares receipt-bound review and separate raw-semantic/containment recommendations; Brian decides. No collection or discovery approval implied.",
+  "content_fingerprint": "e554650fb4bc197986dd20230b46bb43575b259c98228efce64d50d328a51209"
+}

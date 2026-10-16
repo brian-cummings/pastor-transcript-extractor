@@ -1,0 +1,16 @@
+{
+  "version": "boundary-v4-implementation-context-refinements",
+  "status": "source_only_pre_run_fixed_panel_materialization",
+  "rows": [
+    {
+      "parent_case_id": "B3-R018",
+      "source_envelope": {
+        "start": 30183,
+        "end": 30394,
+        "text": "this is the call today. Are you willing to surrender all to Christ? Are you willing to commit to searching for treasure by reading the Bible every day?\nday? If you are, then let's stand and sing hymn number 272."
+      },
+      "reason": "Include the explicit present call introduction for the current-listener positive control. Exact utterance/roles unchanged. Proposed context exhibits remain frozen."
+    }
+  ],
+  "content_fingerprint": "da868c345af58bb709cc09e166238e295ccac64acce6e1fd70f137bea9d832fd"
+}

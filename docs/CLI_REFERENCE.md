@@ -3416,6 +3416,26 @@ pte analysis g2-feasibility-review [OPTIONS]
 | `--revision TEXT` | Frozen pilot revision: v1 or the single adjudicated v2 cycle.  [default: v1] | no | v1 |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis evidence-supply-boundary-revalidation`
+
+Prepare/check the fingerprint-bound V4 semantic packet; provider execution remains unauthorized and unavailable.
+
+#### Usage
+
+```console
+pte analysis evidence-supply-boundary-revalidation [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--prepare-only` | Materialize the authorized source-controlled V4 input without inference. | no | False |
+| `--check-only` | Reproduce and verify the V4 packet, sources, questions and bounds. | no | False |
+| `--paid-run-preflight` | Check frozen/live sources and spending proposal without provider calls or authorization. | no | False |
+| `--base-dir PATH` | External application base directory for live-source checks and future runtime files. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis evidence-supply-boundary-repair-proposal`
 
 Verify the provider-free V4 boundary/admission proposal and deterministic design assertions; no repairs or inference.

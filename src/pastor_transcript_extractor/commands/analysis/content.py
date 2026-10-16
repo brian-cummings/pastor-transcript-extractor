@@ -3128,6 +3128,38 @@ def analysis_g2_feasibility_review(
 
 
 @analysis_app.command(
+    "evidence-supply-boundary-revalidation",
+    help="Prepare/check the fingerprint-bound V4 semantic packet; provider execution remains unauthorized and unavailable.",
+)
+def analysis_evidence_supply_boundary_revalidation(
+    prepare_only: bool = typer.Option(False, "--prepare-only", help="Materialize the authorized source-controlled V4 input without inference."),
+    check_only: bool = typer.Option(False, "--check-only", help="Reproduce and verify the V4 packet, sources, questions and bounds."),
+    paid_run_preflight: bool = typer.Option(False, "--paid-run-preflight", help="Check frozen/live sources and spending proposal without provider calls or authorization."),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="External application base directory for live-source checks and future runtime files."),
+) -> None:
+    from pastor_transcript_extractor import evidence_supply_boundary_v4 as panel
+
+    if sum((prepare_only, check_only, paid_run_preflight)) > 1:
+        raise typer.BadParameter("Choose one prepare/check/preflight mode")
+    try:
+        packet = panel.write_packet() if prepare_only else json.loads(panel.INPUT.read_text())
+        panel.validate_packet(packet, reproduce=True)
+        directory = panel.output_directory(base_dir)
+        if paid_run_preflight:
+            original = json.loads((panel.old.frozen.HERE / 'input-v2.json').read_text())
+            panel.old.frozen.live_check(original, build_paths(base_dir).root)
+    except (ValueError, OSError, KeyError, RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"V4 packet verified: {len(packet['cases'])} geometries; {len(packet['requests'])} maximum attempts; "
+                  f"list-price ceiling ${packet['budget']['maximum_list_price_usd']}; provider_requests=0.", markup=False)
+    console.print(f"Fingerprint: {packet['content_fingerprint']}", markup=False)
+    console.print(f"Future runtime directory: {directory}", markup=False)
+    console.print(f"Review: {panel.HERE / 'REVIEW-v4.md'}", markup=False)
+    console.print("Implementation authorized; semantic execution/provider calls are NOT authorized. "
+                  "No execute option. Automatic attestation, discovery, collection and projection remain held.", markup=False)
+
+
+@analysis_app.command(
     "evidence-supply-boundary-repair-proposal",
     help="Verify the provider-free V4 boundary/admission proposal and deterministic design assertions; no repairs or inference.",
 )
@@ -3136,12 +3168,16 @@ def analysis_evidence_supply_boundary_repair_proposal() -> None:
 
     try:
         review = proposal.verify()
+        authorization = proposal.load_sealed(proposal.HERE / 'implementation-authorization-v4.json') if (proposal.HERE / 'implementation-authorization-v4.json').exists() else None
+        if authorization and authorization['proposal_fingerprint'] != review['manifest']['content_fingerprint']:
+            raise ValueError("Implementation authorization belongs to another proposal")
     except (ValueError, OSError, KeyError) as error:
         raise typer.BadParameter(str(error)) from error
     console.print(f"V4 proposal verified: {review['context_exhibits']} source-context exhibits; "
                   f"{review['forward_checks']} forward checks; {review['specification_assertions']} design assertions.", markup=False)
-    console.print("Brian accepted V3 boundary-integrity FAIL. Proposal only: no repair implementation, "
-                  "provider calls, discovery, collection or projection authorized.", markup=False)
+    authority_text = "Brian authorized narrow implementation and packet preparation; semantic execution remains held." if authorization else "Proposal only; no implementation authorization."
+    console.print("Brian accepted V3 boundary-integrity FAIL. " + authority_text +
+                  " No provider calls, automatic attestation, discovery, collection or projection authorized.", markup=False)
     console.print(f"Review: {proposal.HERE / 'PROPOSAL.md'}", markup=False)
 
 
