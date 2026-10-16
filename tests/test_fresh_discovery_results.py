@@ -1,9 +1,34 @@
 """Focused matcher/denominator checks; no corpus or provider work."""
 import unittest
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+from typer.testing import CliRunner
+from pastor_transcript_extractor.cli import app
 from pastor_transcript_extractor import fresh_discovery_results as r
 
 
 class MatcherTests(unittest.TestCase):
+    def test_review_hash_rejects_even_a_resealed_replacement(self):
+        with TemporaryDirectory() as directory:
+            path=Path(directory)/'artifact.json'
+            path.write_text(json.dumps(r.prep.seal(dict(result='original'))))
+            bound=dict(artifact=dict(path=str(path),sha256=r.prep.proposal.a1.file_hash(path)))
+            self.assertEqual('original',r.verify_bound_files(bound)['artifact']['result'])
+            path.write_text(json.dumps(r.prep.seal(dict(result='replacement'))))
+            with self.assertRaisesRegex(ValueError,'artifact changed'):
+                r.verify_bound_files(bound)
+
+    def test_verification_cli_does_not_prepare_or_discover(self):
+        with patch.object(r,'verify_preparation',return_value=dict(recommendation='FAIL')), \
+             patch.object(r,'prepare',side_effect=AssertionError('must not prepare')):
+            result=CliRunner().invoke(app,['analysis','fresh-discovery-readiness','--verify-preparation'])
+        self.assertEqual(0,result.exit_code,result.output)
+        self.assertIn('provider_requests=0',result.output)
+        result=CliRunner().invoke(app,['analysis','fresh-discovery-readiness','--verify-preparation','--freeze-inventory'])
+        self.assertNotEqual(0,result.exit_code)
+
     def test_small_source_denominators_are_diagnostic(self):
         for n in range(5):
             self.assertEqual('DIAGNOSTIC_ONLY',r.source_gate(0,n))

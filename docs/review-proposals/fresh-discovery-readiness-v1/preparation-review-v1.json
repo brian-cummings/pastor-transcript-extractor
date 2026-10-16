@@ -1,0 +1,1265 @@
+{
+  "version": "fresh-preparation-review-v1",
+  "review_date": "2026-10-16",
+  "status": "RECOMMENDATION_PENDING_BRIAN",
+  "recommendation": "FAIL",
+  "recommendation_scope": "Fresh Discovery/Readiness V1 frozen baseline; a failed complete-role recall upper bound is decisive. No semantic/admission or general containment verdict is made.",
+  "provider_execution_authorized": false,
+  "provider_requests": 0,
+  "artifacts": {
+    "inventory": {
+      "path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v1/natural-inventory-v1.json",
+      "sha256": "cdd3438b0d72aefe542506811c56a75132b9560d4885fd97224be55be9c68611"
+    },
+    "freeze": {
+      "path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v1/freeze-v1.json",
+      "sha256": "b222c1a8b237d48296409c68b77d36e2f3303c5584cc8b7a9501839d10f74a7b"
+    },
+    "runtime_references": {
+      "path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v1/references-v1.json",
+      "sha256": "8d2ab9df5e2c9bc027b54504095806ef804ea7c8812f7040a94d99e4a2ad254c"
+    },
+    "semantic_input": {
+      "path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v1/semantic-input-v1.json",
+      "sha256": "5a9f51b6e2b9e45b403cce3b3ffa812615a5c992df73aa4ab48ef75bf330fc62"
+    },
+    "matches": {
+      "path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v1/match-results-v1.json",
+      "sha256": "559debe07582572ee6b59863cccaf0ac9fb1150ac6a78fb864272af29167c9f9"
+    },
+    "references": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v1/references-v1.1.json",
+      "sha256": "8d2ab9df5e2c9bc027b54504095806ef804ea7c8812f7040a94d99e4a2ad254c"
+    },
+    "original_references": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v1/references-v1.json",
+      "sha256": "660d984396b8dc7e148e851ae3f5decc6daf30f1908de1342ef194695db4f697"
+    },
+    "source_validation": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v1/source-validation-v1.json",
+      "sha256": "ded577fc8d06e09234c868b2a0d2f6a94a7f12f285ee6e88d368a3e1c21f7657"
+    },
+    "authorization": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v1/preparation-authorization-v1.json",
+      "sha256": "cf88470a852282a1104b477368bb85201f1b83abde1da466bf092ee6791a3700"
+    },
+    "census_1565": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v1/census-1565-v1.json",
+      "sha256": "b1c0525c17b1f672c553b38e6991136da740606fc56e0a693514197903e751b6"
+    },
+    "census_1450": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v1/census-1450-v1.json",
+      "sha256": "7daf3c1fe31e80f9f6010f6df710a56205fecd0f9420de942bce184a6a6f8b7c"
+    },
+    "census_1618": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v1/census-1618-v1.json",
+      "sha256": "c755c647e59ef6ed147c6d51941b29ec390bd9cbd818fbb438a3a677367ec4fd"
+    }
+  },
+  "statistics": {
+    "G1_assurance": {
+      "opportunities": 2,
+      "role_containment_upper_bound_hits": 0,
+      "role_containment_recall_upper_bound": 0.0,
+      "automatic_required_evidence_upper_bound_hits": 0,
+      "automatic_evidence_recall_upper_bound": 0.0,
+      "opportunity_minimum": 5,
+      "decision": "HOLD",
+      "per_source": {
+        "1565": {
+          "opportunities": 0,
+          "hits": 0,
+          "recall_upper_bound": null,
+          "gate": "DIAGNOSTIC_ONLY"
+        },
+        "1450": {
+          "opportunities": 2,
+          "hits": 0,
+          "recall_upper_bound": 0.0,
+          "gate": "DIAGNOSTIC_ONLY"
+        },
+        "1618": {
+          "opportunities": 0,
+          "hits": 0,
+          "recall_upper_bound": null,
+          "gate": "DIAGNOSTIC_ONLY"
+        }
+      }
+    },
+    "G2_explanation": {
+      "opportunities": 31,
+      "role_containment_upper_bound_hits": 12,
+      "role_containment_recall_upper_bound": 0.3870967741935484,
+      "automatic_required_evidence_upper_bound_hits": 12,
+      "automatic_evidence_recall_upper_bound": 0.3870967741935484,
+      "opportunity_minimum": 10,
+      "decision": "FAIL",
+      "per_source": {
+        "1565": {
+          "opportunities": 8,
+          "hits": 2,
+          "recall_upper_bound": 0.25,
+          "gate": "FAIL"
+        },
+        "1450": {
+          "opportunities": 9,
+          "hits": 5,
+          "recall_upper_bound": 0.5555555555555556,
+          "gate": "FAIL"
+        },
+        "1618": {
+          "opportunities": 14,
+          "hits": 5,
+          "recall_upper_bound": 0.35714285714285715,
+          "gate": "FAIL"
+        }
+      }
+    },
+    "G3_current": {
+      "opportunities": 56,
+      "role_containment_upper_bound_hits": 42,
+      "role_containment_recall_upper_bound": 0.75,
+      "automatic_required_evidence_upper_bound_hits": 42,
+      "automatic_evidence_recall_upper_bound": 0.75,
+      "opportunity_minimum": 5,
+      "decision": "FAIL",
+      "per_source": {
+        "1565": {
+          "opportunities": 5,
+          "hits": 4,
+          "recall_upper_bound": 0.8,
+          "gate": "PASS"
+        },
+        "1450": {
+          "opportunities": 14,
+          "hits": 13,
+          "recall_upper_bound": 0.9285714285714286,
+          "gate": "PASS"
+        },
+        "1618": {
+          "opportunities": 37,
+          "hits": 25,
+          "recall_upper_bound": 0.6756756756756757,
+          "gate": "FAIL"
+        }
+      }
+    },
+    "G3_reported": {
+      "opportunities": 8,
+      "role_containment_upper_bound_hits": 2,
+      "role_containment_recall_upper_bound": 0.25,
+      "automatic_required_evidence_upper_bound_hits": 2,
+      "automatic_evidence_recall_upper_bound": 0.25,
+      "opportunity_minimum": 3,
+      "decision": "FAIL",
+      "per_source": {
+        "1565": {
+          "opportunities": 3,
+          "hits": 1,
+          "recall_upper_bound": 0.3333333333333333,
+          "gate": "DIAGNOSTIC_ONLY"
+        },
+        "1450": {
+          "opportunities": 2,
+          "hits": 1,
+          "recall_upper_bound": 0.5,
+          "gate": "DIAGNOSTIC_ONLY"
+        },
+        "1618": {
+          "opportunities": 3,
+          "hits": 0,
+          "recall_upper_bound": 0.0,
+          "gate": "DIAGNOSTIC_ONLY"
+        }
+      }
+    }
+  },
+  "budget": {
+    "maximum_attempts": 143,
+    "reserved_input_tokens_per_attempt": 64000,
+    "maximum_input_tokens": 9152000,
+    "maximum_model_list_price_usd": "0.384384000",
+    "input_usd_per_million": "0.042",
+    "output_usd_per_million": "0",
+    "automatic_retries": 0,
+    "model": "jev-1.13.0",
+    "long_context": false,
+    "per_request_context_limit": 64000,
+    "per_question_context_limit": 32000,
+    "pricing_checked_on": "2026-10-15",
+    "price_source": "https://docs.typesafe.ai/models",
+    "wire_bytes_min": 4248,
+    "wire_bytes_max": 22654,
+    "wire_bytes_total": 1520039,
+    "per_question_state_bytes_max": 8520,
+    "note": "64k reservation is the documented request-context ceiling, not an estimate of actual usage. Byte checks are engineering guards, not a provider tokenizer. Outputs are free at the checked list price. Exact future charged usage remains unknown.",
+    "authorized_attempts": 0,
+    "authorized_cost_usd": "0",
+    "actual_usage": null
+  },
+  "census": {
+    "definite_compatible": 97,
+    "unresolved_provenance": 2,
+    "controls": 47,
+    "full_main_characters": 83820,
+    "full_available_recording_characters": 125443,
+    "independent_second_annotator": false,
+    "reference_refinement_before_matching": true
+  },
+  "discovery": {
+    "total_candidates": 6120,
+    "G1_candidates": 8,
+    "G2_candidates": 3544,
+    "G3_candidates": 2568,
+    "G2_G3_source_derived_bound": 7200,
+    "candidate_counts": {
+      "1565": {
+        "G2": 398,
+        "G3": 180
+      },
+      "1450": {
+        "G1": 5,
+        "G2": 537,
+        "G3": 513
+      },
+      "1618": {
+        "G1": 3,
+        "G2": 2609,
+        "G3": 1875
+      }
+    },
+    "complete_role_upper_bound_hits": 56,
+    "canonical_role_upper_bound_hits": 56,
+    "complete_role_misses": 41,
+    "automatic_required_evidence_upper_bound_hits": 56,
+    "certified_semantically_safe_automatic_envelope_hits": null,
+    "envelope_loss_visible_under_required_span_test": 0,
+    "manual_rescue_discovery_credit": 0,
+    "inventory_envelope_status": "All 6120 prepared_not_attested; these are not provenance certificates.",
+    "collector_deferral_records": 1191,
+    "collector_deferral_note": "9 / 191 / 991 existing collector deferral records; not deduplicated reference opportunities or measured human review deferrals.",
+    "failure_counts": {
+      "G2_Bible_anchor_nomination_or_endpoint_miss": 13,
+      "G3_address_surface_nomination_miss": 18,
+      "G1_claim_nomination_or_required_target_framing_miss": 2,
+      "G2_pair_not_retained": 6,
+      "G3_complete_act_target_not_materialized": 2
+    },
+    "misses": [
+      {
+        "reference_id": "FR1565-G2-001",
+        "video_id": 1565,
+        "route": "G2_explanation",
+        "failure": "G2_Bible_anchor_nomination_or_endpoint_miss",
+        "source_roles": {
+          "left": {
+            "start": 9125,
+            "end": 9197,
+            "text": "Paul defines Phileiman as brother, coworker, partner,\ncoworker, partner,"
+          },
+          "right": {
+            "start": 9198,
+            "end": 9237,
+            "text": "signifying equality and mutual respect."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 9057,
+            "end": 9124,
+            "text": "Phileiman's letter is characterized by rich relational terminology."
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1565-G2-002",
+        "video_id": 1565,
+        "route": "G2_explanation",
+        "failure": "G2_Bible_anchor_nomination_or_endpoint_miss",
+        "source_roles": {
+          "left": {
+            "start": 9381,
+            "end": 9418,
+            "text": "Paul appeals\nappeals for love's sake."
+          },
+          "right": {
+            "start": 9557,
+            "end": 9616,
+            "text": "Paul models something radical, the relinquishment of power."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 9419,
+            "end": 9456,
+            "text": "to command to to uh sorry in verse 9."
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1565-G2-004",
+        "video_id": 1565,
+        "route": "G2_explanation",
+        "failure": "G2_Bible_anchor_nomination_or_endpoint_miss",
+        "source_roles": {
+          "left": {
+            "start": 11039,
+            "end": 11063,
+            "text": "my child, my very heart."
+          },
+          "right": {
+            "start": 11081,
+            "end": 11122,
+            "text": "He is a brother in Christ, a beloved son."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 11064,
+            "end": 11080,
+            "text": "Verses 10 to 12."
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1565-G2-005",
+        "video_id": 1565,
+        "route": "G2_explanation",
+        "failure": "G2_Bible_anchor_nomination_or_endpoint_miss",
+        "source_roles": {
+          "left": {
+            "start": 11232,
+            "end": 11338,
+            "text": "Receive Onissimos\nReceive Onissimos no longer as a slave but as more than a slave\nslave a beloved brother."
+          },
+          "right": {
+            "start": 11426,
+            "end": 11518,
+            "text": "but for a complete redefinition of of identity and relationship rooted in the family of God."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 11339,
+            "end": 11348,
+            "text": "Verse 16."
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1565-G2-006",
+        "video_id": 1565,
+        "route": "G2_explanation",
+        "failure": "G2_Bible_anchor_nomination_or_endpoint_miss",
+        "source_roles": {
+          "left": {
+            "start": 11617,
+            "end": 11664,
+            "text": "Yet for love's sake, I prefer to appeal to you."
+          },
+          "right": {
+            "start": 11698,
+            "end": 11767,
+            "text": "Because love transforms the heart in a way that obligation never can."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 11593,
+            "end": 11615,
+            "text": "In verse 9, Paul says,"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1565-G2-007",
+        "video_id": 1565,
+        "route": "G2_explanation",
+        "failure": "G2_Bible_anchor_nomination_or_endpoint_miss",
+        "source_roles": {
+          "left": {
+            "start": 13131,
+            "end": 13170,
+            "text": "For all of you are one in Christ Jesus."
+          },
+          "right": {
+            "start": 13240,
+            "end": 13345,
+            "text": "It means churches partnering across e ethnic and economic lines not out of pity but of genuine mutuality."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 13171,
+            "end": 13186,
+            "text": "Galatians 3:28."
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1565-G3-001",
+        "video_id": 1565,
+        "route": "G3_reported",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 11250,
+            "end": 11338,
+            "text": "Receive Onissimos no longer as a slave but as more than a slave\nslave a beloved brother."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 11168,
+            "end": 11231,
+            "text": "and to Phileiman Paul dares to make the boldest request of all."
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1565-G3-006",
+        "video_id": 1565,
+        "route": "G3_current",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 16188,
+            "end": 16214,
+            "text": "Uplift them in Jesus name."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1565-G3-008",
+        "video_id": 1565,
+        "route": "G3_reported",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 16389,
+            "end": 16425,
+            "text": "Enter thou into the joy of thy Lord."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 16215,
+            "end": 16258,
+            "text": "that in the end he'll be able to say to us,"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1450-G1-001",
+        "video_id": 1450,
+        "route": "G1_assurance",
+        "failure": "G1_claim_nomination_or_required_target_framing_miss",
+        "source_roles": {
+          "claim": {
+            "start": 26073,
+            "end": 26182,
+            "text": "And this will cause such persons names to be finally removed from the book of life, meaning their final doom."
+          }
+        },
+        "required_target_framing": [
+          {
+            "start": 25896,
+            "end": 26182,
+            "text": "If we persist in this refusal to accept his sacrifice for some area of our lives, eventually the record of those sins will be compared with the lack of his blood covering them. And this will cause such persons names to be finally removed from the book of life, meaning their final doom."
+          }
+        ],
+        "required_source_evidence_spans": [
+          {
+            "start": 25896,
+            "end": 26182,
+            "text": "If we persist in this refusal to accept his sacrifice for some area of our lives, eventually the record of those sins will be compared with the lack of his blood covering them. And this will cause such persons names to be finally removed from the book of life, meaning their final doom."
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1450-G1-002",
+        "video_id": 1450,
+        "route": "G1_assurance",
+        "failure": "G1_claim_nomination_or_required_target_framing_miss",
+        "source_roles": {
+          "claim": {
+            "start": 33096,
+            "end": 33162,
+            "text": "In this union with God, nothing can snatch us out of Jesus' hands."
+          }
+        },
+        "required_target_framing": [
+          {
+            "start": 33096,
+            "end": 33381,
+            "text": "In this union with God, nothing can snatch us out of Jesus' hands. Our innermost being is safe in his arms for now and forever. as we continue to cooperate with Jesus and do not turn away from him such that even the very most severe external or temporal bad happenings cannot shake us."
+          }
+        ],
+        "required_source_evidence_spans": [
+          {
+            "start": 33096,
+            "end": 33381,
+            "text": "In this union with God, nothing can snatch us out of Jesus' hands. Our innermost being is safe in his arms for now and forever. as we continue to cooperate with Jesus and do not turn away from him such that even the very most severe external or temporal bad happenings cannot shake us."
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1450-G2-001",
+        "video_id": 1450,
+        "route": "G2_explanation",
+        "failure": "G2_Bible_anchor_nomination_or_endpoint_miss",
+        "source_roles": {
+          "left": {
+            "start": 17041,
+            "end": 17088,
+            "text": "When you eat of that tree, you will surely die."
+          },
+          "right": {
+            "start": 17742,
+            "end": 17815,
+            "text": "In other words, they spiritually died on that very first day they sinned."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 16972,
+            "end": 17018,
+            "text": "As the elder just read from scriptures, indeed"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1450-G2-005",
+        "video_id": 1450,
+        "route": "G2_explanation",
+        "failure": "G2_pair_not_retained",
+        "source_roles": {
+          "left": {
+            "start": 22343,
+            "end": 22388,
+            "text": "children of wrath as it says in Ephesians 2:3"
+          },
+          "right": {
+            "start": 22403,
+            "end": 22509,
+            "text": "which meant something was wrong with Adam and Eve personally hence their feeling of shame as well as guilt"
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 22375,
+            "end": 22388,
+            "text": "Ephesians 2:3"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1450-G2-007",
+        "video_id": 1450,
+        "route": "G2_explanation",
+        "failure": "G2_Bible_anchor_nomination_or_endpoint_miss",
+        "source_roles": {
+          "left": {
+            "start": 29232,
+            "end": 29282,
+            "text": "Adam and Eve had been created in God's God's image"
+          },
+          "right": {
+            "start": 29310,
+            "end": 29365,
+            "text": "also meaning they were quite literally children of God."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 19811,
+            "end": 19866,
+            "text": "In the dialogue which is recorded in Genesis chapter 3,"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1450-G2-008",
+        "video_id": 1450,
+        "route": "G2_explanation",
+        "failure": "G2_Bible_anchor_nomination_or_endpoint_miss",
+        "source_roles": {
+          "left": {
+            "start": 36416,
+            "end": 36456,
+            "text": "He talks about why is my heart troubled?"
+          },
+          "right": {
+            "start": 36556,
+            "end": 36639,
+            "text": "They are the indicator on the dashboard so that we can know what's going on inside."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 36350,
+            "end": 36374,
+            "text": "But David in the Psalms,"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1450-G3-006",
+        "video_id": 1450,
+        "route": "G3_current",
+        "failure": "G3_complete_act_target_not_materialized",
+        "source_roles": {
+          "utterance": {
+            "start": 30490,
+            "end": 30951,
+            "text": "Even though technically and mentally we know that in Jesus is our importance, purpose, and significance, yet all too often this truth has not reached the depths of our being, resulting in our being plagued by very deep and often subconscious problems in these same areas, such as trying desperately to bolster ourselves by possessions, education, position ition, power, or making good traits such as being responsible, hardworking, honest, etc. into obsessions."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1450-G3-013",
+        "video_id": 1450,
+        "route": "G3_reported",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 38852,
+            "end": 38951,
+            "text": "Cleanse first that which is within the cup and platter, that the outside of them may be clean also."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 38814,
+            "end": 38843,
+            "text": "In Matthew 23:26, Jesus said,"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G2-001",
+        "video_id": 1618,
+        "route": "G2_explanation",
+        "failure": "G2_pair_not_retained",
+        "source_roles": {
+          "left": {
+            "start": 896,
+            "end": 905,
+            "text": "Laodicea."
+          },
+          "right": {
+            "start": 916,
+            "end": 947,
+            "text": "That's us. The lukewarm church."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 262,
+            "end": 303,
+            "text": "in the book of Revelation chapter 2 and 3"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G2-002",
+        "video_id": 1618,
+        "route": "G2_explanation",
+        "failure": "G2_pair_not_retained",
+        "source_roles": {
+          "left": {
+            "start": 10552,
+            "end": 10565,
+            "text": "without spot."
+          },
+          "right": {
+            "start": 10673,
+            "end": 10704,
+            "text": "Sin should not be a part of us."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 9889,
+            "end": 9938,
+            "text": "In the book of 2 Peter, 2 Peter chapter 12 to 18."
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G2-003",
+        "video_id": 1618,
+        "route": "G2_explanation",
+        "failure": "G2_pair_not_retained",
+        "source_roles": {
+          "left": {
+            "start": 18928,
+            "end": 18960,
+            "text": "he that sat up on him had a bow."
+          },
+          "right": {
+            "start": 19089,
+            "end": 19117,
+            "text": "It is none other than Jesus."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 18844,
+            "end": 18859,
+            "text": "Revelation 6:2,"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G2-006",
+        "video_id": 1618,
+        "route": "G2_explanation",
+        "failure": "G2_pair_not_retained",
+        "source_roles": {
+          "left": {
+            "start": 21240,
+            "end": 21255,
+            "text": "The black horse"
+          },
+          "right": {
+            "start": 21256,
+            "end": 21302,
+            "text": "representing a time of compromise, a dark age."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 20889,
+            "end": 20923,
+            "text": "the white horse of Revelation 6:2."
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G2-008",
+        "video_id": 1618,
+        "route": "G2_explanation",
+        "failure": "G2_Bible_anchor_nomination_or_endpoint_miss",
+        "source_roles": {
+          "left": {
+            "start": 26028,
+            "end": 26101,
+            "text": "If any what? Worship\nWorship the beast and his image and receive his mark"
+          },
+          "right": {
+            "start": 26183,
+            "end": 26266,
+            "text": "this whole this whole message right here is really talking about if it's a warning."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 25905,
+            "end": 25936,
+            "text": "Revelation 14, look at verse 9."
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G2-009",
+        "video_id": 1618,
+        "route": "G2_explanation",
+        "failure": "G2_Bible_anchor_nomination_or_endpoint_miss",
+        "source_roles": {
+          "left": {
+            "start": 27846,
+            "end": 27914,
+            "text": "Here are those who keep my commandments and have the faith of Jesus."
+          },
+          "right": {
+            "start": 28049,
+            "end": 28163,
+            "text": "This means, friends, the final the final church that's us\nthat's us does not finish the work by your own strength."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 27660,
+            "end": 27685,
+            "text": "In verse 12, God gives us"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G2-010",
+        "video_id": 1618,
+        "route": "G2_explanation",
+        "failure": "G2_Bible_anchor_nomination_or_endpoint_miss",
+        "source_roles": {
+          "left": {
+            "start": 39958,
+            "end": 40003,
+            "text": "the Greek word translated angel in Revelation"
+          },
+          "right": {
+            "start": 40129,
+            "end": 40148,
+            "text": "It means messenger."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 39958,
+            "end": 40003,
+            "text": "the Greek word translated angel in Revelation"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G2-013",
+        "video_id": 1618,
+        "route": "G2_explanation",
+        "failure": "G2_pair_not_retained",
+        "source_roles": {
+          "left": {
+            "start": 41066,
+            "end": 41107,
+            "text": "Under the angel of the church of Ephesus."
+          },
+          "right": {
+            "start": 41326,
+            "end": 41374,
+            "text": "You all are angels. No wings. You're messengers."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 41066,
+            "end": 41107,
+            "text": "Under the angel of the church of Ephesus."
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G2-014",
+        "video_id": 1618,
+        "route": "G2_explanation",
+        "failure": "G2_Bible_anchor_nomination_or_endpoint_miss",
+        "source_roles": {
+          "left": {
+            "start": 42650,
+            "end": 42721,
+            "text": "till we have sealed the servants of God in their what?\nwhat? foreheads."
+          },
+          "right": {
+            "start": 42786,
+            "end": 42830,
+            "text": "A sealing is to be done among us here first."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 42004,
+            "end": 42033,
+            "text": "We're told in Revelation 7:1,"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-007",
+        "video_id": 1618,
+        "route": "G3_current",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 8116,
+            "end": 8140,
+            "text": "Check them for yourself."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-008",
+        "video_id": 1618,
+        "route": "G3_current",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 8735,
+            "end": 8789,
+            "text": "brothers and sisters, how many commandments are there?"
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-009",
+        "video_id": 1618,
+        "route": "G3_current",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 13445,
+            "end": 13494,
+            "text": "And what is the time lapse between 1888 and 2026?"
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-012",
+        "video_id": 1618,
+        "route": "G3_reported",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 17408,
+            "end": 17437,
+            "text": "Follow me as I follow Christ."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 17297,
+            "end": 17337,
+            "text": "Then the last step is where you can say,"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-013",
+        "video_id": 1618,
+        "route": "G3_current",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 17948,
+            "end": 17967,
+            "text": "Do not fall asleep."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-015",
+        "video_id": 1618,
+        "route": "G3_current",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 19035,
+            "end": 19067,
+            "text": "Who is this individual, friends?"
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-016",
+        "video_id": 1618,
+        "route": "G3_current",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 19805,
+            "end": 19814,
+            "text": "Who else?"
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-018",
+        "video_id": 1618,
+        "route": "G3_current",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 24161,
+            "end": 24178,
+            "text": "Go there with me."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-021",
+        "video_id": 1618,
+        "route": "G3_current",
+        "failure": "G3_complete_act_target_not_materialized",
+        "source_roles": {
+          "utterance": {
+            "start": 27104,
+            "end": 27304,
+            "text": "Because if you worship and receive a mark,\nmark, >> [clears throat] throat] >> there's a there's there's a consequence. consequence. And the consequence is what? Fire and brimstone. It's hell of fire."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-026",
+        "video_id": 1618,
+        "route": "G3_current",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 32628,
+            "end": 32636,
+            "text": "Tell me."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-029",
+        "video_id": 1618,
+        "route": "G3_current",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 36126,
+            "end": 36144,
+            "text": "Be honest with me."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 36012,
+            "end": 36051,
+            "text": "How many of us here could show by hands"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-032",
+        "video_id": 1618,
+        "route": "G3_reported",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 37596,
+            "end": 37626,
+            "text": "This is the way, walk therein."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 37578,
+            "end": 37594,
+            "text": "Christ has said,"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-036",
+        "video_id": 1618,
+        "route": "G3_current",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 45879,
+            "end": 45905,
+            "text": "If I could get some music."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-037",
+        "video_id": 1618,
+        "route": "G3_current",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 46591,
+            "end": 46615,
+            "text": "Somebody say conquering."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      },
+      {
+        "reference_id": "FR1618-G3-041",
+        "video_id": 1618,
+        "route": "G3_reported",
+        "failure": "G3_address_surface_nomination_miss",
+        "source_roles": {
+          "utterance": {
+            "start": 48329,
+            "end": 48403,
+            "text": "Oh, look at my beloved son, my beloved daughter, in whom I'm well pleased."
+          }
+        },
+        "required_target_framing": [],
+        "required_source_evidence_spans": [
+          {
+            "start": 48305,
+            "end": 48327,
+            "text": "And he's going to say,"
+          }
+        ],
+        "interpretation": "Absent complete natural role match under frozen source-audited geometry; this label does not isolate all internal ranking/nomination subcauses."
+      }
+    ],
+    "unresolved_reference_ids": [
+      "FR1618-G3-024",
+      "FR1618-G3-031"
+    ]
+  },
+  "semantic_queue": {
+    "units": 98,
+    "G1": 8,
+    "G2": 45,
+    "G3": 45,
+    "requests": 143,
+    "retries": 0,
+    "input_fingerprint": "c65c0dc639078b4b5ea6f97ed061dd75cdd09a7433bf2c2dbb05eedc6f35784d",
+    "sample_selected_before_references": true,
+    "provider_execution_command_available": false,
+    "reason": "No paid execution is authorized or recommended after the provider-free discovery FAIL; executable handoff verifies exact packet only."
+  },
+  "review_burden": {
+    "source_review_intervals": [
+      {
+        "video_id": 1565,
+        "start": "2026-10-16T03:02:24.044530+00:00",
+        "end": "2026-10-16T03:20:11.507496+00:00",
+        "elapsed_minutes": 17.791049433333335,
+        "note": "Elapsed source-review/annotation interval, including authoring/tool time; not instrumented human active annotation time."
+      },
+      {
+        "video_id": 1450,
+        "start": "2026-10-16T03:05:38.236701+00:00",
+        "end": "2026-10-16T03:20:11.434513+00:00",
+        "elapsed_minutes": 14.553296866666667,
+        "note": "Elapsed source-review/annotation interval, including authoring/tool time; not instrumented human active annotation time."
+      },
+      {
+        "video_id": 1618,
+        "start": "2026-10-16T03:11:07.547079+00:00",
+        "end": "2026-10-16T03:18:39.336010+00:00",
+        "elapsed_minutes": 7.529815516666667,
+        "note": "Elapsed source-review/annotation interval, including authoring/tool time; not instrumented human active annotation time."
+      }
+    ],
+    "intervals_overlap": true,
+    "do_not_sum_as_active_time": true,
+    "human_active_review_minutes": null,
+    "candidate_review_median_minutes": null,
+    "candidate_review_p90_minutes": null,
+    "manual_envelope_repair_fraction": null,
+    "unresolved_candidate_deferral_fraction": null,
+    "full_target_envelope_semantic_audit_completed": false,
+    "reason": "Stopped after decisive full-inventory recall upper-bound failure. No semantic outputs or receipt-bound claim witnesses exist. Source-controlled census is not human production throughput; active 480-minute criterion remains unverified."
+  },
+  "limitations": [
+    "Three mechanically selected sources, not representative corpus or model-training novelty.",
+    "Source 1565 devotional presenter identity does not establish pastor ownership; no attribution made.",
+    "Source 1618 starts mid-address; all available message retained, prior missing speech unavailable.",
+    "Exact normalized duplicates against development sources excluded; near-duplicate/global duplicate guarantees unestablished.",
+    "Census is source-controlled Codex review with procedural blinding, not independent annotators.",
+    "Required-span and role containment give upper bounds, not certified safe automatic envelopes or semantic positives.",
+    "Two unresolved reference opportunities excluded from compatible denominators and separately preserved.",
+    "Only two narrow G1 assurance opportunities; G1 coverage HOLD, not general theology readiness.",
+    "Review burden, automatic provenance/attestation, sampled semantic yield, admitted evidence and corpus unit economics remain unknown."
+  ],
+  "next_recommendation": "Accept scoped discovery/readiness FAIL; do not authorize the prepared paid run. Preserve baseline and references. Any future collector repair must be separately scoped, preserve closed contracts/admission, and use a new unseen confirmation set after these sources have become diagnostic material.",
+  "held": [
+    "provider calls",
+    "discovery/ranker tuning",
+    "broader collection",
+    "790 non-reference V2 audit",
+    "automatic attestation",
+    "recurrence/rates",
+    "pastor projection/comparison/scoring",
+    "production use",
+    "V4/A1 reopening"
+  ],
+  "validation": {
+    "focused_fresh_unit_tests": 21,
+    "result": "PASS",
+    "preparation_verification": "PASS",
+    "provider_requests": 0,
+    "old_panel_replays": 0,
+    "semantic_or_corpus_evaluation_run": false,
+    "cli_contract_tests": 18
+  },
+  "content_fingerprint": "feb8bbd85380acd621867b9e1109883b48b972bdc6e2eeadde59f6d15876fbf7"
+}

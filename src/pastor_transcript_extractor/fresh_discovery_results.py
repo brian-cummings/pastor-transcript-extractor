@@ -17,6 +17,47 @@ from pastor_transcript_extractor import fresh_evidence_adapter as adapter
 
 HERE=prep.HERE
 REFERENCES=HERE/'references-v1.1.json'
+REVIEW=HERE/'preparation-review-v1.json'
+
+
+def verify_bound_files(bindings):
+    """Verify review-bound bytes as well as each document's internal seal."""
+    values={}
+    for name,info in bindings.items():
+        path=Path(info['path'])
+        if prep.proposal.a1.file_hash(path)!=info['sha256']:
+            raise ValueError('Reviewed preparation artifact changed: '+name)
+        values[name]=prep.gate.sealed(path)
+    return values
+
+
+def verify_preparation(base_dir=None):
+    """Read-only handoff: no discovery, reference revision, model or replay."""
+    prep.authorization(base_dir)
+    review=prep.gate.sealed(REVIEW)
+    if review['status']!='RECOMMENDATION_PENDING_BRIAN' or review['provider_execution_authorized'] is not False:
+        raise ValueError('Unknown fresh preparation review authority')
+    values=verify_bound_files(review['artifacts'])
+    root=prep.directory(base_dir).resolve()
+    for name in ('inventory','freeze','runtime_references','semantic_input','matches'):
+        if not Path(review['artifacts'][name]['path']).resolve().is_relative_to(root):
+            raise ValueError('Foreign preparation runtime directory')
+    inventory=values['inventory'];refs=values['references'];sem=values['semantic_input'];matches=values['matches']
+    census_validate(refs,inventory)
+    if (values['runtime_references']!=refs
+            or values['freeze']['inventory_fingerprint']!=inventory['content_fingerprint']
+            or matches['reference_fingerprint']!=refs['content_fingerprint']
+            or matches['inventory_fingerprint']!=inventory['content_fingerprint']
+            or matches['semantic_input_fingerprint']!=sem['content_fingerprint']
+            or sem['budget']['authorized_attempts']!=0
+            or sem['budget']['authorized_cost_usd']!='0'
+            or matches['provider_requests']!=0):
+        raise ValueError('Preparation identity or zero-provider authority changed')
+    adapter.validate_packet(sem)
+    if (matches['statistics']!=review['statistics'] or matches['budget']!=review['budget']
+            or matches['verdict']!=review['recommendation']):
+        raise ValueError('Review differs from frozen preparation results')
+    return review
 
 
 def contains(a,b):

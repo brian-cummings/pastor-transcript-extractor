@@ -3418,7 +3418,7 @@ pte analysis g2-feasibility-review [OPTIONS]
 
 ### `pte analysis fresh-discovery-readiness`
 
-Verify the bounded fresh-source discovery proposal and pinned source identities; no evaluation, providers or writes.
+Prepare or verify the authorized bounded fresh-source discovery packet; no provider execution.
 
 #### Usage
 
@@ -3431,6 +3431,10 @@ pte analysis fresh-discovery-readiness [OPTIONS]
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
 | `--check-only` | Verify the prepared proposal only; this workflow has no evaluation execution mode. | no | False |
+| `--source-preview` | Prepare the authorized three normalized source snapshots for boundary validation; no discovery or providers. | no | False |
+| `--freeze-inventory` | Freeze source-only candidates/envelopes/queue before any reference census; no providers. | no | False |
+| `--prepare-packet` | Match the frozen census against the sealed natural inventory and materialize exact semantic preflight; no providers. | no | False |
+| `--verify-preparation` | Read-only verification of the completed source census, frozen results and exact request packet; no discovery or providers. | no | False |
 | `--base-dir PATH` | Application directory containing the source metadata database. | no | — |
 | `--help` | Show this message and exit. | no | — |
 

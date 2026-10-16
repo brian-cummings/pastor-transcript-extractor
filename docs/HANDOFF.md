@@ -1,5 +1,51 @@
 # Handoff Notes
 
+## Fresh provider-free preparation complete; discovery FAIL recommended — 2026-10-16
+
+Brian authorized preparation with per-source recall gating only at **>=5 definite
+compatible opportunities**. Preparation is complete on unchanged primary sources
+1565 / 1450 / 1618; no reserve or provider requests. See the
+[review](review-proposals/fresh-discovery-readiness-v1/PREPARATION-REVIEW.md) and
+[sealed JSON](review-proposals/fresh-discovery-readiness-v1/preparation-review-v1.json).
+These supersede the proposal-only status in the historical entry below.
+
+Natural inventory/order/envelopes/queue were sealed before full-source census and
+matching. Census: 97 definite compatible opportunities, 2 unresolved, 47 controls.
+Even generous complete-role recall upper bounds fail: **G2 12/31, G3 current 42/56,
+G3 reported 2/8**. G1 **0/2 HOLD**, below aggregate opportunity floor 5. Per-source
+small cells remain diagnostic. Original and pre-match refined references are both
+retained. No reference changes, inventory regeneration or retrieval tuning followed
+matching. 41 misses are individually source-grounded in the JSON review.
+
+**Recommend accept scoped discovery/readiness FAIL and hold paid execution.**
+Potential role/envelope hits are upper bounds, not safe automatic evidence. A full
+semantic envelope audit, human active review throughput and deferral rates remain
+unestablished. No usable admitted yield or corpus unit cost is claimed. All sources
+and candidate bounds passed; source 1618 is left-censored, source 1565 presenter
+identity is not pastor ownership. Exact normalized duplicates were excluded only
+against development snapshots, not global/near duplicates.
+
+The separately versioned fresh adapter and focused synthetic tests retain closed
+measurement/admission safeguards, strict G1 assurance scope and typed round trips.
+The held exact queue has **98 units / 143 requests**, zero retries, **9,152,000 maximum
+input tokens / $0.384384 model list price**. Input fingerprint:
+`c65c0dc639078b4b5ea6f97ed061dd75cdd09a7433bf2c2dbb05eedc6f35784d`.
+No provider calls or paid execution command are authorized. Runtime inventory and
+states remain under configured PastorSearchData, not source control.
+
+```sh
+pte analysis fresh-discovery-readiness --verify-preparation
+```
+
+Read-only binding/request validation, no discovery, writes, old-panel replay or
+provider calls. 21 focused fresh tests and 18 CLI contract tests passed; the actual
+preparation verification passed. Do not rerun `--freeze-inventory` after references exist. Any future
+collector repair needs separate scope and a new unseen confirmation set; these three
+sources have become diagnostic material. A1 remains accepted/closed PASS; V4 raw FAIL /
+containment HOLD is unchanged. Collection, automatic attestation, the 790-item V2 audit,
+recurrence/rates and pastor projection/comparison/scoring remain held.
+
+
 ## A1 PASS accepted and closed; fresh discovery proposal prepared — 2026-10-15
 
 Brian accepted **bounded A1 atomic-local containment PASS** and closed further work
