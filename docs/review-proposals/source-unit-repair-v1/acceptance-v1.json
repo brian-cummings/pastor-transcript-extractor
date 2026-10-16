@@ -1,0 +1,37 @@
+{
+  "version": "source-unit-repair-v1-acceptance",
+  "status": "ACCEPTED_FROZEN_DEVELOPMENT_ONLY",
+  "decision_owner": "Brian",
+  "decision_date": "2026-10-16",
+  "audit_fingerprint": "f20dad19804225d662f09587cfdbfc9c73e173cefb8156a66d0667154b444e88",
+  "audit_sha256": "73656c688f6091c94fee5922534052257aaed6df81e42dd3ff7d263b175f7518",
+  "repair_input_fingerprint": "185f20b6a6dbe80aced4f1fcf3283f17f5856fe3e1d27e3a331b1f5a56570e3a",
+  "frozen_code_hashes": {
+    "src/pastor_transcript_extractor/evidence_supply_source_unit_repair.py": "c6efa2dafd4ed9dd0302996dcdc28093e1d83c956229f0278cb8c029d391e4c4",
+    "src/pastor_transcript_extractor/source_unit_repair.py": "c68fcbf6b473b308b3d00607e266583729193bd7c94b60c5226c7390ce0e8481",
+    "tests/test_source_unit_repair.py": "6e4670e0cf43ff517772080a5f267005e75bc020c47cd0942c524a26b55ad8b9"
+  },
+  "result_fingerprint": "b02f0da5fbbfbce147970ef2c3beed9f2e00ba3baec2f5e3ddb54897f5db1fbd",
+  "G1_assurance": "HOLD",
+  "Fresh_V2": "scoped_FAIL_unchanged",
+  "development_G2_risk": {
+    "hits": 19,
+    "opportunities": 30,
+    "recall_upper_bound": 0.6333333333333333
+  },
+  "preparation_authorized": true,
+  "unseen_source_only_confirmation_preparation": true,
+  "provider_calls_authorized": false,
+  "tuning_authorized": false,
+  "collection_projection_authorized": false,
+  "preserved_limitations": [
+    "47 supply recoveries are not usable observations",
+    "20/38 selected recovered G3 references mix source/recipient content",
+    "Seven G2 partition/composition misses preserved",
+    "Four original source-2325 G2 failures preserved",
+    "Four frozen G3 granularity questions preserved",
+    "Review throughput, automatic provenance and economics unknown"
+  ],
+  "next_step": "Mechanically selected blinded unseen source-only confirmation; explicit target/envelope source review; no semantic execution.",
+  "content_fingerprint": "f6d744c6a2977be9c21e841dcb4612cfbc484f2e9884f808e28d586735f6bdef"
+}
