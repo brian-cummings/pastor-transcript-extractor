@@ -3138,12 +3138,14 @@ def analysis_evidence_supply_boundary_audit(
 
     try:
         report = audit.verify(base_dir)
+        accepted = audit.accepted_decision(report)
     except (ValueError, OSError, KeyError) as error:
         raise typer.BadParameter(str(error)) from error
     console.print(f"Audit verified: {report['audited_cases']} cases; {report['audited_fields']} fields; "
                   f"{report['prepared_differences']} frozen differences; provider_requests=0.", markup=False)
-    console.print("Recommendation: FAIL under frozen semantics and the containment standard. Brian decision pending. "
-                  "Discovery, collection and projection remain held.", markup=False)
+    decision_text = "Brian accepted boundary-integrity FAIL; gate closed." if accepted else "Brian decision pending."
+    console.print("FAIL under frozen semantics and the containment standard. " + decision_text +
+                  " Discovery, collection and projection remain held.", markup=False)
     console.print(f"Review: {audit.AUDIT.with_suffix('.md')}", markup=False)
 
 

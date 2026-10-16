@@ -1,0 +1,18 @@
+{
+  "version": "semantic-boundary-v3-human-decision",
+  "decision_date": "2026-10-15",
+  "decision_owner": "Brian",
+  "status": "FAIL",
+  "closed": true,
+  "audit_fingerprint": "264f254a27b2f8d389c1b1a935e735017c5c7ebc602b6ec767cc60c605f628f8",
+  "audit_file_sha256": "e4bdafb83e919b338b424d65f49dd0ffd686946efaaabe5e49eb33b6adbd116a",
+  "input_fingerprint": "44a8d902e90fc5183a689c5f8bebcc052d45ff053fecf93f54c6482cbc01565b",
+  "human_instruction": "Accept the V3 semantic boundary audit recommendation as Brian’s decision: boundary-integrity FAIL. Discovery readiness remains closed.",
+  "accepted_scope": "21-case semantic boundary panel; technical integrity PASS, frozen raw-semantic and containment standards FAIL. Prior representation design acceptance and closed measurement contracts unchanged.",
+  "authorized_next": "Prepare narrow provider-free V4 repair proposal only, with invariant specifications and deterministic design tests; no repair implementation or provider execution.",
+  "repair_implementation_authorized": false,
+  "provider_calls_authorized": false,
+  "discovery_readiness": "closed",
+  "collection_projection_scoring_authorized": false,
+  "content_fingerprint": "c2a57dc221017070f9421ee941bd2ee85d6340336cf4c189c28797dce936ca57"
+}

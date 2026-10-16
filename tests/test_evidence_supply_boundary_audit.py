@@ -70,7 +70,7 @@ class BoundaryAuditTests(unittest.TestCase):
             self.check()
 
     def test_cli_has_no_execution_path(self):
-        with patch.object(audit, 'verify', return_value=self.report), patch.object(audit.panel, 'execute', side_effect=AssertionError('provider execution')):
+        with patch.object(audit, 'verify', return_value=self.report), patch.object(audit, 'accepted_decision', return_value=None), patch.object(audit.panel, 'execute', side_effect=AssertionError('provider execution')):
             result = CliRunner().invoke(app, ['analysis', 'evidence-supply-boundary-audit'])
         self.assertEqual(0, result.exit_code, result.output)
         self.assertIn('provider_requests=0', result.output)

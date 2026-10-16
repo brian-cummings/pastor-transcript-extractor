@@ -13,6 +13,20 @@ from pastor_transcript_extractor import evidence_supply_boundary_validation as p
 AUDIT = panel.HERE / 'source-audit-v3.json'
 
 
+def accepted_decision(report):
+    path = AUDIT.with_name('acceptance-decision-v3.json')
+    if not path.exists():
+        return None
+    decision = json.loads(path.read_text())
+    if (decision['content_fingerprint'] != panel.frozen.fp({k: v for k, v in decision.items() if k != 'content_fingerprint'})
+            or decision['audit_fingerprint'] != report['content_fingerprint']
+            or decision['audit_file_sha256'] != panel.frozen.v1.file_hash(AUDIT)
+            or decision['input_fingerprint'] != report['input_fingerprint']
+            or decision['status'] != 'FAIL' or decision['closed'] is not True):
+        raise ValueError('Invalid V3 human decision binding')
+    return decision
+
+
 def verify(base_dir=None):
     packet = json.loads(panel.INPUT.read_text())
     panel.validate_packet(packet)
@@ -45,6 +59,7 @@ def verify(base_dir=None):
     if panel.interpret(packet, rows) != result:
         raise ValueError('Completed result differs from exact receipt reconstruction')
     validate_coverage(report, packet, result)
+    accepted_decision(report)
     return report
 
 
