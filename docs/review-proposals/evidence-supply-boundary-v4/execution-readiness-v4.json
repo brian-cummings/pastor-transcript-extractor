@@ -1,0 +1,51 @@
+{
+  "version": "boundary-v4-execution-readiness",
+  "date": "2026-10-15",
+  "status": "AUTHORIZED_READY_FOR_BRIAN_NOT_EXECUTED_BY_CODEX",
+  "input_fingerprint": "3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c",
+  "authorization_fingerprint": "ce5a8f8bd656d48e558512e14d2ca1645276e838785524ad12d7cee32a18ff62",
+  "file_hashes": {
+    "docs/review-proposals/evidence-supply-boundary-v4/input-v4.json": "14b341361533604df1d165463c337af69db23e4dd8e9bd3a368c93794448a405",
+    "docs/review-proposals/evidence-supply-boundary-v4/execution-authorization-v4.json": "a0f932e2542a20c1b6926d1af723a163535953f886852ee333b6326e81c57d17",
+    "src/pastor_transcript_extractor/evidence_supply_boundary_execution.py": "ae8b93b720b447ac89a8bce5e5deaf5cd0d29fb991bad2e27a1a3e82d7f3cb59",
+    "src/pastor_transcript_extractor/commands/analysis/content.py": "546c1b6994960d8add944f438487e7e5e6c91cae0121c360668784605de5cd5d",
+    "tests/test_evidence_supply_boundary_execution.py": "9b7001a8177afac44c211270b0b68a3f425369a198bf0cced975f624809f6695",
+    "docs/review-proposals/evidence-supply-boundary-v4/EXECUTION-v4.md": "49ffb6c8dd2366138bfdbbb94546354629793955f8139fc6349bcfc5f150f60c"
+  },
+  "scope": {
+    "geometries": 24,
+    "requests": 37,
+    "gated_fields": 224,
+    "maximum_input_tokens": 2368000,
+    "maximum_list_price_usd": "0.099456",
+    "automatic_retries": 0
+  },
+  "tests": {
+    "focused_passes": 81,
+    "executor_tests": 17,
+    "failures": 0,
+    "provider": "Injected fake replies only; no real provider"
+  },
+  "preflight": {
+    "technical": "PASS",
+    "live_sources": 6,
+    "cached_receipts": 0,
+    "charged_attempts": 0,
+    "provider_requests": 0
+  },
+  "input_unchanged": true,
+  "preliminary_oracle_accepted": false,
+  "future_review_witness_accepted": false,
+  "runtime_directory": "/Users/briancummings/Documents/PastorSearchData/evaluation/evidence-supply-boundary-v4",
+  "budget_reset_by_base_directory_override": false,
+  "paid_run_executed_by_Codex": false,
+  "post_run": "Codex full source audit, receipt-bound source review, separate raw-semantic and containment recommendations; Brian decides.",
+  "holds": [
+    "G1/G2/G3 contracts/questions/model/threshold changes",
+    "ranker and automatic attestation",
+    "discovery and broader collection",
+    "790 non-reference V2 audit",
+    "production use, recurrence/rates and pastor projection/comparison/scoring"
+  ],
+  "content_fingerprint": "93a6b965e45024b14edbb404bf70a809581badcfc8b913a65306b52055592997"
+}

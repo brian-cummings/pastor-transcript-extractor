@@ -1,5 +1,49 @@
 # Handoff Notes
 
+## V4 semantic execution authorized; Brian's command ready — 2026-10-15
+
+Brian explicitly authorized the frozen fingerprint
+`3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c`.
+The [execution authorization](review-proposals/evidence-supply-boundary-v4/execution-authorization-v4.json)
+supersedes the historical execution hold without changing `input-v4.json` or its
+frozen states/questions/model/options/.80 gate. It pins the runner and one external
+runtime directory. Source oracle and future source-review witnesses remain unaccepted.
+
+The [exact instructions](review-proposals/evidence-supply-boundary-v4/EXECUTION-v4.md)
+are ready. Brian runs:
+
+```sh
+pte analysis evidence-supply-boundary-revalidation --paid-run-preflight
+pte analysis evidence-supply-boundary-revalidation --execute \
+  --approve-paid-packet 3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c
+```
+
+Bounded executor: 24 cases / 37 cumulative attempts / 2,368,000 maximum input tokens /
+$0.099456 maximum model list price; zero retries, long context off. Durable charged
+reservation before sending, sealed raw receipt before parsing, exclusive lock,
+identical-state local replay only, and cumulative reservation/accounting checks.
+Lost/failed/corrupt charged replies stop for a separate recovery decision, never
+automatic replacement. A different `--base-dir` cannot reset this authorization's
+budget. Runtime ledger/receipts/results stay under
+`/Users/briancummings/Documents/PastorSearchData/evaluation/evidence-supply-boundary-v4/`.
+
+Technical preflight PASS: six live sources match, zero cached V4 receipts, zero charged
+attempts, zero real provider requests during preparation. Focused executor tests use
+injected replies only. **Codex has not run or monitored the paid panel.** Wait for
+Brian's completion/error output, then read `results-v4.md`/`.json`, ledger and sealed
+receipts at that location. Do not initiate or poll the provider job.
+
+After completion Codex audits all 224 fields across 24 geometries, every positive,
+every historical/forward difference and every unscored failure against supplied
+state and full frozen source. Prepare receipt-bound source review and separate
+raw-semantic and containment recommendations; Brian decides. Initial pre-review
+quarantine is mandatory, not a semantic FAIL or proof of containment. Unsupported
+admitted evidence means containment FAIL; conservative quarantine alone is not failure,
+while anti-vacuity positives remain necessary. Do not invent a V5 merely because raw
+model answers are imperfect. Frozen V3 remains FAIL. G1/G2/G3/ranker changes,
+automatic attestation, discovery, broader collection, 790 non-reference V2 audit,
+production use, recurrence/rates and pastor projection/comparison/scoring remain held.
+
 ## V4 guard implemented; semantic packet ready for separate authorization — 2026-10-15
 
 Brian [authorized the narrow implementation](review-proposals/evidence-supply-boundary-v4/implementation-authorization-v4.json),

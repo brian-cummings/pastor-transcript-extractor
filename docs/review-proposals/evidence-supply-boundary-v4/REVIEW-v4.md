@@ -1,5 +1,10 @@
 # V4 implementation review and semantic packet
 
+> Authority update: Brian has separately authorized the exact frozen 37-request
+> panel. See [current execution instructions](EXECUTION-v4.md) and the
+> [fingerprint-bound execution authorization](execution-authorization-v4.json).
+> The implementation-stage review below is historical; the input remains unchanged.
+
 **Narrow implementation complete; 64 focused tests pass. Semantic revalidation is prepared but unauthorized and has not run.** No provider requests were made. Brian's [implementation authorization](implementation-authorization-v4.json) supersedes the original proposal-only authority within this narrow scope; it grants no semantic execution or downstream permission.
 
 The central boundary now checks actual measured decisions against an accepted, receipt-bound source review before constructing any usable local item. G2 no longer relies on a quarantine label: biblical-anchor eligibility and an actual explanatory edge are enforced requirements. G3 validates every positive act and its source/recipient/adoption compatibility, retains the narration veto, and separates current-preacher from reported-local namespaces. Required unknowns fail closed. Review interpretation never fills a withheld field or relabels a wrong raw answer.
