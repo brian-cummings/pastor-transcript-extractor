@@ -1,5 +1,60 @@
 # Handoff Notes
 
+## V4 source audit complete: raw FAIL / containment HOLD recommended — 2026-10-15
+
+Brian completed all 37 authorized requests. All sealed receipts and charge accounting
+validate against fingerprint
+`3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c`:
+84,280 input / 13,056 output tokens, $0.003539760 model list price. No provider calls
+during audit; frozen sources, states, questions, checks, raw results and gates unchanged.
+The authorized attempt ceiling is exhausted; do not execute or monitor another job.
+
+The [receipt-bound audit](review-proposals/evidence-supply-boundary-v4/source-audit-v4.md)
+and [JSON evidence](review-proposals/evidence-supply-boundary-v4/source-audit-v4.json)
+cover all 24 cases / 224 fields, 20 historical differences, two forward differences
+and every unscored failure. Six cases contain seven confirmed critical emitted fields:
+R021/R080 false Bible edges, R078 narration-to-reassurance, R111 voice/recipient,
+R114 recipient, and **unscored R073 wrong preacher voice despite Father Gabriel's
+explicit reporting introduction**. R053 now preserves reported provenance; R076
+correctly identifies God and withholds voice rather than emitting wrong present voice.
+
+Actual admission/export/deserialization/local-consumer replay admits **two supported
+G2 items (R003 and new explicit R004 gloss), 22 quarantines, zero unsupported or
+unresolved admitted items**. All 13 G3 `boundary` decisions are gated unclear.
+R018 and R053 have compatible local acts/provenance but boundary withholding is their
+sole active blocker. Required current and reported G3 positives are therefore absent.
+Recommend **raw-semantic FAIL / containment HOLD**, not containment PASS from zero
+harmful admissions and not containment FAIL merely for conservative quarantine.
+Brian's final decisions remain pending; discovery readiness stays closed.
+
+The [receipt-bound source review](review-proposals/evidence-supply-boundary-v4/source-review-v4.json)
+and [acceptance record](review-proposals/evidence-supply-boundary-v4/source-review-acceptance-v4.json)
+transparently use Brian's current instruction as delegated post-receipt audit-replay
+authority only, with Codex as reviewer. They do not claim Brian personally inspected
+the newly authored review or accepted either final gate. No preliminary source oracle,
+production use or general provenance attestation is accepted. R023 bare-token voice
+and the old R077 fragment's definite relevance remain unresolved and quarantined.
+
+```sh
+pte analysis evidence-supply-boundary-v4-audit
+```
+
+This read-only verifier binds all 40 original runtime artifacts, checks complete
+field/comparison/source coverage and replays the actual frozen guard/consumer.
+Six forward comparisons exist: five match and one has two differences; the other
+18 cases have no forward check. Do not interpret 23 zero-difference cases as 23
+validated forward positives. R077 complete-promise reassurance/relevance/reported
+voice/nonadopted-report are supported; recipient, binding and boundary withhold.
+Do not substitute wrong low-probability argmaxes or confidence for gated decisions.
+
+No V5, model/prompt/threshold tuning, provider rerun or policy change is proposed.
+If Brian wants a next step after deciding these findings, limit it to a provider-free
+review of the existing sufficiency/admission interface using these same receipts;
+any prospective change needs a separate concrete decision, never retrospective PASS.
+Continue to hold automatic attestation, discovery/collection, 790-item V2 audit,
+production, recurrence/rates and pastor projection/comparison/scoring. No corpus
+economics or usable-item unit cost is established.
+
 ## V4 semantic execution authorized; Brian's command ready — 2026-10-15
 
 Brian explicitly authorized the frozen fingerprint

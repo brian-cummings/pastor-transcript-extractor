@@ -3128,6 +3128,27 @@ def analysis_g2_feasibility_review(
 
 
 @analysis_app.command(
+    "evidence-supply-boundary-v4-audit",
+    help="Verify the receipt-bound V4 source audit and replay admission/consumer paths; no providers or writes.",
+)
+def analysis_evidence_supply_boundary_v4_audit(
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Authorized application data directory holding the completed V4 receipts."),
+) -> None:
+    from pastor_transcript_extractor import evidence_supply_boundary_v4_audit as audit
+
+    try:
+        report = audit.verify(base_dir)
+    except (ValueError, OSError, KeyError, RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    summary = report['admission_summary']
+    console.print(f"Audit verified: {report['audited_cases']} cases / {report['audited_fields']} fields; "
+                  f"{summary['admitted']} supported local G2 items; {summary['unsupported_admitted']} unsupported admitted; provider_requests=0.", markup=False)
+    console.print("Recommendations: raw-semantic FAIL; containment HOLD. No current or reported G3 item admitted: "
+                  "all 13 actual G3 boundary decisions are withheld. Brian's final decisions pending; discovery remains closed.", markup=False)
+    console.print(f"Review: {audit.HERE / 'source-audit-v4.md'}", markup=False)
+
+
+@analysis_app.command(
     "evidence-supply-boundary-revalidation",
     help="Check or explicitly execute Brian's authorized fixed 37-request V4 semantic panel; no downstream activation.",
 )
