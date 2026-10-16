@@ -1,0 +1,28 @@
+{
+  "version": "fresh-v2-accepted-decision",
+  "status": "ACCEPTED",
+  "decision": "scoped_FAIL",
+  "G1_assurance": "HOLD",
+  "review_fingerprint": "598cb010753d176a4916e4aa6ae2e888eb9eb9349ab7874977878ba4e99a5ed4",
+  "review_sha256": "e54254e1a26041a3381dd4693f1ee3bdf608e3d7dabac95fc9dc15f2bbb77af6",
+  "result_sha256": "f203aa54f3bd6660a23af65a7a22819b81c62871f0a00eb3037b5623fe3ba94c",
+  "preserved_misses": 62,
+  "segmentation_blocked": 54,
+  "separate_G2_pair_misses": 4,
+  "composite_G3_questions": 4,
+  "retired_from_confirmation_video_ids": [
+    2325,
+    610,
+    2298
+  ],
+  "provider_calls_authorized": false,
+  "authorized_next_step": "provider-free bounded source-unit repair development only",
+  "confirmation_selection": "after development repair review",
+  "holds": [
+    "no providers",
+    "no semantic or admission changes",
+    "no collection",
+    "no projection or scoring"
+  ],
+  "content_fingerprint": "b6b3c6c1e7b35b85ec6075f9e1da227e4939dcab6f44a7f4542c6a03551f1605"
+}
