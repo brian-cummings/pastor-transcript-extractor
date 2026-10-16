@@ -1,0 +1,28 @@
+{
+  "version": "fresh-discovery-acceptance-v1",
+  "status": "ACCEPTED",
+  "decision_owner": "Brian",
+  "decision_date": "2026-10-16",
+  "review_fingerprint": "feb8bbd85380acd621867b9e1109883b48b972bdc6e2eeadde59f6d15876fbf7",
+  "review_sha256": "a5b32723ee81ef91e11426a81b958998dc3dc3db9780de4b22c03cb03568182b",
+  "discovery_readiness": "FAIL",
+  "G1_assurance": "HOLD",
+  "provider_execution_authorized": false,
+  "retired_confirmation_video_ids": [
+    1565,
+    1450,
+    1618
+  ],
+  "retired_confirmation_source_ids": [
+    66,
+    60,
+    32
+  ],
+  "V4_raw_semantics": "FAIL",
+  "V4_containment": "HOLD",
+  "A1_bounded_atomic_containment": "PASS_CLOSED",
+  "repair_authorized": true,
+  "scope": "Provider-free bounded Collector V4 repair using Fresh V1 diagnostics only; no semantic/admission changes or provider calls.",
+  "production_collection_projection_authorized": false,
+  "content_fingerprint": "5f159be2c1a7b4e154a2414325cf0e48f1e50b949710c8b5708791209d3f59c2"
+}
