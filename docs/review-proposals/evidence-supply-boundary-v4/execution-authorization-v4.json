@@ -1,0 +1,43 @@
+{
+  "version": "boundary-v4-semantic-execution-authorization",
+  "date": "2026-10-15",
+  "decision_owner": "Brian",
+  "executor": "Brian",
+  "runtime_directory": "/Users/briancummings/Documents/PastorSearchData/evaluation/evidence-supply-boundary-v4",
+  "status": "EXECUTION_AUTHORIZED",
+  "input_fingerprint": "3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c",
+  "input_file_sha256": "14b341361533604df1d165463c337af69db23e4dd8e9bd3a368c93794448a405",
+  "runner_file_sha256": "ae8b93b720b447ac89a8bce5e5deaf5cd0d29fb991bad2e27a1a3e82d7f3cb59",
+  "human_instruction": "Authorize execution preparation and execution of the fingerprint-bound V4 semantic boundary panel with input fingerprint 3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c. Brian will execute the run.",
+  "model": "jev-1.13.0",
+  "selected_option_probability_gate": 0.8,
+  "case_geometries": 24,
+  "maximum_attempts": 37,
+  "maximum_input_tokens": 2368000,
+  "maximum_list_price_usd": "0.099456",
+  "automatic_retries": 0,
+  "long_context": false,
+  "provider_calls_authorized": true,
+  "semantic_execution_authorized": true,
+  "source_oracle_accepted": false,
+  "future_review_witness_accepted": false,
+  "downstream_authorized": false,
+  "authorized_execution_tie_in": [
+    "charged-attempt ledger",
+    "sealed receipts persisted before parsing",
+    "locking and local identical-receipt recovery",
+    "cumulative token/attempt/price ceilings",
+    "fingerprint-bound CLI command for Brian"
+  ],
+  "post_run": "Codex audits every positive field, forward/historical difference and unscored failure against supplied and full-source evidence. Prepare receipt-bound source review and separate raw-semantic and containment recommendations for Brian.",
+  "not_authorized": [
+    "G1/G2/G3 contract, question, model or threshold changes",
+    "ranker or automatic attestation",
+    "discovery or broader collection",
+    "790 non-reference V2 audit",
+    "pastor projection/comparison/scoring",
+    "recurrence/rates or production use",
+    "replacements or retries beyond the frozen ceiling"
+  ],
+  "content_fingerprint": "ce5a8f8bd656d48e558512e14d2ca1645276e838785524ad12d7cee32a18ff62"
+}

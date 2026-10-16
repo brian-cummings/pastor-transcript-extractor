@@ -3129,34 +3129,48 @@ def analysis_g2_feasibility_review(
 
 @analysis_app.command(
     "evidence-supply-boundary-revalidation",
-    help="Prepare/check the fingerprint-bound V4 semantic packet; provider execution remains unauthorized and unavailable.",
+    help="Check or explicitly execute Brian's authorized fixed 37-request V4 semantic panel; no downstream activation.",
 )
 def analysis_evidence_supply_boundary_revalidation(
     prepare_only: bool = typer.Option(False, "--prepare-only", help="Materialize the authorized source-controlled V4 input without inference."),
     check_only: bool = typer.Option(False, "--check-only", help="Reproduce and verify the V4 packet, sources, questions and bounds."),
     paid_run_preflight: bool = typer.Option(False, "--paid-run-preflight", help="Check frozen/live sources and spending proposal without provider calls or authorization."),
+    execute_paid: bool = typer.Option(False, "--execute", help="Brian executes only the authorized fixed V4 panel with its exact approval fingerprint."),
+    approve_paid_packet: str | None = typer.Option(None, "--approve-paid-packet", help="Exact authorized V4 fingerprint; grants no source-review or downstream acceptance."),
     base_dir: Path | None = typer.Option(None, "--base-dir", help="External application base directory for live-source checks and future runtime files."),
 ) -> None:
     from pastor_transcript_extractor import evidence_supply_boundary_v4 as panel
+    from pastor_transcript_extractor import evidence_supply_boundary_execution as runner
 
-    if sum((prepare_only, check_only, paid_run_preflight)) > 1:
-        raise typer.BadParameter("Choose one prepare/check/preflight mode")
+    if sum((prepare_only, check_only, paid_run_preflight, execute_paid)) > 1:
+        raise typer.BadParameter("Choose one prepare/check/preflight/execute mode")
+    if approve_paid_packet and not execute_paid:
+        raise typer.BadParameter("--approve-paid-packet requires --execute")
+    if execute_paid and approve_paid_packet != runner.FROZEN_FINGERPRINT:
+        raise typer.BadParameter("Execution requires the exact --approve-paid-packet fingerprint")
     try:
         packet = panel.write_packet() if prepare_only else json.loads(panel.INPUT.read_text())
         panel.validate_packet(packet, reproduce=True)
         directory = panel.output_directory(base_dir)
+        runner.authorization(packet, base_dir)
         if paid_run_preflight:
-            original = json.loads((panel.old.frozen.HERE / 'input-v2.json').read_text())
-            panel.old.frozen.live_check(original, build_paths(base_dir).root)
+            _, ledger, reused = runner.preflight(packet, base_dir)
+            console.print(f"Technical preflight PASS; valid cached receipts={len(reused)}; charged attempts={len(ledger['attempts'])}; provider_requests=0.", markup=False)
+        console.print(f"V4 packet verified: {len(packet['cases'])} geometries; {len(packet['requests'])} maximum attempts; "
+                      f"list-price ceiling ${packet['budget']['maximum_list_price_usd']}; provider_requests=0 during checks.", markup=False)
+        console.print(f"Fingerprint: {packet['content_fingerprint']}", markup=False)
+        console.print(f"Runtime directory: {directory}", markup=False)
+        console.print("Brian authorized this fixed run only. Source oracle and future review witnesses are not accepted. "
+                      "Automatic attestation, discovery, collection and projection remain held.", markup=False)
+        if execute_paid:
+            result = runner.execute(packet, approve_paid_packet, base_dir=base_dir)
+            console.print(f"Completed {result['usage']['attempts']} attempts; input tokens={result['usage']['input_tokens']}; "
+                          f"list price=${result['actual_list_price_usd']}. Codex source audit and Brian decisions pending.", markup=False)
+            console.print(f"Results: {directory / 'results-v4.md'} and results-v4.json", markup=False)
+        else:
+            console.print(f"Run instructions: {panel.HERE / 'EXECUTION-v4.md'}", markup=False)
     except (ValueError, OSError, KeyError, RuntimeError) as error:
         raise typer.BadParameter(str(error)) from error
-    console.print(f"V4 packet verified: {len(packet['cases'])} geometries; {len(packet['requests'])} maximum attempts; "
-                  f"list-price ceiling ${packet['budget']['maximum_list_price_usd']}; provider_requests=0.", markup=False)
-    console.print(f"Fingerprint: {packet['content_fingerprint']}", markup=False)
-    console.print(f"Future runtime directory: {directory}", markup=False)
-    console.print(f"Review: {panel.HERE / 'REVIEW-v4.md'}", markup=False)
-    console.print("Implementation authorized; semantic execution/provider calls are NOT authorized. "
-                  "No execute option. Automatic attestation, discovery, collection and projection remain held.", markup=False)
 
 
 @analysis_app.command(
@@ -3169,15 +3183,16 @@ def analysis_evidence_supply_boundary_repair_proposal() -> None:
     try:
         review = proposal.verify()
         authorization = proposal.load_sealed(proposal.HERE / 'implementation-authorization-v4.json') if (proposal.HERE / 'implementation-authorization-v4.json').exists() else None
+        execution_authorized = (proposal.HERE / 'execution-authorization-v4.json').exists()
         if authorization and authorization['proposal_fingerprint'] != review['manifest']['content_fingerprint']:
             raise ValueError("Implementation authorization belongs to another proposal")
     except (ValueError, OSError, KeyError) as error:
         raise typer.BadParameter(str(error)) from error
     console.print(f"V4 proposal verified: {review['context_exhibits']} source-context exhibits; "
                   f"{review['forward_checks']} forward checks; {review['specification_assertions']} design assertions.", markup=False)
-    authority_text = "Brian authorized narrow implementation and packet preparation; semantic execution remains held." if authorization else "Proposal only; no implementation authorization."
+    authority_text = "Implementation authorized; Brian separately authorized the exact 37-request V4 panel." if execution_authorized else "Brian authorized narrow implementation and packet preparation; semantic execution remains held." if authorization else "Proposal only; no implementation authorization."
     console.print("Brian accepted V3 boundary-integrity FAIL. " + authority_text +
-                  " No provider calls, automatic attestation, discovery, collection or projection authorized.", markup=False)
+                  " Automatic attestation, discovery, collection and projection remain held.", markup=False)
     console.print(f"Review: {proposal.HERE / 'PROPOSAL.md'}", markup=False)
 
 

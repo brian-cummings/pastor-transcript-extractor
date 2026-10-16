@@ -82,7 +82,7 @@ class V4PacketTests(unittest.TestCase):
             with patch.object(panel.old.frozen.v1,'file_hash',side_effect=altered):
                 with self.assertRaisesRegex(ValueError,'changed'):panel.validate_packet(self.packet)
 
-    def test_cli_has_no_execute_or_paid_approval_path(self):
+    def test_cli_requires_explicit_fingerprint_for_execution(self):
         for option in ('--execute','--approve-paid-packet'):
             result=CliRunner().invoke(app,['analysis','evidence-supply-boundary-revalidation',option])
             self.assertNotEqual(0,result.exit_code)

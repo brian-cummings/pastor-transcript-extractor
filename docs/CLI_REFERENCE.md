@@ -3418,7 +3418,7 @@ pte analysis g2-feasibility-review [OPTIONS]
 
 ### `pte analysis evidence-supply-boundary-revalidation`
 
-Prepare/check the fingerprint-bound V4 semantic packet; provider execution remains unauthorized and unavailable.
+Check or explicitly execute Brian's authorized fixed 37-request V4 semantic panel; no downstream activation.
 
 #### Usage
 
@@ -3433,6 +3433,8 @@ pte analysis evidence-supply-boundary-revalidation [OPTIONS]
 | `--prepare-only` | Materialize the authorized source-controlled V4 input without inference. | no | False |
 | `--check-only` | Reproduce and verify the V4 packet, sources, questions and bounds. | no | False |
 | `--paid-run-preflight` | Check frozen/live sources and spending proposal without provider calls or authorization. | no | False |
+| `--execute` | Brian executes only the authorized fixed V4 panel with its exact approval fingerprint. | no | False |
+| `--approve-paid-packet TEXT` | Exact authorized V4 fingerprint; grants no source-review or downstream acceptance. | no | — |
 | `--base-dir PATH` | External application base directory for live-source checks and future runtime files. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
