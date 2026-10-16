@@ -1,0 +1,45 @@
+{
+  "version": "atomic-a1-human-final-decision",
+  "decision_date": "2026-10-15",
+  "decision_owner": "Brian",
+  "status": "PASS",
+  "closed": true,
+  "scope": "bounded_reviewed_atomic_local_development_panel_only",
+  "audit_fingerprint": "e021247ed2631ab60ee65a01fc908e874e87eae53bf982309e7428c26f907616",
+  "audit_sha256": "f7dd2a3ae7bda115c05c513a03fbdc19ef0dd80803904f4768ff3186aa4623b5",
+  "input_fingerprint": "7e8dbe1a65edc1eab2e98ab7edb9bbbe0468629ead2c0d761541bf7938dbca62",
+  "result_fingerprint": "cf9d9e32745029c98daa1ed9b7b26f76254364e2261cdd21343834531ffcaff4",
+  "v4_decisions": {
+    "raw_semantic": "FAIL",
+    "containment": "HOLD"
+  },
+  "human_instruction": "Accept bounded A1 atomic-local containment PASS. Close further containment iteration on this development panel. Do not authorize another semantic experiment, V5, threshold/prompt/model tuning, or additional replay work on these cases.",
+  "accepted_counts": {
+    "cases": 24,
+    "sealed_receipts": 37,
+    "provider_requests": 0,
+    "admitted": 4,
+    "quarantined": 20,
+    "unsupported": 0,
+    "unresolved": 0,
+    "missing_G3_positives": 0,
+    "unexpected": 0
+  },
+  "further_panel_replay_authorized": false,
+  "semantic_experiments_authorized": false,
+  "tuning_authorized": false,
+  "automatic_attestation_authorized": false,
+  "production_authorized": false,
+  "authorized_next": "Prepare a separate bounded fresh-evidence discovery/readiness evaluation proposal. No evaluation execution or provider calls authorized by this decision.",
+  "discovery_execution_authorized": false,
+  "provider_calls_authorized": false,
+  "collection_projection_scoring_authorized": false,
+  "limitations": [
+    "Post-selection development-panel validation, not held-out generalization or error-rate estimation.",
+    "Source-controlled human/Codex-reviewed sufficiency and provenance remain safety oracles. Automatic attestation is unestablished.",
+    "No new semantic experiment: Jev raw weaknesses and all 13 withheld G3 boundary decisions remain unchanged.",
+    "No discovery recall, opportunity denominators, review throughput/deferral rate, recurrence, corpus economics or production safety established.",
+    "No discovery/collection activation, 790-item V2 audit or pastor projection/comparison/scoring."
+  ],
+  "content_fingerprint": "1cedb8ae9612115fdae4c5dd749ec6e2c1b7858c6343d12ec4d21ee86d398017"
+}

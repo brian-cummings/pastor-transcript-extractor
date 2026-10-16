@@ -3139,10 +3139,18 @@ def analysis_g3_atomic_admission_replay(
     base_dir: Path | None = typer.Option(None, "--base-dir", help="Authorized application data directory with existing V4 receipts."),
 ) -> None:
     from pastor_transcript_extractor import g3_atomic_admission_replay as replay
+    from pastor_transcript_extractor.g3_atomic_admission_decision import accepted_decision
 
     if sum((check_only, execute, verify_audit)) > 1 or (approve_packet and not execute):
         raise typer.BadParameter("Choose one mode; --approve-packet requires --execute")
     try:
+        closed = accepted_decision()
+        if closed:
+            if execute:
+                raise ValueError("Brian closed the A1 development panel; further replay is unauthorized")
+            console.print("Accepted: bounded A1 atomic-local containment PASS. Development panel closed; "
+                          "no replay performed. V4 raw FAIL / containment HOLD unchanged. provider_requests=0.", markup=False)
+            return
         if verify_audit:
             report = replay.verify_audit(base_dir)
             console.print(f"Source audit verified: bounded A1 containment {report['recommendation']} recommended; "
