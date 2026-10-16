@@ -3212,7 +3212,11 @@ def analysis_fresh_discovery_readiness(
                 fingerprint=confirmation.freeze(base_dir)
                 console.print(f"Frozen V3 source-only inventory: {fingerprint}; provider_requests=0. No candidate/match counts displayed before independent census.",markup=False)
             elif prepare_packet or verify_preparation:
-                raise ValueError("V3 independent source census and target/envelope review follow Brian's inventory freeze; Codex prepares those artifacts before matching. No provider execution route exists.")
+                from pastor_transcript_extractor import fresh_discovery_confirmation_v3_results as results
+                value=results.prepare(base_dir) if prepare_packet else results.verify_review(base_dir)
+                console.print(f"V3 source-only result: {value.get('recommendation',value.get('verdict'))}; provider_requests=0; no semantic execution authorized.",markup=False)
+                console.print(f"Fingerprint: {value['content_fingerprint']}",markup=False)
+                console.print(f"Review: {confirmation.HERE / 'SOURCE-REVIEW-v3.md'}",markup=False)
             else:
                 manifest,_=confirmation.verify(base_dir)
                 console.print(f"V3 preparation verified: {manifest['content_fingerprint']}; provider_requests=0.",markup=False)
