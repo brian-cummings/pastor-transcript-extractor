@@ -3205,7 +3205,14 @@ def analysis_fresh_discovery_readiness(
                 fingerprint=confirmation.freeze(base_dir)
                 console.print(f"Frozen V2 natural inventory: {fingerprint}; provider_requests=0. No candidate/match results displayed before census.",markup=False)
             elif prepare_packet or verify_preparation:
-                raise ValueError("V2 census/match review is not yet prepared; no provider execution is available")
+                from pastor_transcript_extractor import fresh_discovery_confirmation_results as results
+                value=results.prepare(base_dir) if prepare_packet else results.verify_review(base_dir)
+                console.print(f"Fresh V2 source-only recommendation: {value.get('verdict',value.get('recommendation'))}; provider_requests=0. No provider execution authorized.",markup=False)
+                if prepare_packet:
+                    console.print(f"Results fingerprint: {value['content_fingerprint']}",markup=False)
+                    console.print(f"Results: {confirmation.directory(base_dir) / 'results-v2.json'}",markup=False)
+                else:
+                    console.print(f"Review: {confirmation.HERE / 'PREPARATION-REVIEW.md'}",markup=False)
             else:
                 manifest,_=confirmation.verify(base_dir)
                 console.print(f"Fresh V2 source/collector bindings verified: {manifest['content_fingerprint']}; provider_requests=0.",markup=False)
