@@ -1,0 +1,2417 @@
+{
+  "version": "fresh-v2-preparation-review",
+  "status": "RECOMMENDATION_PENDING_BRIAN",
+  "review_date": "2026-10-16",
+  "recommendation": "FAIL",
+  "G1_assurance": "HOLD",
+  "provider_requests": 0,
+  "provider_execution_authorized": false,
+  "artifacts": {
+    "inventory": {
+      "path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v2/natural-inventory-v1.json",
+      "sha256": "9da3a73832ce71127586b44747bf8b3e4807007371e164270403c02e5b3db2ff"
+    },
+    "freeze": {
+      "path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v2/freeze-v2.json",
+      "sha256": "a34f37aa4f146c73d77e99f960347c3193711a8c78d913d7d732e5ce774b9a15"
+    },
+    "references": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v2/references-v2.1.json",
+      "sha256": "c6093d60d115f9ca1ea7bb5f90ff146d7628cc5d91df26173fa65276ec98edb2"
+    },
+    "original_references": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v2/references-v2.json",
+      "sha256": "30e4742ec383637844d3a124942b4fa106daaad6129273e91b8b92ea825f0110"
+    },
+    "runtime_references": {
+      "path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v2/references-v2.json",
+      "sha256": "c6093d60d115f9ca1ea7bb5f90ff146d7628cc5d91df26173fa65276ec98edb2"
+    },
+    "results": {
+      "path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v2/results-v2.json",
+      "sha256": "f203aa54f3bd6660a23af65a7a22819b81c62871f0a00eb3037b5623fe3ba94c"
+    },
+    "manifest": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v2/source-manifest-v2.json",
+      "sha256": "93f918ad9ed430fff5ba72275d086b05199dad7b441979f4b65bd19087aba489"
+    },
+    "source_validation": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v2/source-validation-v2.json",
+      "sha256": "59a2f633785da48632ce5b93527a14b626becc0e91a72c5d69a121f31f2360ee"
+    },
+    "authorization": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v2/authorization-v2.json",
+      "sha256": "0423136fc9770459933a2be10e99858d9097c4eb78e8553b61e0838a30b1b87e"
+    },
+    "development_acceptance": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/evidence-supply-collector-v4/development-acceptance-v4.1.json",
+      "sha256": "baf05ba831fb66a671f1421d3f8c44ad2ba81dd30bad43d935367e8f7eae776e"
+    },
+    "census_2325": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v2/census-2325-v2.json",
+      "sha256": "2c42ca5865e2e3ff1fb5f1fb0886001179aed1fc16d12caf9a50a7b0e8cdb1e6"
+    },
+    "census_610": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v2/census-610-v2.json",
+      "sha256": "c58dca87f7160c854aaf56007fdbc7752b84e8212bc3c36e469de5b90600bd78"
+    },
+    "census_2298": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v2/census-2298-v2.json",
+      "sha256": "049e36d589116cfdbc17b5e416a6324a74e1bf5e7ae329098074da6fa1c8c642"
+    }
+  },
+  "statistics": {
+    "G1_assurance": {
+      "opportunities": 0,
+      "complete_role_upper_bound_hits": 0,
+      "complete_role_recall_upper_bound": null,
+      "required_evidence_upper_bound_hits": 0,
+      "required_evidence_recall_upper_bound": null,
+      "aggregate_floor": 5,
+      "per_source": {
+        "2325": {
+          "opportunities": 0,
+          "hits": 0,
+          "recall_upper_bound": null,
+          "gate": "DIAGNOSTIC_ONLY"
+        },
+        "610": {
+          "opportunities": 0,
+          "hits": 0,
+          "recall_upper_bound": null,
+          "gate": "DIAGNOSTIC_ONLY"
+        },
+        "2298": {
+          "opportunities": 0,
+          "hits": 0,
+          "recall_upper_bound": null,
+          "gate": "DIAGNOSTIC_ONLY"
+        }
+      },
+      "decision": "HOLD"
+    },
+    "G2_explanation": {
+      "opportunities": 30,
+      "complete_role_upper_bound_hits": 10,
+      "complete_role_recall_upper_bound": 0.3333333333333333,
+      "required_evidence_upper_bound_hits": 10,
+      "required_evidence_recall_upper_bound": 0.3333333333333333,
+      "aggregate_floor": 10,
+      "per_source": {
+        "2325": {
+          "opportunities": 14,
+          "hits": 10,
+          "recall_upper_bound": 0.7142857142857143,
+          "gate": "FAIL"
+        },
+        "610": {
+          "opportunities": 9,
+          "hits": 0,
+          "recall_upper_bound": 0.0,
+          "gate": "FAIL"
+        },
+        "2298": {
+          "opportunities": 7,
+          "hits": 0,
+          "recall_upper_bound": 0.0,
+          "gate": "FAIL"
+        }
+      },
+      "decision": "FAIL"
+    },
+    "G3_current": {
+      "opportunities": 52,
+      "complete_role_upper_bound_hits": 18,
+      "complete_role_recall_upper_bound": 0.34615384615384615,
+      "required_evidence_upper_bound_hits": 18,
+      "required_evidence_recall_upper_bound": 0.34615384615384615,
+      "aggregate_floor": 5,
+      "per_source": {
+        "2325": {
+          "opportunities": 21,
+          "hits": 18,
+          "recall_upper_bound": 0.8571428571428571,
+          "gate": "PASS"
+        },
+        "610": {
+          "opportunities": 24,
+          "hits": 0,
+          "recall_upper_bound": 0.0,
+          "gate": "FAIL"
+        },
+        "2298": {
+          "opportunities": 7,
+          "hits": 0,
+          "recall_upper_bound": 0.0,
+          "gate": "FAIL"
+        }
+      },
+      "decision": "FAIL"
+    },
+    "G3_reported": {
+      "opportunities": 12,
+      "complete_role_upper_bound_hits": 4,
+      "complete_role_recall_upper_bound": 0.3333333333333333,
+      "required_evidence_upper_bound_hits": 4,
+      "required_evidence_recall_upper_bound": 0.3333333333333333,
+      "aggregate_floor": 3,
+      "per_source": {
+        "2325": {
+          "opportunities": 5,
+          "hits": 4,
+          "recall_upper_bound": 0.8,
+          "gate": "PASS"
+        },
+        "610": {
+          "opportunities": 7,
+          "hits": 0,
+          "recall_upper_bound": 0.0,
+          "gate": "FAIL"
+        },
+        "2298": {
+          "opportunities": 0,
+          "hits": 0,
+          "recall_upper_bound": null,
+          "gate": "DIAGNOSTIC_ONLY"
+        }
+      },
+      "decision": "FAIL"
+    }
+  },
+  "active_source_ids": [
+    2325,
+    610,
+    2298
+  ],
+  "technical_exclusion": {
+    "video_id": 1363,
+    "reason": "non_sermon",
+    "replacement": 2325,
+    "stage": "before discovery/census"
+  },
+  "source_coverage": {
+    "full_recording_chars": 91408,
+    "main_source_chars": 80443,
+    "definite_opportunities": 94,
+    "controls_and_ambiguities": 39,
+    "independent_second_annotator": false,
+    "reference_correction_before_matching": true
+  },
+  "candidate_summary": {
+    "total": 2111,
+    "G1": 35,
+    "G2": 1657,
+    "G3": 419,
+    "G2_G3": 2076,
+    "reference_unmatched": 2051,
+    "source_2325_control_contacts": 217,
+    "controls_touched": 11,
+    "source_2325_candidate_density_G2_G3_per_1000_main_chars": 98.88015248987372,
+    "potential_full_inventory_request_slots": 2530,
+    "potential_request_slots_are_authorization": false,
+    "frozen_queue_units": 41,
+    "frozen_queue_request_shapes": 57,
+    "executable_semantic_packet_prepared": false,
+    "low_aggregate_candidate_count_is_efficiency": false,
+    "burden_interpretation": "Almost all candidates come from the punctuated source; other sources have catastrophic supply loss. Do not average this into cheap corpus economics. Precision/false-positive yield and human review burden remain unknown."
+  },
+  "miss_review_counts": {
+    "confirmed_directed_pair_materialization_failure": 4,
+    "frozen_composite_target_miss_with_reference_granularity_question": 4,
+    "confirmed_source_unit_segmentation_failure": 54
+  },
+  "misses": [
+    {
+      "reference_id": "F2R2325-G2-001",
+      "video_id": 2325,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 1094,
+          "end": 1145,
+          "text": "But their eyes were prevented from recognizing him."
+        },
+        "right": {
+          "start": 3158,
+          "end": 3230,
+          "text": "Jesus allowed their eyes to stay\nshut until he could heal their hearing."
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_directed_pair_materialization_failure",
+      "diagnostic": {
+        "cause": "complete_directed_pair_not_materialized",
+        "oversized_covering_units": [],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2325-G2-005",
+      "video_id": 2325,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 7230,
+          "end": 7273,
+          "text": "See, Jesus started with the books of Moses."
+        },
+        "right": {
+          "start": 7531,
+          "end": 7670,
+          "text": "Well, I believe that they needed a refresher course in the basics before they would be able to grasp the mind-boggling truths of salvation."
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_directed_pair_materialization_failure",
+      "diagnostic": {
+        "cause": "complete_directed_pair_not_materialized",
+        "oversized_covering_units": [],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2325-G2-008",
+      "video_id": 2325,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 11513,
+          "end": 11568,
+          "text": "Come in and eat with us. Come stay with us for a while."
+        },
+        "right": {
+          "start": 11734,
+          "end": 11776,
+          "text": "a brief encounter with Jesus isn't enough."
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_directed_pair_materialization_failure",
+      "diagnostic": {
+        "cause": "complete_directed_pair_not_materialized",
+        "oversized_covering_units": [],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2325-G2-011",
+      "video_id": 2325,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 13511,
+          "end": 13589,
+          "text": "As soon as they saw and heard Jesus, they have to share the bread with others."
+        },
+        "right": {
+          "start": 15791,
+          "end": 15831,
+          "text": "It was the natural result of seeing him."
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_directed_pair_materialization_failure",
+      "diagnostic": {
+        "cause": "complete_directed_pair_not_materialized",
+        "oversized_covering_units": [],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2325-G3-008",
+      "video_id": 2325,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 11356,
+          "end": 11405,
+          "text": "Now look at verses 28 and 29. Luke 24, 28 and 29."
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "frozen_composite_target_miss_with_reference_granularity_question",
+      "diagnostic": {
+        "cause": "complete_atomic_target_not_materialized",
+        "oversized_covering_units": [],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [
+        {
+          "candidate_id": "2325:G3:8d467fd7c0a9614a",
+          "utterance": {
+            "start": 11356,
+            "end": 11385,
+            "text": "Now look at verses 28 and 29."
+          }
+        }
+      ],
+      "review_note": "Combined adjacent invitations or a separate citation sentence may demand more target text than one narrower atomic act needs. Existing first-sentence hypotheses do not establish admission/safe provenance. Preserve strict miss; do not rescore after seeing outcomes."
+    },
+    {
+      "reference_id": "F2R2325-G3-011",
+      "video_id": 2325,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 13016,
+          "end": 13148,
+          "text": "Think of a full five-course gourmet meal delivered right to your door's heart. With all the trimmings, think of Thanksgiving dinner."
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "frozen_composite_target_miss_with_reference_granularity_question",
+      "diagnostic": {
+        "cause": "complete_atomic_target_not_materialized",
+        "oversized_covering_units": [],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [
+        {
+          "candidate_id": "2325:G3:3ccfff0da5209690",
+          "utterance": {
+            "start": 13016,
+            "end": 13094,
+            "text": "Think of a full five-course gourmet meal delivered right to your door's heart."
+          }
+        }
+      ],
+      "review_note": "Combined adjacent invitations or a separate citation sentence may demand more target text than one narrower atomic act needs. Existing first-sentence hypotheses do not establish admission/safe provenance. Preserve strict miss; do not rescore after seeing outcomes."
+    },
+    {
+      "reference_id": "F2R2325-G3-016",
+      "video_id": 2325,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 16165,
+          "end": 16290,
+          "text": "Now notice very carefully what the last message of mercy is that is going to be given to the world. And notice what it isn't."
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "frozen_composite_target_miss_with_reference_granularity_question",
+      "diagnostic": {
+        "cause": "complete_atomic_target_not_materialized",
+        "oversized_covering_units": [],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [
+        {
+          "candidate_id": "2325:G3:aaf7637625ec577a",
+          "utterance": {
+            "start": 16165,
+            "end": 16264,
+            "text": "Now notice very carefully what the last message of mercy is that is going to be given to the world."
+          }
+        }
+      ],
+      "review_note": "Combined adjacent invitations or a separate citation sentence may demand more target text than one narrower atomic act needs. Existing first-sentence hypotheses do not establish admission/safe provenance. Preserve strict miss; do not rescore after seeing outcomes."
+    },
+    {
+      "reference_id": "F2R2325-G3-024",
+      "video_id": 2325,
+      "route": "G3_reported",
+      "source_roles": {
+        "utterance": {
+          "start": 11513,
+          "end": 11568,
+          "text": "Come in and eat with us. Come stay with us for a while."
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "frozen_composite_target_miss_with_reference_granularity_question",
+      "diagnostic": {
+        "cause": "complete_atomic_target_not_materialized",
+        "oversized_covering_units": [],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [
+        {
+          "candidate_id": "2325:G3:bab3b3752da1e4ca",
+          "utterance": {
+            "start": 11386,
+            "end": 11537,
+            "text": "Luke 24, 28 and 29.\nSo they come to the place in the road where they turn off to go to their house. But then they urge Jesus, \"Come in and eat with us."
+          }
+        },
+        {
+          "candidate_id": "2325:G3:2b53ff1883035d67",
+          "utterance": {
+            "start": 11406,
+            "end": 11537,
+            "text": "So they come to the place in the road where they turn off to go to their house. But then they urge Jesus, \"Come in and eat with us."
+          }
+        },
+        {
+          "candidate_id": "2325:G3:7e744c6a8fe564cd",
+          "utterance": {
+            "start": 11486,
+            "end": 11537,
+            "text": "But then they urge Jesus, \"Come in and eat with us."
+          }
+        }
+      ],
+      "review_note": "Combined adjacent invitations or a separate citation sentence may demand more target text than one narrower atomic act needs. Existing first-sentence hypotheses do not establish admission/safe provenance. Preserve strict miss; do not rescore after seeing outcomes."
+    },
+    {
+      "reference_id": "F2R610-G2-001",
+      "video_id": 610,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 11873,
+          "end": 11889,
+          "text": "the head of gold"
+        },
+        "right": {
+          "start": 11890,
+          "end": 11910,
+          "text": "representing babylon"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          },
+          {
+            "role": "right",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G2-002",
+      "video_id": 610,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 12012,
+          "end": 12033,
+          "text": "then to iron and play"
+        },
+        "right": {
+          "start": 12034,
+          "end": 12084,
+          "text": "which is represented in the ten kingdoms of europe"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          },
+          {
+            "role": "right",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G2-003",
+      "video_id": 610,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 15277,
+          "end": 15293,
+          "text": "i know thy works"
+        },
+        "right": {
+          "start": 15325,
+          "end": 15349,
+          "text": "the lord knows your work"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          },
+          {
+            "role": "right",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G2-004",
+      "video_id": 610,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 15388,
+          "end": 15422,
+          "text": "by their fruit you shall know them"
+        },
+        "right": {
+          "start": 15423,
+          "end": 15536,
+          "text": "people know us if we are genuine if we are true people know us for the values for the principles that we stand by"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          },
+          {
+            "role": "right",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G2-005",
+      "video_id": 610,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 19165,
+          "end": 19182,
+          "text": "the word seraphim"
+        },
+        "right": {
+          "start": 19183,
+          "end": 19201,
+          "text": "it means fiery one"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          },
+          {
+            "role": "right",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G2-006",
+      "video_id": 610,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 23496,
+          "end": 23536,
+          "text": "woe is me for i am a man of unclean lips"
+        },
+        "right": {
+          "start": 23402,
+          "end": 23468,
+          "text": "the first thing that god did was to show isaiah his true condition"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          },
+          {
+            "role": "right",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G2-007",
+      "video_id": 610,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 29266,
+          "end": 29292,
+          "text": "he touched my lips with it"
+        },
+        "right": {
+          "start": 29483,
+          "end": 29545,
+          "text": "in other words god did not condemn him\nhim but god forgave him"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          },
+          {
+            "role": "right",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G2-008",
+      "video_id": 610,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 27294,
+          "end": 27397,
+          "text": "the dead were judged according to their works\ntheir works by the things which were written in the books"
+        },
+        "right": {
+          "start": 27424,
+          "end": 27512,
+          "text": "the book are opened up every single day that the works of our hands are being chronicled"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          },
+          {
+            "role": "right",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G2-009",
+      "video_id": 610,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 38464,
+          "end": 38481,
+          "text": "here am i send me"
+        },
+        "right": {
+          "start": 38051,
+          "end": 38100,
+          "text": "he then responded with courage to the divine call"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          },
+          {
+            "role": "right",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-001",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 3258,
+          "end": 3376,
+          "text": "you might be a mute but i know that somebody in their space can say amen or could just type in the chat if you're able"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-002",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 3850,
+          "end": 3923,
+          "text": "let us pray as we invite the presence of god to lead us in this discourse"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-003",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 5509,
+          "end": 5527,
+          "text": "everybody say amen"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-004",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 9702,
+          "end": 9777,
+          "text": "please get out your bible with me and let's follow as we read the scripture"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-005",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 15930,
+          "end": 16005,
+          "text": "we need to put action in place we need to do things that will create a path"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-006",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 16434,
+          "end": 16655,
+          "text": "if god is for us then we have nothing to fear if god is with our decision-makings if god is with our talents if god is with our vision if god is with our agitation to get ahead to move forward then we have nothing to fear"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-007",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 16805,
+          "end": 16845,
+          "text": "we need to have faith that looks upwards"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-008",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 16857,
+          "end": 16905,
+          "text": "if you keep looking within you will be depressed"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-009",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 20405,
+          "end": 20429,
+          "text": "turn your bibles with me"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-010",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 20776,
+          "end": 20805,
+          "text": "come on somebody read with me"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-011",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 23582,
+          "end": 23802,
+          "text": "brothers and sisters when we come into the temple of god there must be reverence a lot of somebody there must be respect that there is a god in our midst we can't do as we wish we can't just speak out of terms as we wish"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-012",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 23902,
+          "end": 23978,
+          "text": "we've got to model by precept and by example for our children for our family"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-013",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 25172,
+          "end": 25210,
+          "text": "i will ask you to just write this down"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-014",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 25355,
+          "end": 25537,
+          "text": "brothers and sisters we all need to examine ourselves if we really want to build god's temple if we really want to say to see men and women be saved then we need to examine ourselves"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-015",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 27794,
+          "end": 27929,
+          "text": "we need to allow the presence of god to reveal our limitations to reveal our crookedness to reveal our sinfulness that we need a savior"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-016",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 28983,
+          "end": 29110,
+          "text": "today we bring you good news that when you are seeking the lord's presence and seeking the lord's leading god will speak to you"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-017",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 30053,
+          "end": 30141,
+          "text": "if you and i can't say something good about our brothers and sisters we will keep silent"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-018",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 32923,
+          "end": 33054,
+          "text": "you might be growing older each day but god is not finished with us and before we fall asleep god is going to establish this church"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-019",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 33055,
+          "end": 33165,
+          "text": "so let us put our hands in our hearts together let's do every single thing that god is revealing himself to us"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-020",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 36650,
+          "end": 36726,
+          "text": "even if we are unsure you got to do what is right in other words be obedient"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-021",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 41627,
+          "end": 41652,
+          "text": "let us live closer to god"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-022",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 41779,
+          "end": 41858,
+          "text": "so brothers and sisters let's do whatever it takes to be drawn closer to christ"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-023",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 42307,
+          "end": 42404,
+          "text": "let's get together and let's get closer together and let's get close together and close to christ"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-024",
+      "video_id": 610,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 42641,
+          "end": 42858,
+          "text": "let's get close to him close to his will close to his purpose let's get close to each other and let's get a renewed vision as we build up the temple of god as we build each other and as we build the physical sanctuary"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-025",
+      "video_id": 610,
+      "route": "G3_reported",
+      "source_roles": {
+        "utterance": {
+          "start": 7967,
+          "end": 8030,
+          "text": "your children are irritating many people can't you control them"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-026",
+      "video_id": 610,
+      "route": "G3_reported",
+      "source_roles": {
+        "utterance": {
+          "start": 17795,
+          "end": 17857,
+          "text": "let them build me what a sanctuary that i may dwell among them"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-027",
+      "video_id": 610,
+      "route": "G3_reported",
+      "source_roles": {
+        "utterance": {
+          "start": 20641,
+          "end": 20703,
+          "text": "your guilt is taken away\ntaken away and your sins are torn for"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-028",
+      "video_id": 610,
+      "route": "G3_reported",
+      "source_roles": {
+        "utterance": {
+          "start": 20806,
+          "end": 20846,
+          "text": "whom shall i send and who will go for us"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-029",
+      "video_id": 610,
+      "route": "G3_reported",
+      "source_roles": {
+        "utterance": {
+          "start": 25309,
+          "end": 25338,
+          "text": "let every man examine himself"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 718,
+            "end": 26972,
+            "chars": 26254
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-030",
+      "video_id": 610,
+      "route": "G3_reported",
+      "source_roles": {
+        "utterance": {
+          "start": 31696,
+          "end": 31755,
+          "text": "is it possible that you have another child that is not here"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R610-G3-031",
+      "video_id": 610,
+      "route": "G3_reported",
+      "source_roles": {
+        "utterance": {
+          "start": 31931,
+          "end": 31972,
+          "text": "call him because i am on god's assignment"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 26983,
+            "end": 43054,
+            "chars": 16071
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G2-001",
+      "video_id": 2298,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 12650,
+          "end": 12733,
+          "text": "what then shall we sin because we are not under the law but under grace by no means"
+        },
+        "right": {
+          "start": 12933,
+          "end": 13059,
+          "text": "I actually think that Paul wants us to have balance between grace and law because both are needed in our spiritual development"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          },
+          {
+            "role": "right",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G2-002",
+      "video_id": 2298,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 18416,
+          "end": 18438,
+          "text": "we are servants to sin"
+        },
+        "right": {
+          "start": 18471,
+          "end": 18624,
+          "text": "we were not created created to be servants of sin we were created in the image of God we were created to flourish and to grow and to succeed in our lives"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          },
+          {
+            "role": "right",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G2-003",
+      "video_id": 2298,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 19347,
+          "end": 19393,
+          "text": "we are being conformed to the image of the son"
+        },
+        "right": {
+          "start": 19394,
+          "end": 19470,
+          "text": "in other words we are conformed we were created to be the image of God today"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          },
+          {
+            "role": "right",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G2-004",
+      "video_id": 2298,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 21353,
+          "end": 21378,
+          "text": "servants of righteousness"
+        },
+        "right": {
+          "start": 21974,
+          "end": 22166,
+          "text": "if we want that before and after in our spiritual lives in our spiritual development we have to recognize that that before is the servants of sin and now the after is servants of righteousness"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          },
+          {
+            "role": "right",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G2-005",
+      "video_id": 2298,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 23007,
+          "end": 23169,
+          "text": "but thanks be to God that though you used to be servants to sin you have come to obey from your heart the pattern of teaching that has now claimed your allegiance"
+        },
+        "right": {
+          "start": 23516,
+          "end": 23594,
+          "text": "this is what you were created to be nothing else but servants of righteousness"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          },
+          {
+            "role": "right",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G2-006",
+      "video_id": 2298,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 23760,
+          "end": 23855,
+          "text": "for the wages of sin is death but the free gift of God is eternal life in Christ Jesus our Lord"
+        },
+        "right": {
+          "start": 23856,
+          "end": 24031,
+          "text": "see Paul the purpose of wanting us to be servants of righteousness is that we can live a life according to the character of Christ so that we can be prepared to go into heaven"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          },
+          {
+            "role": "right",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G2-007",
+      "video_id": 2298,
+      "route": "G2_explanation",
+      "source_roles": {
+        "left": {
+          "start": 25452,
+          "end": 25457,
+          "text": "slave"
+        },
+        "right": {
+          "start": 25518,
+          "end": 25603,
+          "text": "for me the word slave gives me no choice servant gives me the sense that I can choose"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "left",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          },
+          {
+            "role": "right",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G3-001",
+      "video_id": 2298,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 11440,
+          "end": 11504,
+          "text": "so I invite you to pray with me so that we can get into the word"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G3-002",
+      "video_id": 2298,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 14236,
+          "end": 14342,
+          "text": "it's important to pay attention to when we possibly get into this place of homeostasis in our spirituality"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G3-003",
+      "video_id": 2298,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 14710,
+          "end": 14846,
+          "text": "for some of us it's really hard to change our minds especially when we're stuck on certain beliefs and we don't want to change our minds"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G3-004",
+      "video_id": 2298,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 14992,
+          "end": 15127,
+          "text": "now with all due respect if the thought of I'm not like that crossed your mind I'm sorry you are like that because we all are like that"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G3-005",
+      "video_id": 2298,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 22646,
+          "end": 22696,
+          "text": "we need to allow Christ to really change our lives"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G3-006",
+      "video_id": 2298,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 25604,
+          "end": 26007,
+          "text": "so I invite you today to consider choosing to be servants of righteousness servants of the Most High and that as we do that that our actions of righteousness defend the weak the poor the disenfranchised that are servants of righteousness we defend those who are suffering because of individual and systemic racism and that we make this 4th of July a day that will make our our country even different now"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    },
+    {
+      "reference_id": "F2R2298-G3-007",
+      "video_id": 2298,
+      "route": "G3_current",
+      "source_roles": {
+        "utterance": {
+          "start": 26488,
+          "end": 26499,
+          "text": "let us pray"
+        }
+      },
+      "strict_result": "MISS_UNCHANGED",
+      "source_review_classification": "confirmed_source_unit_segmentation_failure",
+      "diagnostic": {
+        "cause": "oversize_punctuation_unit_prevents_bounded_role_materialization",
+        "oversized_covering_units": [
+          {
+            "role": "utterance",
+            "start": 10170,
+            "end": 27292,
+            "chars": 17122
+          }
+        ],
+        "authored_geometry_status": "represented",
+        "authored_geometry_reason": null,
+        "manual_rescue_discovery_credit": 0,
+        "note": "Authored exact roles are representability diagnostics only; no repaired candidate/envelope enters discovery or the frozen queue."
+      },
+      "existing_candidates_containing_first_complete_sentence": [],
+      "review_note": "Source text available; authored exact geometry is representable. No manual reconstruction receives natural-discovery credit."
+    }
+  ],
+  "source_format_finding": "Two human-readable caption sermons collapse to 26,254/16,071-character units and one 17,122-character unit. These exceed the unchanged 6,000-character frame cap; all 54 source-reviewed opportunities on those sources miss. This is source-unit/collector failure, not unavailable evidence.",
+  "remaining_punctuated_source": "Four directed-pair misses and four multi-sentence G3 strict misses remain. The G3 misses raise unresolved reference-granularity questions; no frozen check is rescored. Populated source failures on 610/2298 independently establish FAIL even if those four checks were later revised prospectively.",
+  "semantic_and_burden_limits": {
+    "safe_automatic_envelope_recall": null,
+    "raw_semantics": null,
+    "admission": null,
+    "active_human_minutes": null,
+    "median_candidate_review_minutes": null,
+    "manual_envelope_repair_fraction": null,
+    "unresolved_candidate_review_deferral_fraction": null,
+    "unique_usable_evidence": null,
+    "unit_cost": null,
+    "reason": "Stopped at decisive discovery failure. No paid semantic run or admission witness exists; required-span coverage alone is not certified source/recipient safety. Elapsed census intervals are not active human throughput."
+  },
+  "source_review_timing": [
+    {
+      "video_id": 2325,
+      "review_started_utc": "2026-10-16T13:42:36.643617+00:00",
+      "review_completed_utc": "2026-10-16T13:52:01.759908+00:00",
+      "review_timing": "Elapsed source reading/annotation/tool interval; not measured active human review time."
+    },
+    {
+      "video_id": 610,
+      "review_started_utc": "2026-10-16T13:44:50.346723+00:00",
+      "review_completed_utc": "2026-10-16T13:55:28.735630+00:00",
+      "review_timing": "Elapsed source reading/annotation/tool interval; not measured active human review time."
+    },
+    {
+      "video_id": 2298,
+      "review_started_utc": "2026-10-16T13:47:50.188278+00:00",
+      "review_completed_utc": "2026-10-16T13:57:22.111124+00:00",
+      "review_timing": "Elapsed source reading/annotation/tool interval; not measured active human review time."
+    }
+  ],
+  "recommendation_next": "Accept scoped Fresh V2 discovery/readiness FAIL and G1 HOLD; stop before providers. Do not tune/rerun this frozen confirmation. Any future authorized repair should address punctuation-independent source-unit formation and remaining complete-pair mechanisms, and prospectively review composite G3 check granularity. V2 would become diagnostic material, with another unseen confirmation set required.",
+  "limitations": [
+    "Source-controlled Codex census, not independent annotators or population-representative accuracy.",
+    "Exact normalized duplicate checks against nine prior snapshots and within active set only; no global/near-duplicate guarantee.",
+    "Actor identities are source-local; no pastor ownership or production credit certified.",
+    "Current/reported G3 candidate namespaces are unresolved until semantic/source review.",
+    "Quoted secondary commentary and prayer remain separate control/provenance concerns.",
+    "No generalization PASS, general containment certification, recurrence, rates or corpus economics."
+  ],
+  "held": [
+    "no provider inference",
+    "no collector tuning",
+    "no semantic/admission changes",
+    "no collection",
+    "no production or automatic attestation",
+    "no recurrence/rates",
+    "no projection/comparison/scoring",
+    "no 790-item V2 audit"
+  ],
+  "source_census_wall_elapsed_minutes_upper_bound": 14.757791783333333,
+  "source_census_timing_note": "Overlapping intervals from one Codex reviewer; wall span is an upper bound on source-census active work, not measured human annotation/candidate-review throughput. No source-census budget exhaustion observed.",
+  "freshness_check": {
+    "historical_revision": "c7995f8",
+    "explicit_selected_source_mentions_in_prior_review_and_test_files": 0,
+    "method": "git grep of selected YouTube IDs and exact video_id fields before current preparation; selection query also excludes prior sermon_analysis_runs.",
+    "model_training_novelty_established": false
+  },
+  "review_code_hashes": {
+    "src/pastor_transcript_extractor/fresh_discovery_confirmation_results.py": "769e5111575c0b2c015c515dcdc8831ac6356a4d8b12a9bdffd4918d73f57030",
+    "src/pastor_transcript_extractor/fresh_discovery_results.py": "7eb24916e9940fa0add30778c948d4e9353375dc1c6744a7b8f49300edd9ad28"
+  },
+  "validation": {
+    "focused_tests_passed": 89,
+    "fresh_workflow_tests": 29,
+    "V4_1_tests": 24,
+    "original_collector_and_harness_tests": 18,
+    "cli_contract_tests": 18,
+    "read_only_preparation_verification": "PASS",
+    "authorized_source_only_confirmation_executed": true,
+    "provider_requests": 0,
+    "large_fixture_or_corpus_classification_jobs": false,
+    "closed_panel_replay": false
+  },
+  "content_fingerprint": "598cb010753d176a4916e4aa6ae2e888eb9eb9349ab7874977878ba4e99a5ed4"
+}

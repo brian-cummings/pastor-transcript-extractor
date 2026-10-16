@@ -3453,6 +3453,8 @@ pte analysis fresh-discovery-readiness [OPTIONS]
 
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
+| `--revision TEXT` | Fresh-source packet revision: v1 historical or v2 frozen Collector V4.1 confirmation.  [default: v1] | no | v1 |
+| `--include-reserve` | With V2 --source-preview only, prepare the technical reserve for source validation. | no | False |
 | `--check-only` | Verify the prepared proposal only; this workflow has no evaluation execution mode. | no | False |
 | `--source-preview` | Prepare the authorized three normalized source snapshots for boundary validation; no discovery or providers. | no | False |
 | `--freeze-inventory` | Freeze source-only candidates/envelopes/queue before any reference census; no providers. | no | False |

@@ -1,5 +1,62 @@
 # Handoff Notes
 
+## Fresh V2 provider-free confirmation complete — recommend FAIL / G1 HOLD, 2026-10-16
+
+Brian accepted V4.1 as development-only and froze its repair fingerprint/code. The
+[development acceptance](review-proposals/evidence-supply-collector-v4/development-acceptance-v4.1.json)
+records **34** recovered misses (not 32), zero regressions, seven remaining; G2 required
+source coverage was 24/31 separately from 25/31 complete-role coverage.
+
+Authorized Fresh V2 source-only preparation/confirmation is complete. See
+[review](review-proposals/fresh-discovery-readiness-v2/PREPARATION-REVIEW.md) and
+[bound JSON](review-proposals/fresh-discovery-readiness-v2/preparation-review-v2.json).
+Mechanical selection 1363/610/2298 plus reserve2325: full source review excluded 1363
+as a piano recital before discovery, so active sermons are **2325 / 610 / 2298**.
+All source boundaries and exact duplicate checks were completed before inventory freeze.
+No valid sermon was replaced for sparse opportunities or poor retrieval.
+
+Inventory frozen before full-source census and matching. Entire 80,443 main characters
+reviewed; 91,408 full-recording characters retained. **94 definite opportunities / 39
+controls and ambiguities**. One explicit pre-match coordinate correction selected the
+later Isaiah quote beside its explanation; both versions remain. No post-match changes.
+
+Strict complete-role/required-span upper bounds: **G2 10/30, G3 current 18/52,
+G3 reported 4/12**. G1 has **0 definite opportunities: HOLD**. Per-source .80 gates
+apply only at n>=5. **Recommend source-only discovery/readiness FAIL and stop before
+providers.** No executable paid semantic packet or spending authority was prepared.
+
+Dominant cause: sparse/unpunctuated captions. Source610's 42,336 main chars become
+three nodes (26,254 / 9 / 16,071 chars); source2298's 17,122 chars become one. The
+unchanged 6,000 frame cap prevents supply of all **54** audited opportunities there.
+These sources are human-readable/available; no normalization or frozen collector fix
+was attempted. Source2325 has four further complete-pair misses and four strict
+multi-sentence G3 misses with reference-granularity questions. All strict counts are
+preserved, not rescored; populated source failures independently establish FAIL.
+All 62 misses have authored representability diagnostics only, never rescue credit.
+
+Candidate counts: 2325 G1=35/G2=1657/G3=418; 610 G3=1; 2298 none. Total2111;
+G2/G3=2076. Low aggregate volume is failed supply, not efficiency. Punctuated source
+has 98.9 G2/G3 candidates per1000 main chars. 2051 reference-unmatched hypotheses and
+217 candidate contacts with 11 controls are workload proxies, not semantic false
+positives. Frozen source-only queue41 units/57 shapes is retained, not filled with
+reference positives. Human throughput, semantic precision/admission, safe-envelope
+recall and corpus economics remain unknown. Provider requests=0.
+
+```sh
+pte analysis fresh-discovery-readiness --revision v2 --verify-preparation
+```
+
+Read-only actual-artifact verification passed; **89 focused tests passed**. Runtime
+results/inventory remain in configured base `evaluation/fresh-discovery-readiness-v2/`.
+No collector/semantic/admission/threshold changes, provider calls, old-panel replay,
+production collection, automatic attestation, rates/recurrence, projection/scoring or
+790-item V2 audit were performed. Future repair needs separate scope: source-unit
+formation independent of punctuation, remaining pair mechanisms, and prospective G3
+check granularity. Do not tune/rerun this frozen confirmation into a PASS; a later
+repair would require another unseen confirmation set. Brian's new stage decision is
+pending; this is Codex's recommendation.
+
+
 ## V4 source-ceiling failure repaired in V4.1; revised Brian command — 2026-10-16
 
 Brian's initial V4 command stopped with `Source candidate ceiling exceeded; no
