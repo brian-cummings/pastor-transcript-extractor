@@ -3694,3 +3694,29 @@ def analysis_g3_feasibility_review(
         run("prepare" if prepare_only else "check" if check_only else "evaluate")
     except (ValueError, OSError, RuntimeError) as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@analysis_app.command("source-unit-repair", help="Verify or run the bounded provider-free source-unit development repair on retired Fresh V2 sources.")
+def analysis_source_unit_repair(
+    check_only: bool = typer.Option(False, "--check-only", help="Verify fingerprints and cheap source-unit size bounds; no candidate evaluation."),
+    run_development: bool = typer.Option(False, "--run-development", help="Materialize natural candidates and compare unchanged retired Fresh V2 references; no providers."),
+    approve_input: str | None = typer.Option(None, "--approve-input", help="Exact prepared input fingerprint required for development execution."),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory."),
+) -> None:
+    from pastor_transcript_extractor import source_unit_repair as repair
+    if (check_only and run_development) or bool(approve_input)!=run_development:
+        raise typer.BadParameter("Choose one mode; development requires its exact input fingerprint")
+    try:
+        if run_development:
+            result=repair.run_development(base_dir,approve_input)
+            console.print(repair.render(result),markup=False)
+            console.print(f"Results: {repair.directory(base_dir) / result['repair_input_fingerprint'] / 'results-v1.json'}",markup=False)
+        else:
+            packet,review=repair.verify(base_dir)
+            sizes=repair.size_preflight(review)
+            console.print(f"Source-unit repair verified: {packet['content_fingerprint']}; provider_requests=0; no discovery executed.",markup=False)
+            for size in sizes:
+                console.print(f"Source {size['video_id']}: {size['unit_nodes']} units; G2/G3 bound {size['G2_G3_upper_bound']} / 12000.",markup=False)
+            console.print(f"Aggregate bound: {sum(r['G2_G3_upper_bound'] for r in sizes)} / 20000.",markup=False)
+    except (ValueError,OSError,KeyError,RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error

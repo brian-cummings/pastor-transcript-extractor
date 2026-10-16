@@ -3708,6 +3708,26 @@ pte analysis g3-feasibility-review [OPTIONS]
 | `--revision TEXT` | Frozen G3 revision: v1 or the narrow binding revision v2.  [default: v1] | no | v1 |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis source-unit-repair`
+
+Verify or run the bounded provider-free source-unit development repair on retired Fresh V2 sources.
+
+#### Usage
+
+```console
+pte analysis source-unit-repair [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--check-only` | Verify fingerprints and cheap source-unit size bounds; no candidate evaluation. | no | False |
+| `--run-development` | Materialize natural candidates and compare unchanged retired Fresh V2 references; no providers. | no | False |
+| `--approve-input TEXT` | Exact prepared input fingerprint required for development execution. | no | — |
+| `--base-dir PATH` | Application data directory. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis show`
 
 Inspect persisted sermon measurements and Scripture evidence.
