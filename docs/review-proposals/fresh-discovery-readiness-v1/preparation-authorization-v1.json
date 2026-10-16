@@ -1,0 +1,36 @@
+{
+  "version": "fresh-readiness-provider-free-preparation-authorization-v1",
+  "status": "AUTHORIZED",
+  "decision_owner": "Brian",
+  "authorized_on": "2026-10-16T02:52:38.263395+00:00",
+  "proposal_fingerprint": "8011003fd4c2c50b23541a4541f55d62a4bac767943325bc051c23aa61b8f1b3",
+  "manifest_fingerprint": "046cbb1f18a53209c330b1ce29db9490a557ecbeb93a813d76ce4639d2db6e49",
+  "proposal_sha256": "634f117be9e9fe0ac75ba1647887da2b7024cdd3671134e6b8ff145211f460cc",
+  "manifest_sha256": "b7dc5b12e246edd0568f4b90d355b8251dad576ecf36e60ea0556ef9a5d5e33a",
+  "primary_video_ids": [
+    1565,
+    1450,
+    1618
+  ],
+  "reserve_video_id": 4069,
+  "preparation_authorized": true,
+  "synthetic_adapter_tests_authorized": true,
+  "natural_inventory_freeze_authorized": true,
+  "source_census_authorized": true,
+  "matching_and_preflight_authorized": true,
+  "provider_calls_authorized": false,
+  "criterion_clarification": {
+    "per_source_route_recall_min": 0.8,
+    "per_source_route_min_definite_opportunities_for_gate": 5,
+    "denominators_1_to_4": "diagnostic_only",
+    "aggregate_route_recall_min": 0.8,
+    "aggregate_sufficient_automatic_envelope_recall_min": 0.8
+  },
+  "preserve_other_bounds_and_minima": true,
+  "provider_execution_authorized": false,
+  "collection_projection_scoring_authorized": false,
+  "old_panel_replay_authorized": false,
+  "human_instruction": "Authorize bounded provider-free preparation of Fresh Discovery/Readiness V1 on the three frozen primary sermons. Apply per-source .80 discovery criterion only where at least five definite compatible opportunities; preserve other criteria and HOLD behavior. No provider calls. Return frozen census, natural discovery/envelope results, misses, review-burden measurements, exact queue and maximum budget.",
+  "review_timing": "Authoring/source review elapsed intervals will be recorded; active annotation time only if directly measured. Never invent human throughput.",
+  "content_fingerprint": "a534e099b6f7832aceba7e975474eaa768f72eb608ee8674ae12425c337618c8"
+}

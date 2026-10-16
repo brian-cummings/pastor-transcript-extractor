@@ -3133,11 +3133,21 @@ def analysis_g2_feasibility_review(
 )
 def analysis_fresh_discovery_readiness(
     check_only: bool = typer.Option(False, "--check-only", help="Verify the prepared proposal only; this workflow has no evaluation execution mode."),
+    source_preview: bool = typer.Option(False, "--source-preview", help="Prepare the authorized three normalized source snapshots for boundary validation; no discovery or providers."),
+    freeze_inventory: bool = typer.Option(False, "--freeze-inventory", help="Freeze source-only candidates/envelopes/queue before any reference census; no providers."),
     base_dir: Path | None = typer.Option(None, "--base-dir", help="Application directory containing the source metadata database."),
 ) -> None:
     from pastor_transcript_extractor import fresh_discovery_readiness as review
 
     try:
+        if sum((check_only,source_preview,freeze_inventory))>1:
+            raise ValueError("Choose one provider-free mode")
+        if source_preview or freeze_inventory:
+            from pastor_transcript_extractor import fresh_discovery_preparation as preparation
+            value=preparation.preview(base_dir) if source_preview else preparation.freeze(base_dir)
+            console.print("Prepared source snapshots." if source_preview else f"Frozen natural inventory: {value['content_fingerprint']}", markup=False)
+            console.print("provider_requests=0; references and manual rescues are not discovery inputs.", markup=False)
+            return
         plan, manifest = review.verify(base_dir)
     except (ValueError, OSError, KeyError, RuntimeError) as error:
         raise typer.BadParameter(str(error)) from error
