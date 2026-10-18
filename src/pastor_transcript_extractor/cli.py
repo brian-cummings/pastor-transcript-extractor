@@ -46,6 +46,7 @@ from pastor_transcript_extractor.commands.apps import (
     root_app,
 )
 from pastor_transcript_extractor.commands.analysis import content as _analysis_content_commands
+from pastor_transcript_extractor.commands.analysis import retrieval_audit as _analysis_retrieval_audit_commands
 from pastor_transcript_extractor.commands.analysis import scripture as _analysis_scripture_commands
 from pastor_transcript_extractor.commands.analysis import structure as _analysis_structure_commands
 from pastor_transcript_extractor.commands.analysis import style as _analysis_style_commands
