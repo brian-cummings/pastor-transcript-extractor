@@ -1,0 +1,48 @@
+{
+  "version": "context-evidence-architecture-decision-v1",
+  "status": "DESIGN_ONLY_AUTHORIZED",
+  "decision_owner": "Brian",
+  "decision_date": "2026-10-18",
+  "authority_attachment": {
+    "path": "/Users/briancummings/.codex/attachments/a3ca5922-bac8-477f-aa30-a17271c79779/Pasted text.txt",
+    "sha256": "2cb5440c30c9ac5cc89ca111dbbffe3f4dafc8a2f88e0fb5339924f734441f71"
+  },
+  "authority_excerpt": "Authorize proposal/design work only for a replacement retrieval architecture. Do not implement or execute it.",
+  "accepted": {
+    "collector_retrieval_V1_1": "DEVELOPMENT_FAIL",
+    "G1": "HOLD"
+  },
+  "accepted_audit_fingerprint": "418ad24b07e407c2f471b20ef567c0f5add1e8bdff810fc8dbab5d9f3b7a7408",
+  "retired_architecture": "Collector Retrieval/Composition V1.1 structural role/act composition",
+  "closure": "CLOSED_NO_FURTHER_DEVELOPMENT_OR_EXECUTION",
+  "authorized": {
+    "architecture_proposal": true,
+    "read_only_proposal_verifier": true,
+    "replacement_implementation": false,
+    "context_materialization": false,
+    "extractor_execution": false,
+    "encoder_execution": false,
+    "provider_calls": false,
+    "fresh_source_selection": false,
+    "measurement_admission_changes": false,
+    "collection": false,
+    "projection_scoring": false
+  },
+  "prohibited_continuations": [
+    "V1.2",
+    "K/window/quota tuning of retired collector",
+    "embedding model comparison/substitution",
+    "unseen confirmation"
+  ],
+  "preserved": [
+    "Source-unit Repair V1",
+    "P1 semantic definition",
+    "G1/G2/G3 measurement semantics",
+    "A1 admission semantics and existing bounded decision",
+    "selected-option probability .80",
+    "canonical source coordinates",
+    "historical references/results"
+  ],
+  "next_decision": "Review architecture recommendation and smallest discriminating experiment; implementation/preparation and any eventual execution require separate authorization.",
+  "content_fingerprint": "2ee49fb3238467905696de110f7112b6d5771ad81d9fe73b91f6d1848aab3b3f"
+}
