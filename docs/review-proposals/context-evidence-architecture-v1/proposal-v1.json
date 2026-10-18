@@ -1,0 +1,91 @@
+{
+  "version": "context-evidence-architecture-proposal-v1",
+  "status": "PROPOSAL_ONLY",
+  "decision_fingerprint": "2ee49fb3238467905696de110f7112b6d5771ad81d9fe73b91f6d1848aab3b3f",
+  "authorization": {
+    "architecture_proposal": true,
+    "read_only_proposal_verifier": true,
+    "replacement_implementation": false,
+    "context_materialization": false,
+    "extractor_execution": false,
+    "encoder_execution": false,
+    "provider_calls": false,
+    "fresh_source_selection": false,
+    "measurement_admission_changes": false,
+    "collection": false,
+    "projection_scoring": false
+  },
+  "recommendation": "bounded_context_then_untrusted_extraction_then_frozen_measurement_and_admission",
+  "measurement_threshold": 0.8,
+  "context_chars_max": 6000,
+  "extractor_selected_now": false,
+  "new_review_authority_accepted_now": false,
+  "alternatives": [
+    "Closed candidate-first architecture: retain as historical comparator only",
+    "Context retrieval plus untrusted generative extraction: recommended next discriminating probe",
+    "Context retrieval plus Jev semantic cursor over all source boundaries: viable design alternative but not initial implementation"
+  ],
+  "expected_context_design": {
+    "window_chars_max": 6000,
+    "stride_chars_proposed": 3000,
+    "semantic_parent_closure": false,
+    "source_wide_pair_enumeration": false,
+    "scope": "Source coverage is literal availability, not semantic or provenance sufficiency; no tiler implemented"
+  },
+  "burden_hypothesis": {
+    "retired_main_characters": 119304,
+    "arithmetic_context_windows": 39,
+    "source_text_char_exposure_max": 234000,
+    "measured": false,
+    "notes": "Arithmetic on already-known main-source lengths, not generated/retrieved contexts or a corpus economics result. Longer evidence intervals and reporting continuation can still be missed."
+  },
+  "experiment_fingerprint": "140ac0231d4f46159efc7ce2ae0ee4380df64e6ca64eea4d71f7792965ed33ca",
+  "interface_design_fingerprint": "2397a3f7d1d873f847d555faade74b2332f28d8c6aeb6ef8c5299cdf91678d05",
+  "next_authorization": "Small provider-free probe implementation/materialization and exact single-model execution-packet preparation only; not a production collector or paid run. Any eventual provider execution requires a separate reviewed fingerprint and explicit authorization.",
+  "pins": {
+    "docs/review-proposals/collector-retrieval-repair-v1.1/development-source-audit-v1.1.json": "8846da3cb6a61acc068feed4babc2efffb4fa3cd6ef9a8f6613e937d4ff6165e",
+    "docs/review-proposals/collector-retrieval-repair-v1.1/DEVELOPMENT-SOURCE-AUDIT.md": "4975d2f852801058f13d7c7fe3875d6e4ef701d10db5ab9334f2272375f52663",
+    "docs/review-proposals/collector-retrieval-repair-v1.1/source-audit-packet-v1.1.json": "c138d4b1ccc8aeafe88921ca544b58663aad0cf997c47c3df5e131fc95611cd2",
+    "docs/review-proposals/fresh-discovery-readiness-v3/references-v3.json": "63958c501f100671a043ee1ed2afac7830d2c0c9654450e456d67c8d285e7f04",
+    "docs/review-proposals/collector-retrieval-implementation-v1/P1-policy.md": "f4c3cd6c852c62d3bbd47c3ea03cff65162da7bbe2ef19db23ad81bb8b58126e",
+    "src/pastor_transcript_extractor/evidence_supply_source_unit_repair.py": "c6efa2dafd4ed9dd0302996dcdc28093e1d83c956229f0278cb8c029d391e4c4",
+    "src/pastor_transcript_extractor/evidence_boundary_admission.py": "affafed4add3ff01ce7bab0cc5e0d93575ef80897093d66b70b175ae55418803",
+    "src/pastor_transcript_extractor/g3_atomic_admission.py": "4f801acb2c69737454122ea6f6d78e4e0bf38abd6dc7ad8298ea6a010c190376",
+    "src/pastor_transcript_extractor/evidence_supply_boundary_v4.py": "2ee30a5222ca4c53c324d54c831d4ac87fe9701e4de99b6736c7adc894498057",
+    "src/pastor_transcript_extractor/sermon_g1_feasibility_review.py": "b4f5982b6960a199717d8aeb5cafb29685f679b1d76f8bf32b44a95f9144b2fd",
+    "src/pastor_transcript_extractor/sermon_g2_feasibility_review.py": "7032118c48657f91a38301ce90664da69070b6c648ab0f7bfdd51ee4c970270e",
+    "src/pastor_transcript_extractor/sermon_g3_feasibility_review.py": "3f3b54d7e27921bfdd63f0b022776fa2fbf5601d76eed60520d3fdd14fd0c92e",
+    "src/pastor_transcript_extractor/context_evidence_architecture_design.py": "cca9030d042a92c3117cfa09d0bca60c8dd37d0d61b9745129d9555b1a15581d",
+    "src/pastor_transcript_extractor/commands/analysis/context_design.py": "2644c0d1fa965208c50e1c3c7604fb086f765c7a7178f5734b65c255bc1f7744",
+    "src/pastor_transcript_extractor/commands/analysis/__init__.py": "15ff08267758dc157dc2e28c1bcf697a90d822759a5b3ae72939de57738399ff",
+    "tests/test_context_evidence_architecture_design.py": "c3d075f02c53c45d0124239ba068857d07c63f77158289025da3120c7e7f15e6"
+  },
+  "docs_checked_on": "2026-10-18",
+  "sources": [
+    {
+      "url": "https://docs.typesafe.ai/concepts/system-one",
+      "supports": "Jev typed decision interface, not arbitrary text generation"
+    },
+    {
+      "url": "https://docs.typesafe.ai/cookbooks/pre_parsed_value_extraction_cookbook",
+      "supports": "Selection is limited to supplied values; a proposal stage is needed for values absent from a candidate roster"
+    },
+    {
+      "url": "https://docs.typesafe.ai/cookbooks/semantic_find",
+      "supports": "Semantic search over source position IDs is a separate alternative; ranking alone does not prove presence"
+    },
+    {
+      "url": "https://docs.typesafe.ai/cookbooks/sde_cascade",
+      "supports": "Extraction and verification can be separate stages; structural output validation does not prove semantic truth"
+    }
+  ],
+  "limitations": [
+    "No semantic boundaries/retrieval or provider experiment executed",
+    "New extractor is unselected; no executable model or cost quote exists",
+    "Oracle-assisted adequate contexts isolate extraction; they do not establish retrieval recall",
+    "Existing source-review witness remains a limited safety oracle, not a production throughput solution",
+    "Existing panel-specific A1 authority cannot be reused for new items",
+    "G1 HOLD; no fresh sources, automatic provenance, collection, rates or pastor projection"
+  ],
+  "content_fingerprint": "4ae2a893f7c5683ac19090f0dd319bda0efc191bbe0e17169be259bade914d50"
+}

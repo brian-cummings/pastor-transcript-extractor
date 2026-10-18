@@ -1,0 +1,80 @@
+{
+  "version": "context-extraction-interface-design-v1",
+  "status": "DESIGN_ONLY_NOT_AN_IMPLEMENTATION",
+  "context": {
+    "identity": [
+      "source_snapshot_sha256",
+      "context_id",
+      "start",
+      "end",
+      "text",
+      "source_kind",
+      "has_earlier_source",
+      "has_later_source"
+    ],
+    "coordinates": "Canonical source Python Unicode code-point offsets; end-exclusive; no ASR/punctuation rewriting",
+    "maximum_characters": 6000
+  },
+  "untrusted_nomination": {
+    "type_name": "UntrustedEvidenceNomination",
+    "required": [
+      "context_fingerprint",
+      "capability",
+      "roles",
+      "provenance_hypotheses",
+      "dependency_spans",
+      "context_status"
+    ],
+    "roles": {
+      "G2": [
+        "anchor",
+        "explanation"
+      ],
+      "G3": [
+        "utterance"
+      ]
+    },
+    "span": {
+      "start": "integer local offset into context",
+      "end": "integer local end-exclusive offset",
+      "text": "verbatim source substring"
+    },
+    "provenance_hypotheses": "Source/voice, recipient, adoption/origin values and verbatim supporting spans or unknown; untrusted hints, not measured facts or witness authority",
+    "dependency_spans": "Required qualifiers/content must remain inside the exact role/utterance when P1/closed contract requires; provenance support may be in the envelope",
+    "context_status": [
+      "apparently_complete",
+      "needs_more_context",
+      "uncertain"
+    ],
+    "no_fields": [
+      "positive_facts",
+      "pastor_credit",
+      "LocalEvidence",
+      "accepted_review_authority",
+      "provider_independent_semantic_proof"
+    ]
+  },
+  "deterministic_checks": [
+    "Exact snapshot and context/receipt binding",
+    "Capability must match the requested G2 or G3 task family; current/reported is not a model-visible gold label",
+    "Strict schema and integer local bounds; text equals exact substring",
+    "Global offsets = context.start + local offsets, with no Unicode normalization",
+    "No fuzzy quote matching, first-match fallback, stitched utterance or source editing",
+    "G2 distinct/nonoverlapping roles and directed relation frame; G3 one contiguous utterance, null circumstance",
+    "Materialize the full supplied context through unchanged 6000-character geometry/envelope rules; defer incompatible shapes",
+    "Explicit overflow/dependency/absence status, no silent truncation or retries",
+    "Preserve repeated occurrences by coordinates; exact duplicates may be linked without unique-evidence credit",
+    "Raw nomination labels/confidence never create measurements or admission; omit hypotheses from frozen Jev state",
+    "Immutable JSON-native seals, raw model receipts and offline replayable transformations"
+  ],
+  "semantic_review_required": [
+    "P1 minimality/completeness and qualifiers",
+    "G2 actual Bible explanatory opportunity versus quotation/topic similarity",
+    "Reporting identity/continuation, recipient, adoption and nested speech",
+    "Whether any required evidence lies outside supplied context",
+    "Source-supported completeness versus an overconfident extraction status"
+  ],
+  "frozen_handoff": "Only literal exact roles and source envelope enter existing request materialization. Proposed frozen measurement then review/admission is downstream, not part of the first probe.",
+  "hard_binding_gap": "Current Boundary.validate_packet enforces 24 V4 cases/37 requests and A1 authorities bind exact packet/measurement identities. They cannot authorize new extractions; a future separately versioned receipt adapter and new accepted source/claim authority are required without changing closed question/policy semantics.",
+  "content_fingerprint": "2397a3f7d1d873f847d555faade74b2332f28d8c6aeb6ef8c5299cdf91678d05"
+}

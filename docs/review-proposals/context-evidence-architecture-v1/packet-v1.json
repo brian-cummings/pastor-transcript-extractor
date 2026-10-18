@@ -1,0 +1,13 @@
+{
+  "version": "context-evidence-architecture-packet-v1",
+  "proposal_fingerprint": "4ae2a893f7c5683ac19090f0dd319bda0efc191bbe0e17169be259bade914d50",
+  "experiment_fingerprint": "140ac0231d4f46159efc7ce2ae0ee4380df64e6ca64eea4d71f7792965ed33ca",
+  "files": {
+    "docs/review-proposals/context-evidence-architecture-v1/decision-v1.json": "ec0fa572f4455eb8aa902a7e15f877f8870315702648b158884680495650e8cb",
+    "docs/review-proposals/context-evidence-architecture-v1/proposal-v1.json": "cc6fccec2e2b8a38dbc402973cab940b56269b7ef1a40faf02db99f42cf9d96b",
+    "docs/review-proposals/context-evidence-architecture-v1/experiment-v1.json": "72817e2a1db124cadeca19b4ee3551184e4188c2cd6de026c53633b554917bc2",
+    "docs/review-proposals/context-evidence-architecture-v1/interface-design-v1.json": "00aad6710c2e7d59093c62f6240513c8254efa61622b3437428008caced7c7c2",
+    "docs/review-proposals/context-evidence-architecture-v1/PROPOSAL.md": "951564adc1620ee51bbb234494d92bed6f2261390a2f7a2846149210b6999281"
+  },
+  "content_fingerprint": "32bd6551715c0196a3a6a99d006da348a779efc1e874f993d2f983896627681e"
+}

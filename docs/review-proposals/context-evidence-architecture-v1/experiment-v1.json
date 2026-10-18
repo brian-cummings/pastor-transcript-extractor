@@ -1,0 +1,273 @@
+{
+  "version": "context-extraction-discriminating-experiment-v1",
+  "status": "DESIGN_NOT_MATERIALIZED",
+  "hypothesis": "Given adequate bounded source context, one untrusted extractor can nominate source-supported exact G2 roles and P1 atomic acts without handcrafted semantic targets.",
+  "cases": [
+    {
+      "case_id": "CE-01",
+      "kind": "adequate",
+      "route": "G2",
+      "retired_locator": "F3R520-G2-002",
+      "purpose": "punctuation-poor Bible explanation lost by oversized role closure",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-02",
+      "kind": "adequate",
+      "route": "G2",
+      "retired_locator": "F3R951-G2-032",
+      "purpose": "representable labor-pains/timing pair displaced at rank 3",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-03",
+      "kind": "adequate",
+      "route": "G2",
+      "retired_locator": "F3R951-G2-034",
+      "purpose": "nonlocal taken/destruction explanation displaced at rank 4",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-04",
+      "kind": "adequate",
+      "route": "G2",
+      "retired_locator": "F3R1094-G2-003",
+      "purpose": "distinct explanatory roles collapsed by structural completion",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-05",
+      "kind": "adequate",
+      "route": "G3_current",
+      "retired_locator": "V1.1:P1:951:G3:b64ed40068398d9c",
+      "purpose": "exception-preserving trust admonition; locator is an audited natural target, not replacement gold",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-06",
+      "kind": "adequate",
+      "route": "G3_current",
+      "retired_locator": "F3R1094-G3-022",
+      "purpose": "prayer instruction and conditional reassurance require response content",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-07",
+      "kind": "adequate",
+      "route": "G3_current",
+      "retired_locator": "F3R951-G3-034",
+      "purpose": "outer exhortation with nested modeled speech",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-08",
+      "kind": "adequate",
+      "route": "G3_current",
+      "retired_locator": "F3R520-G3-002",
+      "purpose": "small Bible-turn act inside giant mixed retained target",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-09",
+      "kind": "adequate",
+      "route": "G3_reported",
+      "retired_locator": "F3R951-G3-012",
+      "purpose": "reported conditional location warning",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-10",
+      "kind": "adequate",
+      "route": "G3_reported",
+      "retired_locator": "F3R951-G3-015",
+      "purpose": "reported promise to historical recipient, not current preacher credit",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-11",
+      "kind": "adequate",
+      "route": "G3_reported",
+      "retired_locator": "F3R951-G3-003",
+      "purpose": "reported request for a Bible study",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-12",
+      "kind": "adequate",
+      "route": "G3_reported",
+      "retired_locator": "F3R520-G3-004",
+      "purpose": "reported Pauline exhortation in punctuation-poor source",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-13",
+      "kind": "clipped",
+      "route": "G2",
+      "parent_case_id": "CE-01",
+      "retired_locator": "F3R520-G2-002",
+      "purpose": "Separate bounded context from same unmodified source with essential explanation, qualifier or reporting identity outside the supplied span; no editing or synthetic omission inside a span",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-14",
+      "kind": "clipped",
+      "route": "G2",
+      "parent_case_id": "CE-04",
+      "retired_locator": "F3R1094-G2-003",
+      "purpose": "Separate bounded context from same unmodified source with essential explanation, qualifier or reporting identity outside the supplied span; no editing or synthetic omission inside a span",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-15",
+      "kind": "clipped",
+      "route": "G3_current",
+      "parent_case_id": "CE-06",
+      "retired_locator": "F3R1094-G3-022",
+      "purpose": "Separate bounded context from same unmodified source with essential explanation, qualifier or reporting identity outside the supplied span; no editing or synthetic omission inside a span",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-16",
+      "kind": "clipped",
+      "route": "G3_current",
+      "parent_case_id": "CE-07",
+      "retired_locator": "F3R951-G3-034",
+      "purpose": "Separate bounded context from same unmodified source with essential explanation, qualifier or reporting identity outside the supplied span; no editing or synthetic omission inside a span",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-17",
+      "kind": "clipped",
+      "route": "G3_reported",
+      "parent_case_id": "CE-09",
+      "retired_locator": "F3R951-G3-012",
+      "purpose": "Separate bounded context from same unmodified source with essential explanation, qualifier or reporting identity outside the supplied span; no editing or synthetic omission inside a span",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-18",
+      "kind": "clipped",
+      "route": "G3_reported",
+      "parent_case_id": "CE-11",
+      "retired_locator": "F3R951-G3-003",
+      "purpose": "Separate bounded context from same unmodified source with essential explanation, qualifier or reporting identity outside the supplied span; no editing or synthetic omission inside a span",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-19",
+      "kind": "control",
+      "route": "G2",
+      "retired_locator": "F3C951-006",
+      "purpose": "nonbiblical attribution must not become a Bible explanation",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-20",
+      "kind": "control",
+      "route": "G2",
+      "retired_locator": "F3C1094-003",
+      "purpose": "Bible citation without a definite explanation",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-21",
+      "kind": "control",
+      "route": "G3_current",
+      "retired_locator": "F3C520-002",
+      "purpose": "narration is not an addressed act",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-22",
+      "kind": "control",
+      "route": "G3_current",
+      "retired_locator": "F3C520-001",
+      "purpose": "God-directed prayer is not a human-address pastoral act",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-23",
+      "kind": "control",
+      "route": "G3_reported",
+      "retired_locator": "F3C951-004",
+      "purpose": "counterfactual/model speech must not transfer to current preacher/listener",
+      "source_context": null,
+      "gold_targets": null
+    },
+    {
+      "case_id": "CE-24",
+      "kind": "control",
+      "route": "G3_current",
+      "retired_locator": "F3C951-027",
+      "purpose": "unresolved neighboring live speaker must remain unresolved",
+      "source_context": null,
+      "gold_targets": null
+    }
+  ],
+  "context_materialized_count": 0,
+  "provider_requests_made": 0,
+  "implementation_authorized": false,
+  "execution_authorized": false,
+  "Jev_execution_authorized": false,
+  "proposed_limits": {
+    "requests_max": 24,
+    "input_tokens_per_request_max": 16384,
+    "total_input_tokens_max": 393216,
+    "total_output_tokens_per_request_max": 2048,
+    "total_output_tokens_max": 49152,
+    "nominations_per_context_max": 4,
+    "nominations_total_max": 96,
+    "active_review_minutes_max": 480,
+    "automatic_retries": 0,
+    "automatic_expansions": 0,
+    "price_ceiling_usd": "5.00",
+    "model_count": 1,
+    "prompt_variants": 1
+  },
+  "positive_criterion": {
+    "total_adequate_contexts_recovered_min": 10,
+    "per_route_recovered_min": 3,
+    "per_route_denominator": 4,
+    "manual_target_repair_credit": false
+  },
+  "controls": "Audit every output, including unrelated correct nominations, against supplied and full source. Missing provenance or qualifiers means source-review deferral, not unsupported factual promotion. Raw errors are reported separately; no admission/containment PASS is possible in this probe.",
+  "pass_scope": "NOMINATION_FEASIBILITY_ONLY; requires complete review, coordinate invariants and route-specific anti-vacuity. Does not authorize pipeline execution or confirmation.",
+  "hold_conditions": [
+    "Adequate supplied context cannot be established within 6000 contiguous characters",
+    "P1 target/scope cannot be source-reviewed without contract change",
+    "Incomplete output/control/omission review",
+    "Unresolved token/model/budget lock",
+    "Output saturation or unreported missing proposals"
+  ],
+  "execution_preconditions": [
+    "Separate implementation/preparation authorization",
+    "Codex materializes and seals every context, independent P1 source review and source-only control rules before outputs",
+    "One exact extractor model snapshot/tokenizer/API configuration and prompt/schema locked, no model shopping",
+    "Exact token and price exposure sealed within proposed caps, including output/reasoning tokens",
+    "Brian separately authorizes the fingerprint-bound execution packet"
+  ],
+  "downstream": "No G1 questions, Jev run, new semantic/admission questions, automatic witnesses, or usable evidence. A prospective receipt-adapter proposal is separate after nomination feasibility.",
+  "content_fingerprint": "140ac0231d4f46159efc7ce2ae0ee4380df64e6ca64eea4d71f7792965ed33ca"
+}
