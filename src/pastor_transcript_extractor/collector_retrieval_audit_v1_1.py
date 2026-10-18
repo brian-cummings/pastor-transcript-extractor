@@ -81,6 +81,16 @@ def validate(review,result,natural,refs):
     missed={r['reference_id'] for r in result['historical_exact_target_diagnostics'] if r['route']=='G2_explanation' and not r['role_containment_hits']}
     if {r['reference_id'] for r in review['G2_miss_reviews']}!=missed:
         raise ValueError('Missing G2 miss diagnosis')
+    for row in review['G2_miss_reviews']:
+        vid=matches[row['reference_id']]['video_id']
+        col=next(c for c in natural['inventories'] if c['video_id']==vid)
+        queries={q['parent']:q for q in col['retrieval_trace']}
+        for path in row['concept_trace_paths']:
+            query=queries[path['origin_unit']];trace=query['rows'][path['mate_descriptor_id']]
+            if (path['score']!=trace[1] or path['eligible_rank']!=trace[2]
+                    or path['decision']!=query['decision_codes'][trace[3]]
+                    or path['origin']!=query['origin'] or path['seed_descriptor_ids']!=query['seed_descriptor_ids']):
+                raise ValueError('G2 audit rank/composition evidence changed')
 
 
 def verify(base_dir=None):
@@ -99,4 +109,11 @@ def verify(base_dir=None):
         if workflow.design.file_hash(workflow.design.ROOT/name)!=digest:
             raise ValueError('V1.1 audit verifier changed')
     validate(review,result,natural,refs)
+    manifest=workflow.design.sealed(HERE/'source-audit-packet-v1.1.json')
+    if manifest['audit_fingerprint']!=review['content_fingerprint']:
+        raise ValueError('V1.1 source-audit packet mismatch')
+    for name,digest in manifest['files'].items():
+        path=(workflow.design.ROOT/name).resolve()
+        if not path.is_relative_to(workflow.design.ROOT) or workflow.design.file_hash(path)!=digest:
+            raise ValueError('V1.1 source-audit report changed')
     return review
