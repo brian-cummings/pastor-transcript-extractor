@@ -1,0 +1,9 @@
+{
+  "version": "minute-handoff-preparation-manifest-v1",
+  "input_fingerprint": "cf57f22066a32a18c26165fe3ea239271d52627cd3531679c78df7fc49b5a769",
+  "relative_path": "minute-evidence-handoff-v1/cf57f22066a32a18c26165fe3ea239271d52627cd3531679c78df7fc49b5a769/preparation-v1.json",
+  "sha256": "8411704006900bedf904eb2e75970e22fe3254ac9765efa197b0c8ea7e7253ea",
+  "provider_requests": 0,
+  "execution_authorized": false,
+  "content_fingerprint": "b523097f3297de73d71001e1ff54bfc545f54ceb978f12b96796269927c20a5b"
+}

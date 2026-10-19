@@ -1,0 +1,177 @@
+{
+  "version": "minute-handoff-implementation-review-v1",
+  "date": "2026-10-19",
+  "status": "PROVIDER_FREE_IMPLEMENTATION_AND_PREPARATION_COMPLETE",
+  "implementation_commit": "7adbfe6",
+  "proposal_fingerprint": "2deb9d3bfef68646d4592cb6246b563156b3084a966ea6722e6a49c71f8c4497",
+  "preparation_fingerprint": "cf57f22066a32a18c26165fe3ea239271d52627cd3531679c78df7fc49b5a769",
+  "preparation_manifest_fingerprint": "b523097f3297de73d71001e1ff54bfc545f54ceb978f12b96796269927c20a5b",
+  "counts": {
+    "cases": 24,
+    "mapped": 19,
+    "prepared": 19,
+    "unique_contexts": 13,
+    "unique_bindings": 14,
+    "deferrals": {
+      "partial_or_absent_retained_membership": 5
+    }
+  },
+  "adequate_ready": 9,
+  "all_prepared_diagnostic_footprints_inside": true,
+  "deferral_audit": [
+    {
+      "case_id": "CE-03",
+      "kind": "adequate",
+      "route": "G2",
+      "video_id": 951,
+      "anchor_block_id": 48,
+      "start_seconds": 2756.319,
+      "end_seconds": 2810.72,
+      "anchor_segments": 42,
+      "retained_anchor_segments": 0,
+      "all_anchor_segments_excluded": true,
+      "saved_window_end_seconds": 2608.4,
+      "reviewed_main_source_interval": {
+        "start": 3152,
+        "end": 57354,
+        "rationale": "Exclude preceding children story, story prayer and host introduction. Retain Ed message greeting/series review through closing prayer; exclude host thanks after amen. Existing end at 37542 stops mid-sermon reported conversation, so restore the continuous available message before census or discovery."
+      },
+      "source_validation_fingerprint": "f36f8090fe84ed5f6fa7e68f428a5bb0588b2e3732b742b0c02bc558ca77759b",
+      "interpretation": "Saved membership excludes the anchor. The historical source-only study reviewed a larger main interval. No override, reclassification or manual rescue was applied."
+    },
+    {
+      "case_id": "CE-05",
+      "kind": "adequate",
+      "route": "G3_current",
+      "video_id": 951,
+      "anchor_block_id": 64,
+      "start_seconds": 3742.72,
+      "end_seconds": 3800.16,
+      "anchor_segments": 45,
+      "retained_anchor_segments": 0,
+      "all_anchor_segments_excluded": true,
+      "saved_window_end_seconds": 2608.4,
+      "reviewed_main_source_interval": {
+        "start": 3152,
+        "end": 57354,
+        "rationale": "Exclude preceding children story, story prayer and host introduction. Retain Ed message greeting/series review through closing prayer; exclude host thanks after amen. Existing end at 37542 stops mid-sermon reported conversation, so restore the continuous available message before census or discovery."
+      },
+      "source_validation_fingerprint": "f36f8090fe84ed5f6fa7e68f428a5bb0588b2e3732b742b0c02bc558ca77759b",
+      "interpretation": "Saved membership excludes the anchor. The historical source-only study reviewed a larger main interval. No override, reclassification or manual rescue was applied."
+    },
+    {
+      "case_id": "CE-07",
+      "kind": "adequate",
+      "route": "G3_current",
+      "video_id": 951,
+      "anchor_block_id": 59,
+      "start_seconds": 3481.04,
+      "end_seconds": 3557.68,
+      "anchor_segments": 72,
+      "retained_anchor_segments": 0,
+      "all_anchor_segments_excluded": true,
+      "saved_window_end_seconds": 2608.4,
+      "reviewed_main_source_interval": {
+        "start": 3152,
+        "end": 57354,
+        "rationale": "Exclude preceding children story, story prayer and host introduction. Retain Ed message greeting/series review through closing prayer; exclude host thanks after amen. Existing end at 37542 stops mid-sermon reported conversation, so restore the continuous available message before census or discovery."
+      },
+      "source_validation_fingerprint": "f36f8090fe84ed5f6fa7e68f428a5bb0588b2e3732b742b0c02bc558ca77759b",
+      "interpretation": "Saved membership excludes the anchor. The historical source-only study reviewed a larger main interval. No override, reclassification or manual rescue was applied."
+    },
+    {
+      "case_id": "CE-16",
+      "kind": "clipped",
+      "route": "G3_current",
+      "video_id": 951,
+      "anchor_block_id": 59,
+      "start_seconds": 3481.04,
+      "end_seconds": 3557.68,
+      "anchor_segments": 72,
+      "retained_anchor_segments": 0,
+      "all_anchor_segments_excluded": true,
+      "saved_window_end_seconds": 2608.4,
+      "reviewed_main_source_interval": {
+        "start": 3152,
+        "end": 57354,
+        "rationale": "Exclude preceding children story, story prayer and host introduction. Retain Ed message greeting/series review through closing prayer; exclude host thanks after amen. Existing end at 37542 stops mid-sermon reported conversation, so restore the continuous available message before census or discovery."
+      },
+      "source_validation_fingerprint": "f36f8090fe84ed5f6fa7e68f428a5bb0588b2e3732b742b0c02bc558ca77759b",
+      "interpretation": "Saved membership excludes the anchor. The historical source-only study reviewed a larger main interval. No override, reclassification or manual rescue was applied."
+    },
+    {
+      "case_id": "CE-24",
+      "kind": "control",
+      "route": "G3_current",
+      "video_id": 951,
+      "anchor_block_id": 65,
+      "start_seconds": 3800.16,
+      "end_seconds": 3843.28,
+      "anchor_segments": 36,
+      "retained_anchor_segments": 0,
+      "all_anchor_segments_excluded": true,
+      "saved_window_end_seconds": 2608.4,
+      "reviewed_main_source_interval": {
+        "start": 3152,
+        "end": 57354,
+        "rationale": "Exclude preceding children story, story prayer and host introduction. Retain Ed message greeting/series review through closing prayer; exclude host thanks after amen. Existing end at 37542 stops mid-sermon reported conversation, so restore the continuous available message before census or discovery."
+      },
+      "source_validation_fingerprint": "f36f8090fe84ed5f6fa7e68f428a5bb0588b2e3732b742b0c02bc558ca77759b",
+      "interpretation": "Saved membership excludes the anchor. The historical source-only study reviewed a larger main interval. No override, reclassification or manual rescue was applied."
+    }
+  ],
+  "implementation": {
+    "canonical_source_validation": true,
+    "exact_center_mapping_or_deferral": true,
+    "context_character_max": 6000,
+    "optional_context_only_trimming": true,
+    "untrusted_dto_validator": true,
+    "geometry_deduplication_with_hypothesis_conflict_preservation": true,
+    "data_only_mapping": true,
+    "immutable_preparation_identity": true,
+    "provider_executor_implemented": false,
+    "provider_requests": 0,
+    "model_loading": false,
+    "model_metadata_lookup": false,
+    "prompt_provider_request_prepared": false,
+    "measurement_execution": false,
+    "admission_execution": false
+  },
+  "backend": {
+    "configured_model": "gemma3:4b",
+    "configured_context_size": 4096,
+    "model_digest": null,
+    "model_metadata_fetched": false,
+    "token_budget_established": false,
+    "prompt_or_provider_wire_request_prepared": false
+  },
+  "verification": {
+    "focused_tests_passed": 67,
+    "read_only_cli_checks": true,
+    "retired_openai_probe_stays_blocked": true,
+    "frozen_proposal_bytes_verified_with_explicit_authorized_cli_overlay": true,
+    "external_artifact_location": "/Users/briancummings/Documents/PastorSearchData/evaluation/minute-evidence-handoff-v1/cf57f22066a32a18c26165fe3ea239271d52627cd3531679c78df7fc49b5a769/preparation-v1.json",
+    "unrelated_untracked_evaluation_files_untouched": true
+  },
+  "limitations": [
+    "Trace-selected anchors are retired development fixtures, not discovery or fresh confirmation.",
+    "Membership is from historical persisted extraction; present-model routing is unestablished.",
+    "Context/target geometry is not semantic sufficiency, provenance attestation or pastor credit.",
+    "Ollama model/tokenizer/prompt/runtime/output budgets remain unlocked; prepared bindings cannot execute or reuse provider caches.",
+    "The existing 24 oracle slots are diagnostics only; old 10/12 or paid execution authorizations do not transfer.",
+    "Clipped-parent oracle slots now locate full minute contexts; this is not the retired clipped-context experiment or its control geometry.",
+    "Deterministic validation cannot discover undeclared missing qualifiers or certify source voice/adoption; all validated nominees remain unusable.",
+    "Source 520 manifest ASR/caption discrepancy remains recorded; this implementation verifies canonical lineage from the actual caption extraction.",
+    "No old 10/12 criterion or closed V4/A1 review authority transfers to these data."
+  ],
+  "recommendation": "Resolve the explicit precedence between persisted retained-segment membership and the already reviewed main-source interval before any inference packet. The mapping/context/validator implementation is ready; do not alter the old source or classification in place, relabel membership deferrals as model errors, or authorize a provider run from this packet.",
+  "next_decision": {
+    "proposed_scope": "Provider-free reconciliation specification for source-window/membership authority, using the five disclosed source-951 slots and preserving both old artifacts.",
+    "reason": "Three of the original adequate opportunities are blocked upstream by saved membership rather than by context or target construction.",
+    "automatic_override": false,
+    "provider_execution": false
+  },
+  "semantic_or_containment_verdict": null,
+  "usable_evidence": null,
+  "content_fingerprint": "f73c98201d0bcec0f84e4457367cdd3f83269ba9a65ed8a9bfa44d795119abe7"
+}

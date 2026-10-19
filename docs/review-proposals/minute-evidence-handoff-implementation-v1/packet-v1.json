@@ -1,0 +1,16 @@
+{
+  "version": "minute-evidence-implementation-review-packet-v1",
+  "status": "PROVIDER_FREE_COMPLETE_MEMBERSHIP_PRECEDENCE_UNRESOLVED",
+  "preparation_fingerprint": "cf57f22066a32a18c26165fe3ea239271d52627cd3531679c78df7fc49b5a769",
+  "review_fingerprint": "f73c98201d0bcec0f84e4457367cdd3f83269ba9a65ed8a9bfa44d795119abe7",
+  "files": {
+    "docs/review-proposals/minute-evidence-handoff-implementation-v1/authorization-v1.json": "87ec3710ec1da15e5bba1441aa9ab0f14f781a77d72bc839f4bf36d40415c100",
+    "docs/review-proposals/minute-evidence-handoff-implementation-v1/preparation-manifest-v1.json": "62ccc16a063b2a8458336822984af42302a9a738b59601c8818747cf13203ab1",
+    "docs/review-proposals/minute-evidence-handoff-implementation-v1/review-v1.json": "d6188a36c8efc0e383728435d22f786b9ee8e367311e08aaf8abb6ee264e90f1",
+    "docs/review-proposals/minute-evidence-handoff-implementation-v1/REVIEW.md": "07e39d22dae2a667445b2710f674ce68def5ce0bb5da588e267a6408c9942b5c",
+    "docs/review-proposals/README.md": "0c485f4aa7c8e32a20d66e04541f68c3ad1fa83f256dfab97a1ae4aec43e4ead"
+  },
+  "provider_requests": 0,
+  "execution_authorized": false,
+  "content_fingerprint": "c43f7d652ab040a0554bbcaa475b2f8ffd7cbff5f51c55f3f48888dac38541a0"
+}

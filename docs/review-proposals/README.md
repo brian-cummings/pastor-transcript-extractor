@@ -1,10 +1,11 @@
 # Evidence-supply review navigation
 
-The current proposal is [the minute-block evidence handoff](minute-evidence-handoff-v1/PROPOSAL.md), dated 2026-10-19, based on [the completed pipeline trace](evidence-pipeline-trace-v1/REVIEW.md). It retains existing blocks and proposes provider-free implementation/preparation of bounded context and untrusted nomination interfaces. No new inference or implementation of that handoff is authorized yet.
+The current result is [the minute-block handoff implementation/preparation review](minute-evidence-handoff-implementation-v1/REVIEW.md), dated 2026-10-19. The provider-free mapping/context/nomination interfaces are implemented: 19/24 diagnostic slots prepare and five defer on historical retained membership. The next issue is explicit source-window/membership precedence, not model tuning. No inference or admission execution is authorized.
 
 | Material | How to use it now |
 |---|---|
-| `minute-evidence-handoff-v1` | Current implementation proposal and executed supersession of the old probe. |
+| `minute-evidence-handoff-implementation-v1` | Current source-only result, upstream membership finding and implementation authorization. |
+| `minute-evidence-handoff-v1` | Accepted implementation proposal and completed supersession of the old probe; frozen baseline. |
 | `evidence-pipeline-trace-v1` | Supporting integration findings and staged cleanup inventory. |
 | `context-extraction-probe-v1` | Historical, **SUPERSEDED_UNEXECUTED** OpenAI-dependent probe. Prepare/run are blocked; check-only verifies its frozen Git snapshot. Zero provider requests, no semantic verdict; no silent Ollama substitution. |
 | `context-evidence-architecture-v1` | Earlier standalone extraction hypothesis; integration framing is superseded by the pipeline trace. No feasibility result exists. |
