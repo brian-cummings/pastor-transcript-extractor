@@ -68,8 +68,8 @@ class SelectionPacketTests(unittest.TestCase):
         packet = seal(dict(requests=[dict(request=request, first_dispatch=b.dispatch_plan(request,{}), diagnostic_slots=['synthetic'])],
             endpoint='https://example.invalid', structural_deferrals=[], bounds=dict(provider_requests_max=1,
                 run_seconds_max=1800, request_timeout_seconds=45, reserved_total_input_tokens=p.TOKENS_PER_REQUEST)))
-        selected = dict(contexts={context['content_fingerprint']:context}, cases=[dict(context_fingerprint=context['content_fingerprint'],
-            anchor=anchor, preparation_binding=dict(source_proof=proof))])
+        selected = dict(sources={'1':dict(proof=proof)}, contexts={context['content_fingerprint']:context}, cases=[dict(context_fingerprint=context['content_fingerprint'],
+            anchor=anchor, preparation_binding=dict(source_proof=proof['content_fingerprint']))])
         patches = [patch.object(p,'verify',return_value=(packet,Path(tmp)/'input.json')),
             patch.object(p,'require_authorization',return_value={'content_fingerprint':'synthetic-authority'}),
             patch.object(e.review,'selected_windows',return_value=(selected,None)),
@@ -81,12 +81,15 @@ class SelectionPacketTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             packet, request = self.harness(tmp, None)
             response = dict(status=200,body_utf8=json.dumps(dict(model=p.MODEL, usage=dict(input_tokens=11, output_tokens=2),
-                answers={k: dict(type='choice', **v) for k,v in answers(request).items()})))
+                answers={k: dict(type='choice', **v) for k,v in answers(request, {
+                    'G3_utterance_start':'p'+str(request['state']['center_ranges'][0]['start']),
+                    'G3_utterance_end':'p'+str(request['state']['center_ranges'][0]['end'])}).items()})))
             sends=[]
             def transport(*args): sends.append(args); return response
             result, path = e.execute(packet['content_fingerprint'], transport=transport)
             self.assertEqual(1,len(sends));self.assertEqual(1,result['provider_requests'])
             self.assertEqual(0,result['measurement_requests']);self.assertFalse(result['usable_evidence'])
+            self.assertEqual(1,len(result['rows'][0]['nominations']))
             self.assertEqual(response, json.loads((path.parent/'01-response.json').read_text())['raw'])
             with self.assertRaises(FileExistsError): e.execute(packet['content_fingerprint'],transport=transport)
             self.assertEqual(1,len(sends))

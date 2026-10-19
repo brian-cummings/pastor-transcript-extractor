@@ -199,7 +199,11 @@ def analysis_structure_readiness(
                 from pastor_transcript_extractor.typesafe_selection_execution import execute
                 result, path = execute(approve_input, base_dir)
             else:
-                result, path = selection.verify(base_dir) if check_only else selection.prepare(base_dir)
+                if check_only and (selection.HERE/'execution-repair-v1.json').exists():
+                    from pastor_transcript_extractor.typesafe_selection_resume import check_repair
+                    result, path = check_repair(base_dir)
+                else:
+                    result, path = selection.verify(base_dir) if check_only else selection.prepare(base_dir)
         except (ValueError, OSError, KeyError, TypeError) as error:
             raise typer.BadParameter(str(error)) from error
         output = dict(status=result['status'], input_fingerprint=result.get('input_fingerprint', result['content_fingerprint']), provider_requests=result['provider_requests'], path=str(path))

@@ -67,7 +67,21 @@ def checked_response(receipt, questions):
     return raw
 
 
+def resolve_source_proof(selected, source_row):
+    """Bindings contain proof IDs; resolve and verify the original sealed object."""
+    expected = source_row['preparation_binding']['source_proof']
+    matches = [row['proof'] for row in selected['sources'].values()
+        if row['proof']['content_fingerprint'] == expected]
+    if len(matches) != 1 or seal(matches[0]) != matches[0] or matches[0]['source_fingerprint'] != source_row['anchor']['source_fingerprint']:
+        raise ValueError('Unresolved or foreign sealed source proof')
+    return matches[0]
+
+
 def execute(approved, base_dir=None, *, transport=send, clock=time.monotonic):
+    repair_path = spec.HERE/'execution-repair-v1.json'
+    if repair_path.exists() and approved == '19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceabaa8a2':
+        from pastor_transcript_extractor.typesafe_selection_resume import resume
+        return resume(approved, base_dir, transport=transport, clock=clock)
     packet, _ = spec.verify(base_dir)
     authority = spec.require_authorization(packet, approved)
     selected, _ = review.selected_windows(base_dir)
@@ -119,7 +133,7 @@ def execute(approved, base_dir=None, *, transport=send, clock=time.monotonic):
             context = selected['contexts'][first['scope']['context_fingerprint']]
             source_row = next(r for r in selected['cases'] if r.get('context_fingerprint') == context['content_fingerprint']
                 and r['anchor']['content_fingerprint'] == first['scope']['anchor_fingerprint'])
-            records, invalid = bridge.decode_points(target, raw, context, source_row['anchor'], source_row['preparation_binding']['source_proof']) if target else ([], {})
+            records, invalid = bridge.decode_points(target, raw, context, source_row['anchor'], resolve_source_proof(selected, source_row)) if target else ([], {})
             rows.append(dict(request_fingerprint=first['content_fingerprint'], nominations=records,
                 withheld_families=deferred, invalid_families=invalid, diagnostic_slots=row['diagnostic_slots'], usable_evidence=False))
         if clock()-started > bounds['run_seconds_max']:
