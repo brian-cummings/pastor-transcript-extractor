@@ -177,9 +177,29 @@ def _print_structure_readiness(report: object) -> None:
 
 @analysis_app.command("structure-readiness", help="Report structure analysis readiness.")
 def analysis_structure_readiness(
+    evidence_trace: bool = typer.Option(False, "--evidence-trace", help="Trace only the 24 existing evidence opportunities through persisted/reconstructed blocks; no inference."),
+    check_only: bool = typer.Option(False, "--check-only", help="Verify a saved evidence trace without rebuilding it."),
     as_json: bool = typer.Option(False, "--json"),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    if evidence_trace:
+        from pastor_transcript_extractor import evidence_pipeline_trace as trace
+        try:
+            if check_only:
+                result, path = trace.verify(base_dir)
+            else:
+                result = trace.build(base_dir)
+                path = trace.save_report(result, base_dir)
+        except (ValueError, OSError, KeyError) as error:
+            raise typer.BadParameter(str(error)) from error
+        if as_json:
+            console.print_json(data={"status": result["status"], "fingerprint": result["content_fingerprint"], "report": str(path), "adequate_footprint_diagnostics": result["adequate_footprint_diagnostics"]})
+        else:
+            console.print(f"24-case pipeline trace; provider_requests=0; no semantic/discovery credit; fingerprint={result['content_fingerprint']}", markup=False)
+            console.print(str(path), markup=False)
+        return
+    if check_only:
+        raise typer.BadParameter("--check-only requires --evidence-trace")
     report = build_structure_readiness(get_database(base_dir))
     if as_json:
         console.print_json(data=report.payload())
