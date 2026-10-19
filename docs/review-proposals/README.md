@@ -1,10 +1,11 @@
 # Evidence-supply review navigation
 
-The current work is [the bounded TypeSafe position-selection execution packet](typesafe-position-selection-v1/REVIEW.md), dated 2026-10-19. It preserves the selected-window bridge and prepares at most 30 nomination-only calls, with a $0.08257536 list-price reserve. Actual TypeSafe/Ollama calls are zero; execution awaits a separate decision. No measurement/admission, generative extractor or new retrieval pass is requested.
+The current result is [the TypeSafe position-selection source audit](typesafe-position-selection-source-audit-v1/REVIEW.md), dated 2026-10-19. The completed run used 30 total requests and $0.033297516 list price. It returned one supported current-preacher nomination, seven invalid geometries and eight withheld outcomes; no G2 pair or reported-local G3 nomination. The audit recommends stopping this endpoint formulation. No measurement/admission or collection/projection ran.
 
 | Material | How to use it now |
 |---|---|
-| `typesafe-position-selection-v1` | Current sealed nomination-only execution preparation; execution unauthorized, no feasibility result. |
+| `typesafe-position-selection-source-audit-v1` | Current audited diagnostic result; stop endpoint formulation, no more inference recommended. |
+| `typesafe-position-selection-v1` | Historical preparation, authorization and receipt-preserving bugfix handoffs; run now completed, see current audit. |
 | `typesafe-selected-window-bridge-v1` | Supporting provider-free position/measurement interface and capped usage plan; nomination questions remain unvalidated and execution held. |
 | `minute-membership-reconciliation-v1` | Supporting unchanged 24/24 context preparation with fixture-only membership authority. |
 | `minute-evidence-handoff-implementation-v1` | Preserved 19/24 saved-membership baseline and original implementation result. |

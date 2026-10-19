@@ -1,0 +1,35 @@
+{
+  "version": "typesafe-position-selection-audit-review-v1",
+  "input_fingerprint": "19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceabaa8a2",
+  "result_fingerprint": "52a5c00772ea8dd8598dc7fcec32234551110b7e0f0e44d538c7d465fe0b45df",
+  "audit_fingerprint": "3a30178cc39dcd01cd8f8586df47c461fc9c7eec32d773c8eca7a4968e74b8d9",
+  "audit_path": "/Users/briancummings/Documents/PastorSearchData/evaluation/typesafe-position-selection-source-audit-v1/3a30178cc39dcd01cd8f8586df47c461fc9c7eec32d773c8eca7a4968e74b8d9/source-audit-v1.json",
+  "audit_sha256": "e14d66804136077a9f901ad49bad9eec90c91e3f5471433daeea25b9a2820a4a",
+  "review_sha256": "0938e7ca2cb7abe7cc6bf2f1b6968af6a66722c3fb060c8928308e32c2b363a2",
+  "status": "SOURCE_AUDIT_COMPLETE_NOMINATION_FEASIBILITY_NOT_ESTABLISHED",
+  "counts": {
+    "contexts": 15,
+    "family_bindings": 16,
+    "G2": {
+      "invalid_geometry": 5,
+      "withheld": 1,
+      "literal_valid_nomination": 0
+    },
+    "G3": {
+      "invalid_geometry": 2,
+      "withheld": 7,
+      "literal_valid_nomination": 1
+    },
+    "source_supported_current_G3_nominations": 1,
+    "source_supported_reported_G3_nominations": 0,
+    "unsupported_literal_valid_nominations": 0,
+    "measurement_requests": 0,
+    "admission_requests": 0,
+    "usable_evidence": 0
+  },
+  "technical_receipt_integrity": "PASS",
+  "recommendation": "Stop this endpoint selection formulation; no further inference or downstream measurement recommended.",
+  "new_provider_requests": 0,
+  "contracts_changed": false,
+  "content_fingerprint": "8be4ef46ef6ac6d1004c41f7ee8a237c39e2818c96c0ab6240fc1c4246ce58e0"
+}
