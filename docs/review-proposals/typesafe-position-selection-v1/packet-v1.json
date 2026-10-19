@@ -1,0 +1,13 @@
+{
+  "version": "typesafe-position-selection-review-packet-v1",
+  "input_fingerprint": "19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceabaa8a2",
+  "files": {
+    "docs/review-proposals/typesafe-position-selection-v1/REVIEW.md": "9f0b57006a00fcd04ba2d2f0ef19106733768186c2346caad3ce1a7fd12baad7",
+    "docs/review-proposals/typesafe-position-selection-v1/execution-decision-v1.json": "75aa17b83cd0eeb5755b81d87b92ac9ea0dea0a648be314681c6545b4d5714bc",
+    "docs/review-proposals/typesafe-position-selection-v1/preparation-manifest-v1.json": "ddda9e95d4719a864b72f9a381f8cf5bd115b220945332be66c317934c2d960e",
+    "docs/review-proposals/typesafe-position-selection-v1/preparation-review-v1.json": "add693bc6845c71fb73663a05fa2b26d58d534b4b04155be9e4a7b7735aefa2f"
+  },
+  "provider_requests": 0,
+  "execution_authorized": false,
+  "content_fingerprint": "ba7c8c5438dcab6491caf6aeefa2ab56f034a55de407653a7bdc7e1041b824e4"
+}

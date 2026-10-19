@@ -1,10 +1,11 @@
 # Evidence-supply review navigation
 
-The current work is [the selected-window TypeSafe bridge and usage review](typesafe-selected-window-bridge-v1/REVIEW.md), dated 2026-10-19. It reuses the existing measurement question factories, adds only a prospective source-position nomination interface, and avoids duplicate/cacheable or structurally unusable work. Actual TypeSafe/Ollama calls are zero. Contexts remain selected; no generative extractor or new retrieval pass is required by this plan.
+The current work is [the bounded TypeSafe position-selection execution packet](typesafe-position-selection-v1/REVIEW.md), dated 2026-10-19. It preserves the selected-window bridge and prepares at most 30 nomination-only calls, with a $0.08257536 list-price reserve. Actual TypeSafe/Ollama calls are zero; execution awaits a separate decision. No measurement/admission, generative extractor or new retrieval pass is requested.
 
 | Material | How to use it now |
 |---|---|
-| `typesafe-selected-window-bridge-v1` | Current provider-free position/measurement interface and capped usage plan; nomination questions remain unvalidated and execution held. |
+| `typesafe-position-selection-v1` | Current sealed nomination-only execution preparation; execution unauthorized, no feasibility result. |
+| `typesafe-selected-window-bridge-v1` | Supporting provider-free position/measurement interface and capped usage plan; nomination questions remain unvalidated and execution held. |
 | `minute-membership-reconciliation-v1` | Supporting unchanged 24/24 context preparation with fixture-only membership authority. |
 | `minute-evidence-handoff-implementation-v1` | Preserved 19/24 saved-membership baseline and original implementation result. |
 | `minute-evidence-handoff-v1` | Frozen handoff/context baseline and probe supersession. Its assumption of a separate Ollama nominator is superseded by the current TypeSafe-first interface plan. |
