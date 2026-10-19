@@ -1,10 +1,11 @@
 # Evidence-supply review navigation
 
-The current result is [the minute-block handoff implementation/preparation review](minute-evidence-handoff-implementation-v1/REVIEW.md), dated 2026-10-19. The provider-free mapping/context/nomination interfaces are implemented: 19/24 diagnostic slots prepare and five defer on historical retained membership. The next issue is explicit source-window/membership precedence, not model tuning. No inference or admission execution is authorized.
+The current result is [the provider-free membership reconciliation](minute-membership-reconciliation-v1/REVIEW.md), dated 2026-10-19. All 24 existing diagnostic slots now prepare under an explicit, hash-bound reviewed-window overlay scoped to retired fixtures. The original 19/24 saved-membership packet is preserved. Next is one bounded local-Ollama nomination packet; no inference or production membership change is authorized.
 
 | Material | How to use it now |
 |---|---|
-| `minute-evidence-handoff-implementation-v1` | Current source-only result, upstream membership finding and implementation authorization. |
+| `minute-membership-reconciliation-v1` | Current 24/24 provider-free fixture preparation, explicit window precedence and limits. |
+| `minute-evidence-handoff-implementation-v1` | Preserved 19/24 saved-membership baseline and original implementation result. |
 | `minute-evidence-handoff-v1` | Accepted implementation proposal and completed supersession of the old probe; frozen baseline. |
 | `evidence-pipeline-trace-v1` | Supporting integration findings and staged cleanup inventory. |
 | `context-extraction-probe-v1` | Historical, **SUPERSEDED_UNEXECUTED** OpenAI-dependent probe. Prepare/run are blocked; check-only verifies its frozen Git snapshot. Zero provider requests, no semantic verdict; no silent Ollama substitution. |

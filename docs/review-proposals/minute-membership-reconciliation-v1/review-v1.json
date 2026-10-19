@@ -1,0 +1,114 @@
+{
+  "version": "minute-membership-reconciliation-review-v1",
+  "date": "2026-10-19",
+  "status": "PROVIDER_FREE_FIXTURE_PRECEDENCE_RESOLVED",
+  "implementation_commit": "aa73c60",
+  "preparation_fingerprint": "84ae2ce9dc0abd1bfd22a82a192df3a457fe9bae898a7dbab4eec163b8e5e7cc",
+  "baseline_preparation_fingerprint": "cf57f22066a32a18c26165fe3ea239271d52627cd3531679c78df7fc49b5a769",
+  "review_validation_fingerprint": "f36f8090fe84ed5f6fa7e68f428a5bb0588b2e3732b742b0c02bc558ca77759b",
+  "authority_fingerprint": "0a20d828b0bf6fa2305fa40b465fbf204703a22c545478e827656a1e69958b90",
+  "counts": {
+    "cases": 24,
+    "prepared": 24,
+    "unique_contexts": 17,
+    "unique_bindings": 18,
+    "deferrals": {},
+    "newly_prepared": 5
+  },
+  "all_prepared_diagnostic_footprints_inside": true,
+  "membership_changes": [
+    {
+      "video_id": 520,
+      "saved_segment_count": 2296,
+      "effective_segment_count": 2279,
+      "added_segment_count": 0,
+      "removed_segment_count": 17,
+      "boundary_units_deferred": [
+        "520:F0001"
+      ],
+      "authority_fingerprint": "0a20d828b0bf6fa2305fa40b465fbf204703a22c545478e827656a1e69958b90",
+      "membership_fingerprint": "cde4160abb798995bcb36603644cd9dbd44b85d77c544f9f6ea61af7c0c750a1",
+      "reviewed_main_span": {
+        "start": 125,
+        "end": 37936,
+        "rationale": "Exclude short preceding introduction fragment; retain current message greeting, self-introduction, opening prayer, exposition/application and all available closing prayer. Available text ends without a final amen; no ending is invented."
+      }
+    },
+    {
+      "video_id": 1094,
+      "saved_segment_count": 1490,
+      "effective_segment_count": 1772,
+      "added_segment_count": 283,
+      "removed_segment_count": 1,
+      "boundary_units_deferred": [
+        "1094:F0007"
+      ],
+      "authority_fingerprint": "0a20d828b0bf6fa2305fa40b465fbf204703a22c545478e827656a1e69958b90",
+      "membership_fingerprint": "3eb43a044d8bf5cb3e59ec7d39a6f24f6cbcb2957513321063c3bfb6973732c0",
+      "reviewed_main_span": {
+        "start": 1117,
+        "end": 28408,
+        "rationale": "Exclude preceding worship prayer through its amen; retain sermon onset through complete final prayer. Existing extracted end at 24355 clips live application mid-sentence, so extend to available message end before any census or discovery."
+      }
+    },
+    {
+      "video_id": 951,
+      "saved_segment_count": 2051,
+      "effective_segment_count": 2941,
+      "added_segment_count": 1071,
+      "removed_segment_count": 181,
+      "boundary_units_deferred": [
+        "951:F0010"
+      ],
+      "authority_fingerprint": "0a20d828b0bf6fa2305fa40b465fbf204703a22c545478e827656a1e69958b90",
+      "membership_fingerprint": "449850acd5abb8208cb6431ebb9e321c3139287305ef56d84604875e9e4776e9",
+      "reviewed_main_span": {
+        "start": 3152,
+        "end": 57354,
+        "rationale": "Exclude preceding children story, story prayer and host introduction. Retain Ed message greeting/series review through closing prayer; exclude host thanks after amen. Existing end at 37542 stops mid-sermon reported conversation, so restore the continuous available message before census or discovery."
+      }
+    }
+  ],
+  "newly_prepared_cases": [
+    "CE-03",
+    "CE-05",
+    "CE-07",
+    "CE-16",
+    "CE-24"
+  ],
+  "precedence": {
+    "default": "saved retained membership",
+    "override": "explicit source/extraction/review/hash-bound reviewed-main replacement",
+    "scope": "retired_fixture_preparation_only",
+    "combination": "replacement, never union",
+    "boundary_units": "exclude whole crossing units; no word-level ownership invented",
+    "original_classifications": "unchanged",
+    "source_snapshots": "unchanged",
+    "database": "not written",
+    "nominal_pastor_credit": false
+  },
+  "identity_policy": "Membership authority is included in anchor/context/routing binding even if effective indexes are identical; no provider-cache reuse.",
+  "verification": {
+    "focused_tests_passed": 76,
+    "provider_requests": 0,
+    "model_loading": false,
+    "source_and_extraction_byte_hashes_verified": true,
+    "baseline_packet_preserved": true,
+    "reviewed_overlay_explicit_cli_flag": true,
+    "openai_probe_still_retired": true
+  },
+  "semantic_recovery": null,
+  "admitted_items": null,
+  "usable_evidence": null,
+  "execution_authorized": false,
+  "production_authorization": false,
+  "recommendation": "Prepare one bounded local-Ollama nomination execution packet from these provider-free contexts, with exact configured model/digest/prompt/schema/token-context/output/runtime/review locks. Do not execute until separately authorized. Keep it a development nomination-feasibility test; no production membership or A1 authority is inherited.",
+  "remaining_limits": [
+    "Retired trace-selected fixtures establish no discovery recall or held-out generalization.",
+    "Diagnostic parent/clipped/control labels are locators; original clipped geometry and criteria do not transfer.",
+    "Window review establishes source-local study scope, not speaker/pastor identity, provenance automation or production membership.",
+    "All nominees remain untrusted and require source review; no model outputs, Jev measurements or admission have occurred.",
+    "Token and runtime budgets remain unresolved for the configured local model; this data preparation is not an executable request queue."
+  ],
+  "content_fingerprint": "f6d6d50c5a5d9b74745ad09f27784b95910a9570e4d1062efd1107fcf451f529"
+}

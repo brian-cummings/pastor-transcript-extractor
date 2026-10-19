@@ -1,0 +1,17 @@
+{
+  "version": "minute-membership-reconciliation-packet-v1",
+  "status": "PROVIDER_FREE_FIXTURE_PRECEDENCE_RESOLVED",
+  "preparation_fingerprint": "84ae2ce9dc0abd1bfd22a82a192df3a457fe9bae898a7dbab4eec163b8e5e7cc",
+  "review_fingerprint": "f6d6d50c5a5d9b74745ad09f27784b95910a9570e4d1062efd1107fcf451f529",
+  "files": {
+    "docs/review-proposals/minute-membership-reconciliation-v1/authorization-v1.json": "15a51761ef7398676c19cfa22585d2f215ff5cf1acb6c02fa548c2dfd97916db",
+    "docs/review-proposals/minute-membership-reconciliation-v1/preparation-manifest-v1.json": "19376b8c21c579a18839a386d0969ab0a8232cca2516ac883215f25c47121943",
+    "docs/review-proposals/minute-membership-reconciliation-v1/review-v1.json": "a467f249c4506731c13fb56b7546afbb814b56c4cd970b07db36bd4568b74460",
+    "docs/review-proposals/minute-membership-reconciliation-v1/REVIEW.md": "9c5bd988fc41d5ae1b30411f0b1ea5f22d95839ede05d37efc143d161bc96dba",
+    "docs/review-proposals/README.md": "24ded0a693c6dbf3f2db91b37e64b4e778ae3b56feab1bce002db4eb712b28d8"
+  },
+  "provider_requests": 0,
+  "execution_authorized": false,
+  "production_authorization": false,
+  "content_fingerprint": "b263949670c8880f73dcc2235cd359a4314bf45f38e247b349b9dded1b9c1b4d"
+}
