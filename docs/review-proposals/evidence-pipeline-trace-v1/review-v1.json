@@ -1,0 +1,264 @@
+{
+  "version": "evidence-pipeline-trace-review-v1",
+  "review_date": "2026-10-19",
+  "status": "TRACE_COMPLETE_CLEANUP_PLANNED",
+  "trace_path": "/Users/briancummings/Documents/PastorSearchData/evaluation/evidence-pipeline-trace-v1/pipeline-trace-v1.json",
+  "trace_sha256": "d662ce3d7d65985b890ec85d88b83b1256cf5b6ec0582979109d1c223d6d5c57",
+  "trace_fingerprint": "3799f816a236ab5b32ce20748a3c5cb0e720d178343a4df52774e2e6a91629bb",
+  "implementation_commit": "ccf8c09",
+  "sources": [
+    {
+      "video_id": 520,
+      "persisted_method": "adaptive_llm_v7",
+      "persisted_model": "gemma3:4b",
+      "persisted_topic_block_count": 0,
+      "persisted_sermon_analysis_run_count": 0,
+      "manifest_source_kind": "local_asr",
+      "actual_extraction_source": "captions",
+      "canonical_source_reconstructed_exactly": true,
+      "canonical_unit_segment_lineage_verified": true,
+      "reconstructed_minute_count": 46,
+      "reconstructed_over_60_seconds": 2,
+      "reconstructed_max_seconds": 84.71999999999997
+    },
+    {
+      "video_id": 1094,
+      "persisted_method": "typesafe_first_v10",
+      "persisted_model": "jev-1.13.0",
+      "persisted_topic_block_count": 0,
+      "persisted_sermon_analysis_run_count": 0,
+      "manifest_source_kind": "captions",
+      "actual_extraction_source": "captions",
+      "canonical_source_reconstructed_exactly": true,
+      "canonical_unit_segment_lineage_verified": true,
+      "reconstructed_minute_count": 49,
+      "reconstructed_over_60_seconds": 2,
+      "reconstructed_max_seconds": 68.40000000000009
+    },
+    {
+      "video_id": 951,
+      "persisted_method": "adaptive_llm_v7",
+      "persisted_model": "gemma3:4b",
+      "persisted_topic_block_count": 0,
+      "persisted_sermon_analysis_run_count": 0,
+      "manifest_source_kind": "captions",
+      "actual_extraction_source": "captions",
+      "canonical_source_reconstructed_exactly": true,
+      "canonical_unit_segment_lineage_verified": true,
+      "reconstructed_minute_count": 69,
+      "reconstructed_over_60_seconds": 20,
+      "reconstructed_max_seconds": 201.52400000000011
+    }
+  ],
+  "availability_diagnostics": {
+    "G2": {
+      "center": 2,
+      "current_topic_payload": 3,
+      "current_role_payload": 3,
+      "full_adjacent_block_counterfactual": 3
+    },
+    "G3_current": {
+      "center": 4,
+      "current_topic_payload": 4,
+      "current_role_payload": 4,
+      "full_adjacent_block_counterfactual": 4
+    },
+    "G3_reported": {
+      "center": 2,
+      "current_topic_payload": 2,
+      "current_role_payload": 2,
+      "full_adjacent_block_counterfactual": 2
+    }
+  },
+  "interpretation": [
+    "Minute blocks are a retained processing/navigation layer; no evidence here calls for replacing them.",
+    "Existing sermon localization does not establish complete exact G2/G3 evidence nomination, current topic routing or admission on these sources.",
+    "All three canonical snapshots can be reproduced exactly from persisted extraction segments with verified normalized-unit source indexes.",
+    "Current reconstructed topic/role payloads expose the reviewed source footprint in nine of twelve adequate cases; source presence is not semantic/retrieval/admission credit.",
+    "The three unresolved footprints need longer-range explanation/reporting/attribution context, not a blanket increase to one immediate neighbor.",
+    "The apparent minute framing is not a hard 60-second limit; normalized units produce oversize blocks, including several adequate case anchors."
+  ],
+  "source_discrepancy": {
+    "video_id": 520,
+    "manifest": "local_asr",
+    "actual_persisted_extraction": "captions",
+    "disposition": "Disclosed; no frozen source or historical result modified."
+  },
+  "next_step": {
+    "recommendation": "First specify the existing minute-block nomination interface and a bounded, source-grounded context-link policy; reuse existing analysis only where source/model/question/context identities match.",
+    "processing_units": "Retain existing blocks and timestamps.",
+    "evidence_units": "Exact nominated G2 roles/G3 utterances may cross block boundaries while preserving canonical source/segment identity.",
+    "nomination_backend": "Unselected. TypeSafe source-position selection and Ollama generation remain alternative implementations, not authorized substitutions.",
+    "minimum_interface": [
+      "Center block identity, source snapshot hash and exact canonical segment/character mapping",
+      "Separate context-only spans and nominated evidence roles; supporting context cannot silently count as target evidence under old question contracts",
+      "Explicit earlier reporting/attribution or explanatory links with bounded retrieval/deferral policy",
+      "Deduplication by canonical geometry and preserved supporting block provenance",
+      "Versioned nomination questions/requests only; closed measurement/admission contracts unchanged"
+    ],
+    "provider_execution_authorized_by_this_review": false,
+    "new_semantic_experiment_prepared": false
+  },
+  "cleanup_plan": {
+    "status": "PLAN_ONLY_NO_DELETION_OR_RELOCATION",
+    "goal": "Remove superseded experimental paths from active guidance/runtime while preserving accepted semantics, frozen decisions and reproducible audit provenance.",
+    "phases": [
+      {
+        "phase": 1,
+        "action": "Consolidate navigation now",
+        "scope": "One current review-proposal index and this pipeline trace/cleanup plan; old frozen packets remain unchanged.",
+        "executed": true
+      },
+      {
+        "phase": 2,
+        "action": "Close and detach the unexecuted OpenAI probe",
+        "scope": [
+          "src/pastor_transcript_extractor/context_extraction_probe.py",
+          "src/pastor_transcript_extractor/context_extraction_validation.py",
+          "src/pastor_transcript_extractor/commands/analysis/context_extraction.py",
+          "tests/test_context_extraction_probe.py",
+          "docs/review-proposals/context-extraction-probe-v1"
+        ],
+        "preconditions": [
+          "Record prospective UNEXECUTED_SUPERSEDED closure/authorization supersession, not an experiment FAIL.",
+          "Preserve the exact frozen implementation/authority/input provenance before removing active imports.",
+          "Replace executable probe entry with explicit retired status while retaining read-only history access.",
+          "Keep exact-literal validator concepts only where the pipeline integration actually needs them."
+        ],
+        "executed": false
+      },
+      {
+        "phase": 3,
+        "action": "Retire failed collector execution surfaces together",
+        "scope": [
+          "collector-retrieval V1 and V1.1 runners and CLI modes",
+          "Fresh V1/V2/V3 execution/preparation utilities once their support graph is recorded"
+        ],
+        "preconditions": [
+          "Preserve closure decisions, source audits, prepared references, sealed results and provenance.",
+          "Inventory Python imports as well as JSON path/hash pins; move shared sealing/navigation support to a stable home only under a prospective migration.",
+          "Do not reopen old collectors or rewrite thresholds/expectations as part of cleanup."
+        ],
+        "executed": false
+      },
+      {
+        "phase": 4,
+        "action": "Archive dated proposal prose and disposable external runtime artifacts",
+        "scope": "Use archive/index labels first; move/delete only after references and checksums are mapped.",
+        "preconditions": [
+          "The nine inventoried proposal directories contain 93 files with external JSON dependencies; do not mass-move them.",
+          "Prepared/generated payloads, receipts and caches belong under configured base, not Git.",
+          "Keep frozen evidence and accepted guard/measurement decisions; optional tokenizer/MiniLM caches require a specific checksum/size manifest before deletion.",
+          "Preserve unrelated untracked evaluation/evidence-supply-readiness-v2 files; do not move or delete them incidentally.",
+          "Do not touch installed Ollama models or TypeSafe configuration."
+        ],
+        "executed": false
+      }
+    ],
+    "retain": [
+      "One-minute/five-minute transcript pipeline, timestamped segments, role/topic context and per-pack caches",
+      "Closed G1/G2/G3 measurement semantics, .80 thresholds, V4/A1 decisions and admission invariants",
+      "Frozen source-unit repair and canonical provenance as historical/reusable support where needed",
+      "Compact decision history and sealed source/results artifacts"
+    ],
+    "inventory": [
+      {
+        "path": "docs/review-proposals/collector-retrieval-design-v1",
+        "files": 6,
+        "bytes": 51110,
+        "external_json_dependents": [],
+        "disposition": "retire_from_active_guidance_preserve_historical_seals"
+      },
+      {
+        "path": "docs/review-proposals/collector-retrieval-implementation-v1",
+        "files": 11,
+        "bytes": 687917,
+        "external_json_dependents": [
+          "docs/review-proposals/context-evidence-architecture-v1/proposal-v1.json",
+          "docs/review-proposals/collector-retrieval-repair-v1.1/development-source-audit-v1.1.json",
+          "docs/review-proposals/collector-retrieval-repair-v1.1/development-input-v1.1.json"
+        ],
+        "disposition": "retire_from_active_guidance_preserve_historical_seals"
+      },
+      {
+        "path": "docs/review-proposals/collector-retrieval-repair-v1.1",
+        "files": 10,
+        "bytes": 1341725,
+        "external_json_dependents": [
+          "docs/review-proposals/context-evidence-architecture-v1/proposal-v1.json"
+        ],
+        "disposition": "retire_from_active_guidance_preserve_historical_seals"
+      },
+      {
+        "path": "docs/review-proposals/context-evidence-architecture-v1",
+        "files": 6,
+        "bytes": 47051,
+        "external_json_dependents": [],
+        "disposition": "retire_from_active_guidance_preserve_historical_seals"
+      },
+      {
+        "path": "docs/review-proposals/context-extraction-probe-v1",
+        "files": 14,
+        "bytes": 122865,
+        "external_json_dependents": [],
+        "disposition": "retire_from_active_guidance_preserve_historical_seals"
+      },
+      {
+        "path": "docs/review-proposals/fresh-discovery-readiness-v1",
+        "files": 14,
+        "bytes": 588641,
+        "external_json_dependents": [],
+        "disposition": "retire_from_active_guidance_preserve_historical_seals"
+      },
+      {
+        "path": "docs/review-proposals/fresh-discovery-readiness-v2",
+        "files": 11,
+        "bytes": 643556,
+        "external_json_dependents": [
+          "docs/review-proposals/source-unit-repair-v1/source-audit-v1.json"
+        ],
+        "disposition": "retire_from_active_guidance_preserve_historical_seals"
+      },
+      {
+        "path": "docs/review-proposals/fresh-discovery-readiness-v3",
+        "files": 15,
+        "bytes": 1284900,
+        "external_json_dependents": [
+          "docs/review-proposals/collector-retrieval-implementation-v1/development-source-audit-v1.json",
+          "docs/review-proposals/collector-retrieval-implementation-v1/development-input-v1.json",
+          "docs/review-proposals/collector-retrieval-design-v1/proposal-v1.json",
+          "docs/review-proposals/context-evidence-architecture-v1/proposal-v1.json",
+          "docs/review-proposals/collector-retrieval-repair-v1.1/development-source-audit-v1.1.json",
+          "docs/review-proposals/collector-retrieval-repair-v1.1/development-input-v1.1.json"
+        ],
+        "disposition": "retire_from_active_guidance_preserve_historical_seals"
+      },
+      {
+        "path": "docs/review-proposals/source-unit-repair-v1",
+        "files": 6,
+        "bytes": 216237,
+        "external_json_dependents": [
+          "docs/review-proposals/fresh-discovery-readiness-v3/preparation-review-v3.json"
+        ],
+        "disposition": "retain_frozen_support"
+      }
+    ]
+  },
+  "verification": {
+    "focused_tests": 46,
+    "provider_requests": 0,
+    "model_loading": false,
+    "classifications_run": false,
+    "old_probe_fingerprint_still_verifies": true,
+    "generated_artifacts_outside_repository": true
+  },
+  "historical_decisions_unchanged": true,
+  "limitations": [
+    "Whitespace-only source presence is not exact coordinate alignment, semantic target sufficiency, discovery credit or usable evidence.",
+    "Timestamp mapping uses whole normalized-unit segment provenance, not word timestamps.",
+    "Current minute views are deterministic reconstructions, not existing routed/current-model observations.",
+    "Actual historical block IDs may repeat between coarse/fine stages; artifact ordinals are retained.",
+    "No cleanup or artifact deletion was executed."
+  ],
+  "content_fingerprint": "635ebb55ae6459c0ed85a0acc36b35be4f53851ff5d0bd49c4b47d62cfee6fca"
+}
