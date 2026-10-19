@@ -1,0 +1,621 @@
+{
+  "version": "context-extraction-preparation-review-v1",
+  "status": "READY_FOR_SEPARATE_EXECUTION_DECISION",
+  "input_fingerprint": "54ada40ca8926a6bae0a89cd41c091fcc0ce9e31c3c4cc27969feee892e7a76a",
+  "implementation_commit": "aa1f3a7",
+  "proposal_packet_fingerprint": "32bd6551715c0196a3a6a99d006da348a779efc1e874f993d2f983896627681e",
+  "preparation_authorization_fingerprint": "2dec08185bf4357052d4cee79f8f72f738fc14eb4c9b8ef6ba70bd7d91f2e973",
+  "panel_fingerprint": "ed31ec621466774c9cb3677a11092216b3acba457d95abdea5384015ed21face",
+  "source_oracle_fingerprint": "8a73d6f8388b278b18dbb8690caaad656fd6b9b2c6b29b24c62f7b4d62506d83",
+  "source_spec_fingerprint": "5b2e1006d457f2510496967735009017f9e24e4c40f7ddcc8118f39df58a06e2",
+  "model_lock_fingerprint": "8039af8bd15822a1e0c5c46505f7bc6ad729c50125fa6778032c2a48289f181a",
+  "runtime_lock_fingerprint": "1b77f2f5678e4f73378b010fc7424620658a28757e739923516cdce30f82fbe3",
+  "cases": [
+    {
+      "case_id": "CE-01",
+      "kind": "adequate",
+      "route": "G2",
+      "video_id": 520,
+      "bounds": [
+        8298,
+        9029
+      ],
+      "characters": 731,
+      "context_fingerprint": "8cc5566fce71e630d1e8c029a12a1c94c13a1de839f9dd0443439a1761816fc3",
+      "request_fingerprint": "c626e0ca56621711dd49bc76c55b2aa65927984a4cda88fc043702abc2c0a8f6",
+      "token_account": {
+        "serialized_payload_tokens": 2456,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 6552,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Paul/verse identity and the Greek rule gloss are contiguous. Nominate the Biblical rule clause and the govern/control explanation, keeping the directed link."
+    },
+    {
+      "case_id": "CE-02",
+      "kind": "adequate",
+      "route": "G2",
+      "video_id": 951,
+      "bounds": [
+        33300,
+        34603
+      ],
+      "characters": 1303,
+      "context_fingerprint": "54832a0e01f3576ff335f3033d6c84d42162840b06e4b98441688c266d9c960a",
+      "request_fingerprint": "4d39a8a3a830046cea476f0a37e3c696d9c3f4fa7630c6895f98c256622169c0",
+      "token_account": {
+        "serialized_payload_tokens": 3513,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 7609,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "The labor-pains anchor and explicit timing analogy are supplied, together with Paul attribution. The point is known nearness without exact day/hour, not a prediction of a date."
+    },
+    {
+      "case_id": "CE-03",
+      "kind": "adequate",
+      "route": "G2",
+      "video_id": 951,
+      "bounds": [
+        40188,
+        42301
+      ],
+      "characters": 2113,
+      "context_fingerprint": "a07bb5cf70a69435644af5a23e248b154735d4d9b4d26d5b0de2f3df35eeca10",
+      "request_fingerprint": "1b00c840d71f6614c2aaea32165825e614a3876358bfa0f656d4bf48c2773e71",
+      "token_account": {
+        "serialized_payload_tokens": 5218,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 9314,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Luke 17 identity, taken/left clause, the where/body/carcass reasoning and the destruction conclusion are contiguous. Distinct roles are required; engulfing the entire passage is not a discriminating explanation."
+    },
+    {
+      "case_id": "CE-04",
+      "kind": "adequate",
+      "route": "G2",
+      "video_id": 1094,
+      "bounds": [
+        9119,
+        11203
+      ],
+      "characters": 2084,
+      "context_fingerprint": "e558ee3880455d95624fba0ba6bfd9fc5faafed6c9db1c1ce07a8af73dfde4e7",
+      "request_fingerprint": "244d0c8b6e7f5cf70daf239531b5042e7c08760f5d5bd56d08442365285fa47e",
+      "token_account": {
+        "serialized_payload_tokens": 5154,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 9250,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Romans 8 identity and the adjacent not-his/do-not-belong paraphrase are supplied. Negation/conditional subject must survive; the quotation by itself is not the explanatory role."
+    },
+    {
+      "case_id": "CE-05",
+      "kind": "adequate",
+      "route": "G3_current",
+      "video_id": 951,
+      "bounds": [
+        54702,
+        55281
+      ],
+      "characters": 579,
+      "context_fingerprint": "b386a663584ab64bd60b3755bf51e0962144dc0a1dfb4b00a85317d74eb6d464",
+      "request_fingerprint": "2ea7c5f48686e11dafa929746c6fdf2c8b8a1891247c702eeaae871c4b474752",
+      "token_account": {
+        "serialized_payload_tokens": 2182,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 6278,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Present direct warning to listeners: trust nobody but God. Preserve the exception; a bare trust-nobody fragment changes the act. Surrounding preacher/Bible remarks support current scope."
+    },
+    {
+      "case_id": "CE-06",
+      "kind": "adequate",
+      "route": "G3_current",
+      "video_id": 1094,
+      "bounds": [
+        13350,
+        13642
+      ],
+      "characters": 292,
+      "context_fingerprint": "7030d6cf47f0b5311c2ce737be4724a4400a72e88fa7a170a5e2150d47723887",
+      "request_fingerprint": "5ee6e9b0aa148425f10004352fc8586c9177d15f1af9cf00e62f2e1b45897f30",
+      "token_account": {
+        "serialized_payload_tokens": 1770,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 5866,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Present prayer instruction with reassurance conditional on that response. The focal qualified promise requires stay-on-knees/call-on-Jesus content plus if-you-do. An independently valid instruction alone is additional output, not recovery of this qualified opportunity."
+    },
+    {
+      "case_id": "CE-07",
+      "kind": "adequate",
+      "route": "G3_current",
+      "video_id": 951,
+      "bounds": [
+        50701,
+        51738
+      ],
+      "characters": 1037,
+      "context_fingerprint": "95d1134de718e2aa398f2137f3db326c4ed61fd47ca237011317b5c7eca97081",
+      "request_fingerprint": "e0ebdcba18f98e197dca47cf6c67e555d2c44d06d92973aa64b7eb901245dc89",
+      "token_account": {
+        "serialized_payload_tokens": 3062,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 7158,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "The outer we-need-to-be-like exhortation is current address. Nested he-can-save/even-if-not/I-will-not-forsake wording is modeled emulation, not a newly current preacher quotation. Preserve both outer act and indispensable modeled content."
+    },
+    {
+      "case_id": "CE-08",
+      "kind": "adequate",
+      "route": "G3_current",
+      "video_id": 520,
+      "bounds": [
+        5156,
+        5583
+      ],
+      "characters": 427,
+      "context_fingerprint": "6133baf4e40f30e1460c098856728f7f8516ac7cd2043611b37cadd7bc5f3aa7",
+      "request_fingerprint": "94485a3018b5c2f2bd58e9804c07adfabfd0c2e559df47c40851d164a79af0fe",
+      "token_account": {
+        "serialized_payload_tokens": 1936,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 6032,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "The preacher directly tells present Bible-holders to turn to Colossians 3. Paul writes belongs to surrounding attribution, not the speaker of this live instruction."
+    },
+    {
+      "case_id": "CE-09",
+      "kind": "adequate",
+      "route": "G3_reported",
+      "video_id": 951,
+      "bounds": [
+        14373,
+        14583
+      ],
+      "characters": 210,
+      "context_fingerprint": "7b39d7292497ee0d450a743d64fd4f4ffc04a92db789cea66c0dada510f7ee36",
+      "request_fingerprint": "a2d4b1a9ad9a347c432aedabc964e92b7ff0caa408eeab1bd1d8cd097f657eaf",
+      "token_account": {
+        "serialized_payload_tokens": 1621,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 5717,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Jesus continues Matthew 24 supplies reported identity; conditional desert report plus do-not-go-out form one qualified historical warning. The inner-rooms warning can be a separate legitimate act."
+    },
+    {
+      "case_id": "CE-10",
+      "kind": "adequate",
+      "route": "G3_reported",
+      "video_id": 951,
+      "bounds": [
+        19633,
+        19852
+      ],
+      "characters": 219,
+      "context_fingerprint": "ae0d4be8dfaf63c6c430da8e41f3a75953c9a0ccc68de2cb81021b5b6d82c5c9",
+      "request_fingerprint": "6afd21c5e5feb5d3e3063fed384902587fc468c8a8dce08462d5708a41617eee",
+      "token_account": {
+        "serialized_payload_tokens": 1675,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 5771,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Narrated Exodus exchange has Moses requesting glory and a divine reply promising goodness to Moses. Preserve reported/historical scope; no current-congregation promise or preacher adoption is established."
+    },
+    {
+      "case_id": "CE-11",
+      "kind": "adequate",
+      "route": "G3_reported",
+      "video_id": 951,
+      "bounds": [
+        5427,
+        6960
+      ],
+      "characters": 1533,
+      "context_fingerprint": "6970a4f9541ffd7d748819c43de5f098ee08f69e449e21cad3728115fd21d0db",
+      "request_fingerprint": "695707d0c1912ded64a9f010b110a81ca7b8c982dcbf235c5a89cf3bd43c05b8",
+      "token_account": {
+        "serialized_payload_tokens": 4008,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 8104,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Matt is introduced as friend; narrative continuity leads to he-calls-me-up-and-says, and Ed is named in the request. The Bible-study request is reported Matt-to-Ed, not live congregation invitation."
+    },
+    {
+      "case_id": "CE-12",
+      "kind": "adequate",
+      "route": "G3_reported",
+      "video_id": 520,
+      "bounds": [
+        6972,
+        8400
+      ],
+      "characters": 1428,
+      "context_fingerprint": "dbbb51ba9b83161b6ca4638332d769060533d791626aad123a6685338b572ae1",
+      "request_fingerprint": "60c02ac8f8623e855ef0d66af159f518ae7f34bf6276a7dd844db81c367d6788",
+      "token_account": {
+        "serialized_payload_tokens": 3742,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 7838,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Paul, the letter, chapter 3, virtues and verse 14 are supplied. Put-on-love is a reported Pauline exhortation to the letter recipients/believers, not a current preacher-origin utterance. Preserve which binds... and all-these-virtues context."
+    },
+    {
+      "case_id": "CE-13",
+      "kind": "clipped",
+      "route": "G2",
+      "video_id": 520,
+      "bounds": [
+        8630,
+        8881
+      ],
+      "characters": 251,
+      "context_fingerprint": "36f03bcad75c1720688727893ee617868ea8d1524ebd5006d044033899f27486",
+      "request_fingerprint": "60eb51997250b676cba9f92a9c65bcad4f5cf46aa3186ac733d069a24c5a0558",
+      "token_account": {
+        "serialized_payload_tokens": 1650,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 5746,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "The govern/control explanation is outside context. Do not manufacture the missing G2 role; an anchor or unfinished Greek introduction alone does not recover the parent."
+    },
+    {
+      "case_id": "CE-14",
+      "kind": "clipped",
+      "route": "G2",
+      "video_id": 1094,
+      "bounds": [
+        11070,
+        11134
+      ],
+      "characters": 64,
+      "context_fingerprint": "643ce385b0e2b84ac8d54353796fcbfa6d1159c06629f9bb48e1043b425aa217",
+      "request_fingerprint": "8364d89ba48379c48eef25392679ce8bfc03a2b0a15c88c608145cf8f93d9611",
+      "token_account": {
+        "serialized_payload_tokens": 1385,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 5481,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Only the Biblical quote is supplied; the preacher paraphrase/explanation is outside context."
+    },
+    {
+      "case_id": "CE-15",
+      "kind": "clipped",
+      "route": "G3_current",
+      "video_id": 1094,
+      "bounds": [
+        13548,
+        13583
+      ],
+      "characters": 35,
+      "context_fingerprint": "43682833fc032a9db0a5c2b62bb88c1b9304661c9dca0f7b93a8fd59e7a33b6b",
+      "request_fingerprint": "b353ec8b836c4717c6d3b035ff7f0ccd48a822e04d8e7a829373d9957937a504",
+      "token_account": {
+        "serialized_payload_tokens": 1335,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 5431,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "And-if-you-do has lost the prayer response antecedent. A promise fragment must not be promoted to an unconditional or fully resolved qualified promise."
+    },
+    {
+      "case_id": "CE-16",
+      "kind": "clipped",
+      "route": "G3_current",
+      "video_id": 951,
+      "bounds": [
+        51661,
+        51738
+      ],
+      "characters": 77,
+      "context_fingerprint": "936933df0e192065f9ddce6307b8e8beadc24fa8ed23fccb8b8e46dfa81cef66",
+      "request_fingerprint": "f6238d7ff716fd9d856dad0ae193bb16108754214c32575d97694c10eb2c1300",
+      "token_account": {
+        "serialized_payload_tokens": 1400,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 5496,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "The outer we-need-to-emulate act is clipped. Inner modeled words alone cannot recover the current-preacher parent or establish speaker/recipient/adoption."
+    },
+    {
+      "case_id": "CE-17",
+      "kind": "clipped",
+      "route": "G3_reported",
+      "video_id": 951,
+      "bounds": [
+        14460,
+        14474
+      ],
+      "characters": 14,
+      "context_fingerprint": "66fb9509cd7f445e38e5faa0c8a71d67907fb08ea3cd9eea5ab8273ad617bb09",
+      "request_fingerprint": "f25d040c9a8a5de93499a7d7584cd1e19138e3d969ca6589315b521ad3b8a104",
+      "token_account": {
+        "serialized_payload_tokens": 1292,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 5388,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "The if-they-say/desert condition and Jesus/verse identity are outside context. A bare prohibition is not recovery of the qualified reported parent."
+    },
+    {
+      "case_id": "CE-18",
+      "kind": "clipped",
+      "route": "G3_reported",
+      "video_id": 951,
+      "bounds": [
+        6846,
+        6910
+      ],
+      "characters": 64,
+      "context_fingerprint": "64f172c9a988310f746397c0dc0377113e8fdd748113830bc9f15336cbecfc41",
+      "request_fingerprint": "0a912e45bac28f6b08f32e64a246710946cbc2b590bce08179a1fa0b0b90eb82",
+      "token_account": {
+        "serialized_payload_tokens": 1376,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 5472,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "The reported Bible-study request survives but Matt/reporting continuity is absent. A local request hypothesis may be valid with unknown provenance; no current preacher transfer."
+    },
+    {
+      "case_id": "CE-19",
+      "kind": "control",
+      "route": "G2",
+      "video_id": 951,
+      "bounds": [
+        13348,
+        13441
+      ],
+      "characters": 93,
+      "context_fingerprint": "17313d28ebba552240a74c12b95c0c710900db85296e55f861cf9aa28179a086",
+      "request_fingerprint": "1ffc38e178574803e84488250e5e4a8716e00893d20e84c92778e5970e5b6d42",
+      "token_account": {
+        "serialized_payload_tokens": 1381,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 5477,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Nonbiblical book/sales report, not Bible explanation. Preserve caption spelling Howal Lindsay; do not correct source text or infer a Bible edge."
+    },
+    {
+      "case_id": "CE-20",
+      "kind": "control",
+      "route": "G2",
+      "video_id": 1094,
+      "bounds": [
+        6674,
+        6804
+      ],
+      "characters": 130,
+      "context_fingerprint": "54736539d702b695c55dfd572febadbeadd0e8b6e0a0d289b3642f75f8364bee",
+      "request_fingerprint": "b4c6e2519f14491aa521204aea6774d6df2707dbd4d3cc1695b0550550023c80",
+      "token_account": {
+        "serialized_payload_tokens": 1491,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 5587,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Romans 6:23 citation plus personal response lacks a definite directed explanation. The citation itself must not count as explanation."
+    },
+    {
+      "case_id": "CE-21",
+      "kind": "control",
+      "route": "G3_current",
+      "video_id": 520,
+      "bounds": [
+        3210,
+        3516
+      ],
+      "characters": 306,
+      "context_fingerprint": "06ff88bfe0f6102d5150cabd721f70fe4860b6f4204e14aea4f5075f77b1405e",
+      "request_fingerprint": "cbeccc9e6fbc2b0c82e64efb8b46dcf12785fbc7c847fc7642226b86f6a1da93",
+      "token_account": {
+        "serialized_payload_tokens": 1787,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 5883,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Narrated framing/arrest episode, not an addressed pastoral act. Do not turn an event description into exhortation or reassurance."
+    },
+    {
+      "case_id": "CE-22",
+      "kind": "control",
+      "route": "G3_current",
+      "video_id": 520,
+      "bounds": [
+        1265,
+        1742
+      ],
+      "characters": 477,
+      "context_fingerprint": "7800afd758819bc68caab316f09dd00454a12cd23363d6cd4edab1a3e7b10cef",
+      "request_fingerprint": "7f2ea837f62a7253133bfc03aaa4dc26e15034b10b71d4413585d93354fdc43b",
+      "token_account": {
+        "serialized_payload_tokens": 2083,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 6179,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "God-directed opening thanksgiving/prayer, not a human-recipient pastoral act. No nearby live invitation is supplied as a rescue."
+    },
+    {
+      "case_id": "CE-23",
+      "kind": "control",
+      "route": "G3_reported",
+      "video_id": 951,
+      "bounds": [
+        10317,
+        10437
+      ],
+      "characters": 120,
+      "context_fingerprint": "ce8fd7bfffbc49e6b5dc62bcc40c07e1faaf2a6db57a23edea91993bce680e27",
+      "request_fingerprint": "30fb3639c3711fa748597ef187fbe177a1ac50d6946cfc872378d9134529752b",
+      "token_account": {
+        "serialized_payload_tokens": 1452,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 5548,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Counterfactual false-prophet business card. Hypothetical/model speech is not the preacher admitting deception; any nomination must retain that frame."
+    },
+    {
+      "case_id": "CE-24",
+      "kind": "control",
+      "route": "G3_current",
+      "video_id": 951,
+      "bounds": [
+        55736,
+        56302
+      ],
+      "characters": 566,
+      "context_fingerprint": "26ec5b57d3ce5c9a3d53dc6c5a5bb15191af837e169687f5e7a4ec0fdc80bc31",
+      "request_fingerprint": "cbb579919a05205061ff1934de7383145bbbc56c68b7e47a23f69d1e720174df",
+      "token_account": {
+        "serialized_payload_tokens": 2201,
+        "provider_framing_reserve": 4096,
+        "input_reservation": 6297,
+        "input_hard_experiment_ceiling": 16384,
+        "output_including_reasoning_max": 2048
+      },
+      "source_review": "Caption turn markers do not resolve the neighboring speaker of the missing-card question. Other present exhortations and modeled listener thought may be nominated if independently supported, but cannot assign this turn to the preacher."
+    }
+  ],
+  "counts": {
+    "adequate": 12,
+    "adequate_per_route": {
+      "G2": 4,
+      "G3_current": 4,
+      "G3_reported": 4
+    },
+    "clipped": 6,
+    "controls": 6
+  },
+  "source_review": {
+    "completed": true,
+    "reviewer": "Codex source-controlled review; single reviewer",
+    "independent_of_extractor_outputs": true,
+    "extractor_outputs_seen": false,
+    "all_adequate_focal_and_required_evidence_inside_context": true,
+    "all_clipped_contexts_contiguous_parent_subsets": true,
+    "no_manual_target_repair_credit": true,
+    "all_generated_nominations_require_later_source_review": true,
+    "accepted_receipt_admission_authority": false
+  },
+  "request_model": "gpt-5.4-mini-2026-03-17",
+  "token_accounting": {
+    "serialized_payload_tokens": 55170,
+    "conservative_reserved_input_tokens": 153474,
+    "maximum_input_tokens": 393216,
+    "maximum_output_tokens": 49152,
+    "model_list_price_ceiling_usd": "0.516096"
+  },
+  "largest_serialized_payload_tokens": 5218,
+  "largest_input_reservation": 9314,
+  "price_usd_per_million": {
+    "input": "0.75",
+    "cached_input": "0.075",
+    "output_including_reasoning": "4.50"
+  },
+  "approved_limits": {
+    "requests_max": 24,
+    "input_tokens_per_request_max": 16384,
+    "total_input_tokens_max": 393216,
+    "total_output_tokens_per_request_max": 2048,
+    "total_output_tokens_max": 49152,
+    "nominations_per_context_max": 4,
+    "nominations_total_max": 96,
+    "active_review_minutes_max": 480,
+    "automatic_retries": 0,
+    "automatic_expansions": 0,
+    "price_ceiling_usd": "5.00",
+    "model_count": 1,
+    "prompt_variants": 1
+  },
+  "primary_criterion": {
+    "total_adequate_contexts_recovered_min": 10,
+    "per_route_recovered_min": 3,
+    "per_route_denominator": 4,
+    "manual_target_repair_credit": false
+  },
+  "clipped_control_numeric_gate": null,
+  "review_budget": {
+    "preparation_charge_minutes": 60,
+    "remaining_active_minutes": 420,
+    "total_active_minutes_max": 480,
+    "accounting": "Conservative preparation budget charge, not a measured throughput claim. Future audit must log active review and HOLD if incomplete within remaining budget."
+  },
+  "verification": {
+    "focused_unittests_passed": 42,
+    "static_import_and_cli": true,
+    "proposal_and_retired_baseline_pins_unchanged": true,
+    "sealed_source_request_oracle_tokenizer_verification_passed": true,
+    "provider_calls": 0,
+    "Jev_calls": 0,
+    "encoder_calls": 0,
+    "extractor_model_downloads": 0,
+    "public_tokenizer_acquisition_only": true,
+    "execution_authorization_file_present": false
+  },
+  "decisions_preserved": {
+    "collector_V1_1": "DEVELOPMENT_FAIL_CLOSED",
+    "G1": "HOLD",
+    "V4_raw": "FAIL",
+    "V4_containment": "HOLD",
+    "A1": "bounded atomic-local PASS only"
+  },
+  "execution_authorized": false,
+  "measurement_admission_adapter_implemented": false,
+  "nomination_feasibility_verdict": null,
+  "usable_evidence": null,
+  "recommendation": "Authorize only this frozen 24-request nomination probe in a separate Brian decision. No model/prompt comparison, retries or context expansion; complete subsequent source audit before any adapter or retrieval decision.",
+  "limitations": [
+    "Fixed sampling configuration does not guarantee deterministic provider outputs; retain returned system_fingerprint.",
+    "No API/account/model-access preflight was made; unsupported request or access denial stops without retry or substitution.",
+    "Offline count is not the provider billing count. Framing reservation is conservative headroom, not an API input-cap feature; reported overage stops subsequent requests but cannot undo a completed request.",
+    "No caching discount used in maximum; no tools or external charges requested.",
+    "Only one model and one prompt selected; no comparison or prompt optimization.",
+    "Oracle-assisted adequate contexts and a neutral word offset map test nomination feasibility only; no retrieval recall or corpus generalization.",
+    "Single-reviewer, development-source oracle with explicit focal and granularity rules; not independently adjudicated or accepted admission authority.",
+    "Other legitimate events occur in several contexts. Four-nomination or 2048-token saturation is disclosed and handled under the frozen HOLD rules; no cherry-picked recovery or repaired output.",
+    "Clipped/control outputs receive complete diagnostic audit with no new numerical gate.",
+    "Review budget charges 60 preparation minutes conservatively and leaves 420 active minutes; incomplete review means HOLD.",
+    "No semantic accuracy, containment, production, usable-evidence count, economics, recurrence or pastor-level claim can follow from preparation."
+  ],
+  "content_fingerprint": "6323ac56e8d29d1ccf6ecdd1e4598e637a9e49f13ac61f3db8226381aa986f1b"
+}

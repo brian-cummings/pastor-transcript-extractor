@@ -1,0 +1,22 @@
+{
+  "version": "context-extraction-preparation-packet-v1",
+  "status": "PREPARED_EXECUTION_UNAUTHORIZED",
+  "input_fingerprint": "54ada40ca8926a6bae0a89cd41c091fcc0ce9e31c3c4cc27969feee892e7a76a",
+  "review_fingerprint": "6323ac56e8d29d1ccf6ecdd1e4598e637a9e49f13ac61f3db8226381aa986f1b",
+  "files": {
+    "docs/review-proposals/context-extraction-probe-v1/PREPARATION-REVIEW.md": "1a65be284672551fe5592d2e27624b1d81711e9d299c1a678c22513badb7623d",
+    "docs/review-proposals/context-extraction-probe-v1/SOURCE-ORACLE-REVIEW.md": "512c1b9e60db66618b925aff421a123ec0265f085f57432f5405f612612bb6e7",
+    "docs/review-proposals/context-extraction-probe-v1/authorization-v1.json": "389c3c297ac0166c08b6d2e22f609aa3a3e58e23a5db53019f55e2bf796b6fd4",
+    "docs/review-proposals/context-extraction-probe-v1/implementation-review-v1.json": "cdd9c996d1f2f81ece8d31538f3f0d4a38329523edb0ec99405e042a13fba35b",
+    "docs/review-proposals/context-extraction-probe-v1/input-manifest-v1.json": "46ba0633969ad520c5a4581aed03ccc72bbecb426e86a4748ea90784259e9bd8",
+    "docs/review-proposals/context-extraction-probe-v1/model-lock-v1.json": "fb965b220da4ff4a78aefb70357e80d81db743f545f43d800aa719802398c2c2",
+    "docs/review-proposals/context-extraction-probe-v1/prompt-v1.txt": "136b4c6592ae59f80456884387ea53822a3323c92c606dd3365888b543309343",
+    "docs/review-proposals/context-extraction-probe-v1/runtime-lock-v1.json": "04b49dc47bba669c492132b830bc54965c6c7e81e3f4648b52e97960ebba6264",
+    "docs/review-proposals/context-extraction-probe-v1/schema-v1.json": "4894d5ad5577f2fb52875a64eb789fd091827b140b476bf2c00922c03d34e2d3",
+    "docs/review-proposals/context-extraction-probe-v1/source-panel-spec-v1.json": "f20f9b5f76865a75d372a06912d06edb5db84a10cbe1d716e19cbb25302150af"
+  },
+  "execution_command": "pte analysis collector-retrieval-design --context-extraction-probe --run --approve-input 54ada40ca8926a6bae0a89cd41c091fcc0ce9e31c3c4cc27969feee892e7a76a",
+  "execution_authorized": false,
+  "provider_requests": 0,
+  "content_fingerprint": "9d02dcfc94c0a587ba0084bdfb1c6cfdaa88d126193021c4e70f6451408287f3"
+}
