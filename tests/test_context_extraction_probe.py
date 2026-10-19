@@ -91,7 +91,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(0,result.exit_code,result.output);old.assert_called_once_with(True,True)
         with tempfile.TemporaryDirectory() as d,patch.object(p,'EXECUTION',Path(d)/'absent'),patch.object(p,'verify',return_value=(dict(content_fingerprint='held'),{})),patch.object(p,'transport',side_effect=AssertionError('No network')):
             result=CliRunner().invoke(app,['analysis','collector-retrieval-design','--context-extraction-probe','--run','--approve-input','held'])
-            self.assertNotEqual(0,result.exit_code);self.assertIn('absent',result.output)
+            self.assertNotEqual(0,result.exit_code);self.assertIn('RETIRED',result.output)
 
 class ExecutionTests(unittest.TestCase):
     """Synthetic transport only; these tests never contact any provider."""

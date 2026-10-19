@@ -1,0 +1,21 @@
+{
+  "version": "context-extraction-probe-supersession-v1",
+  "status": "SUPERSEDED_UNEXECUTED",
+  "decision_date": "2026-10-19",
+  "authority": "Brian said proceed to the minute-block handoff proposal and first cleanup change: explicitly supersede the unexecuted OpenAI probe and retire its active execution path, preserving the historical packet.",
+  "input_fingerprint": "54ada40ca8926a6bae0a89cd41c091fcc0ce9e31c3c4cc27969feee892e7a76a",
+  "historical_authorization_sha256": "539eba34a8843bd04f5ae50f16dcaf8a066871a139b6ad3cd4c1bf9a2cceab46",
+  "historical_authorization_fingerprint": "78c09a4e8aa9d89b5bdd4d77e7df08205e165c654b9a1717eff4737e97409434",
+  "frozen_preparation_commit": "3c466bd",
+  "execution_authorization_commit": "baad411",
+  "prepare_allowed": false,
+  "execution_allowed": false,
+  "provider_requests": 0,
+  "execution_attempts": 0,
+  "semantic_verdict": null,
+  "reason": "OpenAI dependency mismatched the project stack and the oracle-context probe bypassed the actual minute-block handoff. Supersession is not an experimental FAIL.",
+  "history_preserved": true,
+  "model_substitution_authorized": false,
+  "cleanup_scope": "Retire active prepare/run; retain frozen packet files and read-only Git snapshot verification. No dataset/model/cache/receipt deletion.",
+  "content_fingerprint": "ca8497fa665046cbcdb32364356afbb52c9e2d88cd0837ca362e76c3e71bb16b"
+}
