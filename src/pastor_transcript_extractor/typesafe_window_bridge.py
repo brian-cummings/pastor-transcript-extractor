@@ -38,9 +38,9 @@ def _state(context,anchor):
 
 def _task(family,role,phase):
     object_rule=(
-        'Find one complete directed Bible-text/explanation pair with at least one endpoint intersecting verified center content. Select the pair with earliest endpoint start, then earliest other endpoint start. Left means the biblical anchor; right means its explanation, regardless of textual order. Citation, nonbiblical source or topic overlap is insufficient.'
+        'Find one complete directed Bible-text/explanation pair with at least one endpoint intersecting verified center content. Select the pair with earliest endpoint start, then earliest other endpoint start. Left means the biblical anchor; right means its explanation, regardless of textual order. Use distinct minimal complete spans, preserving conditions, negation and qualifications. Citation, nonbiblical source or topic overlap is insufficient.'
         if family=='G2' else
-        'Find one complete P1 addressed human-recipient act intersecting verified center content. Select the earliest-starting complete act, retaining required conditions, exceptions, modality, referents and nested/outer address. Separate independently sufficient neighboring acts and voices. Narration or God-directed prayer alone is not eligible.'
+        'Find one complete P1 addressed human-recipient act intersecting verified center content. Select the earliest-starting complete act, then its shortest complete ending: the smallest contiguous utterance sufficient for that act. Retain required conditions, exceptions, modality, referents and nested/outer address. Separate independently sufficient neighboring acts and voices. Narration or God-directed prayer alone is not eligible.'
     )
     endpoint=role.rsplit('_',1)[0];edge=role.rsplit('_',1)[1]
     selection='the boundary page containing' if phase=='page' else 'the exact absolute Unicode codepoint offset for'
