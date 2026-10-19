@@ -42,5 +42,8 @@ COMMAND_GROUPS = (
 
 def attach_command_groups(root: typer.Typer) -> None:
     """Attach every public command group to the root CLI in display order."""
+    # Load the latest probe adapter after historical registrations. Their pinned
+    # source bytes remain unchanged; the extension delegates every old mode.
+    from pastor_transcript_extractor.commands.analysis import context_extraction as _context_extraction
     for group in COMMAND_GROUPS:
         root.add_typer(group.app, name=group.name)

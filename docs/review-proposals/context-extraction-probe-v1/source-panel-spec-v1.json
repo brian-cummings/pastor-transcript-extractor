@@ -1,0 +1,871 @@
+{
+  "version": "context-extraction-source-panel-spec-v1",
+  "proposal_packet_fingerprint": "32bd6551715c0196a3a6a99d006da348a779efc1e874f993d2f983896627681e",
+  "source_reference_fingerprint": "0a589e574b7f9b850a314b625b567397021cd338e4052dcb83781451de80a883",
+  "cases": [
+    {
+      "case_id": "CE-01",
+      "kind": "adequate",
+      "route": "G2",
+      "retired_locator": "F3R520-G2-002",
+      "purpose": "punctuation-poor Bible explanation lost by oversized role closure",
+      "video_id": 520,
+      "bounds": [
+        8298,
+        9029
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "left": {
+            "start": 8630,
+            "end": 8739,
+            "text": "let the peace of christ rule your heart since as members of one body you were called to peace and be thankful"
+          },
+          "right": {
+            "start": 9006,
+            "end": 9029,
+            "text": "to govern or to control"
+          }
+        },
+        "required_source_supports": [
+          {
+            "start": 8850,
+            "end": 8881,
+            "text": "in the greek this word for rule"
+          }
+        ],
+        "adequate_context_established": true,
+        "p1_or_directed_role_review": "Paul/verse identity and the Greek rule gloss are contiguous. Nominate the Biblical rule clause and the govern/control explanation, keeping the directed link.",
+        "expected_scope": "preacher_adopted_Bible_explanation",
+        "missing_essential_context": null,
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-02",
+      "kind": "adequate",
+      "route": "G2",
+      "retired_locator": "F3R951-G2-032",
+      "purpose": "representable labor-pains/timing pair displaced at rank 3",
+      "video_id": 951,
+      "bounds": [
+        33300,
+        34603
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "left": {
+            "start": 33810,
+            "end": 33847,
+            "text": "as labor pains upon a pregnant woman."
+          },
+          "right": {
+            "start": 34059,
+            "end": 34183,
+            "text": "You may not know the day and the hour by which you're given that baby, but you know it's coming and you know when it's near."
+          }
+        },
+        "required_source_supports": [],
+        "adequate_context_established": true,
+        "p1_or_directed_role_review": "The labor-pains anchor and explicit timing analogy are supplied, together with Paul attribution. The point is known nearness without exact day/hour, not a prediction of a date.",
+        "expected_scope": "preacher_adopted_Bible_explanation",
+        "missing_essential_context": null,
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-03",
+      "kind": "adequate",
+      "route": "G2",
+      "retired_locator": "F3R951-G2-034",
+      "purpose": "nonlocal taken/destruction explanation displaced at rank 4",
+      "video_id": 951,
+      "bounds": [
+        40188,
+        42301
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "left": {
+            "start": 40396,
+            "end": 40432,
+            "text": "One will be taken, one will be left."
+          },
+          "right": {
+            "start": 42078,
+            "end": 42188,
+            "text": "Jesus is saying one is taken, one is left, and the one that is taken is taken for destruction to be destroyed."
+          }
+        },
+        "required_source_supports": [
+          {
+            "start": 40188,
+            "end": 40206,
+            "text": "In Luke chapter 17"
+          }
+        ],
+        "adequate_context_established": true,
+        "p1_or_directed_role_review": "Luke 17 identity, taken/left clause, the where/body/carcass reasoning and the destruction conclusion are contiguous. Distinct roles are required; engulfing the entire passage is not a discriminating explanation.",
+        "expected_scope": "preacher_adopted_Bible_explanation",
+        "missing_essential_context": null,
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-04",
+      "kind": "adequate",
+      "route": "G2",
+      "retired_locator": "F3R1094-G2-003",
+      "purpose": "distinct explanatory roles collapsed by structural completion",
+      "video_id": 1094,
+      "bounds": [
+        9119,
+        11203
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "left": {
+            "start": 11070,
+            "end": 11134,
+            "text": "Now if any man have not the spirit of Christ, he is none of his."
+          },
+          "right": {
+            "start": 11135,
+            "end": 11203,
+            "text": "If you don't have the spirit of Christ, you do not belong to Christ."
+          }
+        },
+        "required_source_supports": [],
+        "adequate_context_established": true,
+        "p1_or_directed_role_review": "Romans 8 identity and the adjacent not-his/do-not-belong paraphrase are supplied. Negation/conditional subject must survive; the quotation by itself is not the explanatory role.",
+        "expected_scope": "preacher_adopted_Bible_explanation",
+        "missing_essential_context": null,
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-05",
+      "kind": "adequate",
+      "route": "G3_current",
+      "retired_locator": "V1.1:P1:951:G3:b64ed40068398d9c",
+      "purpose": "exception-preserving trust admonition; locator is an audited natural target, not replacement gold",
+      "video_id": 951,
+      "bounds": [
+        54702,
+        55281
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "utterance": {
+            "start": 54939,
+            "end": 54972,
+            "text": "You cannot trust anybody but God."
+          }
+        },
+        "required_source_supports": [],
+        "adequate_context_established": true,
+        "p1_or_directed_role_review": "Present direct warning to listeners: trust nobody but God. Preserve the exception; a bare trust-nobody fragment changes the act. Surrounding preacher/Bible remarks support current scope.",
+        "expected_scope": "current_preacher_atomic_act",
+        "missing_essential_context": null,
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-06",
+      "kind": "adequate",
+      "route": "G3_current",
+      "retired_locator": "F3R1094-G3-022",
+      "purpose": "prayer instruction and conditional reassurance require response content",
+      "video_id": 1094,
+      "bounds": [
+        13350,
+        13642
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "utterance": {
+            "start": 13469,
+            "end": 13583,
+            "text": "You will have to stay on your knees and call on Jesus day after day after day. And if you do, he will protect you."
+          }
+        },
+        "required_source_supports": [],
+        "adequate_context_established": true,
+        "p1_or_directed_role_review": "Present prayer instruction with reassurance conditional on that response. The focal qualified promise requires stay-on-knees/call-on-Jesus content plus if-you-do. An independently valid instruction alone is additional output, not recovery of this qualified opportunity.",
+        "expected_scope": "current_preacher_atomic_act",
+        "missing_essential_context": null,
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-07",
+      "kind": "adequate",
+      "route": "G3_current",
+      "retired_locator": "F3R951-G3-034",
+      "purpose": "outer exhortation with nested modeled speech",
+      "video_id": 951,
+      "bounds": [
+        50701,
+        51738
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "utterance": {
+            "start": 51575,
+            "end": 51738,
+            "text": "Whatever it is, we need to be like those those those men, those righteous men to say, he can save us. But even if he doesn't, I don't care. I will not forsake him."
+          }
+        },
+        "required_source_supports": [
+          {
+            "start": 51591,
+            "end": 51609,
+            "text": "we need to be like"
+          }
+        ],
+        "adequate_context_established": true,
+        "p1_or_directed_role_review": "The outer we-need-to-be-like exhortation is current address. Nested he-can-save/even-if-not/I-will-not-forsake wording is modeled emulation, not a newly current preacher quotation. Preserve both outer act and indispensable modeled content.",
+        "expected_scope": "current_preacher_atomic_act",
+        "missing_essential_context": null,
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-08",
+      "kind": "adequate",
+      "route": "G3_current",
+      "retired_locator": "F3R520-G3-002",
+      "purpose": "small Bible-turn act inside giant mixed retained target",
+      "video_id": 520,
+      "bounds": [
+        5156,
+        5583
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "utterance": {
+            "start": 5436,
+            "end": 5497,
+            "text": "if you have your bibles with you turn to colossians chapter 3"
+          }
+        },
+        "required_source_supports": [],
+        "adequate_context_established": true,
+        "p1_or_directed_role_review": "The preacher directly tells present Bible-holders to turn to Colossians 3. Paul writes belongs to surrounding attribution, not the speaker of this live instruction.",
+        "expected_scope": "current_preacher_atomic_act",
+        "missing_essential_context": null,
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-09",
+      "kind": "adequate",
+      "route": "G3_reported",
+      "retired_locator": "F3R951-G3-012",
+      "purpose": "reported conditional location warning",
+      "video_id": 951,
+      "bounds": [
+        14373,
+        14583
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "utterance": {
+            "start": 14402,
+            "end": 14474,
+            "text": "Therefore, if they say to you, look, he is in the desert. Do not go out."
+          }
+        },
+        "required_source_supports": [
+          {
+            "start": 14373,
+            "end": 14399,
+            "text": "Jesus continues Matthew 24"
+          }
+        ],
+        "adequate_context_established": true,
+        "p1_or_directed_role_review": "Jesus continues Matthew 24 supplies reported identity; conditional desert report plus do-not-go-out form one qualified historical warning. The inner-rooms warning can be a separate legitimate act.",
+        "expected_scope": "reported_local_atomic_act",
+        "missing_essential_context": null,
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-10",
+      "kind": "adequate",
+      "route": "G3_reported",
+      "retired_locator": "F3R951-G3-015",
+      "purpose": "reported promise to historical recipient, not current preacher credit",
+      "video_id": 951,
+      "bounds": [
+        19633,
+        19852
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "utterance": {
+            "start": 19720,
+            "end": 19764,
+            "text": "I will make all my goodness pass before you."
+          }
+        },
+        "required_source_supports": [
+          {
+            "start": 19633,
+            "end": 19665,
+            "text": "Here again in Exodus, Moses says"
+          }
+        ],
+        "adequate_context_established": true,
+        "p1_or_directed_role_review": "Narrated Exodus exchange has Moses requesting glory and a divine reply promising goodness to Moses. Preserve reported/historical scope; no current-congregation promise or preacher adoption is established.",
+        "expected_scope": "reported_local_atomic_act",
+        "missing_essential_context": null,
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-11",
+      "kind": "adequate",
+      "route": "G3_reported",
+      "retired_locator": "F3R951-G3-003",
+      "purpose": "reported request for a Bible study",
+      "video_id": 951,
+      "bounds": [
+        5427,
+        6960
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "utterance": {
+            "start": 6846,
+            "end": 6910,
+            "text": "Ed, can you give me a Bible study on how Jesus is going to come?"
+          }
+        },
+        "required_source_supports": [
+          {
+            "start": 6805,
+            "end": 6843,
+            "text": "few years ago, he calls me up and says"
+          },
+          {
+            "start": 5427,
+            "end": 5455,
+            "text": "one of my good friends, Matt"
+          }
+        ],
+        "adequate_context_established": true,
+        "p1_or_directed_role_review": "Matt is introduced as friend; narrative continuity leads to he-calls-me-up-and-says, and Ed is named in the request. The Bible-study request is reported Matt-to-Ed, not live congregation invitation.",
+        "expected_scope": "reported_local_atomic_act",
+        "missing_essential_context": null,
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-12",
+      "kind": "adequate",
+      "route": "G3_reported",
+      "retired_locator": "F3R520-G3-004",
+      "purpose": "reported Pauline exhortation in punctuation-poor source",
+      "video_id": 520,
+      "bounds": [
+        6972,
+        8400
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "utterance": {
+            "start": 8315,
+            "end": 8400,
+            "text": "and over all these virtues put on love which binds them all together in perfect unity"
+          }
+        },
+        "required_source_supports": [
+          {
+            "start": 8298,
+            "end": 8314,
+            "text": "verse 14 it says"
+          },
+          {
+            "start": 6982,
+            "end": 7005,
+            "text": "paul writes this letter"
+          },
+          {
+            "start": 7505,
+            "end": 7571,
+            "text": "compassion\ncompassion kindness humility gentle gentleness patience"
+          }
+        ],
+        "adequate_context_established": true,
+        "p1_or_directed_role_review": "Paul, the letter, chapter 3, virtues and verse 14 are supplied. Put-on-love is a reported Pauline exhortation to the letter recipients/believers, not a current preacher-origin utterance. Preserve which binds... and all-these-virtues context.",
+        "expected_scope": "reported_local_atomic_act",
+        "missing_essential_context": null,
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-13",
+      "kind": "clipped",
+      "route": "G2",
+      "parent_case_id": "CE-01",
+      "retired_locator": "F3R520-G2-002",
+      "purpose": "Separate bounded context from same unmodified source with essential explanation, qualifier or reporting identity outside the supplied span; no editing or synthetic omission inside a span",
+      "video_id": 520,
+      "bounds": [
+        8630,
+        8881
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "left": {
+            "start": 8630,
+            "end": 8739,
+            "text": "let the peace of christ rule your heart since as members of one body you were called to peace and be thankful"
+          },
+          "right": {
+            "start": 9006,
+            "end": 9029,
+            "text": "to govern or to control"
+          }
+        },
+        "required_source_supports": [
+          {
+            "start": 8850,
+            "end": 8881,
+            "text": "in the greek this word for rule"
+          }
+        ],
+        "adequate_context_established": false,
+        "p1_or_directed_role_review": "The govern/control explanation is outside context. Do not manufacture the missing G2 role; an anchor or unfinished Greek introduction alone does not recover the parent.",
+        "expected_scope": "diagnostic_no_automatic_credit",
+        "missing_essential_context": "The govern/control explanation is outside context. Do not manufacture the missing G2 role; an anchor or unfinished Greek introduction alone does not recover the parent.",
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-14",
+      "kind": "clipped",
+      "route": "G2",
+      "parent_case_id": "CE-04",
+      "retired_locator": "F3R1094-G2-003",
+      "purpose": "Separate bounded context from same unmodified source with essential explanation, qualifier or reporting identity outside the supplied span; no editing or synthetic omission inside a span",
+      "video_id": 1094,
+      "bounds": [
+        11070,
+        11134
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "left": {
+            "start": 11070,
+            "end": 11134,
+            "text": "Now if any man have not the spirit of Christ, he is none of his."
+          },
+          "right": {
+            "start": 11135,
+            "end": 11203,
+            "text": "If you don't have the spirit of Christ, you do not belong to Christ."
+          }
+        },
+        "required_source_supports": [],
+        "adequate_context_established": false,
+        "p1_or_directed_role_review": "Only the Biblical quote is supplied; the preacher paraphrase/explanation is outside context.",
+        "expected_scope": "diagnostic_no_automatic_credit",
+        "missing_essential_context": "Only the Biblical quote is supplied; the preacher paraphrase/explanation is outside context.",
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-15",
+      "kind": "clipped",
+      "route": "G3_current",
+      "parent_case_id": "CE-06",
+      "retired_locator": "F3R1094-G3-022",
+      "purpose": "Separate bounded context from same unmodified source with essential explanation, qualifier or reporting identity outside the supplied span; no editing or synthetic omission inside a span",
+      "video_id": 1094,
+      "bounds": [
+        13548,
+        13583
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "utterance": {
+            "start": 13469,
+            "end": 13583,
+            "text": "You will have to stay on your knees and call on Jesus day after day after day. And if you do, he will protect you."
+          }
+        },
+        "required_source_supports": [],
+        "adequate_context_established": false,
+        "p1_or_directed_role_review": "And-if-you-do has lost the prayer response antecedent. A promise fragment must not be promoted to an unconditional or fully resolved qualified promise.",
+        "expected_scope": "diagnostic_no_automatic_credit",
+        "missing_essential_context": "And-if-you-do has lost the prayer response antecedent. A promise fragment must not be promoted to an unconditional or fully resolved qualified promise.",
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-16",
+      "kind": "clipped",
+      "route": "G3_current",
+      "parent_case_id": "CE-07",
+      "retired_locator": "F3R951-G3-034",
+      "purpose": "Separate bounded context from same unmodified source with essential explanation, qualifier or reporting identity outside the supplied span; no editing or synthetic omission inside a span",
+      "video_id": 951,
+      "bounds": [
+        51661,
+        51738
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "utterance": {
+            "start": 51575,
+            "end": 51738,
+            "text": "Whatever it is, we need to be like those those those men, those righteous men to say, he can save us. But even if he doesn't, I don't care. I will not forsake him."
+          }
+        },
+        "required_source_supports": [
+          {
+            "start": 51591,
+            "end": 51609,
+            "text": "we need to be like"
+          }
+        ],
+        "adequate_context_established": false,
+        "p1_or_directed_role_review": "The outer we-need-to-emulate act is clipped. Inner modeled words alone cannot recover the current-preacher parent or establish speaker/recipient/adoption.",
+        "expected_scope": "diagnostic_no_automatic_credit",
+        "missing_essential_context": "The outer we-need-to-emulate act is clipped. Inner modeled words alone cannot recover the current-preacher parent or establish speaker/recipient/adoption.",
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-17",
+      "kind": "clipped",
+      "route": "G3_reported",
+      "parent_case_id": "CE-09",
+      "retired_locator": "F3R951-G3-012",
+      "purpose": "Separate bounded context from same unmodified source with essential explanation, qualifier or reporting identity outside the supplied span; no editing or synthetic omission inside a span",
+      "video_id": 951,
+      "bounds": [
+        14460,
+        14474
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "utterance": {
+            "start": 14402,
+            "end": 14474,
+            "text": "Therefore, if they say to you, look, he is in the desert. Do not go out."
+          }
+        },
+        "required_source_supports": [
+          {
+            "start": 14373,
+            "end": 14399,
+            "text": "Jesus continues Matthew 24"
+          }
+        ],
+        "adequate_context_established": false,
+        "p1_or_directed_role_review": "The if-they-say/desert condition and Jesus/verse identity are outside context. A bare prohibition is not recovery of the qualified reported parent.",
+        "expected_scope": "diagnostic_no_automatic_credit",
+        "missing_essential_context": "The if-they-say/desert condition and Jesus/verse identity are outside context. A bare prohibition is not recovery of the qualified reported parent.",
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-18",
+      "kind": "clipped",
+      "route": "G3_reported",
+      "parent_case_id": "CE-11",
+      "retired_locator": "F3R951-G3-003",
+      "purpose": "Separate bounded context from same unmodified source with essential explanation, qualifier or reporting identity outside the supplied span; no editing or synthetic omission inside a span",
+      "video_id": 951,
+      "bounds": [
+        6846,
+        6910
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "utterance": {
+            "start": 6846,
+            "end": 6910,
+            "text": "Ed, can you give me a Bible study on how Jesus is going to come?"
+          }
+        },
+        "required_source_supports": [
+          {
+            "start": 6805,
+            "end": 6843,
+            "text": "few years ago, he calls me up and says"
+          },
+          {
+            "start": 5427,
+            "end": 5455,
+            "text": "one of my good friends, Matt"
+          }
+        ],
+        "adequate_context_established": false,
+        "p1_or_directed_role_review": "The reported Bible-study request survives but Matt/reporting continuity is absent. A local request hypothesis may be valid with unknown provenance; no current preacher transfer.",
+        "expected_scope": "diagnostic_no_automatic_credit",
+        "missing_essential_context": "The reported Bible-study request survives but Matt/reporting continuity is absent. A local request hypothesis may be valid with unknown provenance; no current preacher transfer.",
+        "control_rule": null,
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-19",
+      "kind": "control",
+      "route": "G2",
+      "retired_locator": "F3C951-006",
+      "purpose": "nonbiblical attribution must not become a Bible explanation",
+      "video_id": 951,
+      "bounds": [
+        13348,
+        13441
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "control_focus": {
+            "start": 13348,
+            "end": 13392,
+            "text": "The book by Howal Lindsay Great Planet Earth"
+          }
+        },
+        "required_source_supports": [],
+        "adequate_context_established": false,
+        "p1_or_directed_role_review": "Nonbiblical book/sales report, not Bible explanation. Preserve caption spelling Howal Lindsay; do not correct source text or infer a Bible edge.",
+        "expected_scope": "diagnostic_no_automatic_credit",
+        "missing_essential_context": null,
+        "control_rule": "Nonbiblical book/sales report, not Bible explanation. Preserve caption spelling Howal Lindsay; do not correct source text or infer a Bible edge.",
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-20",
+      "kind": "control",
+      "route": "G2",
+      "retired_locator": "F3C1094-003",
+      "purpose": "Bible citation without a definite explanation",
+      "video_id": 1094,
+      "bounds": [
+        6674,
+        6804
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "control_focus": {
+            "start": 6706,
+            "end": 6804,
+            "text": "\"For the wages of sin is death. And the gift of God is eternal life.\" That's what I'm looking for."
+          }
+        },
+        "required_source_supports": [],
+        "adequate_context_established": false,
+        "p1_or_directed_role_review": "Romans 6:23 citation plus personal response lacks a definite directed explanation. The citation itself must not count as explanation.",
+        "expected_scope": "diagnostic_no_automatic_credit",
+        "missing_essential_context": null,
+        "control_rule": "Romans 6:23 citation plus personal response lacks a definite directed explanation. The citation itself must not count as explanation.",
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-21",
+      "kind": "control",
+      "route": "G3_current",
+      "retired_locator": "F3C520-002",
+      "purpose": "narration is not an addressed act",
+      "video_id": 520,
+      "bounds": [
+        3210,
+        3516
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "control_focus": {
+            "start": 3407,
+            "end": 3453,
+            "text": "andrew collins framed a man named jameel mcgee"
+          }
+        },
+        "required_source_supports": [],
+        "adequate_context_established": false,
+        "p1_or_directed_role_review": "Narrated framing/arrest episode, not an addressed pastoral act. Do not turn an event description into exhortation or reassurance.",
+        "expected_scope": "diagnostic_no_automatic_credit",
+        "missing_essential_context": null,
+        "control_rule": "Narrated framing/arrest episode, not an addressed pastoral act. Do not turn an event description into exhortation or reassurance.",
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-22",
+      "kind": "control",
+      "route": "G3_current",
+      "retired_locator": "F3C520-001",
+      "purpose": "God-directed prayer is not a human-address pastoral act",
+      "video_id": 520,
+      "bounds": [
+        1265,
+        1742
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "control_focus": {
+            "start": 1265,
+            "end": 1303,
+            "text": "dear lord we want to thank you so much"
+          }
+        },
+        "required_source_supports": [],
+        "adequate_context_established": false,
+        "p1_or_directed_role_review": "God-directed opening thanksgiving/prayer, not a human-recipient pastoral act. No nearby live invitation is supplied as a rescue.",
+        "expected_scope": "diagnostic_no_automatic_credit",
+        "missing_essential_context": null,
+        "control_rule": "God-directed opening thanksgiving/prayer, not a human-recipient pastoral act. No nearby live invitation is supplied as a rescue.",
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-23",
+      "kind": "control",
+      "route": "G3_reported",
+      "retired_locator": "F3C951-004",
+      "purpose": "counterfactual/model speech must not transfer to current preacher/listener",
+      "video_id": 951,
+      "bounds": [
+        10317,
+        10437
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "control_focus": {
+            "start": 10386,
+            "end": 10431,
+            "text": "I'm a false prophet. I'm here to deceive you."
+          }
+        },
+        "required_source_supports": [],
+        "adequate_context_established": false,
+        "p1_or_directed_role_review": "Counterfactual false-prophet business card. Hypothetical/model speech is not the preacher admitting deception; any nomination must retain that frame.",
+        "expected_scope": "diagnostic_no_automatic_credit",
+        "missing_essential_context": null,
+        "control_rule": "Counterfactual false-prophet business card. Hypothetical/model speech is not the preacher admitting deception; any nomination must retain that frame.",
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    },
+    {
+      "case_id": "CE-24",
+      "kind": "control",
+      "route": "G3_current",
+      "retired_locator": "F3C951-027",
+      "purpose": "unresolved neighboring live speaker must remain unresolved",
+      "video_id": 951,
+      "bounds": [
+        55736,
+        56302
+      ],
+      "oracle": {
+        "review_basis": "Canonical full source plus supplied contiguous context; historical locator is not an automatically accepted target.",
+        "focal_roles": {
+          "control_focus": {
+            "start": 55996,
+            "end": 56083,
+            "text": "Is there anyone else who's missing missing missing one who needs to have it filled out?"
+          }
+        },
+        "required_source_supports": [],
+        "adequate_context_established": false,
+        "p1_or_directed_role_review": "Caption turn markers do not resolve the neighboring speaker of the missing-card question. Other present exhortations and modeled listener thought may be nominated if independently supported, but cannot assign this turn to the preacher.",
+        "expected_scope": "diagnostic_no_automatic_credit",
+        "missing_essential_context": null,
+        "control_rule": "Caption turn markers do not resolve the neighboring speaker of the missing-card question. Other present exhortations and modeled listener thought may be nominated if independently supported, but cannot assign this turn to the preacher.",
+        "scoring": "One context recovered only if an unmodified literal-valid nomination recovers the focal evidence object with complete qualifications, discriminating roles/P1 granularity and source-compatible scope. Semantic equivalents must be source-audited; containing these spans is insufficient. No manual repair or provenance invention.",
+        "all_additional_outputs": "Audit all nominations and omissions against supplied and full source; extra correct events are not focal recovery credit and unsupported extras are disclosed separately."
+      }
+    }
+  ],
+  "implementation_pin_paths": [
+    "src/pastor_transcript_extractor/context_extraction_probe.py",
+    "src/pastor_transcript_extractor/context_extraction_validation.py",
+    "src/pastor_transcript_extractor/commands/analysis/context_extraction.py",
+    "src/pastor_transcript_extractor/commands/apps.py",
+    "tests/test_context_extraction_probe.py",
+    "docs/review-proposals/context-extraction-probe-v1/authorization-v1.json",
+    "docs/review-proposals/context-extraction-probe-v1/source-panel-spec-v1.json",
+    "docs/review-proposals/context-extraction-probe-v1/runtime-lock-v1.json",
+    "docs/review-proposals/context-extraction-probe-v1/model-lock-v1.json",
+    "docs/review-proposals/context-extraction-probe-v1/prompt-v1.txt",
+    "docs/review-proposals/context-extraction-probe-v1/schema-v1.json"
+  ],
+  "policy": "Prospective source-controlled single-reviewer oracle sealed before any extractor outputs; no retrieval credit, receipt admission authority or historical reference changes.",
+  "review_budget": {
+    "preparation_charge_minutes": 60,
+    "remaining_minutes": 420,
+    "total_max": 480
+  },
+  "provider_requests": 0,
+  "source_review_complete": true,
+  "content_fingerprint": "5b2e1006d457f2510496967735009017f9e24e4c40f7ddcc8118f39df58a06e2"
+}

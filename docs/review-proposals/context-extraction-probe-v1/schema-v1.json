@@ -1,0 +1,226 @@
+{
+  "type": "object",
+  "properties": {
+    "context_fingerprint": {
+      "type": "string"
+    },
+    "nominations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "enum": [
+              "G2",
+              "G3"
+            ]
+          },
+          "roles": {
+            "type": "object",
+            "properties": {
+              "left": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "start": {
+                        "type": "integer"
+                      },
+                      "end": {
+                        "type": "integer"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "start",
+                      "end",
+                      "text"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "right": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "start": {
+                        "type": "integer"
+                      },
+                      "end": {
+                        "type": "integer"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "start",
+                      "end",
+                      "text"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "utterance": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "start": {
+                        "type": "integer"
+                      },
+                      "end": {
+                        "type": "integer"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "start",
+                      "end",
+                      "text"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "left",
+              "right",
+              "utterance"
+            ],
+            "additionalProperties": false
+          },
+          "dependency_spans": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "start": {
+                  "type": "integer"
+                },
+                "end": {
+                  "type": "integer"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "start",
+                "end",
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 8
+          },
+          "provenance_hypotheses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "dimension": {
+                  "type": "string",
+                  "enum": [
+                    "origin",
+                    "voice",
+                    "recipient",
+                    "adoption"
+                  ]
+                },
+                "value": {
+                  "type": "string"
+                },
+                "support": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "start": {
+                          "type": "integer"
+                        },
+                        "end": {
+                          "type": "integer"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "start",
+                        "end",
+                        "text"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "dimension",
+                "value",
+                "support"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 4
+          },
+          "context_status": {
+            "type": "string",
+            "enum": [
+              "apparently_complete",
+              "needs_more_context",
+              "uncertain"
+            ]
+          }
+        },
+        "required": [
+          "capability",
+          "roles",
+          "dependency_spans",
+          "provenance_hypotheses",
+          "context_status"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 4
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "proposed",
+        "none",
+        "needs_more_context",
+        "uncertain",
+        "saturated"
+      ]
+    }
+  },
+  "required": [
+    "context_fingerprint",
+    "nominations",
+    "status"
+  ],
+  "additionalProperties": false
+}

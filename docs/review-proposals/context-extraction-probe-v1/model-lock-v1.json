@@ -1,0 +1,43 @@
+{
+  "version": "context-extraction-model-lock-v1",
+  "model": "gpt-5.4-mini-2026-03-17",
+  "endpoint": "https://api.openai.com/v1/chat/completions",
+  "api": "Chat Completions HTTPS JSON via httpx 0.28.1; no SDK retry",
+  "prompt_sha256": "136b4c6592ae59f80456884387ea53822a3323c92c606dd3365888b543309343",
+  "schema_sha256": "4894d5ad5577f2fb52875a64eb789fd091827b140b476bf2c00922c03d34e2d3",
+  "reasoning_effort": "none",
+  "temperature": 0,
+  "top_p": 1,
+  "n": 1,
+  "seed": null,
+  "max_completion_tokens": 2048,
+  "service_tier": "default",
+  "store": false,
+  "stream": false,
+  "structured_output_strict": true,
+  "tools": [],
+  "automatic_retries": 0,
+  "context_expansions": 0,
+  "tokenizer": "tiktoken 0.12.0 o200k_base; pinned isolated runtime/table; complete serialized request BPE plus 4096 framing reservation",
+  "prices_usd_per_million": {
+    "input": "0.75",
+    "cached_input": "0.075",
+    "output_including_reasoning": "4.50"
+  },
+  "maximum_model_list_price_usd": "0.516096",
+  "approved_paid_ceiling_usd": "5.00",
+  "price_checked_date": "2026-10-18",
+  "sources": [
+    "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+    "https://developers.openai.com/api/docs/guides/structured-outputs",
+    "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create"
+  ],
+  "limitations": [
+    "Fixed sampling configuration does not guarantee deterministic provider outputs; retain returned system_fingerprint.",
+    "No API/account/model-access preflight was made; unsupported request or access denial stops without retry or substitution.",
+    "Offline count is not the provider billing count. Framing reservation is conservative headroom, not an API input-cap feature; reported overage stops subsequent requests but cannot undo a completed request.",
+    "No caching discount used in maximum; no tools or external charges requested.",
+    "Only one model and one prompt selected; no comparison or prompt optimization."
+  ],
+  "content_fingerprint": "8039af8bd15822a1e0c5c46505f7bc6ad729c50125fa6778032c2a48289f181a"
+}

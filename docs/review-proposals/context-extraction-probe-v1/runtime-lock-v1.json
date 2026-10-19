@@ -1,0 +1,65 @@
+{
+  "version": "context-extraction-tokenizer-runtime-v1",
+  "python": "3.11.15",
+  "platform": "macOS arm64",
+  "files": {
+    "runtime/regex-2025.11.3.dist-info/RECORD": "8501da5df29eb42c13debf96bd2f69688acd448b5f0f295ad6fa079bdea5c438",
+    "runtime/regex-2025.11.3.dist-info/WHEEL": "b2e9cc6b6ca261bacd2c678c543a840346b2c896c795ec7b4829f54d9ac4abad",
+    "runtime/regex-2025.11.3.dist-info/top_level.txt": "6909a20cc84d4c5dba7022b8ffb0fea9a56f85bc42946d30c824e7121933601b",
+    "runtime/regex-2025.11.3.dist-info/REQUESTED": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runtime/regex-2025.11.3.dist-info/INSTALLER": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508",
+    "runtime/regex-2025.11.3.dist-info/METADATA": "6dc4ce167b96806110d9e6fffaec07dda0e5bc9469acdaeec3b038f14c419dca",
+    "runtime/regex-2025.11.3.dist-info/licenses/LICENSE.txt": "bff55ef4cdcc8c14ce259f8e8ab60e264418440d6335f4dc138273fbd506144d",
+    "runtime/regex/_main.py": "129a79ed1754fffe68d72b2118ae3f02d52b5ef5ebebcfec402ad8f0b0acc466",
+    "runtime/regex/_regex.cpython-311-darwin.so": "8ead077eac32081a7179a259eb1ead00a07c1ff2ae41d6eddff63e4dd831087c",
+    "runtime/regex/__init__.py": "039934ae6f0b9fb1cab1f1bef2c11661e85e93ccc22847bab105b94065009925",
+    "runtime/regex/_regex_core.py": "3fc46b9d10b15dc6cbc584b080d7b4c0c1ddcf538c2abfc4db50b8ce62d8f976",
+    "runtime/regex/tests/test_regex.py": "884e1739f884a56ac62835192120f1971362f98d2b5fc28f1fcc80c293132db2",
+    "runtime/tiktoken-0.12.0.dist-info/RECORD": "11ea75f757d22dcc3187a8041458e75370ebdecfab4f3b342b5052cfd202a549",
+    "runtime/tiktoken-0.12.0.dist-info/WHEEL": "b2e9cc6b6ca261bacd2c678c543a840346b2c896c795ec7b4829f54d9ac4abad",
+    "runtime/tiktoken-0.12.0.dist-info/top_level.txt": "e781b931c7909ee0fb117be9ee3cc6c430daa40d623b0b21efb8e108df562a47",
+    "runtime/tiktoken-0.12.0.dist-info/REQUESTED": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runtime/tiktoken-0.12.0.dist-info/INSTALLER": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508",
+    "runtime/tiktoken-0.12.0.dist-info/METADATA": "d3b28e6ec8f09c47cb4d0fa8443d2f86b137670fa834c26a4e505b11e271b59f",
+    "runtime/tiktoken-0.12.0.dist-info/licenses/LICENSE": "418cb499b436128d653d79941333a5437b7be2ea9213dcc2f04d15d5d2c51d86",
+    "runtime/tiktoken/registry.py": "edf92d65b27529c9bcb15c968047c8cbe6717d4bdc5eea4b50d5ca3df486c105",
+    "runtime/tiktoken/__init__.py": "7879646a489b3b8dfed75245409520a42f33dafe080f5af79772d78ccc84c0a7",
+    "runtime/tiktoken/core.py": "4c2c0e4657adb5997e75ae7962ca79d9394b935f27283e9eeb643fd19140e34e",
+    "runtime/tiktoken/_tiktoken.cpython-311-darwin.so": "ad0049335ed48c0b8f6f28e4ca24f07e973da7afea49c5645ea426dbe67360b1",
+    "runtime/tiktoken/model.py": "779ee48b1b24b08bfa5444a77558ef9860518fc2eb485180c14095e7166dc519",
+    "runtime/tiktoken/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runtime/tiktoken/load.py": "7614ce8952089db86243fce6b4e643b212afa922b35f234e24958f989d12f515",
+    "runtime/tiktoken/_educational.py": "4d414ea7c43dd568eb4ef18a842344cab86dbdaf365257a75df84fcbdcd2ed54",
+    "runtime/tiktoken_ext/openai_public.py": "954392738e60d0fb6dca1dad80872efc47c8e2733babecbbf0a23970ed66c2cb",
+    "tokenizer-cache/fb374d419588a4632f3f557e76b4b70aebbca790": "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d"
+  },
+  "shared_packages": {
+    "httpx": "0.28.1",
+    "httpcore": "1.0.9",
+    "h11": "0.16.0",
+    "anyio": "4.15.1",
+    "certifi": "2026.7.22",
+    "idna": "3.20",
+    "requests": "2.34.2",
+    "urllib3": "2.7.0",
+    "charset-normalizer": "3.4.9"
+  },
+  "wheel_sources": [
+    {
+      "name": "tiktoken",
+      "version": "0.12.0",
+      "url": "https://files.pythonhosted.org/packages/c9/d9/35c5d2d9e22bb2a5f74ba48266fb56c63d76ae6f66e02feb628671c0283e/tiktoken-0.12.0-cp311-cp311-macosx_11_0_arm64.whl",
+      "sha256": "c06cf0fcc24c2cb2adb5e185c7082a82cba29c17575e828518c2f11a01f445aa"
+    },
+    {
+      "name": "regex",
+      "version": "2025.11.3",
+      "url": "https://files.pythonhosted.org/packages/2b/9d/b101d0262ea293a0066b4522dfb722eb6a8785a8c3e084396a5f2c431a46/regex-2025.11.3-cp311-cp311-macosx_11_0_arm64.whl",
+      "sha256": "3b30bc921d50365775c09a7ed446359e5c0179e9e2512beec4a60cbcef6ddd50"
+    }
+  ],
+  "installation_report_sha256": "f36e388b544ad11bb04071cf5d431793115f4861ce500e8310b81169a306ea4f",
+  "encoding": "o200k_base",
+  "inference": false,
+  "content_fingerprint": "1b77f2f5678e4f73378b010fc7424620658a28757e739923516cdce30f82fbe3"
+}
