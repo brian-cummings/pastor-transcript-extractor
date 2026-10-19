@@ -1,0 +1,54 @@
+{
+  "version": "minute-membership-reconciliation-authorization-v1",
+  "status": "PROVIDER_FREE_FIXTURE_RECONCILIATION_AUTHORIZED",
+  "decision_owner": "Brian",
+  "date": "2026-10-19",
+  "authority": "Brian said proceed to resolving source-window authority after the 19/24 preparation exposed saved retained membership versus already reviewed source-window corrections.",
+  "baseline_preparation_fingerprint": "cf57f22066a32a18c26165fe3ea239271d52627cd3531679c78df7fc49b5a769",
+  "review_validation_fingerprint": "f36f8090fe84ed5f6fa7e68f428a5bb0588b2e3732b742b0c02bc558ca77759b",
+  "review_validation_sha256": "3a531193322bece8cd5292d2cf6b6f823ea11c251356eb2853fb8ec8e9913f99",
+  "source_bindings": {
+    "520": {
+      "source_fingerprint": "556806813fba100462bc66b3ef3aeee6810a3167093464a8de7f12fd5567f834",
+      "source_file_sha256": "b054d513801658ae3f3714d01ec97e3e2935b9e079ea354a15404b1fd15dcfe8",
+      "extraction_file_sha256": "69543d1388ba1d7e1fd69d8586eac32043cd54f00857a2365136fa240e5e79b7",
+      "extraction_content_fingerprint": "9738b0b76450e52fe85aae5dcbc4159690d083513af83a44a47c37a5e6a18e6a",
+      "reviewed_main_span": {
+        "start": 125,
+        "end": 37936,
+        "rationale": "Exclude short preceding introduction fragment; retain current message greeting, self-introduction, opening prayer, exposition/application and all available closing prayer. Available text ends without a final amen; no ending is invented."
+      }
+    },
+    "1094": {
+      "source_fingerprint": "e167b4196caeff8ee311b714709199cccd97a136c739286887feebe1649b7635",
+      "source_file_sha256": "38e2a34e1c2902b1a6309e832475d17346ce2db8f19a9dd0dd9e85e97390460e",
+      "extraction_file_sha256": "7c2142f86352451cf2fc196f542c58542a66e3e3eabc4e7bd83f380be27ba0bf",
+      "extraction_content_fingerprint": "d4e76015f7f6c5d7f46f4439dc4efc3a53d8148971ee0b971b9f3f88e9d52def",
+      "reviewed_main_span": {
+        "start": 1117,
+        "end": 28408,
+        "rationale": "Exclude preceding worship prayer through its amen; retain sermon onset through complete final prayer. Existing extracted end at 24355 clips live application mid-sentence, so extend to available message end before any census or discovery."
+      }
+    },
+    "951": {
+      "source_fingerprint": "2920debaa85b51479c63481b42be4b282013d9e12105e8ab544148df992bb76d",
+      "source_file_sha256": "41bbf9407d041b299981cabc310ddb8ffc9dd84dedb64d7f3a55b42bc6a2d676",
+      "extraction_file_sha256": "b2a19cd7378d6acdaffb1e0b2ecfcbc59287ee8d9f6773e925e3c9ff906e9dff",
+      "extraction_content_fingerprint": "60d27ff20baa756a90168ef61047c9d0b0f498f2749eff4ca1b4a66385036e36",
+      "reviewed_main_span": {
+        "start": 3152,
+        "end": 57354,
+        "rationale": "Exclude preceding children story, story prayer and host introduction. Retain Ed message greeting/series review through closing prayer; exclude host thanks after amen. Existing end at 37542 stops mid-sermon reported conversation, so restore the continuous available message before census or discovery."
+      }
+    }
+  },
+  "precedence": "Explicit hash-bound reviewed-main replacement for these retired provider-free fixtures; saved membership remains the default without this authority.",
+  "membership_scope": "retired_fixture_preparation_only",
+  "production_authorization": false,
+  "provider_execution": false,
+  "measurement_admission": false,
+  "classifications_mutated": false,
+  "source_files_mutated": false,
+  "additional_sources": false,
+  "content_fingerprint": "0a20d828b0bf6fa2305fa40b465fbf204703a22c545478e827656a1e69958b90"
+}

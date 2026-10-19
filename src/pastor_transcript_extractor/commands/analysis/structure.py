@@ -177,6 +177,7 @@ def _print_structure_readiness(report: object) -> None:
 
 @analysis_app.command("structure-readiness", help="Report structure analysis readiness.")
 def analysis_structure_readiness(
+    reviewed_membership: bool = typer.Option(False, "--reviewed-membership", help="Use the explicit retired-fixture source-review membership overlay, never a production update."),
     prepare_handoff: bool = typer.Option(False, "--prepare-handoff", help="Materialize the fixed minute-block mapping/context fixtures; no model calls."),
     check_handoff: bool = typer.Option(False, "--check-handoff", help="Verify the provider-free minute-block preparation."),
     handoff_proposal: bool = typer.Option(False, "--handoff-proposal", help="Verify the minute-block evidence handoff proposal and probe supersession; no inference."),
@@ -185,12 +186,21 @@ def analysis_structure_readiness(
     as_json: bool = typer.Option(False, "--json"),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    if reviewed_membership and not (prepare_handoff or check_handoff):
+        raise typer.BadParameter("--reviewed-membership requires --prepare-handoff or --check-handoff")
     if prepare_handoff or check_handoff:
         if sum((prepare_handoff, check_handoff, handoff_proposal, evidence_trace)) != 1 or check_only:
             raise typer.BadParameter("Choose one handoff preparation/check mode")
         from pastor_transcript_extractor import minute_evidence_preparation as prep
         try:
-            result, path = prep.prepare(base_dir) if prepare_handoff else prep.verify(base_dir)
+            if reviewed_membership:
+                from pastor_transcript_extractor import minute_evidence_membership as membership
+                result, path = membership.prepare(base_dir) if prepare_handoff else membership.verify(base_dir)
+            elif prepare_handoff:
+                result, path = prep.prepare(base_dir)
+            else:
+                from pastor_transcript_extractor.minute_evidence_membership import verify_baseline
+                result, path = verify_baseline(base_dir)
         except (ValueError, OSError, KeyError) as error:
             raise typer.BadParameter(str(error)) from error
         summary = {"status": result['status'], "fingerprint": result['content_fingerprint'], "counts": result['counts'], "provider_requests": 0, "report": str(path)}
