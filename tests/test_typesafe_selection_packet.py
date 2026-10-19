@@ -41,6 +41,12 @@ class SelectionPacketTests(unittest.TestCase):
                 scope='one_nomination_only_attempt', bounds=packet['bounds']))
             with self.assertRaisesRegex(ValueError, 'unauthorized'):
                 p.require_authorization(packet, packet['content_fingerprint'], path)
+            decision=json.loads(path.read_text()); decision=seal({**decision,'status':'AUTHORIZED','decision_owner':'Brian','provider_execution':False})
+            path.write_text(json.dumps(decision))
+            with self.assertRaisesRegex(ValueError, 'unauthorized'):
+                p.require_authorization(packet, packet['content_fingerprint'], path)
+            decision=seal({**decision,'provider_execution':True}); path.write_text(json.dumps(decision))
+            self.assertEqual(decision, p.require_authorization(packet, packet['content_fingerprint'], path))
             with self.assertRaisesRegex(ValueError, 'fingerprint'):
                 p.require_authorization(packet, 'wrong', path)
 

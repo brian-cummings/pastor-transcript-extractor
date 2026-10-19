@@ -183,7 +183,8 @@ def require_authorization(packet, approved, decision_path=DECISION):
     if approved != packet['content_fingerprint']:
         raise ValueError('Exact --approve-input fingerprint required')
     decision = trace.read(decision_path, True)
-    if (decision['status'] != 'AUTHORIZED' or decision['input_fingerprint'] != approved
+    if (decision['status'] != 'AUTHORIZED' or decision.get('decision_owner') != 'Brian'
+            or decision.get('provider_execution') is not True or decision['input_fingerprint'] != approved
             or decision['scope'] != 'one_nomination_only_attempt' or decision['bounds'] != packet['bounds']):
         raise ValueError('Nomination execution remains unauthorized; no provider client opened')
     return decision
