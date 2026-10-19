@@ -177,6 +177,7 @@ def _print_structure_readiness(report: object) -> None:
 
 @analysis_app.command("structure-readiness", help="Report structure analysis readiness.")
 def analysis_structure_readiness(
+    typesafe_windows: bool = typer.Option(False, "--typesafe-windows", help="Prepare/check a no-call TypeSafe bridge and exact cache/usage plan for the selected windows."),
     reviewed_membership: bool = typer.Option(False, "--reviewed-membership", help="Use the explicit retired-fixture source-review membership overlay, never a production update."),
     prepare_handoff: bool = typer.Option(False, "--prepare-handoff", help="Materialize the fixed minute-block mapping/context fixtures; no model calls."),
     check_handoff: bool = typer.Option(False, "--check-handoff", help="Verify the provider-free minute-block preparation."),
@@ -186,6 +187,21 @@ def analysis_structure_readiness(
     as_json: bool = typer.Option(False, "--json"),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    if typesafe_windows:
+        if any((reviewed_membership, prepare_handoff, check_handoff, handoff_proposal, evidence_trace)):
+            raise typer.BadParameter("TypeSafe window review is a separate provider-free mode")
+        from pastor_transcript_extractor import typesafe_window_review as window_review
+        try:
+            result, path = window_review.verify(base_dir) if check_only else window_review.prepare(base_dir)
+        except (ValueError, OSError, KeyError) as error:
+            raise typer.BadParameter(str(error)) from error
+        summary={"status":result['status'],"fingerprint":result['content_fingerprint'],"provider_requests":0,"usage_bounds":result['usage_bounds'],"report":str(path)}
+        if as_json:
+            console.print_json(data=summary)
+        else:
+            console.print(f"TypeSafe window bridge prepared; provider_requests=0; exact targets pending; fingerprint={result['content_fingerprint']}",markup=False)
+            console.print(str(path),markup=False)
+        return
     if reviewed_membership and not (prepare_handoff or check_handoff):
         raise typer.BadParameter("--reviewed-membership requires --prepare-handoff or --check-handoff")
     if prepare_handoff or check_handoff:
@@ -195,7 +211,11 @@ def analysis_structure_readiness(
         try:
             if reviewed_membership:
                 from pastor_transcript_extractor import minute_evidence_membership as membership
-                result, path = membership.prepare(base_dir) if prepare_handoff else membership.verify(base_dir)
+                if prepare_handoff:
+                    result, path = membership.prepare(base_dir)
+                else:
+                    from pastor_transcript_extractor.typesafe_window_review import selected_windows
+                    result, path = selected_windows(base_dir)
             elif prepare_handoff:
                 result, path = prep.prepare(base_dir)
             else:

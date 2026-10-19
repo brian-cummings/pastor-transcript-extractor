@@ -1,0 +1,15 @@
+{
+  "version": "typesafe-window-bridge-preparation-authorization-v1",
+  "status": "PROVIDER_FREE_TYPESAFE_BRIDGE_AUTHORIZED",
+  "decision_owner": "Brian",
+  "date": "2026-10-19",
+  "authority": "Brian said proceed to the existing TypeSafe path for selected windows, mindful of unnecessary TypeSafe usage. Provider-free interface inspection, exact reuse and minimal position-selection planning only.",
+  "selected_preparation_fingerprint": "84ae2ce9dc0abd1bfd22a82a192df3a457fe9bae898a7dbab4eec163b8e5e7cc",
+  "provider_execution": false,
+  "Ollama": false,
+  "Jev_execution": false,
+  "collection_projection": false,
+  "new_measurement_semantics": false,
+  "new_nomination_questions": "Prospective versioned position-selection plan only; no execution or semantic validation claimed.",
+  "content_fingerprint": "4ececc2a7b7ec982892337a48d4367f48a7f668d5f19c1af0830726d48bc76fa"
+}
