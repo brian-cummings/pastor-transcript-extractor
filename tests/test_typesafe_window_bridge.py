@@ -123,3 +123,18 @@ class WindowBridgeTests(unittest.TestCase):
             self.assertEqual(0,response.exit_code,response.output);self.assertIn('provider_requests=0',response.output)
         response=CliRunner().invoke(app,['analysis','structure-readiness','--typesafe-windows','--prepare-handoff'])
         self.assertEqual(2,response.exit_code)
+
+class ScopeEconomyTests(unittest.TestCase):
+    def test_known_incompatible_context_skips_existing_materializer(self):
+        source,proof,anchor,context=mapped_fixture(main_start=16);request=b.prepare_selection(context,anchor,['G3']);s=anchor['center_ranges'][0]
+        raw=answers(request,dict(G3_utterance_start=f"p{s['start']}",G3_utterance_end=f"p{s['end']}"));records,_=b.decode_points(request,raw,context,anchor,proof)
+        from pastor_transcript_extractor import evidence_boundary_admission as materializer
+        with patch.object(materializer,'materialize',side_effect=AssertionError('No needless materialization')):
+            self.assertEqual('BLOCKED_MATERIALIZATION_SCOPE',b.measurement_intents(records[0],source)['status'])
+        self.assertFalse(b.measurement_scope(context,source)['eligible'])
+
+    def test_existing_attribution_expansion_is_blocked_not_silently_borrowed(self):
+        source,record,_,_=nominee()
+        from pastor_transcript_extractor import evidence_boundary_admission as materializer
+        with patch.object(materializer,'materialize',return_value=dict(source_envelope=dict(start=-1,end=999,text='expanded'),shapes=[])):
+            self.assertEqual('BLOCKED_ENVELOPE_EXPANSION',b.measurement_intents(record,source)['status'])

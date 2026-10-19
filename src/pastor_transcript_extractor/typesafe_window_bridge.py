@@ -141,15 +141,32 @@ def dispatch_plan(request,cache):
                 requests_needed=1 if missing else 0,execution_authorized=False,provider_calls=0)
 
 
+def measurement_scope(context,source):
+    if (seal(context)!=context or seal(source)!=source
+            or context['source_fingerprint']!=source['content_fingerprint']
+            or source['text'][context['start']:context['end']]!=context['text']):
+        raise ValueError('Foreign canonical measurement envelope')
+    main=source['main_span']
+    if not main['start']<=context['start']<context['end']<=main['end']:
+        return dict(eligible=False,reason='selected_context_outside_frozen_measurement_main_scope')
+    return dict(eligible=True,reason=None)
+
+
 def measurement_intents(record,source):
     """Use unchanged question factories. Return plans only; no API/admission."""
     if seal(record)!=record or record['status']!='UNTRUSTED_LITERAL_VALID':raise ValueError('Invalid nominee')
     if record['source_fingerprint']!=source['content_fingerprint']:raise ValueError('Foreign measurement source')
+    scope=measurement_scope(record['context'],source)
+    if not scope['eligible']:return dict(status='BLOCKED_MATERIALIZATION_SCOPE',reason=scope['reason'],requests=[],usable_evidence=False)
     from pastor_transcript_extractor import evidence_boundary_admission as materializer
     roles=deepcopy(record['roles'])
     if record['family']=='G3':roles=dict(circumstance=None,utterance=roles['utterance'])
     envelope=record['context'];context={k:envelope[k] for k in ('start','end','text')}
-    try:shapes=materializer.materialize(source,record['family'],roles,context)['shapes']
+    try:
+        materialized=materializer.materialize(source,record['family'],roles,context)
+        if materialized['source_envelope']!=context:
+            return dict(status='BLOCKED_ENVELOPE_EXPANSION',reason='Existing materializer would expand the selected context; no automatic widening',requests=[],usable_evidence=False)
+        shapes=materialized['shapes']
     except (ValueError,materializer.EnvelopeUnavailable) as error:
         return dict(status='BLOCKED_MATERIALIZATION_SCOPE',reason=str(error),requests=[],usable_evidence=False)
     # Atomic G3 does not ask about a circumstance. Leave relation fields unmeasured

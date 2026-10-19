@@ -47,8 +47,15 @@ def prepare(base_dir=None):
         key=(context['content_fingerprint'],anchor['content_fingerprint'])
         value=unique.setdefault(key,dict(context=context,anchor=anchor,families=set(),diagnostic_slots=[]))
         value['families'].add(family);value['diagnostic_slots'].append(row['case_id'])
-    plans=[];checks=0;hits=0;cache_files={}
+    old=trace.read(trace.OLD_INPUT,True)
+    canonical_sources=[trace.read(info['path'],True) for info in old['source_files'].values()]
+    source_map={s['content_fingerprint']:s for s in canonical_sources}
+    plans=[];blocked=[];checks=0;hits=0;cache_files={}
     for _,item in sorted(unique.items()):
+        scope=bridge.measurement_scope(item['context'],source_map[item['context']['source_fingerprint']])
+        if not scope['eligible']:
+            blocked.append(dict(context_fingerprint=item['context']['content_fingerprint'],families=sorted(item['families']),diagnostic_slots=item['diagnostic_slots'],reason=scope['reason'],provider_requests=0,semantic_result=None))
+            continue
         request=bridge.prepare_selection(item['context'],item['anchor'],item['families']);cache={}
         for key in request['questions']:
             name=bridge.leaf_key(request,key);path=build_paths(base_dir).evaluation/'typesafe-selected-window-bridge-v1/exact-leaves'/f'{name}.json'
@@ -67,7 +74,8 @@ def prepare(base_dir=None):
     direct=sum(p['request']['phase']=='direct_points' for p in plans)
     g2=sum('G2' in p['request']['metadata']['families'] for p in plans)
     g3=sum('G3' in p['request']['metadata']['families'] for p in plans)
-    caps=dict(unique_context_requests=len(plans),family_bindings=g2+g3,G2_bindings=g2,G3_bindings=g3,
+    caps=dict(selected_contexts=len(unique),selected_family_bindings=sum(len(item['families']) for item in unique.values()),
+        structurally_blocked_contexts=len(blocked),unique_context_requests=len(plans),family_bindings=g2+g3,G2_bindings=g2,G3_bindings=g3,
         endpoint_questions_first_pass=questions,endpoint_questions_second_pass_max=sum(len(p['request']['questions']) for p in plans if p['request']['phase']!='direct_points'),
         first_pass_cache_hits=hits,first_pass_cache_checks=checks,first_pass_requests_after_exact_reuse=sum(p['dispatch']['requests_needed'] for p in plans),
         second_pass_requests_max=len(plans)-direct,selection_requests_max=sum(p['dispatch']['requests_needed'] for p in plans)+len(plans)-direct,
@@ -78,7 +86,7 @@ def prepare(base_dir=None):
     report=seal(dict(version='typesafe-selected-window-bridge-v1',status='PROVIDER_FREE_PLAN_EXACT_TARGET_SELECTION_PENDING',
         selected_preparation_fingerprint=packet['content_fingerprint'],selected_preparation_path=str(source_path),
         selected_preparation_sha256=trace.digest(source_path),authorization_fingerprint=authority['content_fingerprint'],
-        plans=plans,usage_bounds=caps,persisted_artifact_review=source_rows,cache_files=cache_files,
+        plans=plans,structural_deferrals=blocked,usage_bounds=caps,persisted_artifact_review=source_rows,cache_files=cache_files,
         implementation_files={str(p):trace.digest(p) for p in pins},
         source_scope='retired fixtures only; no production membership or pastor ownership',
         new_nomination_questions_version=bridge.VERSION,closed_measurement_questions_changed=False,
