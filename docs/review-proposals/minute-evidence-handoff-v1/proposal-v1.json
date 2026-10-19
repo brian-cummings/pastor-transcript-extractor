@@ -1,0 +1,170 @@
+{
+  "version": "minute-evidence-handoff-proposal-v1",
+  "date": "2026-10-19",
+  "status": "IMPLEMENTATION_PROPOSAL_ONLY",
+  "trace_review_fingerprint": "635ebb55ae6459c0ed85a0acc36b35be4f53851ff5d0bd49c4b47d62cfee6fca",
+  "probe_supersession_fingerprint": "ca8497fa665046cbcdb32364356afbb52c9e2d88cd0837ca362e76c3e71bb16b",
+  "processing_anchor": "existing_retained_minute_block",
+  "entry_point": "Separate post-localization analysis using the persisted source/retained-block identities; no mutation of upstream classification.",
+  "nomination_backend": "existing_configured_ollama",
+  "backend_policy": "Use the configured local generative backend, currently gemma3:4b by project default. Do not silently switch to installed 12b. A future separately approved preparation must pin the actual configured model digest, API/options/tokenizer context budgets before inference. No health-check generation, model acquisition or comparison now.",
+  "semantics_changes": false,
+  "new_implementation_authorized": false,
+  "provider_execution_authorized": false,
+  "context_policy": {
+    "version": "minute-centered-canonical-context-v1-proposed",
+    "temporal_padding_seconds_per_side": 120,
+    "canonical_context_characters_max": 6000,
+    "preserve_complete_anchor": true,
+    "truncate_required_target": false,
+    "optional_context_only_budget_trimming": true,
+    "automatic_expansion": false,
+    "oversized_or_ambiguous_anchor": "defer"
+  },
+  "context_algorithm": [
+    "Verify source snapshot, normalization version, block identity and provenance segments; fail closed on incompatible revisions.",
+    "Build conservative canonical anchor hull from source units contributing to the center block. Separately prove the exact center-content mapping; the hull alone is not semantic ownership.",
+    "Nominal context is the canonical hull of source units overlapping [center.start_seconds-120, center.end_seconds+120], including the whole anchor hull. This is bounded neighborhood construction, not a new transcript segmentation.",
+    "If anchor hull exceeds 6000 or exact source/center mapping cannot be established, defer. Never split a required anchor to obtain eligibility.",
+    "Let B=6000-anchor_hull_length. Allocate min(available_left,floor(B/2)) left characters; allocate min(available_right,B-left) right; give any remaining budget to unused left. Cap at nominal context. Trim optional excerpt edges inward to whitespace where possible without crossing anchor bounds. Preserve exact codepoint offsets and record cuts.",
+    "Mark earlier/later source, budget clipping and normalization-unit boundary cuts. Do not assert this is complete context. A missing remote link remains a nomination/source-review deferral; no model-driven expansion or second search."
+  ],
+  "measurement_admission": {
+    "automatic_authority_transfer": false,
+    "existing_question_contracts": "unchanged",
+    "nomination_fields_entering_measurement": "Exact role/utterance coordinates and literal source envelope only; no extractor labels asserted as provenance facts.",
+    "new_transport": "Prospective data-only adapter and receipt/claim-authority design required; old fixed V4 panel validator/A1 witness cannot be reused as generic authorization.",
+    "supply_only_status": "All nominations remain untrusted/unusable; implementation/preparation does not invoke Jev, admission or consumer.",
+    "scope": "No G1 changes or runtime activation."
+  },
+  "request_identity": [
+    "source hash and transformation lineage",
+    "center block source ranges, segment IDs and timing",
+    "exact context text/ranges and budget diagnostics",
+    "family G2 or G3",
+    "prompt/schema/config/model digest and versioned nomination policy"
+  ],
+  "output_fields": [
+    "untrusted nomination ID bound to request/context",
+    "ordered G2 left/right roles OR one contiguous G3 utterance",
+    "literal canonical source spans",
+    "context/dependency/provenance hypotheses with source supports, no confidence/admission authority",
+    "missing_context, uncertain, saturated or no_nomination status"
+  ],
+  "ownership_and_duplicates": "At least one nominated G2 endpoint or G3 act must intersect verified center content; context-hull overlap is insufficient. Unknown mapping means defer. Deduplicate by source hash, capability and ordered role geometry; retain all contexts and provenance disagreements instead of merging favorable labels. Canonical owner assigned deterministically after validation, never used to suppress initial discovery.",
+  "reuse_policy": "Reuse cached analysis only with matching source, model, question/pack, context and routing identity. Old role/topic scores can be routing hints only where explicitly supported; they are not exact evidence or provenance attestation.",
+  "worked_examples": [
+    {
+      "case_id": "CE-03",
+      "video_id": 951,
+      "anchor_block": 48,
+      "anchor_hull": [
+        40019,
+        40788
+      ],
+      "nominal_context": [
+        37543,
+        42752
+      ],
+      "budgeted_context": [
+        37543,
+        42752
+      ],
+      "characters": 5209,
+      "reviewed_footprint_inside": true,
+      "coarse_parent_alone_sufficient": false
+    },
+    {
+      "case_id": "CE-11",
+      "video_id": 951,
+      "anchor_block": 8,
+      "anchor_hull": [
+        6782,
+        8360
+      ],
+      "nominal_context": [
+        3187,
+        10058
+      ],
+      "budgeted_context": [
+        4058,
+        10058
+      ],
+      "characters": 6000,
+      "reviewed_footprint_inside": true,
+      "coarse_parent_alone_sufficient": false
+    },
+    {
+      "case_id": "CE-12",
+      "video_id": 520,
+      "anchor_block": 9,
+      "anchor_hull": [
+        7997,
+        8881
+      ],
+      "nominal_context": [
+        5592,
+        11265
+      ],
+      "budgeted_context": [
+        5592,
+        11265
+      ],
+      "characters": 5673,
+      "reviewed_footprint_inside": true,
+      "coarse_parent_alone_sufficient": true
+    }
+  ],
+  "example_limitations": "Provider-free arithmetic before optional whitespace edge trimming, using first trace-listed anchor and canonical source units. Context presence only; not extracted targets, exact center mapping proof, semantic safety, discovery recall or held-out evidence. Rules are prospective development design, not frozen confirmation criteria.",
+  "invariants": [
+    "I1 preserve upstream block/classification/cache identities",
+    "I2 canonical exact mapping or defer; no normalized-text offsets treated as canonical",
+    "I3 context-only text cannot independently earn old center-target measurements",
+    "I4 bounded envelope, complete anchor, explicit cuts/unknowns; no expansion",
+    "I5 no nominee truth/provenance/adoption authority",
+    "I6 geometry deduplication preserves competing contexts/speaker hypotheses",
+    "I7 receipt/admission authority is prospective, not inherited from V4/A1 panel"
+  ],
+  "implementation_proposal": {
+    "scope": [
+      "Canonical source/block mapping interface with exact reversible source references or explicit deferral",
+      "Deterministic bounded context planner and fixture-only materializer",
+      "Untrusted nomination DTO/validator and immutable request identity; no provider executor yet",
+      "Data-only prospective measurement mapping specification, no live interpreter/consumer activation",
+      "Focused synthetic tests and source-only diagnostics for existing retired trace anchors; generated outputs under configured base",
+      "A pte CLI preparation/check entry with bounds/fingerprints and no hidden model health inference"
+    ],
+    "tests": [
+      "Whitespace/caption normalization ambiguity and repeated text",
+      "Retained vs context-only membership and center-boundary crossing",
+      "Oversized source units/anchor cap, optional context cuts and absent preceding identity",
+      "Directed G2 endpoints and complete G3 conditions/modality",
+      "Duplicate geometry, conflicting reported/current source claims",
+      "No cache reuse after source/model/question/context changes",
+      "All nomination/admission/provider execution disabled during preparation"
+    ],
+    "not_authorized": [
+      "implementation of the new handoff by this design step",
+      "Ollama/Jev/provider inference or model health generation",
+      "new measurement questions or .80 threshold changes",
+      "automatic provenance/review witness",
+      "new semantic experiment or request queue execution",
+      "fresh sources, closed collector tuning, broader collection",
+      "recurrence, rates, economics claims, projection/comparison/scoring"
+    ]
+  },
+  "resource_policy": "For the proposed provider-free implementation: only the existing 24 slots/three retired sources; context cap 6000, max four nominations per later family/context, no retries/expansion. No provider budget or inherited OpenAI execution fingerprint. Actual tokenizer/context/output/time/review budgets require a separate future run packet.",
+  "cleanup": {
+    "completed": "Old probe prepare/run CLI modes fail with RETIRED before importing its executor; historical authorization superseded by companion decision. Current direct Python executor fails frozen implementation pins before credentials. Frozen prep bytes verified read-only from Git 3c466bd; historical authority remains at baad411.",
+    "not_deleted": [
+      "Original packet/decisions, sources, receipts/results history",
+      "Dormant frozen Python modules still required to explain original pins",
+      "External tokenizer/model caches and installed Ollama models",
+      "Shared source-unit/serialization/admission modules",
+      "Other collector/fresh-discovery runners pending dependency-aware cleanup"
+    ],
+    "remaining": "Separate planned collector execution-surface retirement and dependency manifests, not part of this small first cleanup."
+  },
+  "recommendation": "Approve only the provider-free minute-block handoff implementation/preparation described here. After its mapping/context/validator tests and source diagnostics, review one fresh fingerprinted Ollama execution proposal; do not revive the 24-context OpenAI probe or optimize against its slate.",
+  "content_fingerprint": "2deb9d3bfef68646d4592cb6246b563156b3084a966ea6722e6a49c71f8c4497"
+}

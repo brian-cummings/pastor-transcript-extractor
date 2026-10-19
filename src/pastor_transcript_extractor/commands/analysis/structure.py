@@ -177,11 +177,26 @@ def _print_structure_readiness(report: object) -> None:
 
 @analysis_app.command("structure-readiness", help="Report structure analysis readiness.")
 def analysis_structure_readiness(
+    handoff_proposal: bool = typer.Option(False, "--handoff-proposal", help="Verify the minute-block evidence handoff proposal and probe supersession; no inference."),
     evidence_trace: bool = typer.Option(False, "--evidence-trace", help="Trace only the 24 existing evidence opportunities through persisted/reconstructed blocks; no inference."),
     check_only: bool = typer.Option(False, "--check-only", help="Verify a saved evidence trace without rebuilding it."),
     as_json: bool = typer.Option(False, "--json"),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    if handoff_proposal:
+        if evidence_trace:
+            raise typer.BadParameter("Choose handoff proposal or evidence trace")
+        from pastor_transcript_extractor import minute_evidence_handoff as handoff
+        try:
+            result = handoff.verify()
+        except (ValueError, OSError, KeyError) as error:
+            raise typer.BadParameter(str(error)) from error
+        if as_json:
+            console.print_json(data={"status": result['status'], "fingerprint": result['content_fingerprint'], "provider_requests": 0})
+        else:
+            console.print(f"Minute-block handoff: IMPLEMENTATION_PROPOSAL_ONLY; probe superseded; provider_requests=0; fingerprint={result['content_fingerprint']}", markup=False)
+            console.print(str(handoff.HERE/'PROPOSAL.md'), markup=False)
+        return
     if evidence_trace:
         from pastor_transcript_extractor import evidence_pipeline_trace as trace
         try:

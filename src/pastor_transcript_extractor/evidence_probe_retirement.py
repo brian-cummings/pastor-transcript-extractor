@@ -56,6 +56,10 @@ def verify(base_dir=None):
     if packet['content_fingerprint'] != INPUT_FINGERPRINT:
         raise ValueError('Historical input fingerprint changed')
     preparation = read(OLD/'packet-v1.json')
+    historical_authority = read(OLD/'execution-authorization-v1.json')
+    if (preparation['content_fingerprint'] != historical_authority['preparation_packet_fingerprint']
+            or preparation['input_fingerprint'] != INPUT_FINGERPRINT):
+        raise ValueError('Historical preparation packet binding changed')
     files = {**packet['pins'], **preparation['files']}
     for name, expected in files.items():
         if hashlib.sha256(archived_bytes(name)).hexdigest() != expected:

@@ -1,0 +1,23 @@
+{
+  "version": "minute-evidence-handoff-packet-v1",
+  "status": "IMPLEMENTATION_PROPOSAL_ONLY",
+  "proposal_fingerprint": "2deb9d3bfef68646d4592cb6246b563156b3084a966ea6722e6a49c71f8c4497",
+  "review_fingerprint": "7fe9bfebc259ecd6cf761ca08ada83bb9d7f8a07541dc4070f53d6f638b60380",
+  "files": {
+    "docs/review-proposals/minute-evidence-handoff-v1/probe-supersession-v1.json": "b6b9839e94d2ce5cde0317fe9c7af231e076c37411b7c66d387e2d23f2768017",
+    "docs/review-proposals/minute-evidence-handoff-v1/proposal-v1.json": "912633553e02a4fc67a30296eabfe24d915b99c6dc27b2bb2238bba1cf38c23c",
+    "docs/review-proposals/minute-evidence-handoff-v1/review-v1.json": "5bbbc39302855db5a7a1e1598ff795dbc0f6319b3800b84e7a847295c8fca3d8",
+    "docs/review-proposals/minute-evidence-handoff-v1/PROPOSAL.md": "e1166ca4d02e073e6ad36f2ea980f4a159f230448789e3a98c5b9c2a0cf1d558",
+    "docs/review-proposals/README.md": "bdd48180a165d6eb75fa6f1ee9328f30e7133e7c3d96fee1c555c19eb2cb860d",
+    "src/pastor_transcript_extractor/minute_evidence_handoff.py": "de1e2c053c8a4650a52175e8e5c569ba50b3031ee5e8a1f07ffe3539e46ecf4b",
+    "src/pastor_transcript_extractor/evidence_probe_retirement.py": "34a0b86211dadb46450f15f471bcaa33071214e73de036f54d38f34c5c5d5acd",
+    "src/pastor_transcript_extractor/commands/analysis/context_extraction.py": "fb3a67ba09178601b36e1dbffb1119db4d044807737c14bd3eceeaa2461747be",
+    "src/pastor_transcript_extractor/commands/analysis/structure.py": "ebf7e95a61b8185d4768f09327903fa46277ee03161b5bff16dd257290512ac3",
+    "tests/test_minute_evidence_handoff.py": "a1c0c7083ff24641d5fb35639a09f5aa91f4fea2ecd022123027a0b0398868c1",
+    "tests/test_evidence_probe_retirement.py": "73d73e9f8abb8115da8839838cd04b8e624c0f0021b63178ad6ea4f58073b66c",
+    "tests/test_context_extraction_probe.py": "f77f3e72b7c6cf3325a0819ec89613b4f8c33f75a362d50a33bf1e55022be70b",
+    "docs/review-proposals/evidence-pipeline-trace-v1/review-v1.json": "e44f39ec5a6f424a58b903a43ab341eb29894c37856f18d10f1eddbda3187255"
+  },
+  "provider_execution_authorized": false,
+  "content_fingerprint": "767894508918e2849391ec9ea94a34bde7f3f360b7f3b100c3994a01e484e20d"
+}
