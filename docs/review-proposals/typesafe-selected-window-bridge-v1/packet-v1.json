@@ -1,0 +1,16 @@
+{
+  "version": "typesafe-selected-window-review-packet-v1",
+  "status": "PROVIDER_FREE_INTERFACE_CONNECTED_SELECTION_UNVALIDATED",
+  "preparation_fingerprint": "604a8d43c2a3d841fcd43a1916cfdc1b4bdf6be5ef75291e843e7f4f7153e98c",
+  "review_fingerprint": "28c62294001dbb8958b90313010eac2505b0d7b99565c6ff9568a3ed2a640c36",
+  "files": {
+    "docs/review-proposals/typesafe-selected-window-bridge-v1/authorization-v1.json": "3d3afc6dff930aac79c057bdf1f1560871df59aea66b9539f40559290beed183",
+    "docs/review-proposals/typesafe-selected-window-bridge-v1/preparation-manifest-v1.json": "493f2b1cda3defb19c128746712325c94e9a2c78f487a6001c7b6c32acb54003",
+    "docs/review-proposals/typesafe-selected-window-bridge-v1/review-v1.json": "d569253e6191a641e145b87a5681f686797b1d7353ff6e84580c4eaf985b306c",
+    "docs/review-proposals/typesafe-selected-window-bridge-v1/REVIEW.md": "7e534c9867471669ee0fa2a5d63c262fcb98e9bf1045873c9ecc09dc8b6e25f8",
+    "docs/review-proposals/README.md": "f7c92a9bbdee40dd3e198452ff3240f5b8e58e54a6f29dfeffd7ca3d34f9d9d7"
+  },
+  "provider_requests": 0,
+  "execution_authorized": false,
+  "content_fingerprint": "1db4ed4a8c620022347be405ebd66fbdf558f84bdd76fd3fbebb3bfd22b66c56"
+}

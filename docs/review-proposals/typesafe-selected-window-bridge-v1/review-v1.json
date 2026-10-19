@@ -1,0 +1,106 @@
+{
+  "version": "typesafe-selected-window-bridge-review-v1",
+  "date": "2026-10-19",
+  "status": "PROVIDER_FREE_INTERFACE_CONNECTED_SELECTION_UNVALIDATED",
+  "implementation_commits": [
+    "a5a0929",
+    "39f3634",
+    "61e2a52"
+  ],
+  "preparation_fingerprint": "604a8d43c2a3d841fcd43a1916cfdc1b4bdf6be5ef75291e843e7f4f7153e98c",
+  "selected_preparation_fingerprint": "84ae2ce9dc0abd1bfd22a82a192df3a457fe9bae898a7dbab4eec163b8e5e7cc",
+  "usage_bounds": {
+    "selected_contexts": 17,
+    "selected_family_bindings": 18,
+    "structurally_blocked_contexts": 2,
+    "unique_context_requests": 15,
+    "family_bindings": 16,
+    "G2_bindings": 6,
+    "G3_bindings": 10,
+    "endpoint_questions_first_pass": 44,
+    "endpoint_questions_second_pass_max": 44,
+    "first_pass_cache_hits": 0,
+    "first_pass_cache_checks": 44,
+    "first_pass_requests_after_exact_reuse": 15,
+    "second_pass_requests_max": 15,
+    "selection_requests_max": 30,
+    "measurement_requests_prepared": 0,
+    "conditional_atomic_measurement_requests_upper_bound": 16,
+    "unrequested_circumstance_binding_requests_avoided": 10,
+    "extra_presence_or_routing_questions": 0,
+    "repeated_sermon_classifications": 0,
+    "generative_extractor_calls": 0,
+    "automatic_retries": 0
+  },
+  "structural_deferrals": [
+    {
+      "context_fingerprint": "315e11017901d223d5861d6eb8e4ef367feb7ae127c231d7cc667b41cacad2b4",
+      "families": [
+        "G3"
+      ],
+      "diagnostic_slots": [
+        "CE-24"
+      ],
+      "reason": "selected_context_outside_frozen_measurement_main_scope",
+      "provider_requests": 0,
+      "semantic_result": null
+    },
+    {
+      "context_fingerprint": "87806b665c07dfd32b9f234dbc6ea345ffd3b863030d2ce8a1bf3f3150809dc3",
+      "families": [
+        "G3"
+      ],
+      "diagnostic_slots": [
+        "CE-22"
+      ],
+      "reason": "selected_context_outside_frozen_measurement_main_scope",
+      "provider_requests": 0,
+      "semantic_result": null
+    }
+  ],
+  "question_version": "minute-source-position-selection-v1",
+  "new_discovery_questions": true,
+  "closed_measurement_questions_changed": false,
+  "existing_semantic_answers_reused": 0,
+  "reason_no_semantic_reuse": "These sources have old sermon-localization outputs and no exact nominations for this bridge. Exact state/target/question/model/source-scope matches are required; semantic similarity or same block ID is insufficient.",
+  "cache_scope": "44 first-pass expected exact leaf paths checked; zero hits. No exhaustive global cache scan claimed.",
+  "wire_byte_accounting": {
+    "first_pass_total": 519848,
+    "largest": 42302,
+    "smallest": 25394,
+    "billing_tokens_established": false
+  },
+  "source_docs": [
+    "https://docs.typesafe.ai/api",
+    "https://docs.typesafe.ai/cookbooks/semantic_find",
+    "https://docs.typesafe.ai/cookbooks/pre_parsed_value_extraction_cookbook"
+  ],
+  "verification": {
+    "focused_tests_passed": 90,
+    "provider_requests": 0,
+    "Ollama_calls": 0,
+    "Jev_calls": 0,
+    "exact_cache_reuse_and_partial_dispatch_tested": true,
+    "unchanged_G3_question_factory_compared": true,
+    "main_scope_and_materializer_expansion_fail_closed": true
+  },
+  "nomination_semantics_verdict": null,
+  "containment_verdict": null,
+  "usable_evidence": null,
+  "execution_authorized": false,
+  "next_step": "If this minimal TypeSafe position interface is accepted, prepare a separately bounded nomination-only execution packet with exact model, API, token, timing/review and spend limits. Do not execute this offline plan or collect measurements on unresolved targets.",
+  "limits": [
+    "Position questions are prospective, unvalidated discovery/nomination judgments, not changed G2/G3 measurement contracts.",
+    "Only the first complete eligible object per family/context is proposed; additional opportunities are unenumerated and no recall claim follows.",
+    "No reference targets or oracle answers are used as nominations or provider choices.",
+    "Exact cache leaves must bind full state, questions, phase, model and source/membership scope; old topic/sermon-edge answers cannot substitute.",
+    "A null-circumstance atomic G3 plan leaves relation fields unmeasured; existing fixed-panel consumers are not automatically compatible.",
+    "The selected contexts are unchanged. Context outside the frozen measurement main-source bound is explicitly blocked, not silently clipped.",
+    "No provider executor, token/cost lock, new admission adapter or receipt authority is created.",
+    "No additional presence/routing classifiers or repeated sermon localization are needed by this plan.",
+    "At most one nominated object per family/context; remaining events are unenumerated, so no exhaustive collection or recall claim.",
+    "The two scope-deferred controls remain unresolved and must not count as negative or containment passes.",
+    "Atomic G3 measurement plans leave circumstance relation fields unmeasured; historical fixed-panel consumers and review authority are not extended."
+  ],
+  "content_fingerprint": "28c62294001dbb8958b90313010eac2505b0d7b99565c6ff9568a3ed2a640c36"
+}
