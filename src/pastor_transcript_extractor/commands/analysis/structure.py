@@ -177,6 +177,9 @@ def _print_structure_readiness(report: object) -> None:
 
 @analysis_app.command("structure-readiness", help="Report structure analysis readiness.")
 def analysis_structure_readiness(
+    typesafe_selection: bool = typer.Option(False, "--typesafe-selection", help="Prepare/check the nomination-only packet; no inference unless separately authorized with --run-selection."),
+    run_selection: bool = typer.Option(False, "--run-selection"),
+    approve_input: str | None = typer.Option(None, "--approve-input"),
     typesafe_windows: bool = typer.Option(False, "--typesafe-windows", help="Prepare/check a no-call TypeSafe bridge and exact cache/usage plan for the selected windows."),
     reviewed_membership: bool = typer.Option(False, "--reviewed-membership", help="Use the explicit retired-fixture source-review membership overlay, never a production update."),
     prepare_handoff: bool = typer.Option(False, "--prepare-handoff", help="Materialize the fixed minute-block mapping/context fixtures; no model calls."),
@@ -187,12 +190,33 @@ def analysis_structure_readiness(
     as_json: bool = typer.Option(False, "--json"),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    if typesafe_selection:
+        if any((typesafe_windows, reviewed_membership, prepare_handoff, check_handoff, handoff_proposal, evidence_trace)) or (run_selection and check_only) or (approve_input is not None and not run_selection):
+            raise typer.BadParameter("Choose nomination preparation, --check-only, or --run-selection --approve-input")
+        from pastor_transcript_extractor import typesafe_selection_packet as selection
+        try:
+            if run_selection:
+                from pastor_transcript_extractor.typesafe_selection_execution import execute
+                result, path = execute(approve_input, base_dir)
+            else:
+                result, path = selection.verify(base_dir) if check_only else selection.prepare(base_dir)
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            raise typer.BadParameter(str(error)) from error
+        output = dict(status=result['status'], input_fingerprint=result.get('input_fingerprint', result['content_fingerprint']), provider_requests=result['provider_requests'], path=str(path))
+        console.print_json(data=output) if as_json else console.print(output, markup=False)
+        return
+    if run_selection or approve_input is not None:
+        raise typer.BadParameter("Execution options require --typesafe-selection")
     if typesafe_windows:
         if any((reviewed_membership, prepare_handoff, check_handoff, handoff_proposal, evidence_trace)):
             raise typer.BadParameter("TypeSafe window review is a separate provider-free mode")
         from pastor_transcript_extractor import typesafe_window_review as window_review
         try:
-            result, path = window_review.verify(base_dir) if check_only else window_review.prepare(base_dir)
+            if check_only:
+                from pastor_transcript_extractor.typesafe_selection_packet import verify_bridge
+                result, path = verify_bridge(base_dir)
+            else:
+                result, path = window_review.prepare(base_dir)
         except (ValueError, OSError, KeyError) as error:
             raise typer.BadParameter(str(error)) from error
         summary={"status":result['status'],"fingerprint":result['content_fingerprint'],"provider_requests":0,"usage_bounds":result['usage_bounds'],"report":str(path)}

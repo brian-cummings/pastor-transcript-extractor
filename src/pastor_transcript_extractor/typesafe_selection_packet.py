@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import platform
 import sys
+import subprocess
+import hashlib
 from decimal import Decimal
 from pathlib import Path
 
@@ -82,7 +84,7 @@ def make_packet(plan, plan_path):
         raise ValueError('Actual nomination inventory differs')
     maximum = bounds['selection_requests_max']
     pins = [Path(__file__), Path(bridge.__file__), trace.ROOT/'src/pastor_transcript_extractor/typesafe_selection_execution.py',
-            trace.ROOT/'src/pastor_transcript_extractor/commands/analysis/typesafe_selection.py',
+            trace.ROOT/'src/pastor_transcript_extractor/commands/analysis/structure.py',
             trace.ROOT/'tests/test_typesafe_selection_packet.py']
     return seal(dict(version=VERSION, status='PREPARED_EXECUTION_UNAUTHORIZED',
         bridge_fingerprint=plan['content_fingerprint'], bridge_path=str(plan_path), bridge_sha256=trace.digest(plan_path),
@@ -117,8 +119,37 @@ def make_packet(plan, plan_path):
             'retry or automatic context expansion', 'automatic provenance', 'collection', 'projection/scoring']))
 
 
+
+def verify_bridge(base_dir=None):
+    """Check historical bridge bytes, allowing only the archived CLI adapter.
+
+    The new flags extend the adapter; requests and source/membership inputs must
+    still match byte for byte. This does not authorize archived execution.
+    """
+    review.selected_windows(base_dir)
+    pointer = trace.read(review.MANIFEST, True)
+    path = build_paths(base_dir).evaluation / pointer['relative_path']
+    if trace.digest(path) != pointer['sha256']:
+        raise ValueError('Historical bridge file changed')
+    plan = trace.read(path, True)
+    if plan['content_fingerprint'] != pointer['input_fingerprint']:
+        raise ValueError('Historical bridge identity changed')
+    for name, expected in {**plan['implementation_files'], **plan['cache_files']}.items():
+        if trace.digest(name) == expected:
+            continue
+        relative = Path(name).relative_to(trace.ROOT).as_posix()
+        if relative != review.CLI_PATH:
+            raise ValueError('Historical bridge dependency changed: '+name)
+        raw = subprocess.run(['git', 'show', '0f03d2f:'+relative], cwd=trace.ROOT, check=True, capture_output=True).stdout
+        if hashlib.sha256(raw).hexdigest() != expected:
+            raise ValueError('Archived bridge CLI differs')
+    if trace.digest(plan['selected_preparation_path']) != plan['selected_preparation_sha256'] or plan['provider_requests'] or plan['execution_authorized']:
+        raise ValueError('Historical bridge source/scope changed')
+    return plan, path
+
+
 def prepare(base_dir=None):
-    plan, path = review.verify(base_dir)
+    plan, path = verify_bridge(base_dir)
     packet = make_packet(plan, path)
     out = build_paths(base_dir).evaluation / VERSION / packet['content_fingerprint'] / 'input-v1.json'
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -130,7 +161,7 @@ def prepare(base_dir=None):
 
 
 def verify(base_dir=None):
-    plan, _ = review.verify(base_dir)
+    plan, _ = verify_bridge(base_dir)
     pointer = trace.read(MANIFEST, True)
     path = build_paths(base_dir).evaluation / pointer['relative_path']
     if trace.digest(path) != pointer['sha256']:

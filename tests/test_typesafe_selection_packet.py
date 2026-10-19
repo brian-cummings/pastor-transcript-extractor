@@ -112,8 +112,8 @@ class SelectionPacketTests(unittest.TestCase):
         from pastor_transcript_extractor.cli import app
         result=seal(dict(status='PREPARED_EXECUTION_UNAUTHORIZED',provider_requests=0))
         with patch.object(p,'prepare',return_value=(result,Path('/tmp/synthetic'))), patch.object(e,'execute',side_effect=AssertionError('No inference')):
-            response=CliRunner().invoke(app,['analysis','typesafe-position-selection','--json'])
+            response=CliRunner().invoke(app,['analysis','structure-readiness','--typesafe-selection','--json'])
             self.assertEqual(0,response.exit_code,response.output)
-        for args in (['--run','--check-only'],['--approve-input','wrong']):
-            response=CliRunner().invoke(app,['analysis','typesafe-position-selection',*args])
+        for args in (['--run-selection','--check-only'],['--approve-input','wrong']):
+            response=CliRunner().invoke(app,['analysis','structure-readiness','--typesafe-selection',*args])
             self.assertEqual(2,response.exit_code)
