@@ -1,0 +1,22 @@
+{
+  "version": "typesafe-position-selection-execution-authorization-review-v1",
+  "date": "2026-10-19",
+  "status": "AUTHORIZED_READY_FOR_BRIAN_EXECUTION",
+  "input_fingerprint": "19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceabaa8a2",
+  "decision_fingerprint": "cfdde8893efb8344896d0efa10cbc5232a981dffaba3cbac05cc1d2f244634c8",
+  "decision_sha256": "7797c57e0344c3588a240f9f71d4f9439e2e960dac986b35ad69cf4eccc259fd",
+  "preparation_packet_sha256": "948258942f1c130a79986d13872594dc373a9c9bd6c53d982e2bd08c00e301d0",
+  "preparation_snapshot_git": "45d2802",
+  "prior_decision_fingerprint": "7e50a8b7a736d2ab6100a38b7688d014ae471eba21da3bde4eee01952a22d14e",
+  "bounds_unchanged": true,
+  "input_unchanged": true,
+  "implementation_unchanged": true,
+  "authorization_gate_verified": true,
+  "attempt_lock_present": false,
+  "provider_requests_during_handoff": 0,
+  "executor": "Brian",
+  "measurement_admission_authorized": false,
+  "collection_projection_authorized": false,
+  "note": "The original preparation packet and review remain frozen NOT_AUTHORIZED snapshots. Their execution-decision file pin refers to Git 45d2802; the separate current execution decision supersedes that status only.",
+  "content_fingerprint": "efb70ec55bef71f66ae19fd1b0b9d67cb3e6caf69523d5b2df8ce635d5cf989d"
+}
