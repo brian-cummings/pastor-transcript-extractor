@@ -1,0 +1,23 @@
+{
+  "version": "minute-handoff-implementation-authorization-v1",
+  "status": "IMPLEMENTATION_PROVIDER_FREE_PREPARATION_AUTHORIZED",
+  "decision_owner": "Brian",
+  "date": "2026-10-19",
+  "authority": "Brian said proceed after the minute-block handoff implementation/preparation proposal and completed probe cleanup.",
+  "proposal_fingerprint": "2deb9d3bfef68646d4592cb6246b563156b3084a966ea6722e6a49c71f8c4497",
+  "implementation": true,
+  "provider_free_preparation": true,
+  "provider_execution": false,
+  "model_loading": false,
+  "Jev": false,
+  "admission": false,
+  "collection_projection": false,
+  "fresh_sources": false,
+  "baseline_commit": "ac4ed19",
+  "authorized_overlays": [
+    "src/pastor_transcript_extractor/commands/analysis/structure.py",
+    "docs/review-proposals/README.md"
+  ],
+  "scope": "Canonical block mapping, bounded context, untrusted DTO/validation, data-only mapping and focused tests on the existing three-source/24-slot diagnostic fixtures. No provider executor, model request queue or live measurement/admission adapter.",
+  "content_fingerprint": "c57c8c5b47c556896a22d265d838782e986f332d40a5eab4a79f4a069bfa91ab"
+}

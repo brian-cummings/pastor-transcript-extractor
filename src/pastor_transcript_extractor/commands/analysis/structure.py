@@ -177,18 +177,36 @@ def _print_structure_readiness(report: object) -> None:
 
 @analysis_app.command("structure-readiness", help="Report structure analysis readiness.")
 def analysis_structure_readiness(
+    prepare_handoff: bool = typer.Option(False, "--prepare-handoff", help="Materialize the fixed minute-block mapping/context fixtures; no model calls."),
+    check_handoff: bool = typer.Option(False, "--check-handoff", help="Verify the provider-free minute-block preparation."),
     handoff_proposal: bool = typer.Option(False, "--handoff-proposal", help="Verify the minute-block evidence handoff proposal and probe supersession; no inference."),
     evidence_trace: bool = typer.Option(False, "--evidence-trace", help="Trace only the 24 existing evidence opportunities through persisted/reconstructed blocks; no inference."),
     check_only: bool = typer.Option(False, "--check-only", help="Verify a saved evidence trace without rebuilding it."),
     as_json: bool = typer.Option(False, "--json"),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    if prepare_handoff or check_handoff:
+        if sum((prepare_handoff, check_handoff, handoff_proposal, evidence_trace)) != 1 or check_only:
+            raise typer.BadParameter("Choose one handoff preparation/check mode")
+        from pastor_transcript_extractor import minute_evidence_preparation as prep
+        try:
+            result, path = prep.prepare(base_dir) if prepare_handoff else prep.verify(base_dir)
+        except (ValueError, OSError, KeyError) as error:
+            raise typer.BadParameter(str(error)) from error
+        summary = {"status": result['status'], "fingerprint": result['content_fingerprint'], "counts": result['counts'], "provider_requests": 0, "report": str(path)}
+        if as_json:
+            console.print_json(data=summary)
+        else:
+            console.print(f"Minute handoff prepared; provider_requests=0; inference/measurement/admission disabled; fingerprint={result['content_fingerprint']}", markup=False)
+            console.print(str(path), markup=False)
+        return
     if handoff_proposal:
         if evidence_trace:
             raise typer.BadParameter("Choose handoff proposal or evidence trace")
         from pastor_transcript_extractor import minute_evidence_handoff as handoff
         try:
-            result = handoff.verify()
+            from pastor_transcript_extractor.minute_evidence_preparation import verify_proposal
+            result = verify_proposal()
         except (ValueError, OSError, KeyError) as error:
             raise typer.BadParameter(str(error)) from error
         if as_json:
