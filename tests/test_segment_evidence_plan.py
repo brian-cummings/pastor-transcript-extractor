@@ -7,9 +7,11 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('IMPLEMENTED_PENDING_HUMAN_ACCEPTANCE',plan['status'])
+        self.assertEqual('IMPLEMENTED_NEXT_CAPABILITY_DECISION_PENDING',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
-        self.assertEqual('pending',plan['verification']['human_acceptance'])
+        self.assertEqual('pending',plan['verification']['capability_decision'])
+        self.assertFalse(plan['next_capability_decision']['pilot_execution'])
+        self.assertEqual('pastor-profile-description-v3',plan['current_delivery'])
         self.assertEqual('pastor-profile-description-v2',plan['presentation_revision']['version'])
         self.assertEqual('unchanged_from_V1',plan['presentation_revision']['raw_observations_and_underlying_claims'])
         self.assertEqual('optional_Ollama_illustrative_quote',plan['pipeline_order'][-1])

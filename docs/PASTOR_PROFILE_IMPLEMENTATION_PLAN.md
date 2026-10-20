@@ -2,7 +2,7 @@
 
 **Current implementation status, 2026-10-20.** Implements the [pastor profile product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). The product plan defines what the reader should receive; this document defines the code, delivery sequence and acceptance checks. These are the two active planning documents. Older implementation sequences are superseded, with historical measurements and decisions preserved.
 
-Brian authorized milestones 1–3 as one bounded provider-free feature on 2026-10-20. They are now implemented and committed; the worked profile and milestone 4 consequential-gap map are delivered. **Brian requested a product-language revision after reviewing V1; acceptance of the revised presentation is pending.** This is implementation completion, not acceptance of new theological measurements, production activation or authorization to cross any held boundary.
+Brian authorized milestones 1–3 as one bounded provider-free feature on 2026-10-20. They are now implemented and committed; the worked profile and milestone 4 consequential-gap map are delivered. **Brian’s latest feedback recognizes V2’s product-language pass as successful. The next decision is the prepared assurance-position review; no new semantic capability is authorized.** This is implementation completion, not acceptance of new theological measurements, production activation or authorization to cross any held boundary.
 
 ## Delivery status — 2026-10-20
 
@@ -37,23 +37,35 @@ Revision commits: `e06c4dc`, `2b12a79`. **33 focused profile tests passed** (13 
 
 The concrete V2 review packet is under the configured base directory at `evaluation/pastor-profile-description-v2/f72e06a35af4546f4565ec2d830e8428ec4b91bef698575d2943f8559ac6cea4/`. Review `index.html` or `profile-v2.md`; the complete provenance is in `description-v2.json` and the Markdown/JSON verification receipts. Fifteen synthesized reader claims link to the unchanged evidence ledger. No provider calls, database writes, new measurements, corpus evaluation or quotation execution occurred.
 
-## Next action — review the delivered profile
+## Current increment — small presentation fixes and a consequential capability decision
 
-Brian can reproduce the prepared sample with:
+The latest feedback explicitly discourages another language-polishing cycle. V3 keeps the successful product structure and makes the requested small changes: terse style descriptors at a glance, concrete examples and nuance in “A closer look,” and “salvation received through faith.” It adds a source-backed next-capability brief, not a new detector or another inventory gate.
+
+**Recommended capability:** proposition-specific theological positions with voice/adoption, polarity, conditions and scope. This most directly changes the useful answer from “which subjects occur?” to “what does the preacher actually teach?” Pastoral tone is the next complementary gap; more style wording, quotations or comparison cannot resolve this missing distinction.
+
+**Smallest first slice:** a provider-free, source-reviewed assurance account on three prepared windows from the existing sample. Reuse G1’s knowability/loss/retention vocabulary and binding fields. Do not infer a permanent-security label, expand G1 to grace/faith/transformation mechanisms, or convert a topic observation into an adopted doctrine. The packet includes two existing assurance observations and one below-threshold contrast. All proposed positions remain withheld, and G1 opportunity status is explicitly unestablished; these are prepared review contrasts, not certified natural positives.
+
+The existing G1 fixed-passage feasibility gate is PASS/closed, with disclosed conservative residuals; discovery and opportunity coverage are unestablished. The prepared targets are not exact matches to that closed pilot’s targets. The V3 source-only discovery review recommends G1 HOLD; A1’s bounded G3 containment decision is not theological adoption authority. No provider, closed-panel replay, G1 V3, collector change, automatic provenance rule, threshold change or broader collection has occurred.
+
+Implementation: `profile_capability_review.py` and exact-source prepared inputs, committed in `15fb892` and `378736b`, alongside the small presentation fixes. The profile and packet are reproducible through the existing CLI:
 
 ```bash
 pte analysis structure-readiness --segment-view --description --json
 ```
 
-For a read-only freshness check without output writes:
+This writes `index.html`, `profile-v3.md`, `description-v3.json`, `review-v3.json`, and `next-capability-v1.md/json` under the configured base directory at `evaluation/pastor-profile-description-v3/431b8b0f376202643ecc2036a7ee551c1e601923328bf3777cb90b2b7584e322/`. Read-only freshness verification remains:
 
 ```bash
 pte analysis structure-readiness --segment-view --description --check-only --json
 ```
 
-Review whether the revised assessment answers “what kind of preacher does this sample suggest?” and whether the at-a-glance table is useful. Then follow a shared subject, a salvation theme and a style example to their supporting passages. Approve or reject the concrete wording, usefulness and explicit unknowns; no new case selection, JSON authoring, annotation exercise or corpus run is required. Codex owns interpreting that feedback and preparing any necessary revision.
+**Verification:** 40 focused profile tests passed (13 description, 9 presentation, 6 capability packet, 5 original view, 7 inventory). Browser checks verified the shortened glance row, distinct closer-look content, corrected faith wording, the three-case proposal and links to the exact full passages with technical details closed. Internal targets resolve. Generation/check-only fingerprints agree. The underlying observations, source identities, coverage, missing states and original claims remain unchanged from V2.
 
-**Recommended sequence after review:** correct any remaining wording or evidence-navigation defects within the current scope. Use the existing gap ledger to prepare one bounded next-step proposal only after interpreting Brian’s feedback. The previously recommended source inspection of style examples is now included; this does not authorize prevalence bins or new automatic aggregation. No semantic measurement, broader collection, identity label, comparison, production activation or Ollama work proceeds merely because the presentation has improved.
+## Next action — decide on the prepared assurance review
+
+Brian’s bounded decision is whether to approve the provider-free, source-reviewed assurance-position pilot described in `next-capability-v1.md`. The cases, questions, defaults and acceptance criteria are already supplied. Codex owns reading/interpreting the sources and preparing any supported bindings for review; Brian approves/rejects concrete results rather than annotating or designing an experiment.
+
+If approved, the pilot must preserve uncertain or out-of-contract readings and may return withheld positions. Any requirement for a new semantic measurement, provider, automatic binding/admission rule or broader collection comes back as a precise separate decision. This does not reopen a closed G1 experiment or authorize an expanded doctrine catalog. Do not schedule another general language-polishing pass as the next milestone.
 
 ## Starting point: what already exists
 
@@ -157,7 +169,7 @@ No nearest-pastor result, similarity percentage, ranking, single pastor score or
 ## Delivery order and current authorization
 
 - **Completed foundation:** compatible inventory and source-linked evidence preview; historical measurement/containment results retain their actual scope.
-- **Implemented, acceptance pending:** milestones 1–3 together, plus milestone 4’s gap/code map. Brian’s next action is to review the delivered profile using the command above; Codex owns revisions and subsequent recommendations.
+- **Implemented, acceptance pending:** milestones 1–3 together, plus milestone 4’s gap/code map. Brian’s product-language feedback is recorded as successful; the next action is the prepared bounded assurance-review decision. Codex owns any authorized source interpretation and subsequent recommendations.
 - **Later conditional work:** only the consequential gaps Brian approves, then optional quote execution and independently justified comparison. Do not require another inventory/design gate merely to implement the first supported screen.
 
 Brian’s implementation request authorized the bounded provider-free milestones 1–3 and delivery of the consequential-gap map. This status update records their completion; it does not authorize providers, new measurements, collection, production activation, profile aggregation/scoring, comparison/ranking, stability claims or quotation execution. The [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) and this implementation plan are the two active documents; neither turns a historical pilot PASS into general authority.

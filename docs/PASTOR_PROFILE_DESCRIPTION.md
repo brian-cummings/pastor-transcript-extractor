@@ -1,4 +1,4 @@
-# Readable pastor profile: reader-first revision
+# Readable pastor profile and next-capability decision
 
 The provider-free description workflow implements milestones 1–3 of the active
 [product](PASTOR_PROFILE_PRODUCT_PLAN.md) and
@@ -20,8 +20,8 @@ pte analysis structure-readiness --segment-view --description --check-only --jso
 The command prints the generated `index.html` path under the configured application
 base directory. Open it to review the assessment, at-a-glance table, dimensional
 analysis, claim ledger, consequential gaps and full source windows. Companion
-`profile-v2.md` and `description-v2.json` provide the Markdown review and machine
-record. V2 outputs live under `evaluation/pastor-profile-description-v2/`; V1 outputs and the original `--segment-view` artifact remain preserved.
+`profile-v3.md` and `description-v3.json` provide the Markdown review and machine
+record. V3 outputs live under `evaluation/pastor-profile-description-v3/`; V1/V2 outputs and the original `--segment-view` artifact remain preserved.
 The same description fingerprint is returned by check-only and generation; the
 output directory additionally identifies the implementation/renderer manifest.
 
@@ -51,6 +51,40 @@ inherit the description. These are presentation inputs pending Brian’s accepta
 not new model results, automatic admission rules or a frequency measurement. An
 unreviewed maximum probability still cannot admit a style trait. The record and
 manifest preserve the descriptions and their provenance.
+
+## Next capability: qualified theological positions
+
+Brian’s feedback recognizes the product-language pass as successful. The next
+increment therefore makes only small presentation fixes: at-a-glance style terms
+are terse, “A closer look” supplies examples instead of repeating the assessment,
+and the faith theme reads “salvation received through faith.”
+
+The same CLI now also writes `next-capability-v1.md` and `next-capability-v1.json`
+with a concrete recommendation: distinguish the preacher’s own theological
+assertions from explanation, quotation or rejection, retaining conditions and
+scope. The profile links to the proposal under “What would most improve this
+assessment?” This is a prepared decision packet, not a new measurement workflow.
+
+The recommended first slice is assurance: knowing present acceptance, possible
+loss and retention. It reuses the bounded G1 representation rather than expanding
+salvation meanings or introducing a doctrine catalog. Three exact-source passages
+are prepared, including an existing below-threshold contrast. Their full texts,
+source hashes, timestamps, current states, questions and non-inference boundaries
+are supplied. No position is populated. Stale cases are excluded without selecting
+replacements or relaxing a threshold.
+
+The packet checks the existing closed G1 feasibility decision and its actual input,
+not the older design-only wording. Fixed-passage PASS does not establish discovery
+or sample completeness. The exact prepared targets do not match that historical
+pilot; this is neither a global cache census nor proof that no compatible answer
+could exist elsewhere. G1 discovery HOLD, source-only V3 limitations and A1’s
+bounded G3 scope are preserved. No closed pilot is rerun.
+
+**Next decision:** approve the provider-free, source-reviewed assurance pilot in
+the packet. Codex would prepare any supported readings and proposed bindings for
+Brian to approve/reject. No JSON authoring or annotation work is assigned to Brian.
+No provider, automatic binding rule, new measurement, broader collection,
+profile-wide position or quotation execution is authorized by the packet.
 
 ## Interpretation boundaries
 
@@ -102,6 +136,7 @@ comparison/ranking, production activation and Ollama execution remain held.
 ```bash
 python -m unittest discover -s tests -p 'test_profile_description.py'
 python -m unittest discover -s tests -p 'test_profile_presentation.py'
+python -m unittest discover -s tests -p 'test_profile_capability_review.py'
 python -m unittest discover -s tests -p 'test_segment_profile_view.py'
 python -m unittest discover -s tests -p 'test_segment_cache_inventory.py'
 ```
