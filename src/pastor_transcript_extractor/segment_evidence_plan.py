@@ -6,8 +6,8 @@ OLD_SELECTION_INPUT='19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceab
 
 
 def verify():
-    plan=trace.read(HERE/'plan-v4.json',True)
-    if (plan['version']!='pastor-profile-product-and-implementation-status-v4'
+    plan=trace.read(HERE/'plan-v5.json',True)
+    if (plan['version']!='pastor-profile-product-and-implementation-status-v5'
             or plan['analytical_families']!=['preaching_style','theological_emphasis','theological_orientation','pastoral_rhetorical_orientation']
             or any(plan[k] for k in ('model_probability_is_pastor_score','benchmark_percentages_authorized','single_pastor_score_proposed','draft_is_measurement_ground_truth'))
             or plan['high_labels_require_explicit_rules'] is not True

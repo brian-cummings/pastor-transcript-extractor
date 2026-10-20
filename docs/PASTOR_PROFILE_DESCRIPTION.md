@@ -1,4 +1,4 @@
-# Readable pastor profile: first implementation
+# Readable pastor profile: reader-first revision
 
 The provider-free description workflow implements milestones 1–3 of the active
 [product](PASTOR_PROFILE_PRODUCT_PLAN.md) and
@@ -20,10 +20,37 @@ pte analysis structure-readiness --segment-view --description --check-only --jso
 The command prints the generated `index.html` path under the configured application
 base directory. Open it to review the assessment, at-a-glance table, dimensional
 analysis, claim ledger, consequential gaps and full source windows. Companion
-`profile-v1.md` and `description-v1.json` provide the Markdown review and machine
-record. The original `--segment-view` artifact and renderer remain reproducible.
+`profile-v2.md` and `description-v2.json` provide the Markdown review and machine
+record. V2 outputs live under `evaluation/pastor-profile-description-v2/`; V1 outputs and the original `--segment-view` artifact remain preserved.
 The same description fingerprint is returned by check-only and generation; the
 output directory additionally identifies the implementation/renderer manifest.
+
+## Reader hierarchy and sample synthesis
+
+The first screen answers what kind of preacher the sample suggests: a synthesized
+assessment, a small at-a-glance table and understandable dimensions. Sermon titles
+replace database IDs; a name supplied by source titles is explicitly unconfirmed.
+Salvation findings are one theme table with named sermons or an exact count such
+as “All 3 sermons,” rather than one repetitive paragraph per finding per sermon.
+Descriptions lead to evidence explanations, then complete source passages. Raw
+states, identifiers, probabilities, question versions, rules and implementation
+remedies remain under closed **Technical details** disclosures.
+
+`profile_presentation.py` is a downstream presentation module. It counts distinct
+sermon membership in existing leading-topic summaries and approved local salvation
+findings. This is sample synthesis, not a new topic cutoff, intensity score,
+ministry recurrence claim or doctrinal adoption judgment. A missing theme stays
+unknown; fewer findings never become evidence of doctrinal denial.
+
+Four authored source-inspection descriptions in
+`data/profile-presentation-source-reviews-v1.json` illustrate the existing treatment
+meanings: biblical explanation, doctrinal reasoning, personal illustration and
+practical application. Each description is bound to its complete passage by source
+hash, text hash, timestamps and dimension. Changed or unreviewed sources do not
+inherit the description. These are presentation inputs pending Brian’s acceptance,
+not new model results, automatic admission rules or a frequency measurement. An
+unreviewed maximum probability still cannot admit a style trait. The record and
+manifest preserve the descriptions and their provenance.
 
 ## Interpretation boundaries
 
@@ -74,6 +101,7 @@ comparison/ranking, production activation and Ollama execution remain held.
 
 ```bash
 python -m unittest discover -s tests -p 'test_profile_description.py'
+python -m unittest discover -s tests -p 'test_profile_presentation.py'
 python -m unittest discover -s tests -p 'test_segment_profile_view.py'
 python -m unittest discover -s tests -p 'test_segment_cache_inventory.py'
 ```
@@ -81,7 +109,7 @@ python -m unittest discover -s tests -p 'test_segment_cache_inventory.py'
 These cover quoted/adopted non-inference, low versus missing values, unresolved
 and routed states, changed contracts/eligibility, duplicate/overlapping sources,
 counterevidence, immutable input behavior, escaping, internal navigation targets,
-read-only cache probing, and CLI isolation. Browser review additionally exercises
+read-only cache probing, CLI isolation, distinct-sermon synthesis, stale source-review rejection, title/name boundaries and technical-term hiding in the initial and reader evidence views. Browser review additionally exercises
 claim → source → claim links, disclosure opening and recording filters.
 
 Brian’s bounded dataset acceptance command is the generation command above. Read

@@ -10,6 +10,8 @@ class SegmentPlanTests(unittest.TestCase):
         self.assertEqual('IMPLEMENTED_PENDING_HUMAN_ACCEPTANCE',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertEqual('pending',plan['verification']['human_acceptance'])
+        self.assertEqual('pastor-profile-description-v2',plan['presentation_revision']['version'])
+        self.assertEqual('unchanged_from_V1',plan['presentation_revision']['raw_observations_and_underlying_claims'])
         self.assertEqual('optional_Ollama_illustrative_quote',plan['pipeline_order'][-1])
         self.assertFalse(plan['provider_execution']);self.assertFalse(plan['exact_span_extraction_required_upstream'])
         self.assertEqual(['preceding_segment','center_segment','following_segment'],plan['quote_context'])

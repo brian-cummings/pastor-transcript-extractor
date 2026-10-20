@@ -2,14 +2,14 @@
 
 **Current implementation status, 2026-10-20.** Implements the [pastor profile product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). The product plan defines what the reader should receive; this document defines the code, delivery sequence and acceptance checks. These are the two active planning documents. Older implementation sequences are superseded, with historical measurements and decisions preserved.
 
-Brian authorized milestones 1–3 as one bounded provider-free feature on 2026-10-20. They are now implemented and committed; the worked profile and milestone 4 consequential-gap map are delivered. **Brian’s acceptance of the displayed wording and unknowns is pending.** This is implementation completion, not acceptance of new theological measurements, production activation or authorization to cross any held boundary.
+Brian authorized milestones 1–3 as one bounded provider-free feature on 2026-10-20. They are now implemented and committed; the worked profile and milestone 4 consequential-gap map are delivered. **Brian requested a product-language revision after reviewing V1; acceptance of the revised presentation is pending.** This is implementation completion, not acceptance of new theological measurements, production activation or authorization to cross any held boundary.
 
 ## Delivery status — 2026-10-20
 
 | Milestone | Status | Delivered evidence |
 |---|---|---|
-| 1: description contract and worked example | Implemented; human acceptance pending | `profile_description.py`; versioned profile 318 assessment, at-a-glance table, 24 scoped claims, source identity and explicit unknowns. |
-| 2: evidence-to-description rules | Implemented; wording rules proposed for review | Deterministic per-recording topic summaries; local nine-leaf salvation observations; treatment maxima remain inspection candidates, not admitted style traits. Raw meanings and thresholds are unchanged. |
+| 1: description contract and worked example | Implemented; human acceptance pending | `profile_description.py`; versioned profile 318 assessment, at-a-glance table, 24 unchanged underlying claims plus a synthesized reader layer, source identity and explicit unknowns. |
+| 2: evidence-to-description rules | Implemented; wording rules proposed for review | Deterministic per-recording topic summaries; local nine-leaf salvation observations; treatment maxima remain inspection candidates. Four exact-source inspection descriptions now support local style examples; they do not establish predominance. Raw meanings and thresholds are unchanged. |
 | 3: read-only profile screen and CLI | Implemented; human acceptance pending | `--segment-view --description`, including `--check-only`; HTML, Markdown, JSON and review receipts; bidirectional claim/source navigation and recording filters. |
 | 4: consequential gaps | Gap/code map delivered; remedies not implemented | Eight prioritized gaps: adoption, Scripture/cross-book reasoning, pastoral posture, style predominance, sampling, identity, benchmark comparison and quotations. |
 | 5: Ollama quotations | Held | No quote selection, runtime preparation or execution. |
@@ -19,7 +19,23 @@ Implementation commits: `780afe6`, `64d7209`, `639a354`. Verification: **25 focu
 
 The delivered profile uses recordings **4589 / 281 / 3973**, with **158 eligible topic/treatment blocks** and **33 routed salvation blocks**. Exact-current Scripture-run lookups returned no persisted current run for these recordings. Exact registered leaf-pack paths, including historical refinements and composed answers at those identities, returned no compatible matches. These bounded checks do not establish global absence of older or differently keyed evidence.
 
-Generated artifacts are under the configured application base directory, in `evaluation/pastor-profile-description-v1/1ef67bc76c11183c31115138d4f6a0f920a70d0c52d04ee5e514d5101a48bb3a/`: `index.html`, `profile-v1.md`, `description-v1.json`, `review-v1.json`, and the Markdown/JSON `verification-v1` receipts. The original segment view and frozen raw observations remain preserved. See [workflow and interpretation details](PASTOR_PROFILE_DESCRIPTION.md).
+The V1 artifacts and their verification receipts remain preserved under the configured base directory. The reader-first revision writes new outputs under `evaluation/pastor-profile-description-v2/`: `index.html`, `profile-v2.md`, `description-v2.json` and `review-v2.json`. The CLI prints the exact immutable output path. See [workflow and interpretation details](PASTOR_PROFILE_DESCRIPTION.md).
+
+### Product-language revision — 2026-10-20
+
+Brian’s review found that V1 exposed internal vocabulary, repeated per-sermon findings and insufficiently answered what kind of preacher the sample suggests. The revision addresses that feedback in the presentation layer:
+
+- A sample-wide assessment and characterization table precede the evidence browser.
+- Distinct-sermon membership in existing summaries supports shared/variable topic descriptions and one salvation-theme table. This adds no measurement cutoff, profile score, adopted position or ministry stability claim.
+- Four source-inspected treatment passages support concrete local examples. Descriptions are tied to exact source/text hashes, dimensions and timestamps; stale or absent receipts withhold the style wording.
+- Sermon titles replace database IDs in the reader layer. Source titles naming John Bradshaw remain explicitly unconfirmed identity metadata.
+- Reader descriptions link to understandable explanations and complete passages. Internal states, raw probabilities, IDs, versions and the complete implementation gap map remain behind Technical details disclosures.
+
+The existing observations, underlying claims, source identities, coverage, missing states and unresolved leaves were compared with V1 and are unchanged. The revision is a new reviewable presentation, not an acceptance claim or authorization for a pipeline pass.
+
+Revision commits: `e06c4dc`, `2b12a79`. **33 focused profile tests passed** (13 description, 8 presentation, 5 original evidence view, 7 cache inventory). Browser checks confirmed five at-a-glance rows, nine consolidated salvation themes, zero broken internal links, no flagged machine terms in the initial visible page, working description → explanation → full passage → description navigation, title-based filters, recovery of filtered passages and closed-but-accessible technical provenance. Generation and check-only returned the same description fingerprint.
+
+The concrete V2 review packet is under the configured base directory at `evaluation/pastor-profile-description-v2/f72e06a35af4546f4565ec2d830e8428ec4b91bef698575d2943f8559ac6cea4/`. Review `index.html` or `profile-v2.md`; the complete provenance is in `description-v2.json` and the Markdown/JSON verification receipts. Fifteen synthesized reader claims link to the unchanged evidence ledger. No provider calls, database writes, new measurements, corpus evaluation or quotation execution occurred.
 
 ## Next action — review the delivered profile
 
@@ -35,9 +51,9 @@ For a read-only freshness check without output writes:
 pte analysis structure-readiness --segment-view --description --check-only --json
 ```
 
-Review the assessment and at-a-glance table first, then follow a topic claim and a local salvation claim to their source windows. Approve or reject the concrete wording, usefulness and explicit unknowns; no new case selection, JSON authoring, annotation exercise or corpus run is required. Codex owns interpreting that feedback and preparing any necessary revision.
+Review whether the revised assessment answers “what kind of preacher does this sample suggest?” and whether the at-a-glance table is useful. Then follow a shared subject, a salvation theme and a style example to their supporting passages. Approve or reject the concrete wording, usefulness and explicit unknowns; no new case selection, JSON authoring, annotation exercise or corpus run is required. Codex owns interpreting that feedback and preparing any necessary revision.
 
-**Recommended sequence after review:** fix any wording, navigation or evidence-link problems within the current scope first. Then use the delivered gap ledger to prepare one bounded next-step proposal. Source-reviewed descriptions of the existing treatment windows are the smallest plausible provider-free improvement to the presently cautious style section; they must remain local and do not authorize prevalence bins or a new aggregation rule. No semantic measurement, broader collection, identity label, comparison, production activation or Ollama work proceeds merely because this feature is implemented. Any required decision will name the exact claim, available evidence and smallest remedy.
+**Recommended sequence after review:** correct any remaining wording or evidence-navigation defects within the current scope. Use the existing gap ledger to prepare one bounded next-step proposal only after interpreting Brian’s feedback. The previously recommended source inspection of style examples is now included; this does not authorize prevalence bins or new automatic aggregation. No semantic measurement, broader collection, identity label, comparison, production activation or Ollama work proceeds merely because the presentation has improved.
 
 ## Starting point: what already exists
 
