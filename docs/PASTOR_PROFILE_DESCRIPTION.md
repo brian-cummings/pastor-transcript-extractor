@@ -80,11 +80,13 @@ pilot; this is neither a global cache census nor proof that no compatible answer
 could exist elsewhere. G1 discovery HOLD, source-only V3 limitations and A1’s
 bounded G3 scope are preserved. No closed pilot is rerun.
 
-**Next decision:** approve the provider-free, source-reviewed assurance pilot in
-the packet. Codex would prepare any supported readings and proposed bindings for
-Brian to approve/reject. No JSON authoring or annotation work is assigned to Brian.
-No provider, automatic binding rule, new measurement, broader collection,
-profile-wide position or quotation execution is authorized by the packet.
+**Pilot now executed:** Brian authorized source-reviewed theological proposition binding on the prepared passages. Assurance is only the test domain. Generate the three concrete passage reviews, ten proposed readings and exact field evidence with:
+
+```bash
+pte analysis profile-binding-review --json
+```
+
+Read [the completed pilot](PROFILE_BINDING_SOURCE_REVIEW.md) for the source readings, G1 fit/gaps and test scope. The older next-capability files are historical preparation, not a current request for another authorization. No proposed bindings are projected into the profile. Codex owns revisions; Brian reviews concrete results rather than annotating sources or authoring JSON.
 
 ## Interpretation boundaries
 

@@ -80,7 +80,7 @@ limits without extending the contract:
 5. Question form alone does not separate invitation from information-seeking and
    cannot manufacture unsettled belief or expressed uncertainty.
 
-The exact readings supporting each gap are linked in the report. The smallest
+The exact readings supporting each gap are linked in the report. These are not five missing schema fields or five requests for new measurements: predicate/menu scope is distinguished from structured representation limits. Evaluation targeting and conservative question handling already follow G1 discipline; literal binding evidence retains information even when the proof menus cannot type it. The smallest
 future design review should separate the reusable binding envelope from domain
 predicates and examine speech-frame/qualification needs, reusing applicable G2/G3
 contracts first. This pilot implements none of those extensions and makes no claim

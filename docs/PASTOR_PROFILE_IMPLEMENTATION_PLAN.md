@@ -2,7 +2,7 @@
 
 **Current implementation status, 2026-10-20.** Implements the [pastor profile product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). The product plan defines what the reader should receive; this document defines the code, delivery sequence and acceptance checks. These are the two active planning documents. Older implementation sequences are superseded, with historical measurements and decisions preserved.
 
-Brian authorized milestones 1–3 as one bounded provider-free feature on 2026-10-20. They are now implemented and committed; the worked profile and milestone 4 consequential-gap map are delivered. **Brian’s latest feedback recognizes V2’s product-language pass as successful. The next decision is the prepared assurance-position review; no new semantic capability is authorized.** This is implementation completion, not acceptance of new theological measurements, production activation or authorization to cross any held boundary.
+Brian authorized milestones 1–3 as one bounded provider-free feature on 2026-10-20. They are now implemented and committed; the worked profile and milestone 4 consequential-gap map are delivered. **Brian’s latest feedback recognizes V2’s product-language pass as successful. Brian has now authorized and received the provider-free source-reviewed theological proposition-binding pilot. Assurance is its test domain, not the capability or a pastor-wide assessment. Automatic binding and contract extension remain held.** This is implementation completion, not acceptance of new theological measurements, production activation or authorization to cross any held boundary.
 
 ## Delivery status — 2026-10-20
 
@@ -61,11 +61,29 @@ pte analysis structure-readiness --segment-view --description --check-only --jso
 
 **Verification:** 40 focused profile tests passed (13 description, 9 presentation, 6 capability packet, 5 original view, 7 inventory). Browser checks verified the shortened glance row, distinct closer-look content, corrected faith wording, the three-case proposal and links to the exact full passages with technical details closed. Internal targets resolve. Generation/check-only fingerprints agree. The underlying observations, source identities, coverage, missing states and original claims remain unchanged from V2.
 
-## Next action — decide on the prepared assurance review
+## Completed source-reviewed binding pilot — 2026-10-20
 
-Brian’s bounded decision is whether to approve the provider-free, source-reviewed assurance-position pilot described in `next-capability-v1.md`. The cases, questions, defaults and acceptance criteria are already supplied. Codex owns reading/interpreting the sources and preparing any supported bindings for review; Brian approves/rejects concrete results rather than annotating or designing an experiment.
+Brian explicitly authorized execution on the three prepared passages, correcting the framing: **the capability is faithful theological proposition binding; assurance is only the test domain**. The pilot is complete and produces actual proposed readings rather than another readiness/authorization packet. See [the completed pilot and recommendation](PROFILE_BINDING_SOURCE_REVIEW.md).
 
-If approved, the pilot must preserve uncertain or out-of-contract readings and may return withheld positions. Any requirement for a new semantic measurement, provider, automatic binding/admission rule or broader collection comes back as a precise separate decision. This does not reopen a closed G1 experiment or authorize an expanded doctrine catalog. Do not schedule another general language-polishing pass as the next milestone.
+- **Demons & Dry Places:** two readings separate the prospective mercy-versus-works prayer and its gospel endorsement from the preacher’s completion claim. Ongoing prayer is not manufactured into a retention condition; good-work completion is not silently equated with permanent security.
+- **The Shaking:** five readings separate the preacher’s saving-desire statement, Paul’s report, Jesus’ attributed warning, the reported middle-of-the-road identity, and the preacher’s own criticism. Reported voices and the exact target of rejection stay distinct; “anyway” and “because” are preserved without inventing an if/only-if salvation condition.
+- **The American Experiment:** three readings separate the preacher’s rhetorical invitation from two prospective listener declarations. No actual listener speech, present acceptance, permanent security or pastoral uncertainty is inferred from those invitations.
+
+Each of the ten readings includes the actual proposed proposition, all eleven field reviews, exact source text and character coordinates, a record composed through the unchanged G1 pure serializer, unresolved fields, withheld conclusions and linked representational gaps. Full existing target/context windows, source hashes, actual timestamps and context truncation diagnostics are preserved. The existing profile, raw observations, thresholds, collector and G1 contract/composer remain unchanged.
+
+**Recommendation:** G1 is a useful evidence-binding backbone, but the unchanged proof contract is not sufficient for the general capability. Its finite predicate inventory cannot encode every supplied theological proposition; projected speech, nonconditional qualifications and the exact evaluation target need explicit design attention. The pilot adds no predicates or field values. It distinguishes intentionally narrow proof vocabularies/menus from structured representation needs; evaluation targeting and conservative question handling already follow G1 discipline, not five automatic requests for new fields or measurements. It does not validate automatic binding accuracy, general theological coverage, or positive condition/exception and explicit-uncertainty handling absent from these passages. Source-reviewed known facts remain visible even when a formal in-scope assurance relation is withheld.
+
+Review the completed results with:
+
+```bash
+pte analysis profile-binding-review --json
+```
+
+The HTML, Markdown and JSON are written under the configured base directory in `evaluation/profile-binding-source-review-v1/`. Source/coordinate verification without writes is available through `--check-only`. Neither command opens a provider or requires another approval gate. Commits implementing the readings and report: `8867118`, `213fedc`, `b3dc087`, `9a4cc65`.
+
+**Verification:** 10 focused binding-pilot tests and the 40 existing profile/evidence tests pass. The tests validate literal integrity, enum preservation, context-only exclusions, partial-field serialization, unchanged source/membership/context, escaping, CLI isolation and no provider/profile projection. They do not independently certify the authored semantic readings. Brian’s next action is to review the concrete results; Codex owns interpreting feedback and any proposed revisions. Contract extension, new measurement, automatic binding/admission, discovery, collection and profile-wide projection remain held.
+
+The earlier `next-capability-v1` artifacts remain the historical preparation packet. They are superseded as the current next-action instruction by these executed results; do not ask Brian to authorize the already completed source review again.
 
 ## Starting point: what already exists
 
@@ -169,7 +187,7 @@ No nearest-pastor result, similarity percentage, ranking, single pastor score or
 ## Delivery order and current authorization
 
 - **Completed foundation:** compatible inventory and source-linked evidence preview; historical measurement/containment results retain their actual scope.
-- **Implemented, acceptance pending:** milestones 1–3 together, plus milestone 4’s gap/code map. Brian’s product-language feedback is recorded as successful; the next action is the prepared bounded assurance-review decision. Codex owns any authorized source interpretation and subsequent recommendations.
+- **Implemented, acceptance pending:** milestones 1–3 together, plus milestone 4’s gap/code map. Brian’s product-language feedback is recorded as successful; the provider-free binding pilot is now executed, and the next action is review of its concrete readings and representation findings. Codex owns any authorized source interpretation and subsequent recommendations.
 - **Later conditional work:** only the consequential gaps Brian approves, then optional quote execution and independently justified comparison. Do not require another inventory/design gate merely to implement the first supported screen.
 
 Brian’s implementation request authorized the bounded provider-free milestones 1–3 and delivery of the consequential-gap map. This status update records their completion; it does not authorize providers, new measurements, collection, production activation, profile aggregation/scoring, comparison/ranking, stability claims or quotation execution. The [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) and this implementation plan are the two active documents; neither turns a historical pilot PASS into general authority.
