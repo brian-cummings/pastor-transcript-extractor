@@ -240,8 +240,10 @@ def render(report):
 def prepare(base_dir=None):
     report = load(base_dir)
     authored = json.loads(READINGS_PATH.read_text())
+    from pastor_transcript_extractor import profile_presentation
     manifest = seal(dict(version=VERSION, report=report, implementation_files={
         str(Path(__file__)):trace.digest(__file__), str(READINGS_PATH):trace.digest(READINGS_PATH),
+        str(Path(profile_presentation.__file__)):trace.digest(profile_presentation.__file__),
         str(trace.ROOT/authored['contract_path']):authored['contract_sha256'],
         str(trace.ROOT/authored['composer_path']):authored['composer_sha256']},provider_requests=0,database_writes=0))
     out = build_paths(base_dir).evaluation / VERSION / manifest['content_fingerprint']
