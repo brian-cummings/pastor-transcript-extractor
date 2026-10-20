@@ -1,0 +1,93 @@
+{
+  "version": "pastor-profile-product-plan-v2",
+  "date": "2026-10-19",
+  "status": "ACTIVE_PLAN_NO_EXECUTION",
+  "decision_owner": "Brian",
+  "authority": "Brian supplied a readable-assessment/dimensional/evidence product proposal, accepted the evidence and calibration qualifications, then directed: go forth and update the plans. Planning only; no draft execution, inference, collection or new score implementation.",
+  "plan_path": "docs/PASTOR_PROFILE_PRODUCT_PLAN.md",
+  "plan_sha256": "d8af7b2fe2eb544536dbdc61509f7f26444a7fdd0b56c679d3a8550df0b6d42f",
+  "pipeline_order": [
+    "existing_segment_observations",
+    "supported_evidence_accumulation",
+    "bounded_profile_review",
+    "strongest_supporting_segment",
+    "optional_Ollama_illustrative_quote"
+  ],
+  "quote_context": [
+    "preceding_segment",
+    "center_segment",
+    "following_segment"
+  ],
+  "quote_anchor": "substantive_content_in_center",
+  "overflow": "only_to_complete_same_thought_or_preserve_qualifiers_attribution",
+  "quote_mode": "one_contiguous_verbatim_excerpt_or_withhold",
+  "quotes_change_measurements": false,
+  "exact_span_extraction_required_upstream": false,
+  "topic_presence_implies_position": false,
+  "next_step": "provider_free_actual_three_sermon_profile_draft_claim_ledger_gap_analysis_and_code_backward_map",
+  "current_authorization": "plan_update_only",
+  "provider_execution": false,
+  "new_collection": false,
+  "new_projection_scoring": false,
+  "quote_implementation": false,
+  "retired_paths": {
+    "context-extraction-probe-v1": "SUPERSEDED_UNEXECUTED_CLOSED",
+    "context-evidence-architecture-v1": "SUPERSEDED_AS_UPSTREAM_PRODUCT_PREREQUISITE",
+    "minute-evidence-handoff-v1": "CONTEXT_SUPPORT_RETAINED_UPSTREAM_NOMINATION_SEQUENCE_SUPERSEDED",
+    "minute-evidence-handoff-implementation-v1": "SOURCE_LINEAGE_CONTEXT_SUPPORT_RETAINED_NOMINATION_NOT_REQUIRED",
+    "typesafe-selected-window-bridge-v1": "CLOSED_UPSTREAM_TARGET_SELECTION_DEAD_END",
+    "typesafe-position-selection-v1": "CLOSED_COMPLETED_NO_MORE_EXECUTION_REPLAY_OR_TUNING",
+    "typesafe-position-selection-source-audit-v1": "HISTORICAL_DIAGNOSTIC_REJECTION_PRESERVED",
+    "existing-source-unit-span-readiness-v1": "CLOSED_NO_PAID_TEST_OR_FINER_UNIT_FOLLOWUP",
+    "collector-retrieval-design-v1": "CLOSED_DEVELOPMENT_BRANCH",
+    "collector-retrieval-implementation-v1": "CLOSED_DEVELOPMENT_BRANCH",
+    "collector-retrieval-repair-v1.1": "CLOSED_DEVELOPMENT_FAIL_NO_FURTHER_TUNING",
+    "fresh-discovery-readiness-v1": "HISTORICAL_RETIRED_DEVELOPMENT_NOT_CONFIRMATION",
+    "fresh-discovery-readiness-v2": "HISTORICAL_SCOPED_FAIL_G1_HOLD",
+    "fresh-discovery-readiness-v3": "HISTORICAL_SCOPED_FAIL_G1_HOLD",
+    "source-unit-repair-v1": "RETAINED_SUPPORT_NOT_PRODUCTION_PASS",
+    "minute-membership-reconciliation-v1": "RETAINED_FIXTURE_ONLY_MEMBERSHIP_CONTEXT_SUPPORT"
+  },
+  "preserve_frozen_artifacts": true,
+  "physical_deletion_authorized": false,
+  "supersedes_plan_fingerprint": "a07eac5f57ec96d9436cba057213b572f4f7c8d871c146cd654547e4b35b3593",
+  "product_order": [
+    "readable_assessment",
+    "at_a_glance",
+    "benchmark_comparison_unavailable_until_validated",
+    "four_family_dimensional_analysis",
+    "supporting_observations",
+    "sermons_and_transcript_segments"
+  ],
+  "analytical_families": [
+    "preaching_style",
+    "theological_emphasis",
+    "theological_orientation",
+    "pastoral_rhetorical_orientation"
+  ],
+  "next_deliverables": [
+    "readable_profile_draft",
+    "claim_ledger",
+    "at_a_glance_interpretation_slate",
+    "prioritized_gap_ledger",
+    "code_backward_map"
+  ],
+  "prototype_scope": {
+    "reviewed_profile_id": 318,
+    "video_ids": [
+      4589,
+      281,
+      3973
+    ],
+    "topic_treatment_blocks": 158,
+    "routed_salvation_blocks": 33,
+    "identity_label": "unavailable; video titles remain metadata"
+  },
+  "high_labels_require_explicit_rules": true,
+  "model_probability_is_pastor_score": false,
+  "benchmark_percentages_authorized": false,
+  "single_pastor_score_proposed": false,
+  "missing_dimensions_silently_disappear": false,
+  "draft_is_measurement_ground_truth": false,
+  "content_fingerprint": "bd7eba22d5dbddc43dd75a6d34f1e34808dc5844319a711b7fe033afcbccf87f"
+}

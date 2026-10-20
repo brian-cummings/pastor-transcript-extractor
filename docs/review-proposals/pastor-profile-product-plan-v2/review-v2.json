@@ -1,0 +1,35 @@
+{
+  "version": "pastor-profile-product-plan-review-v2",
+  "date": "2026-10-19",
+  "status": "PRODUCT_PLAN_UPDATED_DRAFT_NOT_EXECUTED",
+  "plan_fingerprint": "bd7eba22d5dbddc43dd75a6d34f1e34808dc5844319a711b7fe033afcbccf87f",
+  "supersedes_plan_fingerprint": "a07eac5f57ec96d9436cba057213b572f4f7c8d871c146cd654547e4b35b3593",
+  "files": {
+    "docs/PASTOR_PROFILE_PRODUCT_PLAN.md": "d8af7b2fe2eb544536dbdc61509f7f26444a7fdd0b56c679d3a8550df0b6d42f",
+    "docs/review-proposals/pastor-profile-product-plan-v2/plan-v2.json": "da0bee82b27575e440e7305f33ae20bb22574323d47a4d6c05a3c786045ca083",
+    "docs/review-proposals/pastor-profile-product-plan-v2/REVIEW.md": "9d8e5f05afa1558a612ccf6bf67887997b990f01d643b2d846f4e6f84b712e01",
+    "README.md": "f0a4b0ac763d9d840a189ff702249db28fd15f806cb7ed00174236133570fe7b",
+    "docs/review-proposals/README.md": "4ab1f4364ad4959e511a14d8c7448f828803a03692db1f2eb7e099cbdd491f0d",
+    "src/pastor_transcript_extractor/segment_evidence_plan.py": "92dd6b495c5cf92842b165422e4b1b10d1b92b7606f47430943566487032b37c",
+    "src/pastor_transcript_extractor/commands/analysis/structure.py": "f545d7fdb2fa3eb00dd4f643acbd0ac8ffd61a885d0a6dac964385e269fdce41"
+  },
+  "next_step": "provider_free_actual_three_sermon_profile_draft_claim_ledger_gap_analysis_and_code_backward_map",
+  "next_deliverables": [
+    "readable_profile_draft",
+    "claim_ledger",
+    "at_a_glance_interpretation_slate",
+    "prioritized_gap_ledger",
+    "code_backward_map"
+  ],
+  "focused_tests_passed": 21,
+  "provider_requests": 0,
+  "database_writes": 0,
+  "profile_draft_written": false,
+  "new_measurements": false,
+  "new_profile_aggregation_scoring": false,
+  "benchmark_results": false,
+  "quote_execution": false,
+  "historical_artifacts_preserved": true,
+  "retired_experiments_reopened": false,
+  "content_fingerprint": "c90b3c247c76f866268bf659a23b01044e03bf1f76d366c4980bfe15e95c969d"
+}
