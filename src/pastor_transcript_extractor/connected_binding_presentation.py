@@ -14,6 +14,9 @@ def markdown(output):
         for row in comp['readings']:
             lines+=['## '+row['reference_id'],'',row['summary'],'','Correctly unresolved: '+row['correctly_unresolved'],'','| Field | Outcome | Comparison |','|---|---|---|']
             for name,f in row['fields'].items():lines+=['| '+name+' | '+f['outcome']+' | '+f['finding'].replace('|','/')+' |']
+            lines+=['','Exact comparison evidence:','']
+            for name,f in row['fields'].items():
+                lines+=['**'+name+':**']+['> '+s['text'].replace('\n','\n> ')+' ('+s['source_field']+' '+str(s['start'])+'–'+str(s['end'])+')' for s in f['evidence']]+['']
     else:lines+=['Semantic comparison is pending Codex inspection. Literal/structural validity is not a quality verdict.','']
     for c in r['cases']:
         lines+=['## '+c['sermon_title'],'','[Watch source]('+c['watch_url']+') · [Original request and raw response](../../cache/'+c['request_fingerprint']+'.json)','']
@@ -23,6 +26,7 @@ def markdown(output):
             if g['binding']:
                 for label,text,spans in reference.fields(g['binding']):
                     lines+=['**'+label+':** '+text]+['> '+s['text'].replace('\n','\n> ')+' ('+s['source_field']+' '+str(s['start'])+'–'+str(s['end'])+')' for s in spans]+['']
+                lines+=['**Unknown / withheld:**','']+['- '+s for s in g['binding']['unknowns']]+['']
             else:lines+=['Rejected: '+g['compile_error'],'']
             lines+=['<details><summary>Raw proposed record and compilation</summary>','','```json',json.dumps(g,ensure_ascii=False,indent=2),'```','','</details>','']
         lines+=['### Speech frames and source','', '```json',json.dumps(c['frames'],ensure_ascii=False,indent=2),'```','']
@@ -55,6 +59,7 @@ def render(output):
                 b=g['binding'];section+=['<p>'+e(b['proposition']['reading'])+'</p>'+evidence([b['proposition']['span']],cid)]
                 fields=''.join('<tr><th>'+e(label)+'</th><td>'+e(text)+evidence(spans,cid)+'</td></tr>' for label,text,spans in reference.fields(b))
                 section+=['<details><summary>Bound fields, unknowns and exact evidence</summary><table>'+fields+'</table></details>']
+                section+=['<p><strong>Unknown / withheld:</strong></p><ul>'+''.join('<li>'+e(s)+'</li>' for s in b['unknowns'])+'</ul>']
             else:section+=['<p class="note">Record rejected: '+e(g['compile_error'])+'</p>']
             if comp:
                 extra=comp['extra_generated'].get(key)

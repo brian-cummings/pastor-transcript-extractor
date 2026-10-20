@@ -216,12 +216,12 @@ def compile_passage(content, source, provenance):
             for q in row['qualifications']:q['applies_to']='claim'
             for i,rel in enumerate(row['development_relations']):rel.update(relation_id=key+':relation-'+str(i),episode_id=source['case_id'])
             for i,a in enumerate(data['address_acts']):
-                act_frame=frames[a.pop('frame_id')]
+                act_frame_id=a.pop('frame_id');act_frame=frames[act_frame_id]
                 if not within(a['utterance_span'],act_frame['span']):raise ValueError('Address is outside its performing speech frame')
                 addressee=a.pop('addressee');addressee_evidence=a.pop('addressee_evidence')
                 if addressee=='direct_current_listener' and (act_frame['voice']!='preacher' or act_frame['occurrence']!='actual'):
                     raise ValueError('Current-listener address requires an actual preacher frame')
-                a.update(act_id=key+':act-'+str(i),voice=act_frame['voice'],addressee=dict(kind=addressee,evidence=addressee_evidence),proposition_node='claim',circumstance_binding='Not evaluated; no actual hearer circumstance admitted')
+                a.update(act_id=key+':act-'+str(i),speech_frame_id=act_frame_id,voice=act_frame['voice'],addressee=dict(kind=addressee,evidence=addressee_evidence),proposition_node='claim',circumstance_binding='Not evaluated; no actual hearer circumstance admitted')
                 row['address_acts'].append(a)
             row['unknowns']+=extraction.passage_unknowns+['Automatic development proposal; not accepted, not a pastor-wide position or verified hearer status.']
             prov=dict(provenance,target_sha256=text_digest(texts['target_text']),texts_sha256=context_digest(texts))

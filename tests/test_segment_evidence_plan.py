@@ -7,11 +7,16 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('AUTOMATIC_BINDING_V2_EXECUTED_COMPARED_STOP_MENU_TUNING',plan['status'])
+        self.assertEqual('CONNECTED_BINDING_IMPLEMENTED_PREPARED_NOT_EXECUTED',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['next_capability_decision']['pilot_execution'])
-        self.assertEqual('automatic-generic-proposition-binding-dev-v2',plan['current_delivery'])
+        self.assertEqual('connected-proposition-binding-dev-v1',plan['current_delivery'])
+        self.assertEqual('Brian',plan['connected_binding_development']['executor'])
+        self.assertEqual(3,plan['connected_binding_development']['max_generation_requests'])
+        self.assertEqual(0,plan['connected_binding_development']['live_provider_requests'])
+        self.assertEqual(0,plan['connected_binding_development']['metadata_reads'])
+        self.assertFalse(plan['connected_binding_development']['semantic_comparison_complete'])
         self.assertEqual('Brian',plan['binding_revision']['executor'])
         self.assertEqual(39,plan['binding_revision']['live_provider_requests'])
         self.assertEqual(0,plan['binding_revision']['review_provider_requests'])
