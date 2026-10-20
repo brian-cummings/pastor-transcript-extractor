@@ -88,6 +88,14 @@ class PropositionReviewTests(unittest.TestCase):
         self.assertEqual('reason_supports_claim',readings['P2-warning']['development_relations'][0]['kind'])
         self.assertEqual('undetermined',readings['P2-middle-report']['adoption']['status'])
 
+    def test_unknown_speaker_remains_readable_instead_of_requiring_an_attribution(self):
+        baseline,authored=fixture();row=authored['readings'][0]
+        row['voice'].update(kind='unresolved',speaker=None,occurrence='unresolved')
+        row['adoption'].update(status='undetermined',basis='unresolved')
+        report=review.build(baseline,authored)
+        self.assertIn('speaker unresolved',review.render(report))
+        self.assertIn('speaker unresolved',review.markdown(report))
+
     def test_reported_speech_is_not_displayed_as_attested_historical_speech(self):
         self.assertEqual('reported speech',review.voice_label(dict(kind='quoted_or_reported',occurrence='actual')))
         self.assertEqual('projected speech',review.voice_label(dict(kind='quoted_or_reported',occurrence='projected')))

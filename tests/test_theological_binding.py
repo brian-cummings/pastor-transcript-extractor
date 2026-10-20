@@ -70,7 +70,11 @@ class GenericBindingTests(unittest.TestCase):
 
     def test_conditions_exceptions_and_uncertainty_need_their_own_evidence(self):
         texts,row,provenance=fixture('Perhaps we remain, if we trust, unless we turn away.')
-        row['conditions']=[dict(kind='condition',span=row['proposition']['span'],rationale='Authored conditional control.'),dict(kind='exception',span=row['proposition']['span'],rationale='Authored exception control.')]
+        def span(phrase):
+            start=texts['target_text'].index(phrase)
+            return dict(source_field='target_text',start=start,end=start+len(phrase),text=phrase)
+        row['conditions']=[dict(kind='condition',span=span('if we trust'),rationale='Authored conditional control.'),dict(kind='exception',span=span('unless we turn away'),rationale='Authored exception control.')]
+        row['epistemic_status']['evidence']=[span('Perhaps')]
         row['epistemic_status']['value']='expressed_uncertainty'
         self.assertEqual(2,len(b.bind(texts,row,provenance)['conditions']))
         row['epistemic_status']['evidence']=[]
@@ -96,6 +100,39 @@ class GenericBindingTests(unittest.TestCase):
         self.assertEqual('acceptance_knowable_now',result['g1_record']['relation'])
         changed=legacy_row();changed['unit']['candidate_id']='other'
         with self.assertRaisesRegex(ValueError,'exact bound proposition'):interpret(generic,texts,changed)
+
+    def test_adapter_retains_positive_condition_question_and_rejection_controls(self):
+        from test_profile_binding_pilot import row as legacy_row
+        from pastor_transcript_extractor import profile_binding_pilot as pilot
+        controls=[
+            ('You remain saved if you continue to trust.', 'retention', 'affirmed', 'assertion', 'preacher', 'own_assertion'),
+            ('Can you know now that you are accepted by God?', 'acceptance_knowable_now', 'unsettled', 'question', 'preacher', 'undetermined'),
+            ('Teachers say salvation cannot be lost. I reject that claim.', 'loss_possible', 'denied', 'assertion', 'reported_teachers', 'explicitly_rejected')]
+        for text,relation,polarity,expression,voice,adoption in controls:
+            with self.subTest(relation=relation):
+                texts,row,provenance=fixture(text);claim=row['proposition']['span']
+                legacy=legacy_row();legacy['unit']['claim_span']=deepcopy(claim)
+                legacy['phrase_pools']=dict(objects={'object':deepcopy(claim)},conditions={},uncertainty={},scopes={},frames={'voice':deepcopy(claim),'adoption':deepcopy(claim)})
+                for field in legacy['field_review'].values():field['evidence']=[deepcopy(claim)]
+                legacy['authored_decisions'].update(relation=relation,polarity=polarity,expression=expression,voice=voice,adoption=adoption,scope_evidence='none')
+                if relation=='retention':
+                    start=text.index('if');condition=dict(source_field='target_text',start=start,end=len(text)-1,text=text[start:-1])
+                    row['conditions']=[dict(kind='condition',span=condition,rationale='Continued trust explicitly qualifies remaining saved.')]
+                    legacy['phrase_pools']['conditions']['continued-trust']=condition
+                    legacy['authored_decisions']['bind_continued-trust']='bound'
+                elif expression=='question':
+                    row['expression']['value']='question';row['polarity']['value']='unresolved'
+                    row['adoption'].update(status='undetermined',basis='unresolved')
+                else:
+                    row['voice'].update(kind='quoted_or_reported',speaker='teachers')
+                    row['adoption'].update(status='rejected',basis='explicit_rejection')
+                result=interpret(b.bind(texts,row,provenance),texts,legacy)['g1_record']
+                expected=pilot.compile_reading('control',texts,legacy)['g1_record']
+                self.assertEqual(expected,result)
+                self.assertEqual(relation,result['relation']);self.assertEqual(polarity,result['polarity'])
+                self.assertIsNone(result['pastor_projection'])
+                self.assertEqual(relation=='retention',result['provisional_adopted_local_assertion'])
+                if relation=='retention':self.assertEqual(condition,result['conditions'][0]['span'])
 
     def test_development_relations_require_grounded_endpoints_and_relation_evidence(self):
         texts,row,provenance=fixture()
