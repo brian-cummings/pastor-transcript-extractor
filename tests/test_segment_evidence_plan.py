@@ -7,6 +7,9 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
+        self.assertEqual('IMPLEMENTED_PENDING_HUMAN_ACCEPTANCE',plan['status'])
+        self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
+        self.assertEqual('pending',plan['verification']['human_acceptance'])
         self.assertEqual('optional_Ollama_illustrative_quote',plan['pipeline_order'][-1])
         self.assertFalse(plan['provider_execution']);self.assertFalse(plan['exact_span_extraction_required_upstream'])
         self.assertEqual(['preceding_segment','center_segment','following_segment'],plan['quote_context'])

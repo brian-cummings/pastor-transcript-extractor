@@ -1,6 +1,6 @@
 # Current product plan: readable pastor profile with evidence underneath
 
-**Brian's accepted direction, 2026-10-19.** Build a human-readable, evidence-backed pastor description first, then work backward to the observations, interpretation rules and code needed to produce it. The first implementation should deliver a working descriptive profile with an embedded three-sermon example, traceable claims and explicit gaps. It is not a blank template, a new measurement target, an approved theology assessment or authorization to execute a model.
+**Brian's accepted direction, 2026-10-19; implementation status updated 2026-10-20.** Build a human-readable, evidence-backed pastor description first, then work backward to the observations, interpretation rules and code needed to produce it. The first implementation should deliver a working descriptive profile with an embedded three-sermon example, traceable claims and explicit gaps. It is not a blank template, a new measurement target, an approved theology assessment or authorization to execute a model.
 
 The companion [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) defines the code changes, milestones and acceptance checks. The two documents are the active product/engineering pair; the worked example is part of implementation, not a separate preliminary document.
 
@@ -39,7 +39,7 @@ Deliver the following together within [implementation milestones 1–3](PASTOR_P
 - **A prioritized gap ledger.** Every desired unsupported sentence/field gets a precise cause, existing reuse options, smallest remedy, impact on the reader and an implementation-versus-data distinction. Do not assume that five or ten new measurements are needed; let the draft reveal which gaps matter.
 - **A code-backward map.** Separate deterministic reuse/eligibility/link assembly, proposed descriptive aggregation or wording rules, genuinely missing semantic distinctions and insufficient sampling. Describe the smallest implementation that could reproduce the supported draft without altering frozen raw results. The draft is a reviewable product example, not ground truth that future measurements must be tuned to match.
 
-No source or profile-wide aggregation rule is implemented by this plan. Produce the worked draft alongside the first code, schema and screen; do not add a standalone draft-approval gate before implementation. No draft is written or accepted here. Completing it may expose an unknown field rather than a useful sentence, which is a valid outcome.
+The bounded implementation now provides the worked draft alongside the code, schema and screen. No source or profile-wide aggregation/scoring rule has been added. Brian’s acceptance of the draft and its proposed wording rules is pending. Unsupported fields remain visibly unknown; the draft is not measurement ground truth.
 
 ## Gap classification and priority
 
@@ -63,11 +63,11 @@ Choose one contiguous verbatim excerpt; no paraphrase, silent stitching, invente
 
 ## Current status and authorization
 
-**Done:** minute/segment evidence lineage and context work; existing compatible topic/treatment/salvation inventory; a working read-only three-sermon evidence view; retirement of the upstream exact-span detour.
+**Done:** the evidence foundation plus provider-free implementation milestones 1–3: versioned descriptive record, worked profile 318, deterministic wording rules, readable screen, at-a-glance table, claim/source navigation, explicit unknowns and Markdown/JSON outputs. The milestone 4 consequential-gap/code map is delivered. Verification passed 25 focused tests and browser checks; see the [implementation status and next action](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md#delivery-status--2026-10-20).
 
-**Next implementation proposal:** [milestones 1–3](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md#delivery-order-and-current-authorization) as one bounded provider-free feature: description contract, evidence-to-wording rules, embedded worked example, readable screen, claim links, explicit unknowns, tests and the consequential gap map. Brian reviews a working result rather than a blank template or another standalone planning exercise.
+**Next:** Brian reviews the delivered profile’s wording, usefulness and explicit unknowns. Human acceptance is pending. Reproduce it with `pte analysis structure-readiness --segment-view --description --json`; use `--check-only` to verify freshness without writing outputs. Codex will interpret feedback, fix defects within the current scope, and prepare a concrete bounded recommendation from the delivered gap ledger. See [workflow details](PASTOR_PROFILE_DESCRIPTION.md).
 
-**Held:** new model/provider calls, broader collection, production activation, new automatic provenance/adoption rules, changing frozen measurements/thresholds, implementing new profile aggregation/scoring or comparison/ranking, recurrence/stability claims and Ollama quote execution. This user request authorizes plan updates only; it does not execute the implementation milestones or implement the proposed rules. Existing approved descriptive projections and raw observations are retained, not invalidated or enlarged in meaning.
+**Held:** new model/provider calls, broader collection, production activation, new automatic provenance/adoption rules, changing frozen measurements/thresholds, implementing new profile aggregation/scoring or comparison/ranking, recurrence/stability claims and Ollama quote execution. Brian authorized the bounded provider-free feature, which is now implemented. This does not authorize execution of any held work or accept the proposed descriptive rules as new semantic admission authority. Existing approved descriptive projections and raw observations are retained, not invalidated or enlarged in meaning.
 
 See the [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for delivery order, files to reuse and acceptance criteria.
 

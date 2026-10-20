@@ -1,0 +1,139 @@
+{
+  "version": "pastor-profile-product-and-implementation-status-v4",
+  "date": "2026-10-20",
+  "status": "IMPLEMENTED_PENDING_HUMAN_ACCEPTANCE",
+  "decision_owner": "Brian",
+  "authority": "Brian authorized milestones 1–3 as a bounded provider-free feature and the consequential-gap map; the follow-up asks to update status and identify the next action. Implementation complete; human acceptance pending; all held work remains held.",
+  "plan_path": "docs/PASTOR_PROFILE_PRODUCT_PLAN.md",
+  "plan_sha256": "82699f593dd4b9c4a97435427bc72f4472c41404e08cf3386aab28a8f2015b9b",
+  "pipeline_order": [
+    "existing_segment_observations",
+    "supported_evidence_accumulation",
+    "bounded_profile_review",
+    "strongest_supporting_segment",
+    "optional_Ollama_illustrative_quote"
+  ],
+  "quote_context": [
+    "preceding_segment",
+    "center_segment",
+    "following_segment"
+  ],
+  "quote_anchor": "substantive_content_in_center",
+  "overflow": "only_to_complete_same_thought_or_preserve_qualifiers_attribution",
+  "quote_mode": "one_contiguous_verbatim_excerpt_or_withhold",
+  "quotes_change_measurements": false,
+  "exact_span_extraction_required_upstream": false,
+  "topic_presence_implies_position": false,
+  "next_step": "Brian_reviews_delivered_profile_then_Codex_interprets_feedback_and_prepares_bounded_next_step",
+  "current_authorization": "bounded_provider_free_milestones_1_to_3_implemented_gap_map_delivered_acceptance_pending",
+  "provider_execution": false,
+  "new_collection": false,
+  "new_projection_scoring": false,
+  "quote_implementation": false,
+  "retired_paths": {
+    "context-extraction-probe-v1": "SUPERSEDED_UNEXECUTED_CLOSED",
+    "context-evidence-architecture-v1": "SUPERSEDED_AS_UPSTREAM_PRODUCT_PREREQUISITE",
+    "minute-evidence-handoff-v1": "CONTEXT_SUPPORT_RETAINED_UPSTREAM_NOMINATION_SEQUENCE_SUPERSEDED",
+    "minute-evidence-handoff-implementation-v1": "SOURCE_LINEAGE_CONTEXT_SUPPORT_RETAINED_NOMINATION_NOT_REQUIRED",
+    "typesafe-selected-window-bridge-v1": "CLOSED_UPSTREAM_TARGET_SELECTION_DEAD_END",
+    "typesafe-position-selection-v1": "CLOSED_COMPLETED_NO_MORE_EXECUTION_REPLAY_OR_TUNING",
+    "typesafe-position-selection-source-audit-v1": "HISTORICAL_DIAGNOSTIC_REJECTION_PRESERVED",
+    "existing-source-unit-span-readiness-v1": "CLOSED_NO_PAID_TEST_OR_FINER_UNIT_FOLLOWUP",
+    "collector-retrieval-design-v1": "CLOSED_DEVELOPMENT_BRANCH",
+    "collector-retrieval-implementation-v1": "CLOSED_DEVELOPMENT_BRANCH",
+    "collector-retrieval-repair-v1.1": "CLOSED_DEVELOPMENT_FAIL_NO_FURTHER_TUNING",
+    "fresh-discovery-readiness-v1": "HISTORICAL_RETIRED_DEVELOPMENT_NOT_CONFIRMATION",
+    "fresh-discovery-readiness-v2": "HISTORICAL_SCOPED_FAIL_G1_HOLD",
+    "fresh-discovery-readiness-v3": "HISTORICAL_SCOPED_FAIL_G1_HOLD",
+    "source-unit-repair-v1": "RETAINED_SUPPORT_NOT_PRODUCTION_PASS",
+    "minute-membership-reconciliation-v1": "RETAINED_FIXTURE_ONLY_MEMBERSHIP_CONTEXT_SUPPORT"
+  },
+  "preserve_frozen_artifacts": true,
+  "physical_deletion_authorized": false,
+  "supersedes_plan_fingerprint": "030bbe83c03f7696b36ea1885eab17bd35cfd21a4fa4b9edc9843442b8f5e996",
+  "product_order": [
+    "readable_assessment",
+    "at_a_glance",
+    "benchmark_comparison_unavailable_until_validated",
+    "four_family_dimensional_analysis",
+    "supporting_observations",
+    "sermons_and_transcript_segments"
+  ],
+  "analytical_families": [
+    "preaching_style",
+    "theological_emphasis",
+    "theological_orientation",
+    "pastoral_rhetorical_orientation"
+  ],
+  "next_deliverables": [
+    "Brian_acceptance_or_concrete_feedback_on_delivered_profile",
+    "Codex_revisions_within_current_scope_if_needed",
+    "Codex_bounded_gap_recommendation_after_review"
+  ],
+  "prototype_scope": {
+    "reviewed_profile_id": 318,
+    "video_ids": [
+      4589,
+      281,
+      3973
+    ],
+    "topic_treatment_blocks": 158,
+    "routed_salvation_blocks": 33,
+    "identity_label": "unavailable; video titles remain metadata"
+  },
+  "high_labels_require_explicit_rules": true,
+  "model_probability_is_pastor_score": false,
+  "benchmark_percentages_authorized": false,
+  "single_pastor_score_proposed": false,
+  "missing_dimensions_silently_disappear": false,
+  "draft_is_measurement_ground_truth": false,
+  "implementation_path": "docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md",
+  "implementation_sha256": "2a6ac41f842cfc482a541bc8a6b1bfe88d7c3a537e89cabc60e4bd86a1a08a04",
+  "archive_manifest_path": "docs/review-proposals/pastor-profile-implementation-plan-v1/archive-manifest-v1.json",
+  "archive_manifest_sha256": "1325c74052f22831f3de85728f6e6a7d79377545c8a87e37ec0ffc7176f2915f",
+  "implementation_milestones": [
+    "descriptive_contract_with_worked_example",
+    "evidence_to_description_rules",
+    "read_only_profile_screen",
+    "consequential_gaps_reuse_first",
+    "optional_Ollama_quotes_separately_authorized",
+    "benchmark_and_stability_separately_designed"
+  ],
+  "first_feature_milestones": [
+    1,
+    2,
+    3
+  ],
+  "standalone_draft_gate_before_coding": false,
+  "completed_deliverables": [
+    "description_record_and_worked_example",
+    "evidence_to_wording_rules",
+    "readable_profile_screen_and_claim_links",
+    "explicit_unknowns_and_prioritized_gap_code_map",
+    "focused_tests_and_browser_checks"
+  ],
+  "milestone_status": {
+    "1": "implemented_acceptance_pending",
+    "2": "implemented_proposed_wording_rules_acceptance_pending",
+    "3": "implemented_acceptance_pending",
+    "4": "gap_code_map_delivered_remedies_conditional",
+    "5": "held",
+    "6": "held"
+  },
+  "implementation_commits": [
+    "780afe6",
+    "64d7209",
+    "639a354"
+  ],
+  "verification": {
+    "focused_tests_passed": 25,
+    "browser_navigation_checks": "passed",
+    "provider_requests": 0,
+    "database_writes": 0,
+    "new_measurements": false,
+    "corpus_evaluation": false,
+    "human_acceptance": "pending"
+  },
+  "workflow_path": "docs/PASTOR_PROFILE_DESCRIPTION.md",
+  "content_fingerprint": "88eff6f9285aaeac7e8af76251569669fabda803d9757de167dbb7344fa6656c"
+}

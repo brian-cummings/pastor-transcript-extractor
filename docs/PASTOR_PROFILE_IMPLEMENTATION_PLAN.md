@@ -1,8 +1,43 @@
 # Pastor profile implementation plan
 
-**Current implementation roadmap, 2026-10-19.** Implements the [pastor profile product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). The product plan defines what the reader should receive; this document defines the code, delivery sequence and acceptance checks. These are the two active planning documents. Older implementation sequences are superseded, with historical measurements and decisions preserved.
+**Current implementation status, 2026-10-20.** Implements the [pastor profile product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). The product plan defines what the reader should receive; this document defines the code, delivery sequence and acceptance checks. These are the two active planning documents. Older implementation sequences are superseded, with historical measurements and decisions preserved.
 
-This update is planning only. It does not itself authorize implementation, model calls or collection. When the first implementation is approved, deliver milestones 1–3 as one bounded provider-free feature. Do not turn the worked example into another standalone planning gate before coding.
+Brian authorized milestones 1–3 as one bounded provider-free feature on 2026-10-20. They are now implemented and committed; the worked profile and milestone 4 consequential-gap map are delivered. **Brian’s acceptance of the displayed wording and unknowns is pending.** This is implementation completion, not acceptance of new theological measurements, production activation or authorization to cross any held boundary.
+
+## Delivery status — 2026-10-20
+
+| Milestone | Status | Delivered evidence |
+|---|---|---|
+| 1: description contract and worked example | Implemented; human acceptance pending | `profile_description.py`; versioned profile 318 assessment, at-a-glance table, 24 scoped claims, source identity and explicit unknowns. |
+| 2: evidence-to-description rules | Implemented; wording rules proposed for review | Deterministic per-recording topic summaries; local nine-leaf salvation observations; treatment maxima remain inspection candidates, not admitted style traits. Raw meanings and thresholds are unchanged. |
+| 3: read-only profile screen and CLI | Implemented; human acceptance pending | `--segment-view --description`, including `--check-only`; HTML, Markdown, JSON and review receipts; bidirectional claim/source navigation and recording filters. |
+| 4: consequential gaps | Gap/code map delivered; remedies not implemented | Eight prioritized gaps: adoption, Scripture/cross-book reasoning, pastoral posture, style predominance, sampling, identity, benchmark comparison and quotations. |
+| 5: Ollama quotations | Held | No quote selection, runtime preparation or execution. |
+| 6: benchmark comparison and stable tendencies | Held | No comparisons, ranking, profile score or ministry-wide stability claim. |
+
+Implementation commits: `780afe6`, `64d7209`, `639a354`. Verification: **25 focused tests passed** (13 description, 5 evidence view, 7 cache inventory), `git diff --check` passed, and browser checks passed for claim disclosure, source windows, reverse navigation, filters and recovery of filtered evidence. There were zero broken internal link targets. No corpus evaluation, provider requests, database writes, new measurements or quotation execution occurred. This verifies the implementation; it does not constitute a new audit of every cached judgment or human product acceptance.
+
+The delivered profile uses recordings **4589 / 281 / 3973**, with **158 eligible topic/treatment blocks** and **33 routed salvation blocks**. Exact-current Scripture-run lookups returned no persisted current run for these recordings. Exact registered leaf-pack paths, including historical refinements and composed answers at those identities, returned no compatible matches. These bounded checks do not establish global absence of older or differently keyed evidence.
+
+Generated artifacts are under the configured application base directory, in `evaluation/pastor-profile-description-v1/1ef67bc76c11183c31115138d4f6a0f920a70d0c52d04ee5e514d5101a48bb3a/`: `index.html`, `profile-v1.md`, `description-v1.json`, `review-v1.json`, and the Markdown/JSON `verification-v1` receipts. The original segment view and frozen raw observations remain preserved. See [workflow and interpretation details](PASTOR_PROFILE_DESCRIPTION.md).
+
+## Next action — review the delivered profile
+
+Brian can reproduce the prepared sample with:
+
+```bash
+pte analysis structure-readiness --segment-view --description --json
+```
+
+For a read-only freshness check without output writes:
+
+```bash
+pte analysis structure-readiness --segment-view --description --check-only --json
+```
+
+Review the assessment and at-a-glance table first, then follow a topic claim and a local salvation claim to their source windows. Approve or reject the concrete wording, usefulness and explicit unknowns; no new case selection, JSON authoring, annotation exercise or corpus run is required. Codex owns interpreting that feedback and preparing any necessary revision.
+
+**Recommended sequence after review:** fix any wording, navigation or evidence-link problems within the current scope first. Then use the delivered gap ledger to prepare one bounded next-step proposal. Source-reviewed descriptions of the existing treatment windows are the smallest plausible provider-free improvement to the presently cautious style section; they must remain local and do not authorize prevalence bins or a new aggregation rule. No semantic measurement, broader collection, identity label, comparison, production activation or Ollama work proceeds merely because this feature is implemented. Any required decision will name the exact claim, available evidence and smallest remedy.
 
 ## Starting point: what already exists
 
@@ -20,6 +55,8 @@ Initial sample: reviewed profile **318**, recordings **4589 / 281 / 3973**, **15
 
 ## Milestone 1 — implement the descriptive profile contract and worked example
 
+**Status: implemented; Brian’s acceptance pending.** The requirements below remain the acceptance contract, not unstarted work.
+
 Add a small pure description module, provisionally `profile_description.py`, downstream of the existing read-only evidence loader. Do not add a provider client, repeat localization/classification, replace minute segmentation or require exact utterance geometry.
 
 The versioned description record should contain:
@@ -35,6 +72,8 @@ Prepare the actual readable three-sermon profile **inside this implementation mi
 **Acceptance:** every substantive clause has eligible evidence links or is visibly withheld; scoped local observations do not become ministry-wide claims; missing/unrouted/below-threshold/unresolved states stay distinct; no numerical or qualitative score is invented. The worked example and typed record are inspectable together.
 
 ## Milestone 2 — implement evidence-to-description rules
+
+**Status: implemented; Brian’s acceptance pending.** The requirements below remain the acceptance contract, not unstarted work.
 
 Use pure deterministic assembly of existing observations and explicitly described interpretation rules. Prefer source-linked statements about the named recordings before broader characterizations. Make each rule's inputs, wording strength, missing-data behavior and sample scope reviewable. No generative model is required for this first implementation.
 
@@ -59,13 +98,17 @@ Use focused fixture tests for support/withholding boundaries and adverse cases: 
 
 ## Milestone 3 — deliver the complete read-only profile screen
 
+**Status: implemented; Brian’s acceptance pending.** The requirements below remain the acceptance contract, not unstarted work.
+
 Extend the current renderer with the readable assessment at the top, at-a-glance rows, the four analytical families and an unavailable comparison section. Keep sermon filters, source disclosures and timestamps underneath. Make claim/evidence navigation work in both directions. Keep the three-sermon scope and identity-label uncertainty visible without forcing readers to interpret raw probability tables first.
 
-Use a versioned output artifact, not an overwrite of the original preview or source inventory. Write generated HTML, JSON and review artifacts under the configured application base directory. Keep database/source reads read-only. Reuse the existing `pte` entry point; the planned first extension is `pte analysis structure-readiness --segment-view --description`, with a corresponding `--check-only` path. **The `--description` option is proposed, not implemented yet.** Do not present a standalone script or require Brian to author JSON, choose cases or annotate the corpus.
+Use a versioned output artifact, not an overwrite of the original preview or source inventory. Write generated HTML, JSON and review artifacts under the configured application base directory. Keep database/source reads read-only. Reuse the existing `pte` entry point; the implemented extension is `pte analysis structure-readiness --segment-view --description`, with a corresponding `--check-only` path. **The `--description` option is available.** Do not present a standalone script or require Brian to author JSON, choose cases or annotate the corpus.
 
 **Acceptance:** Brian can read an actual supported profile, inspect any claim's evidence, see unknown fields and run the documented CLI. Focused tests and a browser check cover source safety, disclosure/filter navigation, escaping and missing-state presentation. No additional measurement or exact quote is required for this initial feature.
 
 ## Milestone 4 — address consequential gaps, reusing existing evidence first
+
+**Status: prioritized gap/code map delivered.** Remedies remain conditional; no held work has been executed.
 
 The implementation delivers a prioritized gap/code map with the actual profile. Separate:
 
@@ -98,10 +141,10 @@ No nearest-pastor result, similarity percentage, ranking, single pastor score or
 ## Delivery order and current authorization
 
 - **Completed foundation:** compatible inventory and source-linked evidence preview; historical measurement/containment results retain their actual scope.
-- **Next implementation proposal:** milestones 1–3 together: working descriptive profile, embedded worked example, traceable claims/unknowns and focused tests/browser verification. Include milestone 4's concrete gap map as an output of that work.
+- **Implemented, acceptance pending:** milestones 1–3 together, plus milestone 4’s gap/code map. Brian’s next action is to review the delivered profile using the command above; Codex owns revisions and subsequent recommendations.
 - **Later conditional work:** only the consequential gaps Brian approves, then optional quote execution and independently justified comparison. Do not require another inventory/design gate merely to implement the first supported screen.
 
-The present user request authorizes replacing/updating planning documents and checking their consistency. It does not execute these milestones, run providers, alter measurements, activate collection or implement new scoring/comparison. The [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) and this implementation plan are the two active documents; neither turns a historical pilot PASS into general authority.
+Brian’s implementation request authorized the bounded provider-free milestones 1–3 and delivery of the consequential-gap map. This status update records their completion; it does not authorize providers, new measurements, collection, production activation, profile aggregation/scoring, comparison/ranking, stability claims or quotation execution. The [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) and this implementation plan are the two active documents; neither turns a historical pilot PASS into general authority.
 
 Verify the active plans and retirement registry with the existing read-only command:
 
