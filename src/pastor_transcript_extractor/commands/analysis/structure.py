@@ -493,3 +493,25 @@ def analysis_profile_binding_review(
         verdict=report['conclusion']['verdict'], provider_requests=0, database_writes=0,
         path=str(path) if path else None)
     console.print_json(data=output) if as_json else console.print(output,markup=False)
+
+
+@analysis_app.command('profile-proposition-review', help='Review the same ten source readings through reusable proposition bindings and unchanged assurance interpretation; no providers.')
+def analysis_profile_proposition_review(
+    check_only: bool = typer.Option(False, '--check-only', help='Verify exact source/evidence and unchanged G1 mapping without writing artifacts.'),
+    as_json: bool = typer.Option(False, '--json'),
+    base_dir: Path | None = typer.Option(None, help='Override app data directory.'),
+) -> None:
+    from pastor_transcript_extractor import profile_proposition_review as review
+    try:
+        if check_only:
+            report = review.load(base_dir)
+            path = None
+        else:
+            report, path = review.prepare(base_dir)
+    except (ValueError, OSError, KeyError, TypeError, StopIteration) as error:
+        raise typer.BadParameter(str(error)) from error
+    output = dict(status=report['status'],fingerprint=report['content_fingerprint'],
+        passages=len(report['cases']),proposed_readings=sum(len(c['readings']) for c in report['cases']),
+        original_g1_records_unchanged=report['original_g1_records_unchanged'],
+        provider_requests=0,database_writes=0,path=str(path) if path else None)
+    console.print_json(data=output) if as_json else console.print(output,markup=False)

@@ -111,7 +111,7 @@ def bind(texts, authored, provenance):
     for act in row['address_acts']:
         if act['type'] not in {'acknowledgment', 'perspective_taking', 'reassurance', 'challenge', 'warning', 'invitation', 'care_offer'}:
             raise ValueError('Unknown G3 address act')
-        if act['voice'] not in {'preacher', 'quoted_or_reported', 'unresolved'} or act['adoption'] not in ADOPTION:
+        if act['voice'] not in {'preacher', 'quoted_or_reported', 'unresolved'} or act['adoption'] not in {'own_or_adopted', 'not_adopted_report', 'explicitly_rejected', 'unresolved'}:
             raise ValueError('Address voice and adoption must remain separate')
         target_span(act['utterance_span'], texts)
         if act['proposition_node'] != row['proposition']['node_id'] or not act['rationale'] or not act['link_evidence']:
