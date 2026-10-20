@@ -1,6 +1,12 @@
 # Pastor profile implementation plan
 
-**Latest result, 2026-10-20:** the explicitly approved automatic binding development run and ten-reading discrepancy report are complete. The result does not justify broader validation yet; see the [current increment](#current-development-increment--automatic-generic-binding).
+**Latest status, 2026-10-20:** V2 task-decomposition repairs are implemented and prepared after Brian approved proceeding. No V2 provider calls have been made. The completed V1 discrepancy report remains the latest observed result and does not justify broader validation. Brian's next command is `pte analysis profile-binding-development --run --json`; Codex owns interpretation afterward. See the [workflow and preserved V1 result](PROFILE_BINDING_DEVELOPMENT.md).
+
+### Same-case binding repair — V2 prepared
+
+Commit `0d0871d` separates relevance from completeness, preserves outer and embedded speech units, restricts named speakers to attribution frames, narrows evidence alternatives and feeds generated frame choices into a separate dependent interpretation request. Unresolved relation/qualification/address choices remain visible rather than disappearing into empty lists. The model and `.80` development abstention cutoff are unchanged. Source-only preflight passes on the same three supplied passages (43/54/12 lexical alternatives); the ten reviewed bindings stay outside generation. `pte analysis profile-binding-development --prepare --json` performs this check without providers or writes.
+
+V2 uses a separate app-base artifact namespace. Existing V1 outputs and their negative semantic result are preserved; no semantic improvement or provider superiority is claimed from synthetic regression tests. The 89-test focused suite covers existing profile/assurance behavior plus staged-request and framing controls. Brian executes the next bounded run, then Codex prepares the complete discrepancy report. Broader validation, new measurements, profile projection, production activation and Ollama quotation execution remain held.
 
 **Current implementation status, 2026-10-20.** Implements the [pastor profile product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). The product plan defines what the reader should receive; this document defines the code, delivery sequence and acceptance checks. These are the two active planning documents. Older implementation sequences are superseded, with historical measurements and decisions preserved.
 
