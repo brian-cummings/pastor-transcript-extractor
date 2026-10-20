@@ -93,11 +93,12 @@ class DevelopmentTests(unittest.TestCase):
             for c in reviewed['cases']:
                 key=c['case_id']+'-auto-'+result['cases'][0]['generated'][0]['candidate_id']
                 for r in c['readings']:
-                    rows.append(dict(reference_id=r['binding']['binding_id'],generated_ids=[key],summary='Authored fixture comparison, not a semantic evaluation.',correctly_unresolved='Permanent security is not established.',fields={f:dict(outcome='agreement',finding='Fixture source and generated field agree within scope.',evidence=[r['binding']['proposition']['span']]) for f in dev.FIELDS}))
+                    rows.append(dict(reference_id=r['binding']['binding_id'],generated_ids=[key],content_recovery='located',fully_faithful=True,summary='Authored fixture comparison, not a semantic evaluation.',correctly_unresolved='Permanent security is not established.',fields={f:dict(outcome='agreement',finding='Fixture source and generated field agree within scope.',evidence=[r['binding']['proposition']['span']]) for f in dev.FIELDS}))
             comparison=dict(generated_fingerprint=result['content_fingerprint'],reference_fingerprint=reviewed['content_fingerprint'],readings=rows,extra_generated={},decision=dict(answer='no',finding='Mock fixture only.',recommendation='No live performance inferred from this unit test.'))
             dev.save(folder/'semantic-review-v1.json',comparison)
             report,page=dev.report();html=page.read_text();md=page.with_name('review-v1.md').read_text()
             self.assertEqual('DEVELOPMENT_RUN_COMPARED',report['status'])
+            self.assertEqual(dict(located=10,fully_faithful=10),report['development_summary'])
             self.assertEqual({f:{'agreement':10} for f in dev.FIELDS},report['field_outcomes'])
             ids=re.findall(r' id="([^"]+)"',html)
             self.assertEqual(len(ids),len(set(ids)))
@@ -105,7 +106,7 @@ class DevelopmentTests(unittest.TestCase):
             self.assertIn('Exact source evidence',md);self.assertIn('index.html#C0-target_text',md)
             bad=deepcopy(comparison);bad['readings'][0]['fields'].pop('adoption')
             with self.assertRaisesRegex(ValueError,'all fields'):dev.validate_comparison(bad,result,reviewed)
-            bad=deepcopy(comparison);bad['readings'][0]['fields']['adoption'].update(outcome='attribution_adoption_error',evidence=[])
+            bad=deepcopy(comparison);bad['readings'][0]['fully_faithful']=False;bad['readings'][0]['fields']['adoption'].update(outcome='attribution_adoption_error',evidence=[])
             with self.assertRaisesRegex(ValueError,'exact source evidence'):dev.validate_comparison(bad,result,reviewed)
             bad=deepcopy(comparison);bad['readings'][0]['generated_ids']=['foreign']
             with self.assertRaisesRegex(ValueError,'foreign candidate'):dev.validate_comparison(bad,result,reviewed)
