@@ -78,6 +78,8 @@ def resolve_source_proof(selected, source_row):
 
 
 def execute(approved, base_dir=None, *, transport=send, clock=time.monotonic):
+    from pastor_transcript_extractor.segment_evidence_plan import reject_closed_selection
+    reject_closed_selection(approved)
     repair_path = spec.HERE/'execution-repair-v1.json'
     if repair_path.exists() and approved == '19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceabaa8a2':
         from pastor_transcript_extractor.typesafe_selection_resume import resume
