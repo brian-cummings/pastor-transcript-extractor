@@ -19,7 +19,7 @@ from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.sermon_topics import resolve_topic_analysis_artifact, resolve_topic_block_context
 from pastor_transcript_extractor.sermon_semantic_dimensions import SEMANTIC_ANALYSIS_QUESTION_VERSION, SEMANTIC_DIMENSIONS
 
-VERSION = 'pastor-profile-description-v1'
+VERSION = 'pastor-profile-description-v2'
 RULE_VERSION = 'cached-observation-wording-v1'
 FAMILIES = ('Preaching style', 'Theological emphasis', 'Theological orientation', 'Pastoral/rhetorical orientation')
 RULES = {
@@ -135,7 +135,7 @@ def gap_ledger():
     )]
 
 
-def build(inventory, sources, reuse_checks=None):
+def build(inventory, sources, reuse_checks=None, source_reviews=None):
     """Pure assembly. Recheck layer identity so saved presentation cannot admit stale data."""
     if seal(inventory) != inventory:
         raise ValueError('Invalid inventory seal')
@@ -257,7 +257,7 @@ def build(inventory, sources, reuse_checks=None):
             unknown_reason='; '.join(g['cause'] for g in gaps if g['family'] in (family, 'All families')),
             claim_ids=ids, candidate_ids=[c['evidence_id'] for c in candidates if family == FAMILIES[0] or (family == FAMILIES[3] and c['dimension'] == 'practical_application')],
             gap_ids=[g['id'] for g in gaps if g['family'] in (family, 'All families')]))
-    return seal(dict(version=VERSION, rule_version=RULE_VERSION, rules=RULES, profile=inventory['selected_profile'],
+    record = dict(version=VERSION, rule_version=RULE_VERSION, rules=RULES, profile=inventory['selected_profile'],
         inventory_fingerprint=inventory['content_fingerprint'], coverage=inventory['coverage'],
         source_identity=[dict(video_id=s['video_id'], title=s['title'], source_sha256=s['source_sha256'], source_path=s['source_path'], gate=s['gate']) for s in inventory['sermons']],
         scope=f'{len(sample_ids)} selected development recordings, not a representative ministry sample.',
@@ -268,7 +268,11 @@ def build(inventory, sources, reuse_checks=None):
         salvation_block_states=states, unresolved_leaves=inventory['coverage']['unresolved_salvation_leaves'],
         benchmark=dict(status='unavailable', reason='Comparison not yet established; no compatible benchmark method or calibration.'),
         gaps=gaps, reuse_checks=reuse_checks or [], evidence_view=lower,
-        provider_requests=0, database_writes=0, new_measurements=False, profile_scores=False, quote_execution=False))
+        provider_requests=0, database_writes=0, new_measurements=False, profile_scores=False, quote_execution=False)
+    from pastor_transcript_extractor.profile_presentation import build_reader
+    record['reader'] = build_reader(record, source_reviews)
+    record['assessment'] = record['reader']['assessment']
+    return seal(record)
 
 
 def load(base_dir=None):
@@ -289,7 +293,8 @@ def load(base_dir=None):
         except ValueError as error:
             checks.append(dict(video_id=sermon['video_id'], state='current_scripture_input_unavailable', reason=str(error)))
     checks.extend(leaf_reuse_checks(inventory, sources))
-    return build(inventory, sources, checks)
+    from pastor_transcript_extractor.profile_presentation import load_reviews
+    return build(inventory, sources, checks, source_reviews=load_reviews())
 
 
 def leaf_reuse_checks(inventory, sources):
@@ -360,7 +365,7 @@ def assessment(record):
     return paragraphs
 
 
-def render(record):
+def render_v1(record):
     e = lambda value: html.escape(str(value), quote=True)
     link = lambda key, label: f'<a href="#{e(key)}">{e(label)}</a>'
     shell = evidence_view.render(record['evidence_view'])
@@ -442,7 +447,7 @@ window.addEventListener('hashchange',revealEvidence);window.addEventListener('lo
         'Inventory '+e(record['inventory_fingerprint'])+' · Description '+e(record['content_fingerprint'])+'</footer></main>'+navigation+script)
 
 
-def markdown(record):
+def markdown_v1(record):
     lines = [f'# Pastor profile {record["profile"]["id"]}', '', record['scope'], '',
         'Display label: '+str(record['profile'].get('display_label') or 'not yet accepted; titles remain metadata')+'.', '', '## Assessment', '']
     for paragraph in record['assessment']:
@@ -462,9 +467,27 @@ def markdown(record):
     return '\n'.join(lines)
 
 
+
+def render(record):
+    if 'reader' not in record:
+        return render_v1(record)
+    from pastor_transcript_extractor.profile_presentation import render as reader_render
+    return reader_render(record)
+
+
+def markdown(record):
+    if 'reader' not in record:
+        return markdown_v1(record)
+    from pastor_transcript_extractor.profile_presentation import markdown as reader_markdown
+    return reader_markdown(record)
+
+
 def prepare(base_dir=None):
     record = load(base_dir)
+    from pastor_transcript_extractor import profile_presentation
     manifest = seal(dict(version=VERSION, description=record, implementation_files={
+        str(Path(profile_presentation.__file__)): trace.digest(profile_presentation.__file__),
+        str(profile_presentation.REVIEWS_PATH): trace.digest(profile_presentation.REVIEWS_PATH),
         str(Path(__file__)): trace.digest(__file__),
         str(Path(evidence_view.__file__)): trace.digest(evidence_view.__file__)}, provider_requests=0, database_writes=0))
     out = build_paths(base_dir).evaluation / VERSION / manifest['content_fingerprint']
@@ -477,9 +500,9 @@ def prepare(base_dir=None):
         check_command='pte analysis structure-readiness --segment-view --description --check-only --json',
         review_command='pte analysis structure-readiness --segment-view --description --json',
         held=['providers/models', 'broader collection', 'new semantic measurements', 'scoring/ranking/comparison', 'production activation', 'ministry stability', 'Ollama quotations']))
-    artifacts = {'review-v1.json': json.dumps(review, ensure_ascii=False, indent=2)+'\n',
-        'description-v1.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
-        'profile-v1.md': markdown(record), 'index.html': render(record)}
+    artifacts = {'review-v2.json': json.dumps(review, ensure_ascii=False, indent=2)+'\n',
+        'description-v2.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
+        'profile-v2.md': markdown(record), 'index.html': render(record)}
     for name, raw in artifacts.items():
         path = out / name
         if path.exists() and path.read_text() != raw:

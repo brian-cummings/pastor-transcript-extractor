@@ -139,7 +139,7 @@ class DescriptionTests(unittest.TestCase):
         self.assertIn('hashchange', page)
         self.assertIn('Filter recordings', page)
         self.assertLess(page.index('Assessment of this sample'), page.index('Pastor at a glance'))
-        self.assertLess(page.index('Pastor at a glance'), page.index('Sermons and full source segments'))
+        self.assertLess(page.index('Pastor at a glance'), page.index('Sermons and supporting passages'))
 
     def test_deterministic_pure_assembly_and_identity_invalidation(self):
         inv, sources = fixture(); before = deepcopy((inv, sources))
@@ -177,7 +177,7 @@ class DescriptionTests(unittest.TestCase):
             before = path.read_bytes()
             self.assertEqual((manifest, path), d.prepare())
             self.assertEqual(before, path.read_bytes())
-            self.assertTrue((path.parent / 'review-v1.json').exists())
+            self.assertTrue((path.parent / 'review-v2.json').exists())
             generated = CliRunner().invoke(app, ['analysis', 'structure-readiness', '--segment-view', '--description', '--json'])
             checked = CliRunner().invoke(app, ['analysis', 'structure-readiness', '--segment-view', '--description', '--check-only', '--json'])
             self.assertEqual(0, generated.exit_code, generated.output)
