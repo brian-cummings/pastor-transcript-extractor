@@ -1,0 +1,2093 @@
+{
+  "version": "profile-binding-source-readings-v1",
+  "status": "Codex_authored_source_review_pending_Brian_acceptance",
+  "capability": "source_reviewed_theological_proposition_binding",
+  "test_domain": "assurance_of_salvation",
+  "contract_path": "docs/review-proposals/g1-binding-v1/CONTRACT.md",
+  "contract_sha256": "521f3315f18beaa9670d3e6ddbd507f1ea968867a0c964ff8db6ba420f1e55ce",
+  "composer_path": "src/pastor_transcript_extractor/sermon_g1_feasibility_review.py",
+  "composer_sha256": "b4f5982b6960a199717d8aeb5cafb29685f679b1d76f8bf32b44a95f9144b2fd",
+  "cases": [
+    {
+      "case_id": "P1",
+      "evidence_id": "e-4589-47-salvation-assurance_security",
+      "source_sha256": "2ccf222231ba84fa77736419a7775cea9624452a81b87c027a759a02ce78132d",
+      "target_sha256": "649123d7601078abe65ffaf758de07cbeca83a78796cfb2ea13a6acf78a9e63d",
+      "context_sha256": "7179d429bd440fb815900f7350de770c2df26688bb9c3974214e4a74fe2bad43",
+      "readings": [
+        {
+          "id": "P1-mercy",
+          "title": "A prayer locating salvation in mercy rather than works",
+          "proposed_reading": "The preacher invites the listener to say that the Lord saved them by mercy, not by their righteous works, and endorses that account as the gospel at work in the listener’s life.",
+          "unit": {
+            "candidate_id": "P1-mercy",
+            "claim_span": {
+              "source_field": "target_text",
+              "start": 377,
+              "end": 476,
+              "text": "Lord it's not by works of a righteousness that I have done but it's by your mercy that you saved me"
+            }
+          },
+          "phrase_pools": {
+            "objects": {
+              "object": {
+                "source_field": "target_text",
+                "start": 464,
+                "end": 476,
+                "text": "you saved me"
+              }
+            },
+            "conditions": {},
+            "uncertainty": {},
+            "scopes": {},
+            "frames": {
+              "voice": {
+                "source_field": "target_text",
+                "start": 364,
+                "end": 476,
+                "text": "you will say Lord it's not by works of a righteousness that I have done but it's by your mercy that you saved me"
+              },
+              "adoption": {
+                "source_field": "target_text",
+                "start": 477,
+                "end": 556,
+                "text": "that ladies and gentlemen is the gospel at work in your life it's Christ in you"
+              }
+            }
+          },
+          "authored_decisions": {
+            "subject": "salvation_acceptance",
+            "relation": "no_match",
+            "polarity": "unclear",
+            "expression": "unclear",
+            "voice": "unclear",
+            "adoption": "explicitly_adopted",
+            "epistemic_status": "not_stated",
+            "boundary": "local_sufficient",
+            "object_anchor": "object",
+            "epistemic_evidence": "none",
+            "scope_evidence": "none",
+            "voice_evidence": "voice",
+            "adoption_evidence": "adoption"
+          },
+          "field_review": {
+            "proposition": {
+              "status": "supported",
+              "finding": "The preacher invites the listener to say that the Lord saved them by mercy, not by their righteous works, and endorses that account as the gospel at work in the listener’s life.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 377,
+                  "end": 476,
+                  "text": "Lord it's not by works of a righteousness that I have done but it's by your mercy that you saved me"
+                }
+              ]
+            },
+            "subject": {
+              "status": "partial",
+              "finding": "No approved assurance subject/relation is inferred from saving vocabulary alone.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 464,
+                  "end": 476,
+                  "text": "you saved me"
+                }
+              ]
+            },
+            "relation": {
+              "status": "withheld",
+              "finding": "No faithful mapping to knowing present acceptance, possible loss or retention is established.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 377,
+                  "end": 476,
+                  "text": "Lord it's not by works of a righteousness that I have done but it's by your mercy that you saved me"
+                }
+              ]
+            },
+            "polarity": {
+              "status": "partial",
+              "finding": "In the literal contrast, righteous works are denied as the basis and mercy is affirmed as the basis. Neither is a polarity of G1 loss/retention/knowability; that formal field remains withheld.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 377,
+                  "end": 476,
+                  "text": "Lord it's not by works of a righteousness that I have done but it's by your mercy that you saved me"
+                }
+              ]
+            },
+            "expression": {
+              "status": "withheld",
+              "finding": "The nested wording is declarative in form, but is supplied as a prospective listener utterance rather than an attested assertion. The frozen expression menu does not encode that distinction; do not relabel it as an actual listener assertion.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 377,
+                  "end": 476,
+                  "text": "Lord it's not by works of a righteousness that I have done but it's by your mercy that you saved me"
+                },
+                {
+                  "source_field": "target_text",
+                  "start": 364,
+                  "end": 476,
+                  "text": "you will say Lord it's not by works of a righteousness that I have done but it's by your mercy that you saved me"
+                }
+              ]
+            },
+            "voice": {
+              "status": "withheld",
+              "finding": "The preacher supplies a prospective listener’s first-person prayer. This is not an attested report of someone speaking, and “me” must not become the preacher. The frozen voice menu has no faithful projected-listener value.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 364,
+                  "end": 476,
+                  "text": "you will say Lord it's not by works of a righteousness that I have done but it's by your mercy that you saved me"
+                }
+              ]
+            },
+            "adoption": {
+              "status": "supported",
+              "finding": "The preacher explicitly endorses the presented account as the gospel at work, independently of who is being invited to voice it.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 477,
+                  "end": 556,
+                  "text": "that ladies and gentlemen is the gospel at work in your life it's Christ in you"
+                }
+              ]
+            },
+            "conditions": {
+              "status": "not_stated",
+              "finding": "No explicit condition is bound to this proposition in the supplied target. An empty list does not establish unconditional doctrine.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 377,
+                  "end": 476,
+                  "text": "Lord it's not by works of a righteousness that I have done but it's by your mercy that you saved me"
+                }
+              ]
+            },
+            "qualifications": {
+              "status": "supported",
+              "finding": "“not ... but ...” is the explicit contrast; do not recast it as a condition on retaining salvation.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 377,
+                  "end": 476,
+                  "text": "Lord it's not by works of a righteousness that I have done but it's by your mercy that you saved me"
+                }
+              ]
+            },
+            "epistemic_status": {
+              "status": "not_stated",
+              "finding": "No explicit speaker-uncertainty language is attached to this candidate. This is not a claim of confidence or an absence of reviewer uncertainty.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 377,
+                  "end": 476,
+                  "text": "Lord it's not by works of a righteousness that I have done but it's by your mercy that you saved me"
+                }
+              ]
+            },
+            "scope": {
+              "status": "partial",
+              "finding": "The quoted “me” belongs to the invited praying listener. No permanent-security or ministry-wide scope is stated.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 464,
+                  "end": 476,
+                  "text": "you saved me"
+                }
+              ]
+            }
+          },
+          "additional_binding_evidence": [],
+          "withheld_conclusions": [
+            "Unconditional permanent security",
+            "A statement that the preacher personally uttered this prayer or that a particular listener actually prayed it",
+            "Any inferred necessity/sufficiency rule about righteous works or continuing prayer"
+          ],
+          "contract_gap_ids": [
+            "predicate_inventory",
+            "projected_voice"
+          ]
+        },
+        {
+          "id": "P1-completion",
+          "title": "Confidence that God completes the work begun",
+          "proposed_reading": "The preacher declares that the one who began a good work in the listener is faithful to perform it until the day of Jesus Christ. The target identifies the actor as God, but does not explicitly equate “good work” with retaining salvation.",
+          "unit": {
+            "candidate_id": "P1-completion",
+            "claim_span": {
+              "source_field": "target_text",
+              "start": 557,
+              "end": 648,
+              "text": "he who has begun a good work in you is faithful to perform it until the day of Jesus Christ"
+            }
+          },
+          "phrase_pools": {
+            "objects": {
+              "object": {
+                "source_field": "target_text",
+                "start": 506,
+                "end": 556,
+                "text": "the gospel at work in your life it's Christ in you"
+              }
+            },
+            "conditions": {},
+            "uncertainty": {},
+            "scopes": {
+              "scope": {
+                "source_field": "target_text",
+                "start": 619,
+                "end": 648,
+                "text": "until the day of Jesus Christ"
+              }
+            },
+            "frames": {
+              "voice": {
+                "source_field": "target_text",
+                "start": 557,
+                "end": 648,
+                "text": "he who has begun a good work in you is faithful to perform it until the day of Jesus Christ"
+              },
+              "adoption": {
+                "source_field": "target_text",
+                "start": 557,
+                "end": 648,
+                "text": "he who has begun a good work in you is faithful to perform it until the day of Jesus Christ"
+              }
+            }
+          },
+          "authored_decisions": {
+            "subject": "unclear",
+            "relation": "unclear",
+            "polarity": "unclear",
+            "expression": "assertion",
+            "voice": "preacher",
+            "adoption": "own_assertion",
+            "epistemic_status": "not_stated",
+            "boundary": "local_sufficient",
+            "object_anchor": "object",
+            "epistemic_evidence": "none",
+            "scope_evidence": "scope",
+            "voice_evidence": "voice",
+            "adoption_evidence": "adoption"
+          },
+          "field_review": {
+            "proposition": {
+              "status": "supported",
+              "finding": "The preacher declares that the one who began a good work in the listener is faithful to perform it until the day of Jesus Christ. The target identifies the actor as God, but does not explicitly equate “good work” with retaining salvation.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 557,
+                  "end": 648,
+                  "text": "he who has begun a good work in you is faithful to perform it until the day of Jesus Christ"
+                }
+              ]
+            },
+            "subject": {
+              "status": "partial",
+              "finding": "The object is a good work being performed in the listener, identified nearby with the gospel/Christ at work. The text does not explicitly identify that object as continued saving standing.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 506,
+                  "end": 556,
+                  "text": "the gospel at work in your life it's Christ in you"
+                }
+              ]
+            },
+            "relation": {
+              "status": "withheld",
+              "finding": "No faithful mapping to knowing present acceptance, possible loss or retention is established.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 557,
+                  "end": 648,
+                  "text": "he who has begun a good work in you is faithful to perform it until the day of Jesus Christ"
+                }
+              ]
+            },
+            "polarity": {
+              "status": "partial",
+              "finding": "The literal claim affirms the actor’s faithfulness and completion of a good work. It does not explicitly affirm a G1 retention predicate; polarity of that stronger relation is withheld.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 557,
+                  "end": 648,
+                  "text": "he who has begun a good work in you is faithful to perform it until the day of Jesus Christ"
+                }
+              ]
+            },
+            "expression": {
+              "status": "supported",
+              "finding": "The supplied wording is an assertion.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 557,
+                  "end": 648,
+                  "text": "he who has begun a good work in you is faithful to perform it until the day of Jesus Christ"
+                }
+              ]
+            },
+            "voice": {
+              "status": "supported",
+              "finding": "The preacher uses this unattributed wording as a declarative warrant. It is recognizably scriptural language, but the supplied target does not name its quoted author; no Pauline identity is added from familiarity.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 557,
+                  "end": 648,
+                  "text": "he who has begun a good work in you is faithful to perform it until the day of Jesus Christ"
+                }
+              ]
+            },
+            "adoption": {
+              "status": "supported",
+              "finding": "The preacher presents this completion claim directly in his exposition, rather than distancing himself from it.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 477,
+                  "end": 556,
+                  "text": "that ladies and gentlemen is the gospel at work in your life it's Christ in you"
+                },
+                {
+                  "source_field": "target_text",
+                  "start": 557,
+                  "end": 648,
+                  "text": "he who has begun a good work in you is faithful to perform it until the day of Jesus Christ"
+                }
+              ]
+            },
+            "conditions": {
+              "status": "not_stated",
+              "finding": "No explicit condition is bound to this proposition in the supplied target. An empty list does not establish unconditional doctrine.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 557,
+                  "end": 648,
+                  "text": "he who has begun a good work in you is faithful to perform it until the day of Jesus Christ"
+                }
+              ]
+            },
+            "qualifications": {
+              "status": "partial",
+              "finding": "The explicit temporal bound is “until the day of Jesus Christ.” The trailing context introduces “when we submit ourselves to him” within a new book quotation; this is not bound as a condition on the target’s completion claim.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 619,
+                  "end": 648,
+                  "text": "until the day of Jesus Christ"
+                },
+                {
+                  "source_field": "trailing_context",
+                  "start": 60,
+                  "end": 151,
+                  "text": "here's what I read in a book called Christ's Object Lessons when we submit ourselves to him"
+                }
+              ]
+            },
+            "epistemic_status": {
+              "status": "not_stated",
+              "finding": "No explicit speaker-uncertainty language is attached to this candidate. This is not a claim of confidence or an absence of reviewer uncertainty.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 557,
+                  "end": 648,
+                  "text": "he who has begun a good work in you is faithful to perform it until the day of Jesus Christ"
+                }
+              ]
+            },
+            "scope": {
+              "status": "supported",
+              "finding": "Only this stated scope is retained.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 619,
+                  "end": 648,
+                  "text": "until the day of Jesus Christ"
+                }
+              ]
+            }
+          },
+          "additional_binding_evidence": [
+            {
+              "source_field": "target_text",
+              "start": 649,
+              "end": 658,
+              "text": "it is God"
+            }
+          ],
+          "withheld_conclusions": [
+            "“Good work” necessarily means remaining saved",
+            "God’s faithfulness proves that salvation cannot be lost",
+            "The later submission wording supplies a necessary/sufficient retention condition"
+          ],
+          "contract_gap_ids": [
+            "predicate_inventory"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "P2",
+      "evidence_id": "e-3973-75-salvation-assurance_security",
+      "source_sha256": "814c5c662e4479131dcec244ed6d8097df77dbfdc9d46d3d647a3ae96d2886b6",
+      "target_sha256": "1705718d870fd737ac08d75922d8f344bce7c763801e5a19c0fcc9bd13dc0768",
+      "context_sha256": "9bc3db51058b1826d1c1cf115500286d2c9a290f91d8f8640a992a5a02e4bab0",
+      "readings": [
+        {
+          "id": "P2-saving-desire",
+          "title": "Jesus’ saving desire despite knowing the listener",
+          "proposed_reading": "The preacher says that Jesus wants to save the addressed listener, loves them, and does not dismiss or reject them despite knowing their works. Desire to save is not a declaration that the listener is already saved.",
+          "unit": {
+            "candidate_id": "P2-saving-desire",
+            "claim_span": {
+              "source_field": "target_text",
+              "start": 1304,
+              "end": 1412,
+              "text": "he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+            }
+          },
+          "phrase_pools": {
+            "objects": {
+              "object": {
+                "source_field": "target_text",
+                "start": 1316,
+                "end": 1324,
+                "text": "save you"
+              }
+            },
+            "conditions": {
+              "honesty-if": {
+                "source_field": "target_text",
+                "start": 307,
+                "end": 364,
+                "text": "If you can look in your heart and say, \"I'm a scoundrel.\""
+              }
+            },
+            "uncertainty": {},
+            "scopes": {},
+            "frames": {
+              "voice": {
+                "source_field": "target_text",
+                "start": 1267,
+                "end": 1412,
+                "text": "Jesus said, \"I know your works.\" And he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+              },
+              "adoption": {
+                "source_field": "target_text",
+                "start": 1304,
+                "end": 1412,
+                "text": "he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+              }
+            }
+          },
+          "authored_decisions": {
+            "subject": "salvation_acceptance",
+            "relation": "no_match",
+            "polarity": "unclear",
+            "expression": "assertion",
+            "voice": "preacher",
+            "adoption": "own_assertion",
+            "epistemic_status": "not_stated",
+            "boundary": "local_sufficient",
+            "object_anchor": "object",
+            "epistemic_evidence": "none",
+            "scope_evidence": "none",
+            "voice_evidence": "voice",
+            "adoption_evidence": "adoption",
+            "bind_honesty-if": "not_bound"
+          },
+          "field_review": {
+            "proposition": {
+              "status": "supported",
+              "finding": "The preacher says that Jesus wants to save the addressed listener, loves them, and does not dismiss or reject them despite knowing their works. Desire to save is not a declaration that the listener is already saved.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1304,
+                  "end": 1412,
+                  "text": "he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+                }
+              ]
+            },
+            "subject": {
+              "status": "supported",
+              "finding": "The immediate “Jesus said” identifies the “he” in the preacher’s subsequent comment. The assertion concerns Jesus’ saving desire, not an established current saving standing.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1267,
+                  "end": 1412,
+                  "text": "Jesus said, \"I know your works.\" And he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+                }
+              ]
+            },
+            "relation": {
+              "status": "withheld",
+              "finding": "No faithful mapping to knowing present acceptance, possible loss or retention is established.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1304,
+                  "end": 1412,
+                  "text": "he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+                }
+              ]
+            },
+            "polarity": {
+              "status": "partial",
+              "finding": "The preacher affirms saving desire and love, and negates dismissing/rejecting the addressed listener. These are not a polarity of loss/retention/knowability, so that formal G1 field stays withheld.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1304,
+                  "end": 1412,
+                  "text": "he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+                }
+              ]
+            },
+            "expression": {
+              "status": "supported",
+              "finding": "The supplied wording is an assertion.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1304,
+                  "end": 1412,
+                  "text": "he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+                }
+              ]
+            },
+            "voice": {
+              "status": "supported",
+              "finding": "Current preacher speech, without a separate attributed speaker in this assertion.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1267,
+                  "end": 1412,
+                  "text": "Jesus said, \"I know your works.\" And he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+                }
+              ]
+            },
+            "adoption": {
+              "status": "supported",
+              "finding": "The preacher uses this assertion in his own exposition.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1304,
+                  "end": 1412,
+                  "text": "he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+                }
+              ]
+            },
+            "conditions": {
+              "status": "not_bound",
+              "finding": "The earlier “If you can look in your heart ...” concerns self-recognition, not a condition modifying Jesus’ saving desire. It is not attached to this claim.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 307,
+                  "end": 364,
+                  "text": "If you can look in your heart and say, \"I'm a scoundrel.\""
+                },
+                {
+                  "source_field": "target_text",
+                  "start": 1304,
+                  "end": 1412,
+                  "text": "he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+                }
+              ]
+            },
+            "qualifications": {
+              "status": "partial",
+              "finding": "“anyway” is a concession against the surrounding discussion of known works and sin. G1’s condition/exception list cannot type this concession; its wording is retained without inventing an if-condition.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1304,
+                  "end": 1412,
+                  "text": "he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+                },
+                {
+                  "source_field": "target_text",
+                  "start": 904,
+                  "end": 945,
+                  "text": "You've got to know that you are a sinner."
+                }
+              ]
+            },
+            "epistemic_status": {
+              "status": "not_stated",
+              "finding": "No explicit speaker-uncertainty language is attached to this candidate. This is not a claim of confidence or an absence of reviewer uncertainty.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1304,
+                  "end": 1412,
+                  "text": "he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+                }
+              ]
+            },
+            "scope": {
+              "status": "withheld",
+              "finding": "No further explicit scope can be bound; null does not mean unrestricted or permanent.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1304,
+                  "end": 1412,
+                  "text": "he wants to save you anyway, and he loves you anyway, and he doesn't dismiss you, and he doesn't reject you."
+                }
+              ]
+            }
+          },
+          "additional_binding_evidence": [
+            {
+              "source_field": "target_text",
+              "start": 904,
+              "end": 945,
+              "text": "You've got to know that you are a sinner."
+            }
+          ],
+          "withheld_conclusions": [
+            "The listener is already accepted/saved",
+            "Salvation cannot be lost",
+            "Sinlessness or self-recognition is a necessary/sufficient salvation condition"
+          ],
+          "contract_gap_ids": [
+            "predicate_inventory",
+            "nonconditional_qualification"
+          ]
+        },
+        {
+          "id": "P2-paul",
+          "title": "Paul’s reported self-description",
+          "proposed_reading": "The preacher reports Paul’s statement “I am the chief of sinners” and uses it as an example of honesty. It is not the preacher’s own first-person confession or an assurance proposition.",
+          "unit": {
+            "candidate_id": "P2-paul",
+            "claim_span": {
+              "source_field": "target_text",
+              "start": 946,
+              "end": 985,
+              "text": "Paul said, \"I am the chief of sinners.\""
+            }
+          },
+          "phrase_pools": {
+            "objects": {},
+            "conditions": {},
+            "uncertainty": {},
+            "scopes": {},
+            "frames": {
+              "voice": {
+                "source_field": "target_text",
+                "start": 946,
+                "end": 985,
+                "text": "Paul said, \"I am the chief of sinners.\""
+              },
+              "adoption": {
+                "source_field": "target_text",
+                "start": 946,
+                "end": 985,
+                "text": "Paul said, \"I am the chief of sinners.\""
+              }
+            }
+          },
+          "authored_decisions": {
+            "subject": "no_match",
+            "relation": "no_match",
+            "polarity": "unclear",
+            "expression": "assertion",
+            "voice": "reported_other",
+            "adoption": "reported_not_adopted",
+            "epistemic_status": "not_stated",
+            "boundary": "local_sufficient",
+            "object_anchor": "none",
+            "epistemic_evidence": "none",
+            "scope_evidence": "none",
+            "voice_evidence": "voice",
+            "adoption_evidence": "adoption"
+          },
+          "field_review": {
+            "proposition": {
+              "status": "supported",
+              "finding": "The preacher reports Paul’s statement “I am the chief of sinners” and uses it as an example of honesty. It is not the preacher’s own first-person confession or an assurance proposition.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 946,
+                  "end": 985,
+                  "text": "Paul said, \"I am the chief of sinners.\""
+                }
+              ]
+            },
+            "subject": {
+              "status": "partial",
+              "finding": "The object is Paul’s self-description as chief of sinners, not the frozen assurance or ramp-requirement subject.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 946,
+                  "end": 985,
+                  "text": "Paul said, \"I am the chief of sinners.\""
+                }
+              ]
+            },
+            "relation": {
+              "status": "withheld",
+              "finding": "No faithful mapping to knowing present acceptance, possible loss or retention is established.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 946,
+                  "end": 985,
+                  "text": "Paul said, \"I am the chief of sinners.\""
+                }
+              ]
+            },
+            "polarity": {
+              "status": "partial",
+              "finding": "The quoted self-description is affirmative in Paul’s voice. No polarity about assurance can be inferred, and the “I” must not become the preacher.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 946,
+                  "end": 985,
+                  "text": "Paul said, \"I am the chief of sinners.\""
+                }
+              ]
+            },
+            "expression": {
+              "status": "supported",
+              "finding": "The supplied wording is an assertion.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 946,
+                  "end": 985,
+                  "text": "Paul said, \"I am the chief of sinners.\""
+                }
+              ]
+            },
+            "voice": {
+              "status": "supported",
+              "finding": "Paul is explicitly identified as the quoted speaker. The first-person “I” in the quotation belongs to Paul, not the current preacher.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 946,
+                  "end": 985,
+                  "text": "Paul said, \"I am the chief of sinners.\""
+                }
+              ]
+            },
+            "adoption": {
+              "status": "partial",
+              "finding": "The report is used to illustrate honesty; “He wasn’t trying to sugarcoat anything” evaluates that honesty. No independent adoption of the literal “chief” ranking is recorded, and no disagreement is inferred.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 946,
+                  "end": 985,
+                  "text": "Paul said, \"I am the chief of sinners.\""
+                },
+                {
+                  "source_field": "target_text",
+                  "start": 986,
+                  "end": 1025,
+                  "text": "He wasn't trying to sugarcoat anything."
+                }
+              ]
+            },
+            "conditions": {
+              "status": "not_stated",
+              "finding": "No explicit condition is bound to this proposition in the supplied target. An empty list does not establish unconditional doctrine.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 946,
+                  "end": 985,
+                  "text": "Paul said, \"I am the chief of sinners.\""
+                }
+              ]
+            },
+            "qualifications": {
+              "status": "not_stated",
+              "finding": "No additional qualification is asserted beyond the cited words; no unspoken qualification is supplied.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 946,
+                  "end": 985,
+                  "text": "Paul said, \"I am the chief of sinners.\""
+                }
+              ]
+            },
+            "epistemic_status": {
+              "status": "not_stated",
+              "finding": "No explicit speaker-uncertainty language is attached to this candidate. This is not a claim of confidence or an absence of reviewer uncertainty.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 946,
+                  "end": 985,
+                  "text": "Paul said, \"I am the chief of sinners.\""
+                }
+              ]
+            },
+            "scope": {
+              "status": "withheld",
+              "finding": "No further explicit scope can be bound; null does not mean unrestricted or permanent.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 946,
+                  "end": 985,
+                  "text": "Paul said, \"I am the chief of sinners.\""
+                }
+              ]
+            }
+          },
+          "additional_binding_evidence": [],
+          "withheld_conclusions": [
+            "The preacher calls himself the chief of sinners",
+            "The preacher affirms a literal ranking of Paul as the worst sinner",
+            "Reported quotation establishes an assurance position"
+          ],
+          "contract_gap_ids": [
+            "predicate_inventory"
+          ]
+        },
+        {
+          "id": "P2-warning",
+          "title": "A warning attributed to Jesus",
+          "proposed_reading": "The preacher attributes to Jesus the warning that the lukewarm addressee will be vomited out. The local account names Laodicea (captioned “Leodysia”). The image must not automatically become a fully specified doctrine of losing salvation.",
+          "unit": {
+            "candidate_id": "P2-warning",
+            "claim_span": {
+              "source_field": "target_text",
+              "start": 1929,
+              "end": 2012,
+              "text": "because you are lukewarm and neither cold nor hot I will vomit you out of my mouth."
+            }
+          },
+          "phrase_pools": {
+            "objects": {},
+            "conditions": {},
+            "uncertainty": {},
+            "scopes": {
+              "scope": {
+                "source_field": "target_text",
+                "start": 1784,
+                "end": 1856,
+                "text": "Leodysia wasn't hot like that place, and it wasn't cold like that place."
+              }
+            },
+            "frames": {
+              "voice": {
+                "source_field": "target_text",
+                "start": 1857,
+                "end": 2012,
+                "text": "Jesus says he wishes Leodysia was one thing or the other saying so then because you are lukewarm and neither cold nor hot I will vomit you out of my mouth."
+              },
+              "adoption": {
+                "source_field": "target_text",
+                "start": 2013,
+                "end": 2135,
+                "text": "Isn't it interesting? Jesus says, \"Be one thing or the other. Don't try to be neutral. You can't just slide through here.\""
+              }
+            }
+          },
+          "authored_decisions": {
+            "subject": "unclear",
+            "relation": "unclear",
+            "polarity": "unclear",
+            "expression": "assertion",
+            "voice": "reported_other",
+            "adoption": "undetermined",
+            "epistemic_status": "not_stated",
+            "boundary": "local_sufficient",
+            "object_anchor": "none",
+            "epistemic_evidence": "none",
+            "scope_evidence": "scope",
+            "voice_evidence": "voice",
+            "adoption_evidence": "adoption"
+          },
+          "field_review": {
+            "proposition": {
+              "status": "supported",
+              "finding": "The preacher attributes to Jesus the warning that the lukewarm addressee will be vomited out. The local account names Laodicea (captioned “Leodysia”). The image must not automatically become a fully specified doctrine of losing salvation.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1929,
+                  "end": 2012,
+                  "text": "because you are lukewarm and neither cold nor hot I will vomit you out of my mouth."
+                }
+              ]
+            },
+            "subject": {
+              "status": "withheld",
+              "finding": "No approved assurance subject/relation is inferred from saving vocabulary alone.",
+              "evidence": []
+            },
+            "relation": {
+              "status": "withheld",
+              "finding": "No faithful mapping to knowing present acceptance, possible loss or retention is established.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1929,
+                  "end": 2012,
+                  "text": "because you are lukewarm and neither cold nor hot I will vomit you out of my mouth."
+                }
+              ]
+            },
+            "polarity": {
+              "status": "partial",
+              "finding": "The quoted warning is affirmative in its own wording. A polarity for the separate predicate “salvation can be lost” is withheld.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1929,
+                  "end": 2012,
+                  "text": "because you are lukewarm and neither cold nor hot I will vomit you out of my mouth."
+                }
+              ]
+            },
+            "expression": {
+              "status": "supported",
+              "finding": "The supplied wording is an assertion.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1929,
+                  "end": 2012,
+                  "text": "because you are lukewarm and neither cold nor hot I will vomit you out of my mouth."
+                }
+              ]
+            },
+            "voice": {
+              "status": "supported",
+              "finding": "“Jesus says” explicitly attributes the warning to Jesus within the preacher’s report.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1857,
+                  "end": 2012,
+                  "text": "Jesus says he wishes Leodysia was one thing or the other saying so then because you are lukewarm and neither cold nor hot I will vomit you out of my mouth."
+                }
+              ]
+            },
+            "adoption": {
+              "status": "withheld",
+              "finding": "The preacher applies the warning against neutrality, but the target does not explicitly adopt a normalized loss-of-salvation proposition. That stronger adoption remains undetermined.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2013,
+                  "end": 2135,
+                  "text": "Isn't it interesting? Jesus says, \"Be one thing or the other. Don't try to be neutral. You can't just slide through here.\""
+                }
+              ]
+            },
+            "conditions": {
+              "status": "not_stated",
+              "finding": "No explicit condition is bound to this proposition in the supplied target. An empty list does not establish unconditional doctrine.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1929,
+                  "end": 2012,
+                  "text": "because you are lukewarm and neither cold nor hot I will vomit you out of my mouth."
+                }
+              ]
+            },
+            "qualifications": {
+              "status": "partial",
+              "finding": "“because you are lukewarm and neither cold nor hot” is the stated ground of the warning. Do not turn “because” into an invented if/only-if salvation condition.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1929,
+                  "end": 1978,
+                  "text": "because you are lukewarm and neither cold nor hot"
+                }
+              ]
+            },
+            "epistemic_status": {
+              "status": "not_stated",
+              "finding": "No explicit speaker-uncertainty language is attached to this candidate. This is not a claim of confidence or an absence of reviewer uncertainty.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1929,
+                  "end": 2012,
+                  "text": "because you are lukewarm and neither cold nor hot I will vomit you out of my mouth."
+                }
+              ]
+            },
+            "scope": {
+              "status": "supported",
+              "finding": "Only this stated scope is retained.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 1784,
+                  "end": 1856,
+                  "text": "Leodysia wasn't hot like that place, and it wasn't cold like that place."
+                }
+              ]
+            }
+          },
+          "additional_binding_evidence": [
+            {
+              "source_field": "target_text",
+              "start": 1929,
+              "end": 1978,
+              "text": "because you are lukewarm and neither cold nor hot"
+            }
+          ],
+          "withheld_conclusions": [
+            "A universal loss-of-salvation doctrine",
+            "The preacher explicitly affirms a particular loss mechanism",
+            "An unconditional judgment about every current listener"
+          ],
+          "contract_gap_ids": [
+            "predicate_inventory",
+            "nonconditional_qualification"
+          ]
+        },
+        {
+          "id": "P2-middle-report",
+          "title": "The reported “middle of the road” identity",
+          "proposed_reading": "The preacher reports people calling themselves “middle of the road” Christians. His following challenge criticizes that stance, but the exact quoted identity is not converted into an adopted opposite.",
+          "unit": {
+            "candidate_id": "P2-middle-report",
+            "claim_span": {
+              "source_field": "target_text",
+              "start": 2136,
+              "end": 2196,
+              "text": "I hear people saying, \"I am a middle of the road Christian.\""
+            }
+          },
+          "phrase_pools": {
+            "objects": {},
+            "conditions": {},
+            "uncertainty": {},
+            "scopes": {},
+            "frames": {
+              "voice": {
+                "source_field": "target_text",
+                "start": 2136,
+                "end": 2196,
+                "text": "I hear people saying, \"I am a middle of the road Christian.\""
+              },
+              "adoption": {
+                "source_field": "target_text",
+                "start": 2136,
+                "end": 2196,
+                "text": "I hear people saying, \"I am a middle of the road Christian.\""
+              }
+            }
+          },
+          "authored_decisions": {
+            "subject": "no_match",
+            "relation": "no_match",
+            "polarity": "unclear",
+            "expression": "assertion",
+            "voice": "reported_other",
+            "adoption": "undetermined",
+            "epistemic_status": "not_stated",
+            "boundary": "local_sufficient",
+            "object_anchor": "none",
+            "epistemic_evidence": "none",
+            "scope_evidence": "none",
+            "voice_evidence": "voice",
+            "adoption_evidence": "adoption"
+          },
+          "field_review": {
+            "proposition": {
+              "status": "supported",
+              "finding": "The preacher reports people calling themselves “middle of the road” Christians. His following challenge criticizes that stance, but the exact quoted identity is not converted into an adopted opposite.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2136,
+                  "end": 2196,
+                  "text": "I hear people saying, \"I am a middle of the road Christian.\""
+                }
+              ]
+            },
+            "subject": {
+              "status": "partial",
+              "finding": "The object is a reported Christian self-description/stance, not an in-scope assurance relation.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2136,
+                  "end": 2196,
+                  "text": "I hear people saying, \"I am a middle of the road Christian.\""
+                }
+              ]
+            },
+            "relation": {
+              "status": "withheld",
+              "finding": "No faithful mapping to knowing present acceptance, possible loss or retention is established.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2136,
+                  "end": 2196,
+                  "text": "I hear people saying, \"I am a middle of the road Christian.\""
+                }
+              ]
+            },
+            "polarity": {
+              "status": "partial",
+              "finding": "The reported self-description is affirmative in its speakers’ voices. The preacher’s subsequent negative evaluation does not invert it into a denial of their Christian identity or an assurance proposition.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2136,
+                  "end": 2196,
+                  "text": "I hear people saying, \"I am a middle of the road Christian.\""
+                }
+              ]
+            },
+            "expression": {
+              "status": "supported",
+              "finding": "The supplied wording is an assertion.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2136,
+                  "end": 2196,
+                  "text": "I hear people saying, \"I am a middle of the road Christian.\""
+                }
+              ]
+            },
+            "voice": {
+              "status": "supported",
+              "finding": "“I hear people saying” attributes the first-person self-description to reported people.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2136,
+                  "end": 2196,
+                  "text": "I hear people saying, \"I am a middle of the road Christian.\""
+                }
+              ]
+            },
+            "adoption": {
+              "status": "withheld",
+              "finding": "The following rhetorical challenge rejects the desirability/adequacy of neutrality. It does not unambiguously deny that the reported people are Christians. G1 adoption of that exact identity claim remains undetermined.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2197,
+                  "end": 2360,
+                  "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+                }
+              ]
+            },
+            "conditions": {
+              "status": "not_stated",
+              "finding": "No explicit condition is bound to this proposition in the supplied target. An empty list does not establish unconditional doctrine.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2136,
+                  "end": 2196,
+                  "text": "I hear people saying, \"I am a middle of the road Christian.\""
+                }
+              ]
+            },
+            "qualifications": {
+              "status": "not_stated",
+              "finding": "No additional qualification is asserted beyond the cited words; no unspoken qualification is supplied.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2136,
+                  "end": 2196,
+                  "text": "I hear people saying, \"I am a middle of the road Christian.\""
+                }
+              ]
+            },
+            "epistemic_status": {
+              "status": "not_stated",
+              "finding": "No explicit speaker-uncertainty language is attached to this candidate. This is not a claim of confidence or an absence of reviewer uncertainty.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2136,
+                  "end": 2196,
+                  "text": "I hear people saying, \"I am a middle of the road Christian.\""
+                }
+              ]
+            },
+            "scope": {
+              "status": "withheld",
+              "finding": "No further explicit scope can be bound; null does not mean unrestricted or permanent.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2136,
+                  "end": 2196,
+                  "text": "I hear people saying, \"I am a middle of the road Christian.\""
+                }
+              ]
+            }
+          },
+          "additional_binding_evidence": [],
+          "withheld_conclusions": [
+            "These reported people are not Christians",
+            "Rejection of neutrality entails an opposite assurance or salvation-loss doctrine"
+          ],
+          "contract_gap_ids": [
+            "predicate_inventory",
+            "evaluation_target"
+          ]
+        },
+        {
+          "id": "P2-middle-critique",
+          "title": "The preacher’s own criticism of neutrality",
+          "proposed_reading": "The preacher challenges the “middle of the road Christian” stance and portrays the middle of the road as an unsafe place to stand. This is a negative evaluation of a stance, not a declared assurance relation.",
+          "unit": {
+            "candidate_id": "P2-middle-critique",
+            "claim_span": {
+              "source_field": "target_text",
+              "start": 2197,
+              "end": 2360,
+              "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+            }
+          },
+          "phrase_pools": {
+            "objects": {},
+            "conditions": {},
+            "uncertainty": {},
+            "scopes": {},
+            "frames": {
+              "voice": {
+                "source_field": "target_text",
+                "start": 2197,
+                "end": 2360,
+                "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+              },
+              "adoption": {
+                "source_field": "target_text",
+                "start": 2197,
+                "end": 2360,
+                "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+              }
+            }
+          },
+          "authored_decisions": {
+            "subject": "no_match",
+            "relation": "no_match",
+            "polarity": "unclear",
+            "expression": "assertion",
+            "voice": "preacher",
+            "adoption": "own_assertion",
+            "epistemic_status": "not_stated",
+            "boundary": "local_sufficient",
+            "object_anchor": "none",
+            "epistemic_evidence": "none",
+            "scope_evidence": "none",
+            "voice_evidence": "voice",
+            "adoption_evidence": "adoption"
+          },
+          "field_review": {
+            "proposition": {
+              "status": "supported",
+              "finding": "The preacher challenges the “middle of the road Christian” stance and portrays the middle of the road as an unsafe place to stand. This is a negative evaluation of a stance, not a declared assurance relation.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2197,
+                  "end": 2360,
+                  "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+                }
+              ]
+            },
+            "subject": {
+              "status": "partial",
+              "finding": "The object of the preacher’s criticism is the middle-of-the-road stance. Its adequacy/desirability is separate from whether the reported people are Christians.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2197,
+                  "end": 2360,
+                  "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+                }
+              ]
+            },
+            "relation": {
+              "status": "withheld",
+              "finding": "No faithful mapping to knowing present acceptance, possible loss or retention is established.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2197,
+                  "end": 2360,
+                  "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+                }
+              ]
+            },
+            "polarity": {
+              "status": "partial",
+              "finding": "The evaluation of neutrality is negative. That is not a denial or affirmation of any of the frozen assurance predicates.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2197,
+                  "end": 2360,
+                  "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+                }
+              ]
+            },
+            "expression": {
+              "status": "supported",
+              "finding": "The supplied wording is an assertion.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2197,
+                  "end": 2360,
+                  "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+                }
+              ]
+            },
+            "voice": {
+              "status": "supported",
+              "finding": "Current preacher speech, without a separate attributed speaker in this assertion.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2197,
+                  "end": 2360,
+                  "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+                }
+              ]
+            },
+            "adoption": {
+              "status": "supported",
+              "finding": "The preacher uses this assertion in his own exposition.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2197,
+                  "end": 2360,
+                  "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+                }
+              ]
+            },
+            "conditions": {
+              "status": "not_stated",
+              "finding": "No explicit condition is bound to this proposition in the supplied target. An empty list does not establish unconditional doctrine.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2197,
+                  "end": 2360,
+                  "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+                }
+              ]
+            },
+            "qualifications": {
+              "status": "supported",
+              "finding": "The road/traffic image is the preacher’s stated rationale for his challenge. It is not a literal salvation-loss condition.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2197,
+                  "end": 2360,
+                  "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+                }
+              ]
+            },
+            "epistemic_status": {
+              "status": "not_stated",
+              "finding": "No explicit speaker-uncertainty language is attached to this candidate. This is not a claim of confidence or an absence of reviewer uncertainty.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2197,
+                  "end": 2360,
+                  "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+                }
+              ]
+            },
+            "scope": {
+              "status": "withheld",
+              "finding": "No further explicit scope can be bound; null does not mean unrestricted or permanent.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 2197,
+                  "end": 2360,
+                  "text": "I would love to know what that is because the one place you don't want to stand is the middle of the road. You get run over by traffic coming from both directions."
+                }
+              ]
+            }
+          },
+          "additional_binding_evidence": [],
+          "withheld_conclusions": [
+            "A logical negation of the reported people’s Christian identity",
+            "An inferred opposite assurance belief"
+          ],
+          "contract_gap_ids": [
+            "predicate_inventory",
+            "evaluation_target"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "P3",
+      "evidence_id": "e-281-123-salvation-assurance_security",
+      "source_sha256": "f29ea5209aebd467b42d054104dbeb021d926e03fa414043b3e8ee78dda0ab2a",
+      "target_sha256": "25a87081968076bce9c235daf8ecd45f943ea0be57676e7669204aed355ce65f",
+      "context_sha256": "4b4c33036a1f59b93c66f5fb89d956f17dc2485a399495dda76513d9e299d629",
+      "readings": [
+        {
+          "id": "P3-invitation",
+          "title": "The preacher invites a statement of confidence",
+          "proposed_reading": "The preacher asks listeners whether they can look beyond their mistakes and say that God will forgive them. This is an invitation to voice confidence, not an explicit unanswered question about whether present acceptance can be known.",
+          "unit": {
+            "candidate_id": "P3-invitation",
+            "claim_span": {
+              "source_field": "target_text",
+              "start": 205,
+              "end": 289,
+              "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+            }
+          },
+          "phrase_pools": {
+            "objects": {
+              "object": {
+                "source_field": "target_text",
+                "start": 268,
+                "end": 288,
+                "text": "God will forgive me."
+              }
+            },
+            "conditions": {},
+            "uncertainty": {},
+            "scopes": {},
+            "frames": {
+              "voice": {
+                "source_field": "target_text",
+                "start": 205,
+                "end": 289,
+                "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+              },
+              "adoption": {
+                "source_field": "target_text",
+                "start": 205,
+                "end": 289,
+                "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+              }
+            }
+          },
+          "authored_decisions": {
+            "subject": "salvation_acceptance",
+            "relation": "no_match",
+            "polarity": "unclear",
+            "expression": "question",
+            "voice": "preacher",
+            "adoption": "undetermined",
+            "epistemic_status": "not_stated",
+            "boundary": "local_sufficient",
+            "object_anchor": "object",
+            "epistemic_evidence": "none",
+            "scope_evidence": "none",
+            "voice_evidence": "voice",
+            "adoption_evidence": "adoption"
+          },
+          "field_review": {
+            "proposition": {
+              "status": "supported",
+              "finding": "The preacher asks listeners whether they can look beyond their mistakes and say that God will forgive them. This is an invitation to voice confidence, not an explicit unanswered question about whether present acceptance can be known.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 205,
+                  "end": 289,
+                  "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+                }
+              ]
+            },
+            "subject": {
+              "status": "partial",
+              "finding": "The quoted content concerns God forgiving the projected listener. That does not itself express whether present saving acceptance can be known.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 268,
+                  "end": 288,
+                  "text": "God will forgive me."
+                }
+              ]
+            },
+            "relation": {
+              "status": "withheld",
+              "finding": "No faithful mapping to knowing present acceptance, possible loss or retention is established.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 205,
+                  "end": 289,
+                  "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+                }
+              ]
+            },
+            "polarity": {
+              "status": "partial",
+              "finding": "The outer question invites a response and states no answer to a G1 knowability proposition. Polarity remains withheld; it is not labeled unsettled merely because question form is present.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 205,
+                  "end": 289,
+                  "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+                }
+              ]
+            },
+            "expression": {
+              "status": "partial",
+              "finding": "The outer “Can you ... say” is a rhetorical invitation in question form. The source does not explicitly pose the G1 knowability question, and does not express the preacher’s uncertainty.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 205,
+                  "end": 289,
+                  "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+                }
+              ]
+            },
+            "voice": {
+              "status": "supported",
+              "finding": "Current preacher speech, without a separate attributed speaker in this assertion.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 205,
+                  "end": 289,
+                  "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+                }
+              ]
+            },
+            "adoption": {
+              "status": "withheld",
+              "finding": "The preacher supplies and invites the wording, but this does not make the outer question an own-asserted present-acceptance proposition.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 205,
+                  "end": 289,
+                  "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+                }
+              ]
+            },
+            "conditions": {
+              "status": "not_stated",
+              "finding": "No explicit condition is bound to this proposition in the supplied target. An empty list does not establish unconditional doctrine.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 205,
+                  "end": 289,
+                  "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+                }
+              ]
+            },
+            "qualifications": {
+              "status": "supported",
+              "finding": "The listener’s missteps/mistakes are the circumstance addressed. “look beyond” is not encoded as an if/only-if condition of forgiveness.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 205,
+                  "end": 289,
+                  "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+                }
+              ]
+            },
+            "epistemic_status": {
+              "status": "not_stated",
+              "finding": "No explicit speaker-uncertainty language is attached to this candidate. This is not a claim of confidence or an absence of reviewer uncertainty.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 205,
+                  "end": 289,
+                  "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+                }
+              ]
+            },
+            "scope": {
+              "status": "withheld",
+              "finding": "No further explicit scope can be bound; null does not mean unrestricted or permanent.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 205,
+                  "end": 289,
+                  "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+                }
+              ]
+            }
+          },
+          "additional_binding_evidence": [],
+          "withheld_conclusions": [
+            "The preacher is uncertain about whether God forgives",
+            "The current listener is already forgiven",
+            "A below-threshold assurance value means doctrinal denial"
+          ],
+          "contract_gap_ids": [
+            "predicate_inventory",
+            "rhetorical_invitation"
+          ]
+        },
+        {
+          "id": "P3-forgiveness",
+          "title": "The invited listener’s projected statement",
+          "proposed_reading": "The projected statement says “God will forgive me.” Its future first-person wording belongs to the listener the preacher is inviting to speak, not an attested report or the preacher’s personal saving status.",
+          "unit": {
+            "candidate_id": "P3-forgiveness",
+            "claim_span": {
+              "source_field": "target_text",
+              "start": 268,
+              "end": 288,
+              "text": "God will forgive me."
+            }
+          },
+          "phrase_pools": {
+            "objects": {
+              "object": {
+                "source_field": "target_text",
+                "start": 268,
+                "end": 288,
+                "text": "God will forgive me."
+              }
+            },
+            "conditions": {},
+            "uncertainty": {},
+            "scopes": {},
+            "frames": {
+              "voice": {
+                "source_field": "target_text",
+                "start": 205,
+                "end": 289,
+                "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+              },
+              "adoption": {
+                "source_field": "target_text",
+                "start": 205,
+                "end": 289,
+                "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+              }
+            }
+          },
+          "authored_decisions": {
+            "subject": "salvation_acceptance",
+            "relation": "no_match",
+            "polarity": "unclear",
+            "expression": "unclear",
+            "voice": "unclear",
+            "adoption": "undetermined",
+            "epistemic_status": "not_stated",
+            "boundary": "local_sufficient",
+            "object_anchor": "object",
+            "epistemic_evidence": "none",
+            "scope_evidence": "none",
+            "voice_evidence": "voice",
+            "adoption_evidence": "adoption"
+          },
+          "field_review": {
+            "proposition": {
+              "status": "supported",
+              "finding": "The projected statement says “God will forgive me.” Its future first-person wording belongs to the listener the preacher is inviting to speak, not an attested report or the preacher’s personal saving status.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 268,
+                  "end": 288,
+                  "text": "God will forgive me."
+                }
+              ]
+            },
+            "subject": {
+              "status": "partial",
+              "finding": "The literal content is future divine forgiveness of the prospective speaker (“me”). The target does not state an actual named listener’s present acceptance.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 268,
+                  "end": 288,
+                  "text": "God will forgive me."
+                }
+              ]
+            },
+            "relation": {
+              "status": "withheld",
+              "finding": "No faithful mapping to knowing present acceptance, possible loss or retention is established.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 268,
+                  "end": 288,
+                  "text": "God will forgive me."
+                }
+              ]
+            },
+            "polarity": {
+              "status": "partial",
+              "finding": "The nested wording is affirmative about future forgiveness; polarity of present knowability/loss/retention is not established.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 268,
+                  "end": 288,
+                  "text": "God will forgive me."
+                }
+              ]
+            },
+            "expression": {
+              "status": "withheld",
+              "finding": "The nested wording is declarative in form, but is supplied as a prospective listener utterance rather than an attested assertion. The frozen expression menu does not encode that distinction; do not relabel it as an actual listener assertion.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 268,
+                  "end": 288,
+                  "text": "God will forgive me."
+                },
+                {
+                  "source_field": "target_text",
+                  "start": 205,
+                  "end": 289,
+                  "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+                }
+              ]
+            },
+            "voice": {
+              "status": "withheld",
+              "finding": "The invitation explicitly projects the listener as the person who could say “me.” The frozen voice menu does not distinguish an invited future speaker from an actual reported speaker.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 205,
+                  "end": 289,
+                  "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+                }
+              ]
+            },
+            "adoption": {
+              "status": "withheld",
+              "finding": "Inviting this wording is positive encouragement, but the current record cannot convert that into an adopted assertion that a specific person is now accepted. The stronger binding remains undetermined.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 205,
+                  "end": 289,
+                  "text": "Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\""
+                }
+              ]
+            },
+            "conditions": {
+              "status": "not_stated",
+              "finding": "No explicit condition is bound to this proposition in the supplied target. An empty list does not establish unconditional doctrine.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 268,
+                  "end": 288,
+                  "text": "God will forgive me."
+                }
+              ]
+            },
+            "qualifications": {
+              "status": "not_stated",
+              "finding": "No additional qualification is asserted beyond the cited words; no unspoken qualification is supplied.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 268,
+                  "end": 288,
+                  "text": "God will forgive me."
+                }
+              ]
+            },
+            "epistemic_status": {
+              "status": "not_stated",
+              "finding": "No explicit speaker-uncertainty language is attached to this candidate. This is not a claim of confidence or an absence of reviewer uncertainty.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 268,
+                  "end": 288,
+                  "text": "God will forgive me."
+                }
+              ]
+            },
+            "scope": {
+              "status": "partial",
+              "finding": "“will” is future wording and “me” is the projected listener. No present acceptance, permanent security or actual named person is established.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 268,
+                  "end": 288,
+                  "text": "God will forgive me."
+                }
+              ]
+            }
+          },
+          "additional_binding_evidence": [],
+          "withheld_conclusions": [
+            "The preacher is speaking about his own present saving standing",
+            "The listener actually uttered the declaration",
+            "A settled permanent-security position"
+          ],
+          "contract_gap_ids": [
+            "predicate_inventory",
+            "projected_voice",
+            "rhetorical_invitation"
+          ]
+        },
+        {
+          "id": "P3-place",
+          "title": "An invited declaration about a place in heaven",
+          "proposed_reading": "The preacher invites a listener to say that there is a place in heaven bearing their name and that Jesus is preparing it. This is proposed confidence language within an invitation, not evidence that a particular listener has spoken or is permanently secure.",
+          "unit": {
+            "candidate_id": "P3-place",
+            "claim_span": {
+              "source_field": "target_text",
+              "start": 443,
+              "end": 523,
+              "text": "There's one there with my name plate on it. He's there preparing a place for me."
+            }
+          },
+          "phrase_pools": {
+            "objects": {},
+            "conditions": {},
+            "uncertainty": {},
+            "scopes": {},
+            "frames": {
+              "voice": {
+                "source_field": "target_text",
+                "start": 389,
+                "end": 524,
+                "text": "Can you look towards the mansions in heaven and say, \"There's one there with my name plate on it. He's there preparing a place for me.\""
+              },
+              "adoption": {
+                "source_field": "target_text",
+                "start": 389,
+                "end": 524,
+                "text": "Can you look towards the mansions in heaven and say, \"There's one there with my name plate on it. He's there preparing a place for me.\""
+              }
+            }
+          },
+          "authored_decisions": {
+            "subject": "unclear",
+            "relation": "unclear",
+            "polarity": "unclear",
+            "expression": "unclear",
+            "voice": "unclear",
+            "adoption": "undetermined",
+            "epistemic_status": "not_stated",
+            "boundary": "local_sufficient",
+            "object_anchor": "none",
+            "epistemic_evidence": "none",
+            "scope_evidence": "none",
+            "voice_evidence": "voice",
+            "adoption_evidence": "adoption"
+          },
+          "field_review": {
+            "proposition": {
+              "status": "supported",
+              "finding": "The preacher invites a listener to say that there is a place in heaven bearing their name and that Jesus is preparing it. This is proposed confidence language within an invitation, not evidence that a particular listener has spoken or is permanently secure.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 443,
+                  "end": 523,
+                  "text": "There's one there with my name plate on it. He's there preparing a place for me."
+                }
+              ]
+            },
+            "subject": {
+              "status": "partial",
+              "finding": "The object is a prepared place in heaven; Jesus is identified earlier in the target. That is not an explicit present-acceptance/loss/retention predicate.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 12,
+                  "end": 61,
+                  "text": "Freedom because of Jesus who died to set us free."
+                },
+                {
+                  "source_field": "target_text",
+                  "start": 443,
+                  "end": 523,
+                  "text": "There's one there with my name plate on it. He's there preparing a place for me."
+                }
+              ]
+            },
+            "relation": {
+              "status": "withheld",
+              "finding": "No faithful mapping to knowing present acceptance, possible loss or retention is established.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 443,
+                  "end": 523,
+                  "text": "There's one there with my name plate on it. He's there preparing a place for me."
+                }
+              ]
+            },
+            "polarity": {
+              "status": "partial",
+              "finding": "The projected declaration is affirmative about a named place and its preparation. It does not establish a polarity for permanent security, loss or present knowability.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 443,
+                  "end": 523,
+                  "text": "There's one there with my name plate on it. He's there preparing a place for me."
+                }
+              ]
+            },
+            "expression": {
+              "status": "withheld",
+              "finding": "The nested wording is declarative in form, but is supplied as a prospective listener utterance rather than an attested assertion. The frozen expression menu does not encode that distinction; do not relabel it as an actual listener assertion.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 443,
+                  "end": 523,
+                  "text": "There's one there with my name plate on it. He's there preparing a place for me."
+                },
+                {
+                  "source_field": "target_text",
+                  "start": 389,
+                  "end": 524,
+                  "text": "Can you look towards the mansions in heaven and say, \"There's one there with my name plate on it. He's there preparing a place for me.\""
+                }
+              ]
+            },
+            "voice": {
+              "status": "withheld",
+              "finding": "The outer invitation supplies a hypothetical listener’s first-person declaration. It must not become the preacher’s own autobiographical claim or an actual listener report.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 389,
+                  "end": 524,
+                  "text": "Can you look towards the mansions in heaven and say, \"There's one there with my name plate on it. He's there preparing a place for me.\""
+                }
+              ]
+            },
+            "adoption": {
+              "status": "withheld",
+              "finding": "The preacher encourages this expression of confidence, but does not explicitly state the stronger normalized G1 assurance proposition. Its adoption remains undetermined.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 389,
+                  "end": 524,
+                  "text": "Can you look towards the mansions in heaven and say, \"There's one there with my name plate on it. He's there preparing a place for me.\""
+                }
+              ]
+            },
+            "conditions": {
+              "status": "not_stated",
+              "finding": "No explicit condition is bound to this proposition in the supplied target. An empty list does not establish unconditional doctrine.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 443,
+                  "end": 523,
+                  "text": "There's one there with my name plate on it. He's there preparing a place for me."
+                }
+              ]
+            },
+            "qualifications": {
+              "status": "not_stated",
+              "finding": "No additional qualification is asserted beyond the cited words; no unspoken qualification is supplied.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 443,
+                  "end": 523,
+                  "text": "There's one there with my name plate on it. He's there preparing a place for me."
+                }
+              ]
+            },
+            "epistemic_status": {
+              "status": "not_stated",
+              "finding": "No explicit speaker-uncertainty language is attached to this candidate. This is not a claim of confidence or an absence of reviewer uncertainty.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 443,
+                  "end": 523,
+                  "text": "There's one there with my name plate on it. He's there preparing a place for me."
+                }
+              ]
+            },
+            "scope": {
+              "status": "partial",
+              "finding": "“my”/“me” refer to the invited speaker. “in heaven” is the stated location; no unconditional/permanent temporal scope is supplied.",
+              "evidence": [
+                {
+                  "source_field": "target_text",
+                  "start": 389,
+                  "end": 524,
+                  "text": "Can you look towards the mansions in heaven and say, \"There's one there with my name plate on it. He's there preparing a place for me.\""
+                }
+              ]
+            }
+          },
+          "additional_binding_evidence": [],
+          "withheld_conclusions": [
+            "An identified listener is already guaranteed heaven",
+            "The preacher affirms unconditional permanent security"
+          ],
+          "contract_gap_ids": [
+            "predicate_inventory",
+            "projected_voice",
+            "rhetorical_invitation"
+          ]
+        }
+      ]
+    }
+  ],
+  "inventory_fingerprint": "2fdec9947ae2ca5a11ab17094fb159e982365693dc5d10549d276e0cb6995559",
+  "membership_fingerprint": "b68b622f1b9ac8b4b3ea3c7c9b171b947ed4221f8330b5c2594a660ca9a15e3f"
+}

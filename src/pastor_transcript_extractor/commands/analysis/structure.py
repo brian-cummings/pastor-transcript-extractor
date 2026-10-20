@@ -471,3 +471,25 @@ def analysis_structure_population_show(
         console.print_json(data={"snapshot_id": snapshot.id, "report": report})
     else:
         _print_structure_population(snapshot, report)
+
+
+@analysis_app.command('profile-binding-review', help='Render the completed source-reviewed proposition-binding pilot on the three prepared passages; no providers or automatic binding.')
+def analysis_profile_binding_review(
+    check_only: bool = typer.Option(False, '--check-only', help='Verify current source identity and authored literal evidence without writing artifacts.'),
+    as_json: bool = typer.Option(False, '--json'),
+    base_dir: Path | None = typer.Option(None, help='Override app data directory.'),
+) -> None:
+    from pastor_transcript_extractor import profile_binding_pilot as pilot
+    try:
+        if check_only:
+            report = pilot.load(base_dir)
+            path = None
+        else:
+            report, path = pilot.prepare(base_dir)
+    except (ValueError, OSError, KeyError, TypeError, StopIteration) as error:
+        raise typer.BadParameter(str(error)) from error
+    output = dict(status=report['status'], fingerprint=report['content_fingerprint'],
+        passages=len(report['cases']), proposed_readings=sum(len(c['readings']) for c in report['cases']),
+        verdict=report['conclusion']['verdict'], provider_requests=0, database_writes=0,
+        path=str(path) if path else None)
+    console.print_json(data=output) if as_json else console.print(output,markup=False)
