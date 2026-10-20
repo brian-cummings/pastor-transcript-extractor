@@ -1,12 +1,20 @@
 # Automatic generic proposition binding: bounded development workflow
 
-**2026-10-20: implementation delivered; live execution awaits direct confirmation required by automatic approval review. No live model result or performance conclusion is available yet.** The new goal requests implementation and execution on only the three existing passages and ten reviewed readings. Two launch attempts were rejected before process creation; the development output directory and request ledger do not exist. No provider request has been made by this workflow.
+**2026-10-20: executed and semantically compared; decision: do not expand validation yet.** Brian directly approved this small TypeSafe run as an exception to his normal preference to execute validation commands himself. The earlier automatic-approval block is resolved. The run used only the same three passages and ten development references; no reference answers entered generation.
 
-The exact pending decision is transmission of those three passages and their existing bounded context to the repository’s existing TypeSafe System One provider, model `jev-1.13.0`, with possible provider charges. Automatic approval review does not accept authorization in the goal attachment and requires a direct user confirmation in chat. Do not bypass the rejection through another execution route.
+The run produced **24 candidates**, all literal/structural checks passing, from **15 provider requests with zero initial cache hits**. Usage was **518,549 input tokens and 59,674 output tokens**. A monetary cost was not returned; none is invented. Final artifact reconstruction reused **15 local response caches with provider construction blocked**, making zero new model calls.
+
+The source-inspected comparison finds **six readings with matching proposition content, one partial mercy account and three missing readings; zero readings faithfully preserve all reviewed field groups**. “Located” is content recovery, not full binding. The missing readings are Paul’s confession, the reported middle-road identity and the invited place-in-heaven declaration. All 16 extra generated candidates are also reviewed; valid extra theology is not called a false positive merely because it is outside the ten references.
+
+Only one generated candidate fully resolves voice/speaker (Jesus’ warning). All 24 adoption states are undetermined; no qualification, development-link or address-act record survives. The actual outer forgiveness invitation is wrongly marked projected; the inner declaration is correctly projected. Five additional outer questions/directives have the same occurrence error. Conditions are not invented, question form is not turned into expressed theological uncertainty, and no permanent-security or actual-listener-status conclusion is manufactured. Those safe withholdings do not compensate for supported fields that were omitted.
+
+**Smallest remedy:** keep these cases fixed; separate actual outer speech frames from projected inner propositions, split mixed caption paragraphs, distinguish proposition actor from voiced speaker, narrow overlapping evidence/speaker menus and bind attribution before dependent adoption/use judgments. Discovery should distinguish candidate completeness/redundancy from theological relevance. Do not lower the frozen `.80` development cutoff to improve the appearance of this result. No wider sample or independent validation is recommended on the current result.
+
+The current packet is under the configured base directory at `evaluation/automatic-generic-proposition-binding-dev-v1/runs/1037d3fc710038198075d085f1f636e56f3a323a9bf6593813622713f1bbdcfb/`: `index.html`, `review-v1.md/json`, `semantic-review-v1.json`, `generated-v1.json`, and the invocation/verification receipts. Report fingerprint: `3a4e8631911b6d3279c7bd5f828fe41ba3925a4b151a3c501fc92e5b89c50593`. The initial live-run artifact remains separately preserved; the final generated bindings are identical to it. Only presentation/semantic comparison changed after outputs were inspected.
 
 ## Runnable entry points
 
-After that direct confirmation, execute the bounded run:
+The bounded execution/resumption entry point is:
 
 ```bash
 pte analysis profile-binding-development --run --json
@@ -24,7 +32,7 @@ Verify source identity, request caches, reconstructed generated records and the 
 pte analysis profile-binding-development --check-only --json
 ```
 
-The latter commands require an existing run; they do not claim that one has already happened. Generated results, raw response caches, request ledger, invocation receipt and HTML/Markdown/JSON review live only under the configured application base directory in `evaluation/automatic-generic-proposition-binding-dev-v1/`. The command rejects repository-local artifact directories.
+The latter commands reuse the completed run without provider calls. No further live execution is needed to review these results. Generated results, raw response caches, request ledger, invocation receipt and HTML/Markdown/JSON review live only under the configured application base directory in `evaluation/automatic-generic-proposition-binding-dev-v1/`. The command rejects repository-local artifact directories.
 
 ## Implementation and boundaries
 
@@ -44,16 +52,16 @@ The workflow reuses the exact current target/context windows, source/membership 
 
 ## Comparison and decision, owned by Codex
 
-After generation, Codex inspects the actual output against the same source and ten development references, authors the semantic comparison under the application base and rerenders through `pte`. Brian is not assigned JSON authoring, case selection or open-ended annotation.
+Codex inspected the actual output against the same source and ten development references, authored the complete semantic comparison under the application base and rerendered through `pte`. Brian is not assigned JSON authoring, case selection or open-ended annotation.
 
 Every reading must show generated candidate links, the unchanged reference, agreement/material differences and correctly unresolved conclusions across twelve field groups. Dispositions are agreement, acceptable alternative, omission, unsupported inference, attribution/adoption error, evidence-binding error, other failure or correctly unresolved. Material discrepancies require exact source evidence. Every extra generated candidate must also receive an explicit disposition. Multiple generated candidates may support one reading, and merged wording can be an acceptable alternative only after semantic inspection.
 
 The report counts those dispositions across these ten readings and individual fields; it does not call them general accuracy, precision, recall, production readiness or corpus validation. Structurally valid records are not automatically semantically faithful. Token usage and provider requests/cache hits are reported from receipts; a monetary cost is not invented when absent from the provider response.
 
-The final decision must answer whether these development results justify a separate broader validation step. A negative answer must identify concrete failures and smallest remedies; a positive answer must propose the smallest independent validation. No answer is claimed before live evidence exists.
+The final decision must answer whether these development results justify a separate broader validation step. A negative answer must identify concrete failures and smallest remedies; a positive answer must propose the smallest independent validation. The completed comparison answers **no** for this implementation on these development cases, with the concrete remedies above. This is not a general claim about TypeSafe or automatic theological binding.
 
 ## Local verification
 
-**83 focused tests pass:** the 70 existing profile/pilot/plan tests plus 6 generator and 7 development-runner tests. New checks cover source-only state, literal quote/outer-frame candidates, withholding incompatible adoption/uncertainty, independent act adoption, cached replay without providers, ambiguous-interruption protection, resealed-result tampering, complete field-aware comparisons, evidence links, CLI isolation and write-free check-only. Mock provider responses are test fixtures, not development performance.
+**83 focused tests pass:** the 70 existing profile/pilot/plan tests plus 6 generator and 7 development-runner tests. New checks cover source-only state, literal quote/outer-frame candidates, withholding incompatible adoption/uncertainty, independent act adoption, cached replay without providers, ambiguous-interruption protection, resealed-result tampering, complete field-aware comparisons, evidence links, CLI isolation and write-free check-only. Mock provider responses are test fixtures, not development performance. Separately, the live run’s raw response caches reconstruct all 24 generated records exactly; the final cache-only materialization constructed no provider. Browser checks verify ten comparison sections, 24 generated sections, twelve field groups, closed technical disclosures, zero broken internal links and comparison → generated record → exact source → comparison navigation. The original ten reviewed records, all original G1 interpretations and the original V3 profile match their preserved artifacts.
 
 No broader collection, additional sermons/pastors, production activation, automatic acceptance, frozen assurance changes, profile projection, benchmark comparison/scoring, ontology expansion or Ollama quotation execution is included.
