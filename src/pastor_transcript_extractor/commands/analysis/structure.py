@@ -515,3 +515,30 @@ def analysis_profile_proposition_review(
         original_g1_records_unchanged=report['original_g1_records_unchanged'],
         provider_requests=0,database_writes=0,path=str(path) if path else None)
     console.print_json(data=output) if as_json else console.print(output,markup=False)
+
+
+@analysis_app.command('profile-binding-development', help='Run/review automatic generic binding on only the three supplied development passages; references never enter model state.')
+def analysis_profile_binding_development(
+    run_model: bool = typer.Option(False, '--run', help='Execute/resume the authorized bounded model run, reusing compatible request caches.'),
+    check_only: bool = typer.Option(False, '--check-only', help='Verify current sources and cached results/comparison without providers or writes.'),
+    as_json: bool = typer.Option(False, '--json'),
+    base_dir: Path | None = typer.Option(None, help='Override app data directory.'),
+) -> None:
+    from pastor_transcript_extractor import profile_binding_development as dev
+    if run_model and check_only:raise typer.BadParameter('--run and --check-only are mutually exclusive')
+    try:
+        if check_only:
+            result,folder,reviewed=dev.cached(base_dir)
+            path=folder/'semantic-review-v1.json'
+            comparison=dev.validate_comparison(dev.read(path),result,reviewed) if path.exists() else None
+            output=dict(status='DEVELOPMENT_RUN_COMPARED' if comparison else 'GENERATED_AWAITING_CODEX_SEMANTIC_COMPARISON',
+                generated_fingerprint=result['content_fingerprint'],passages=len(result['cases']),reviewed_readings=10,
+                generated_candidates=sum(len(c['generated']) for c in result['cases']),provider_requests=0,writes=0,path=None)
+        else:
+            report,path=dev.report(base_dir,run_model=run_model)
+            output=dict(status=report['status'],fingerprint=report['content_fingerprint'],passages=3,reviewed_readings=10,
+                generated_candidates=report['generated_candidates'],structurally_valid_candidates=report['structurally_valid_candidates'],
+                invocation=report['invocation'],usage=report['generated']['usage'],path=str(path))
+    except (ValueError,OSError,KeyError,TypeError,StopIteration) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print_json(data=output) if as_json else console.print(output,markup=False)
