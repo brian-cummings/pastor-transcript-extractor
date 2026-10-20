@@ -1,0 +1,46 @@
+{
+  "version": "segment-evidence-plan-review-v1",
+  "date": "2026-10-19",
+  "status": "PLAN_REALIGNED_DEAD_ENDS_CLOSED",
+  "plan_fingerprint": "a07eac5f57ec96d9436cba057213b572f4f7c8d871c146cd654547e4b35b3593",
+  "files": {
+    "docs/SEGMENT_EVIDENCE_PLAN.md": "b20b94d63d17c4109f0f2338210534ef75b1972fdd608fd9bd98c4ea5cda03e9",
+    "docs/review-proposals/segment-evidence-plan-v1/plan-v1.json": "e493e7bccea2df9619e8d846de46c7f5df09f39c6e963e568bf8a6d882ec2ae4",
+    "README.md": "b1b758127b135ea9c4cd553790122b852c7de07bfb111b1d9682d34a3a926d96",
+    "docs/review-proposals/README.md": "ecc4f9c3d89ac71ddacb104b6bff91547e6a92db8cc2c441d654ee5c05ddcd83",
+    "docs/review-proposals/context-extraction-probe-v1/STATUS.md": "898f5d710b751434b13f1a8d910a7cf921e1cd5368608e7779666d9f38953009",
+    "docs/review-proposals/context-evidence-architecture-v1/STATUS.md": "881bae9be4fd0ca5a7515fd6a9ee405bd35d14a18ecd870f84a21488b0736a4b",
+    "docs/review-proposals/minute-evidence-handoff-v1/STATUS.md": "2b860dcfd8d8379b89317ea3f1595bca9cb24a1d5db4ce948125dd0a9b90c8d4",
+    "docs/review-proposals/minute-evidence-handoff-implementation-v1/STATUS.md": "73fbbbe3abb9b5105e6673cef9a1eccab2b963bc485dfe883c6aed813b36d222",
+    "docs/review-proposals/typesafe-selected-window-bridge-v1/STATUS.md": "d38e13203376ed3186a045b1eaab9d8b49929daa1ad9c68a794b940125216ca7",
+    "docs/review-proposals/typesafe-position-selection-v1/STATUS.md": "bdb065d3dff10414b35e8b8a8abd6fcfe873e84d493047d00cfe5710f0dab7af",
+    "docs/review-proposals/typesafe-position-selection-source-audit-v1/STATUS.md": "386f06e742498757ee0325ac944d4534e9a43b137d793f18299ddf748bf27d8c",
+    "docs/review-proposals/existing-source-unit-span-readiness-v1/STATUS.md": "b86899711f8c15c9c80b5974856055b614e585c763f6f3d4bfc7a586d3377cb8",
+    "docs/review-proposals/collector-retrieval-design-v1/STATUS.md": "d3d6fa95e9bdad583929153f922302d69f8fc0044651cc621647464f9d8ac8d0",
+    "docs/review-proposals/collector-retrieval-implementation-v1/STATUS.md": "d3d6fa95e9bdad583929153f922302d69f8fc0044651cc621647464f9d8ac8d0",
+    "docs/review-proposals/collector-retrieval-repair-v1.1/STATUS.md": "2d5d6abe77793643108367ee831cf3e3b28378ebe7285bc917c5dd73df5a3c2e"
+  },
+  "confirmed_implementation": [
+    "nominal minute topic/context pipeline",
+    "compatible cached topic/treatment/source/directive/salvation observations with existing bounded validations",
+    "existing descriptive sermon/profile topic projections"
+  ],
+  "not_established": [
+    "all desired adopted theological positions",
+    "independent recurrence and generalization",
+    "new broad collection readiness",
+    "automatic provenance",
+    "new comparison/scoring",
+    "tail-end Ollama quotation implementation/validation"
+  ],
+  "next_recommendation": "provider_free_compatible_cached_segment_evidence_inventory_for_bounded_profile_slice",
+  "runtime_retirement": "The old completed TypeSafe selection input is rejected before provider creation; raw receipts and historical pins remain preserved.",
+  "focused_tests_passed": 29,
+  "provider_requests": 0,
+  "model_loading": false,
+  "new_collection": false,
+  "quote_implementation": false,
+  "new_projection_scoring": false,
+  "physical_deletion": false,
+  "content_fingerprint": "78e5cc9bfce0fd48fac043e7f9ffefa68aa567ff34e98ea69fa10d431cc02591"
+}

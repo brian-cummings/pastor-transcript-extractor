@@ -1,5 +1,7 @@
 # Pastor Transcript Extractor
 
+Current analysis direction: [segment evidence first, illustrative quotations last](docs/SEGMENT_EVIDENCE_PLAN.md). The exact-span nomination detour is closed; use the [current status registry](docs/review-proposals/README.md) rather than historical execution instructions.
+
 Generated evaluation artifacts now default to `<base-dir>/evaluation/`; reviewed
 fixtures, policies, evidence, and documentation remain in the repository's
 `evaluation/` directory. See
