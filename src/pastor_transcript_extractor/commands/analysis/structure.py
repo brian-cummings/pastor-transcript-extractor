@@ -495,6 +495,31 @@ def analysis_profile_binding_review(
     console.print_json(data=output) if as_json else console.print(output,markup=False)
 
 
+@analysis_app.command('profile-connected-binding', help='Extract connected propositions from only the same three supplied passages with the configured local Ollama backend.')
+def analysis_profile_connected_binding(
+    prepare_only: bool = typer.Option(False, '--prepare', help='Read-only source/request preflight; no Ollama probes, generation or writes.'),
+    run_model: bool = typer.Option(False, '--run', help='Execute/resume at most one extraction per supplied passage; no retries or model downloads.'),
+    check_only: bool = typer.Option(False, '--check-only', help='Reconstruct cached records and verify comparison without providers or writes.'),
+    as_json: bool = typer.Option(False, '--json'),
+    base_dir: Path | None = typer.Option(None, help='Override app data directory.'),
+) -> None:
+    from pastor_transcript_extractor import connected_binding_development as dev
+    if sum((prepare_only,run_model,check_only))>1:raise typer.BadParameter('--prepare, --run and --check-only are mutually exclusive')
+    try:
+        if prepare_only:output=dev.prepare(base_dir)
+        elif check_only:
+            result,folder,reference=dev.cached(base_dir)
+            path=folder/'semantic-review-v1.json'
+            if path.exists():dev.review.validate_comparison(dev.review.read(path),result,reference)
+            output=dict(status='CONNECTED_RUN_COMPARED' if path.exists() else 'GENERATED_AWAITING_CODEX_SEMANTIC_COMPARISON',provider_requests=0,writes=0,generated_fingerprint=result['content_fingerprint'])
+        else:
+            result,path=dev.report(base_dir,run_model=run_model)
+            output=dict(status=result['status'],fingerprint=result['content_fingerprint'],passages=3,generated_candidates=result['generated_candidates'],structurally_valid_candidates=result['structurally_valid_candidates'],passage_rejections=result['passage_rejections'],invocation=result['invocation'],usage=result['generated']['usage'],path=str(path))
+    except (ValueError,OSError,KeyError,TypeError,RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print_json(data=output) if as_json else console.print(output,markup=False)
+
+
 @analysis_app.command('profile-proposition-review', help='Review the same ten source readings through reusable proposition bindings and unchanged assurance interpretation; no providers.')
 def analysis_profile_proposition_review(
     check_only: bool = typer.Option(False, '--check-only', help='Verify exact source/evidence and unchanged G1 mapping without writing artifacts.'),
