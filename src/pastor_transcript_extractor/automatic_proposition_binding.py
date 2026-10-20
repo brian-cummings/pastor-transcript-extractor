@@ -9,7 +9,7 @@ import re
 from pastor_transcript_extractor import theological_binding as generic
 from pastor_transcript_extractor.binding_evidence import context_digest, text_digest, target_span
 
-VERSION = 'automatic-generic-proposition-binding-dev-v1'
+VERSION = 'automatic-generic-proposition-binding-dev-v2'
 MODEL = 'jev-1.13.0'
 # This is an abstention rule for this development run, not a measurement threshold.
 MIN_PROBABILITY = .80
@@ -42,11 +42,14 @@ def source_units(texts):
         if not s['text'] or (s['start'],s['end']) in seen:return
         if len(s['text'].split()) < 3:return
         seen.add((s['start'],s['end']));units.append(dict(span=s,origin=origin))
+    quotes=list(re.finditer(r'"([^"\n]+)"|“([^”\n]+)”',text))
     start=0
     for m in re.finditer(r'[.!?]["”]*\s+|\n+',text):
+        # A sentence inside a quotation does not terminate the outer speech act.
+        if any(q.start()<m.start() and m.start()+len(m.group().rstrip())<q.end() for q in quotes):continue
         end=m.start()+len(m.group().rstrip());add(start,end,'sentence');start=m.end()
     add(start,len(text),'sentence')
-    for m in re.finditer(r'"([^"\n]+)"|“([^”\n]+)”',text):
+    for m in quotes:
         group=1 if m.group(1) is not None else 2
         add(m.start(group),m.end(group),'embedded_quote')
     # Long punctuation-poor units need alternatives. Generic conjunction/pronoun
@@ -67,6 +70,17 @@ def source_units(texts):
                     if 5 <= words <= 55:add(left,right,'caption_clause_window')
     units.sort(key=lambda u:(u['span']['start'],u['span']['end']))
     if len(units)>MAX_UNITS:raise ValueError('Source-unit ceiling exceeded; no silent truncation')
+    for u in units:
+        s=u['span'];u['speech_layer']='unmarked'
+        for q in quotes:
+            if q.start()<s['start'] and s['end']<q.end():
+                u['speech_layer']='inside_quotation'
+                parents=[p['span'] for p in units if p['origin']=='sentence' and p['span']['start']<=q.start() and q.end()<=p['span']['end']]
+                if parents:u['outer_frame']=deepcopy(min(parents,key=lambda p:p['end']-p['start']))
+                break
+            if s['start']<=q.start() and q.end()<=s['end']:
+                u['speech_layer']='contains_quotation'
+        # These are syntactic hints only; no speaker, occurrence or adoption is inferred.
     return [dict(candidate_id=f'candidate-{i+1:02d}',**u) for i,u in enumerate(units)]
 
 
@@ -75,13 +89,28 @@ def question(task,criteria):
 
 
 def discovery_questions(units):
-    return {u['candidate_id']:question(
+    questions={}
+    for u in units:
+        questions[u['candidate_id']]=question(
         'Does source_candidates["'+u['candidate_id']+'"] express a locally recoverable theological proposition, a reported/evaluated religious stance, or an invitation to voice theological confidence? '
-        'Keep report, projected declaration and outer invitation as separate possible units. Exclude dangling clauses, bare referents, duplicate wording contained in a more complete same-layer candidate, mere fillers and unrelated illustration details. '
+        'Judge theological relevance only. Do not penalize overlapping candidates, quotation, or incompleteness here. Keep report, projected declaration and outer invitation separately eligible. '
         'A theological assertion need not fit an assurance predicate. Use target_text to interpret but not replace the exact candidate.',
-        dict(include='A distinct recoverable source proposition or theological invitation is expressed in this candidate span.',
-             exclude='Not such a proposition, incomplete fragment, unrelated detail, or redundant same-layer candidate.',
-             unresolved='Its proposition or boundary cannot be established locally.')) for u in units}
+        dict(include='The candidate contains theological assertion, religious stance or invitation content.',
+             exclude='Only unrelated details or fillers, without such content.',
+             unresolved='Theological relevance cannot be established locally.'))
+        questions[u['candidate_id']+'__boundary']=question(
+            'Does source_candidates["'+u['candidate_id']+'"] have a recoverable complete proposition or one outer speech act? '
+            'An outer invitation/report may contain a quoted declaration and remain one speech act. A standalone embedded declaration is separately complete. '
+            'Keep overlaps eligible: do not choose a preferred wording. Reject unrelated assertions/speech acts combined in one span or dangling fragments.',
+            dict(complete='One complete proposition or outer speech act, including any embedded words it frames.',
+                 mixed_or_fragment='A fragment, or multiple independent assertions/acts without a single framing act.',
+                 unresolved='Boundary or completeness unresolved.'))
+    return questions
+
+
+def included_units(units,decisions):
+    return [u for u in units if decisions[u['candidate_id']]=='include'
+            and decisions[u['candidate_id']+'__boundary']=='complete']
 
 
 def evidence_pool(texts,units,unit):
@@ -89,11 +118,12 @@ def evidence_pool(texts,units,unit):
     # adoption and relation evidence, including an endorsement in another sentence.
     text=texts['target_text'];pool={}
     spans=[unit['span']]+[u['span'] for u in units if u['origin'] in ('sentence','embedded_quote')]
-    sentences=[u['span'] for u in units if u['origin']=='sentence']
-    for i,s in enumerate(sentences):
-        if i+1<len(sentences):spans.append(span(text,s['start'],sentences[i+1]['end']))
+    if unit.get('outer_frame'):spans.append(unit['outer_frame'])
+    # Add short local lexical alternatives for caption paragraphs. Avoid many
+    # competing sentence pairs and a whole-target escape hatch on every question.
+    spans += [u['span'] for u in units if u['origin']=='caption_clause_window' and len(u['span']['text'].split())<=25]
     spans.sort(key=lambda s: (abs((s['start']+s['end'])/2-(unit['span']['start']+unit['span']['end'])/2),s['end']-s['start']))
-    spans=spans[:14]+[unit['span'],span(text,0,len(text))]
+    spans=[unit['span']]+([unit['outer_frame']] if unit.get('outer_frame') else [])+spans[:6]
     seen=set()
     for s in spans:
         key=s['start'],s['end']
@@ -101,7 +131,10 @@ def evidence_pool(texts,units,unit):
     return pool
 
 
-def field_questions(texts,unit,pool):
+FRAME_FIELDS={'voice','speaker','occurrence','voice_evidence'}
+
+
+def field_questions(texts,unit,pool,*,stage='all'):
     selector={key:dict(exact_span=value) for key,value in pool.items()}
     selector.update(none='No such evidence is stated/bound in the target.',unresolved='The relevant source binding is unresolved.')
     q={}
@@ -109,11 +142,14 @@ def field_questions(texts,unit,pool):
     add('voice','Who voices the candidate proposition, independently from the preacher’s endorsement?',dict(preacher='The preacher’s own current words.',quoted_or_reported='Words attributed to someone else, including projected listener words.',unresolved='Voiced speaker/frame unresolved.'))
     # Speaker values are source mentions, not a theology ontology. Non-name roles
     # cover unrecorded/hypothetical speech without inventing a person identity.
-    names=sorted(set(re.findall(r'\b[A-Z][a-z]{2,}\b',texts['target_text'])))
+    # Names are candidates only when the source presents them as speaking.
+    # An actor in "God saves" is not thereby the voiced speaker.
+    names=sorted(set(re.findall(r'\b([A-Z][a-z]+(?: [A-Z][a-z]+)?)\s+(?:said|says|asked|asks|declared|replied|wrote)\b',texts['target_text'])))
+    names=sorted(set(n.split(' ',1)[1] if n.split(' ')[0] in {'And','But','Then','Now'} and ' ' in n else n for n in names))
     speakers={n:'Speaker identified by literal target mention '+n for n in names}
     speakers.update(preacher='The preacher.',invited_listener='The listener invited/projected to speak.',reported_people='Unidentified people described as speaking.',unresolved='Speaker identity unresolved.')
-    add('speaker','Which speaker identity/role is supported for this candidate?',speakers)
-    add('occurrence','Does the discourse present these words as actually spoken/reported, or only projected/invited?',dict(actual='Preacher speech or speech reported as occurring; not independent historical verification.',projected='Words someone is invited, imagined or expected to say, without attested occurrence.',unresolved='Occurrence unresolved.'))
+    add('speaker','Who voices the exact candidate, rather than who acts or is discussed inside its proposition? For an outer preacher question choose preacher; invited_listener applies to the embedded declaration only.',speakers)
+    add('occurrence','Does the exact candidate occur as current/reported speech, or consist of projected words? An actual preacher invitation containing hypothetical words is actual at the outer layer; only its embedded declaration is projected. Syntactic speech_layer is a hint, not a semantic verdict.',dict(actual='Preacher speech or speech reported as occurring; not independent historical verification.',projected='Words someone is invited, imagined or expected to say, without attested occurrence.',unresolved='Occurrence unresolved.'))
     add('adoption','How does the preacher use the exact proposition? Keep speaker and adoption independent; local adoption is not systematic doctrine.',dict(own_assertion='Preacher presents this declarative teaching as own current assertion.',adopted='Preacher affirmatively endorses or uses this exact proposition as teaching/warrant or offered confession; scope to that use.',reported_not_adopted='Merely reports the proposition without affirmative current adoption.',rejected='Rejects this exact proposition, not merely a different stance or its inferred opposite.',undetermined='The exact proposition’s adoption is unresolved; an owned invitation act alone need not assert a hearer’s actual status.'))
     add('basis','What source basis supports the preacher’s use of this proposition?',dict(own_speech='Own current teaching assertion.',explicit_endorsement='Explicit positive endorsement beyond quotation.',discourse_use='Affirmative teaching/warrant/application/offered-confession use evidenced by surrounding discourse.',explicit_rejection='Exact proposition is explicitly rejected.',quotation_only='Quotation/report without an independent endorsement/use frame.',unresolved='Use basis unresolved.'))
     add('polarity','What is the polarity of the exact voiced proposition as worded? Retain its internal not/but negations; distinguish the preacher’s rejection of someone’s words.',dict(affirmed='The literal proposition is voiced affirmatively, including its internal negation/contrast.',denied='The exact literal proposition is explicitly negated in the utterance frame.',unsettled='The speaker explicitly leaves the proposition unsettled.',unresolved='The expression does not assert polarity or its polarity is unresolved.'))
@@ -131,6 +167,15 @@ def field_questions(texts,unit,pool):
     add('address_voice','For a source-supported act linked to this candidate, whose utterance performs the act? The outer preacher invitation may frame an embedded projected declaration.',dict(preacher='Preacher performs current address.',quoted_or_reported='Address attributed to another speaker.',unresolved='Act voice unresolved.'))
     add('address_adoption','For an address act linked to this candidate, what is the preacher’s stance toward that act? Judge independently of proposition adoption; a preacher can own an invitation without declaring a hearer’s saving status.',dict(own_or_adopted='Own present or affirmatively adopted address act.',not_adopted_report='Reported act without current adoption.',explicitly_rejected='Exact address act rejected.',unresolved='Act adoption unresolved.'))
     add('address_evidence','Select exact evidence linking this candidate’s act to that addressee. The surrounding invitation may frame a projected declaration; do not attest a listener response.',selector)
+    if stage=='frame':return {k:v for k,v in q.items() if k in FRAME_FIELDS}
+    if stage=='interpretation':
+        q={k:v for k,v in q.items() if k not in FRAME_FIELDS}
+        for value in q.values():
+            value['instructions']['task'] += (' State candidate.frame_selection contains the prior generated attribution decisions and unresolved fields, not reviewed truth. '
+                'Use that exact speech layer when judging dependent use/links; keep unresolved if a required frame remains unknown. '
+                'Do not substitute the inner declaration for the outer act or treat a proposition actor as its speaker.')
+        return q
+    if stage!='all':raise ValueError('Unknown binding stage')
     return q
 
 
@@ -168,6 +213,9 @@ def compose(texts,unit,pool,decisions,provenance):
         adoption='undetermined';basis='unresolved';diagnostics.append('adoption_evidence_missing')
     unknowns=['Automatic development candidate; no accepted observation, pastor-wide position, verified hearer status or external quotation accuracy.']
     unknowns += [name.replace('_',' ')+': unresolved by generated choices.' for name in ('voice','speaker','occurrence','adoption','polarity','expression','uncertainty') if d[name] in {'unresolved','undetermined'}]
+    unknowns += [name.replace('_',' ')+': unresolved; an empty compiled list is not evidence of absence.'
+                 for name in ('condition','condition_kind','qualification','relation','relation_endpoint','relation_evidence','address','addressee','address_evidence','address_voice','address_adoption')
+                 if d[name]=='unresolved']
     uncertainty=d['uncertainty']
     if uncertainty=='expressed_uncertainty' and not uncertain_e:
         uncertainty='unresolved';diagnostics.append('uncertainty_evidence_missing')

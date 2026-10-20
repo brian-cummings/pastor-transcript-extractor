@@ -519,15 +519,18 @@ def analysis_profile_proposition_review(
 
 @analysis_app.command('profile-binding-development', help='Run/review automatic generic binding on only the three supplied development passages; references never enter model state.')
 def analysis_profile_binding_development(
+    prepare_only: bool = typer.Option(False, '--prepare', help='Read-only V2 source/request preflight; no provider calls or file writes.'),
     run_model: bool = typer.Option(False, '--run', help='Execute/resume the authorized bounded model run, reusing compatible request caches.'),
     check_only: bool = typer.Option(False, '--check-only', help='Verify current sources and cached results/comparison without providers or writes.'),
     as_json: bool = typer.Option(False, '--json'),
     base_dir: Path | None = typer.Option(None, help='Override app data directory.'),
 ) -> None:
     from pastor_transcript_extractor import profile_binding_development as dev
-    if run_model and check_only:raise typer.BadParameter('--run and --check-only are mutually exclusive')
+    if sum((prepare_only,run_model,check_only))>1:raise typer.BadParameter('--prepare, --run and --check-only are mutually exclusive')
     try:
-        if check_only:
+        if prepare_only:
+            output=dev.prepare(base_dir)
+        elif check_only:
             result,folder,reviewed=dev.cached(base_dir)
             path=folder/'semantic-review-v1.json'
             comparison=dev.validate_comparison(dev.read(path),result,reviewed) if path.exists() else None

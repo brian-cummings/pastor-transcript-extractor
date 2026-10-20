@@ -16,6 +16,42 @@ def fixture(text='God creates the world. Trust him.'):
 
 
 class AutomaticBindingTests(unittest.TestCase):
+    def test_outer_multi_sentence_quote_remains_one_act_and_inner_words_stay_literal(self):
+        text='Can you say, "I trust him. He cares for me." We continue.'
+        units=a.source_units(dict(target_text=text,leading_context='',trailing_context=''))
+        outer=next(u for u in units if u['span']['text'].startswith('Can you'))
+        inner=next(u for u in units if u['origin']=='embedded_quote')
+        self.assertEqual('Can you say, "I trust him. He cares for me."',outer['span']['text'])
+        self.assertEqual('contains_quotation',outer['speech_layer'])
+        self.assertEqual('inside_quotation',inner['speech_layer'])
+        self.assertEqual(outer['span'],inner['outer_frame'])
+        self.assertNotIn('occurrence',inner)
+
+    def test_discovery_keeps_relevance_separate_from_boundary_and_overlap(self):
+        units=a.source_units(dict(target_text='She said, "God hears us."',leading_context='',trailing_context=''))
+        decisions={u['candidate_id']:'include' for u in units}
+        decisions.update({u['candidate_id']+'__boundary':'complete' for u in units})
+        self.assertEqual(units,a.included_units(units,decisions))
+        decisions[units[0]['candidate_id']+'__boundary']='mixed_or_fragment'
+        self.assertNotIn(units[0],a.included_units(units,decisions))
+
+    def test_speaker_options_require_a_speech_attribution_and_stages_are_disjoint(self):
+        texts,unit,pool,_,_=fixture('And Miriam said, "God creates the world."')
+        frame=a.field_questions(texts,unit,pool,stage='frame')
+        self.assertIn('Miriam',frame['speaker']['criteria']);self.assertNotIn('God',frame['speaker']['criteria'])
+        self.assertNotIn('And Miriam',frame['speaker']['criteria'])
+        dependent=a.field_questions(texts,unit,pool,stage='interpretation')
+        self.assertFalse(set(frame)&set(dependent))
+        self.assertEqual(set(a.field_questions(texts,unit,pool)),set(frame)|set(dependent))
+        self.assertIn('frame_selection',dependent['adoption']['instructions']['task'])
+
+    def test_unresolved_links_remain_visible_beyond_empty_lists(self):
+        texts,unit,pool,d,p=fixture();d.update(relation='unresolved',qualification='unresolved',address='unresolved')
+        result=a.compose(texts,unit,pool,d,p)
+        self.assertEqual([],result['qualifications'])
+        for field in ('qualification','relation','address'):
+            self.assertTrue(any(s.startswith(field+': unresolved;') for s in result['unknowns']))
+
     def test_source_only_units_preserve_outer_and_embedded_speech(self):
         texts=dict(target_text='Can you say, "God forgives me." He said, "I trust God."',leading_context='God rejects me.',trailing_context='')
         units=a.source_units(texts)
