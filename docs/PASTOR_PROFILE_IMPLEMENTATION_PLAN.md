@@ -2,7 +2,7 @@
 
 **Current implementation status, 2026-10-20.** Implements the [pastor profile product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). The product plan defines what the reader should receive; this document defines the code, delivery sequence and acceptance checks. These are the two active planning documents. Older implementation sequences are superseded, with historical measurements and decisions preserved.
 
-Brian authorized milestones 1–3 as one bounded provider-free feature on 2026-10-20. They are now implemented and committed; the worked profile and milestone 4 consequential-gap map are delivered. **Brian’s latest feedback recognizes V2’s product-language pass as successful. Brian has now authorized and received the provider-free source-reviewed theological proposition-binding pilot. Assurance is its test domain, not the capability or a pastor-wide assessment. Automatic binding and contract extension remain held.** This is implementation completion, not acceptance of new theological measurements, production activation or authorization to cross any held boundary.
+Brian authorized milestones 1–3 as one bounded provider-free feature on 2026-10-20. They are now implemented and committed; the worked profile and milestone 4 consequential-gap map are delivered. **Brian’s latest feedback recognizes V2’s product-language pass as successful. Brian has now authorized and received the provider-free source-reviewed theological proposition-binding pilot. Assurance is its test domain, not the capability or a pastor-wide assessment. Automatic binding and new measurements remain held; the next bounded architectural separation is now authorized below.** This is implementation completion, not acceptance of new theological measurements, production activation or authorization to cross any held boundary.
 
 ## Delivery status — 2026-10-20
 
@@ -84,6 +84,16 @@ The HTML, Markdown and JSON are written under the configured base directory in `
 **Verification:** 10 focused binding-pilot tests and the 40 existing profile/evidence tests pass. The tests validate literal integrity, enum preservation, context-only exclusions, partial-field serialization, unchanged source/membership/context, escaping, CLI isolation and no provider/profile projection. They do not independently certify the authored semantic readings. Brian’s next action is to review the concrete results; Codex owns interpreting feedback and any proposed revisions. Contract extension, new measurement, automatic binding/admission, discovery, collection and profile-wide projection remain held.
 
 The earlier `next-capability-v1` artifacts remain the historical preparation packet. They are superseded as the current next-action instruction by these executed results; do not ask Brian to authorize the already completed source review again.
+
+## Active increment — reusable proposition binding separated from assurance
+
+**Status, 2026-10-20: authorized; implementation not yet delivered.** The completed profile and ten-reading pilot remain the latest runnable results. The subsequent goal authorizes direct implementation of a reusable theological proposition/evidence-binding layer, with assurance as a separate subject-specific interpretation. This supersedes the earlier instruction to stop at pilot review; no further planning or readiness gate is required.
+
+The next concrete deliverable is the **same ten readings through the separated architecture**, with exact evidence/provenance, conservative unknowns and unchanged existing assurance behavior. Generic propositions must survive an assurance predicate non-match. Preserve voice independently from preacher adoption, projected versus actual speech, invitation versus expressed uncertainty, conditions versus other qualifications, and rejection without inventing its logical opposite. Source-supported affirmative use as teaching or warrant can establish adoption without a literal “I agree”; quotation alone cannot.
+
+Reuse compatible G1 evidence/provenance, G2 evidence-node/relation structures and G3 address distinctions before adding fields. Implement the generic binding and assurance adapter, pass the ten existing cases through both, then deliver an updated CLI review artifact with focused regression checks and a concise account of remaining limitations. The original G1 contract/composer and frozen assurance meanings must remain unchanged. No implementation or verification of this separation is claimed by this status update.
+
+Brian’s next handoff is review of that concrete updated artifact after implementation. Codex owns the source interpretation, implementation and recommendations. Provider/model calls, automatic binding/discovery, new measurements, broader collection, pastor-wide projection, comparison/scoring and Ollama quotation execution remain held. The authorized architecture change does not reopen those boundaries or create an exhaustive theology ontology.
 
 ## Starting point: what already exists
 
@@ -187,7 +197,7 @@ No nearest-pastor result, similarity percentage, ranking, single pastor score or
 ## Delivery order and current authorization
 
 - **Completed foundation:** compatible inventory and source-linked evidence preview; historical measurement/containment results retain their actual scope.
-- **Implemented, acceptance pending:** milestones 1–3 together, plus milestone 4’s gap/code map. Brian’s product-language feedback is recorded as successful; the provider-free binding pilot is now executed, and the next action is review of its concrete readings and representation findings. Codex owns any authorized source interpretation and subsequent recommendations.
+- **Implemented, acceptance pending:** milestones 1–3 together, plus milestone 4’s gap/code map. Brian’s product-language feedback is recorded as successful; the provider-free binding pilot is executed. The next authorized implementation is generic proposition binding separated from assurance, using its ten readings; see the active increment above. Codex owns any authorized source interpretation and subsequent recommendations.
 - **Later conditional work:** only the consequential gaps Brian approves, then optional quote execution and independently justified comparison. Do not require another inventory/design gate merely to implement the first supported screen.
 
 Brian’s implementation request authorized the bounded provider-free milestones 1–3 and delivery of the consequential-gap map. This status update records their completion; it does not authorize providers, new measurements, collection, production activation, profile aggregation/scoring, comparison/ranking, stability claims or quotation execution. The [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) and this implementation plan are the two active documents; neither turns a historical pilot PASS into general authority.

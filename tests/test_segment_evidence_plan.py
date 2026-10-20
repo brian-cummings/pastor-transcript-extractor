@@ -7,11 +7,13 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('SOURCE_REVIEW_PILOT_EXECUTED_BINDINGS_PENDING_REVIEW',plan['status'])
+        self.assertEqual('GENERIC_BINDING_SEPARATION_AUTHORIZED_NOT_YET_DELIVERED',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['next_capability_decision']['pilot_execution'])
         self.assertEqual('profile-binding-source-review-v1',plan['current_delivery'])
+        self.assertFalse(plan['binding_separation']['new_implementation_verified'])
+        self.assertEqual(10,plan['binding_separation']['source_readings'])
         self.assertEqual('assurance_of_salvation',plan['source_review_pilot']['test_domain'])
         self.assertEqual('pastor-profile-description-v2',plan['presentation_revision']['version'])
         self.assertEqual('unchanged_from_V1',plan['presentation_revision']['raw_observations_and_underlying_claims'])
