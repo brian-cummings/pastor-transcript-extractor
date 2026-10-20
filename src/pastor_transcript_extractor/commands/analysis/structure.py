@@ -177,6 +177,7 @@ def _print_structure_readiness(report: object) -> None:
 
 @analysis_app.command("structure-readiness", help="Report structure analysis readiness.")
 def analysis_structure_readiness(
+    unit_span_check: bool = typer.Option(False, "--unit-span-check", help="Provider-free check of whole existing source-unit spans in the selected windows; no inference."),
     typesafe_selection: bool = typer.Option(False, "--typesafe-selection", help="Prepare/check the nomination-only packet; no inference unless separately authorized with --run-selection."),
     run_selection: bool = typer.Option(False, "--run-selection"),
     approve_input: str | None = typer.Option(None, "--approve-input"),
@@ -190,6 +191,17 @@ def analysis_structure_readiness(
     as_json: bool = typer.Option(False, "--json"),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    if unit_span_check:
+        if any((typesafe_selection, run_selection, typesafe_windows, reviewed_membership, prepare_handoff, check_handoff, handoff_proposal, evidence_trace, check_only)) or approve_input is not None:
+            raise typer.BadParameter("--unit-span-check is a separate provider-free mode")
+        from pastor_transcript_extractor.unit_span_readiness import prepare
+        try:
+            result, path = prepare(base_dir)
+        except (ValueError, OSError, KeyError) as error:
+            raise typer.BadParameter(str(error)) from error
+        output = dict(status=result['status'], input_fingerprint=result['content_fingerprint'], counts=result['counts'], provider_requests=0, path=str(path))
+        console.print_json(data=output) if as_json else console.print(output, markup=False)
+        return
     if typesafe_selection:
         if any((typesafe_windows, reviewed_membership, prepare_handoff, check_handoff, handoff_proposal, evidence_trace)) or (run_selection and check_only) or (approve_input is not None and not run_selection):
             raise typer.BadParameter("Choose nomination preparation, --check-only, or --run-selection --approve-input")
