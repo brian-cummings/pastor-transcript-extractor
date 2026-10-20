@@ -1,5 +1,7 @@
 # Source-reviewed theological proposition-binding pilot
 
+**Subsequent implementation:** [reusable proposition binding separated from assurance](PROFILE_PROPOSITION_BINDING.md) now represents these same ten readings through the new architecture. Use `pte analysis profile-proposition-review --json` for the current review. This document and the original pilot remain the preserved baseline.
+
 **2026-10-20: executed; concrete proposed readings await Brian’s review.** Brian
 explicitly authorized the three prepared passages. Assurance is the test domain,
 not the capability or a pastor-wide classification target. No additional planning,
