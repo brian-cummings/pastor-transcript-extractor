@@ -52,6 +52,20 @@ GAPS = {
 }
 
 
+# Separate proof-menu limits from gaps in the reusable record shape. These are
+# review conclusions, not five requests for new measurements or schema fields.
+GAPS['predicate_inventory']['gap_class'] = 'frozen proof-vocabulary scope'
+GAPS['predicate_inventory']['existing_support'] = 'claim_span already preserves the literal proposition; the general envelope need not be replaced merely because its proof predicate list is narrow.'
+GAPS['projected_voice']['gap_class'] = 'proof-menu / explicit speech-frame limit'
+GAPS['projected_voice']['existing_support'] = 'Voice, adoption and binding_evidence already remain separate. The original frame is preserved, although no existing menu value separately attests a projected versus actual utterance.'
+GAPS['nonconditional_qualification']['gap_class'] = 'structured qualification limit'
+GAPS['nonconditional_qualification']['existing_support'] = 'The exact qualification survives in claim_span/binding_evidence. What is missing is a typed attachment for concession or rationale, not the original words.'
+GAPS['evaluation_target']['gap_class'] = 'binding discipline plus out-of-proof predicate'
+GAPS['evaluation_target']['existing_support'] = 'G1 already requires the exact proposition/object and separates adoption from polarity. Correctly retaining the critique and the report separately needs no new opposite-inference rule or field.'
+GAPS['rhetorical_invitation']['gap_class'] = 'surface-expression limit / existing conservative handling'
+GAPS['rhetorical_invitation']['existing_support'] = 'Existing question, undetermined adoption and not_stated epistemic status preserve the safe partial reading. A general speech-act classifier is not required or established by this pilot.'
+
+
 def text_digest(text):
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -142,7 +156,7 @@ def build(record, authored, contexts):
         conclusion=dict(verdict='PARTIAL_FIT_NOT_SUFFICIENT_UNCHANGED_FOR_GENERAL_BINDING',
             sufficient='The existing envelope preserves exact claims, separate voice/adoption, conditions, scope, epistemic distinctions and conservative partial records. These readings demonstrate those useful properties on supplied passages.',
             insufficient='The unchanged subject/relation proof inventory cannot faithfully admit all concrete theological propositions here. Projected speech, nonconditional qualifications and the exact target of evaluation are not fully typed by the existing fields/menus.',
-            recommendation='Retain G1 as the evidence-binding backbone, but do not declare the unchanged contract sufficient for a reusable general position capability. Separately review the precise predicate, speech-frame and qualification gaps before any contract extension. No extension is implemented in this pilot.',
+            recommendation='Retain G1 as the evidence-binding backbone: it is sufficient for conservative provenance-preserving partial records, but the unchanged proof contract is not sufficient for complete general theological binding. Distinguish its intentionally narrow predicate/menu choices from structured speech-frame and qualification needs. Exact evaluation targeting and conservative question handling already follow existing G1 discipline; they do not each require new fields or measurements. No extension is implemented in this pilot.',
             scope_limit='This is a Codex-authored source review of three supplied passages, not automatic binding accuracy, discovery recall, a general benchmark, opportunity coverage or a pastor-wide assurance assessment.'),
         published_profile_positions=[], contract_extended=False, provider_requests=0, database_writes=0,
         automatic_binding=False, new_measurements=False, new_discovery=False, broader_collection=False,
@@ -196,7 +210,7 @@ def markdown(report):
         'The supplied readings do not contain an unambiguous positive example of a condition/exception bound to an admitted G1 assurance predicate, or explicit speaker uncertainty. The pilot therefore does not validate positive performance on those distinctions; empty conditions and not_stated uncertainty must not become unconditional doctrine or pastoral certainty.', '',
         '### Precise gaps, without contract extension', '']
     for key, gap in report['contract_gaps'].items():
-        lines += ['#### '+gap['title'], '', 'Source readings: '+', '.join(f'[Inspect {key}](index.html#{key})' for key in gap['supporting_reading_ids']), '', gap['evidence'], '', '**What cannot be encoded faithfully:** '+gap['effect'], '', gap['boundary'], '', '**Recommendation:** '+gap['recommendation'], '']
+        lines += ['#### '+gap['title'], '', 'Source readings: '+', '.join(f'[Inspect {key}](index.html#{key})' for key in gap['supporting_reading_ids']), '', gap['evidence'], '', '**Gap class:** '+gap['gap_class'], '', '**Existing support:** '+gap['existing_support'], '', '**What cannot be encoded faithfully:** '+gap['effect'], '', gap['boundary'], '', '**Recommendation:** '+gap['recommendation'], '']
     lines += ['## Reproduce these completed readings', '', '```bash', 'pte analysis profile-binding-review --json', '```', '',
         'For freshness/literal-integrity verification without writing artifacts:', '', '```bash', 'pte analysis profile-binding-review --check-only --json', '```', '',
         'No providers, new measurements, automatic binding, doctrine vocabulary, collection, collector/threshold changes, discovery, profile projection or quotation execution. The existing profile and raw observations remain unchanged. These proposals are not a new semantic admission authority.', '']
