@@ -248,12 +248,13 @@ def build(inventory, sources, reuse_checks=None):
     dimensions = []
     for family in FAMILIES:
         ids = [c['id'] for c in claims if c['family'] == family]
-        has_local = bool(ids) or (bool(candidates) if family == FAMILIES[0] else any(c['dimension'] == 'practical_application' for c in candidates) if family == FAMILIES[3] else False)
+        has_local = any(o['layer'] == ('salvation' if family == FAMILIES[2] else 'topic' if family == FAMILIES[1] else 'treatment') and (family != FAMILIES[3] or o['field'] == 'practical_application') for o in observations)
         dimensions.append(dict(family=family, status=('measured_per_recording_attention' if ids else 'unmeasured') if family == FAMILIES[1] else ('measured_local_only' if has_local else 'unmeasured'),
             description={FAMILIES[0]: 'Inspect candidate windows for exposition, doctrinal argument, narrative illustration and practical application. Predominant style remains unknown.',
                 FAMILIES[1]: 'The named recordings have different topic-attention summaries; read the assessment for each recording.',
                 FAMILIES[2]: 'Local salvation relationships are inspectable; adopted positions and unresolved relationships remain unknown.',
                 FAMILIES[3]: 'Local practical-application probabilities are available. Relational posture and characteristic listener appeals remain unknown.'}[family],
+            unknown_reason='; '.join(g['cause'] for g in gaps if g['family'] in (family, 'All families')),
             claim_ids=ids, candidate_ids=[c['evidence_id'] for c in candidates if family == FAMILIES[0] or (family == FAMILIES[3] and c['dimension'] == 'practical_application')],
             gap_ids=[g['id'] for g in gaps if g['family'] in (family, 'All families')]))
     return seal(dict(version=VERSION, rule_version=RULE_VERSION, rules=RULES, profile=inventory['selected_profile'],
@@ -261,6 +262,7 @@ def build(inventory, sources, reuse_checks=None):
         source_identity=[dict(video_id=s['video_id'], title=s['title'], source_sha256=s['source_sha256'], source_path=s['source_path'], gate=s['gate']) for s in inventory['sermons']],
         scope=f'{len(sample_ids)} selected development recordings, not a representative ministry sample.',
         source_audit_of_all_raw_judgments=False, interpretation_status='proposed descriptive rules for human review',
+        assessment=assessment(dict(claims=claims, assessment_claim_ids=[c['id'] for c in claims if c['rule'] == 'topic'], treatment_candidates=candidates, observations=observations)),
         assessment_claim_ids=[c['id'] for c in claims if c['rule'] == 'topic'], claims=claims,
         dimensions=dimensions, treatment_candidates=candidates, observations=observations,
         salvation_block_states=states, unresolved_leaves=inventory['coverage']['unresolved_salvation_leaves'],
@@ -325,7 +327,7 @@ def leaf_reuse_checks(inventory, sources):
                 try:
                     payload = json.loads(path.read_text())
                     answer = payload['answer']
-                    compatible = (payload['identity'] == identity and cache._pack_payload_is_valid(pack, answer)
+                    compatible = (payload['identity'] == identity and isinstance(answer, dict) and cache._pack_payload_is_valid(pack, answer)
                         and answer.get('resolved_model_id') == sermon['model'])
                 except (OSError, ValueError, KeyError, TypeError):
                     compatible = False
@@ -364,7 +366,7 @@ def render(record):
     shell = evidence_view.render(record['evidence_view'])
     head = shell.split('<body>')[0].replace('Segment evidence · profile 318', f'Pastor profile · {record["profile"]["id"]}')
     script = shell[shell.index('<script>'):]
-    paragraphs = ''.join('<p class="lead">'+' '.join(e(text)+' '+link(key, 'evidence ↗') for text, key in paragraph)+'</p>' for paragraph in assessment(record))
+    paragraphs = ''.join('<p class="lead">'+' '.join(e(text)+' '+link(key, 'evidence ↗') for text, key in paragraph)+'</p>' for paragraph in record['assessment'])
     rows = ''.join('<tr><th>'+e(d['family'])+'</th><td>'+e(d['description'])+' '+
         link('family-'+str(FAMILIES.index(d['family'])), 'Inspect this dimension')+'</td><td>'+e(d['status'].replace('_', ' '))+'</td></tr>' for d in record['dimensions'])
     claim_cards = []
@@ -402,7 +404,7 @@ def render(record):
             measures = []
             for o in values:
                 metadata = {k: v for k, v in o.items() if k not in ('id', 'video_id', 'block_id', 'full_target_text', 'source_path', 'source_sha256', 'watch_url', 'segment_indexes', 'start_seconds', 'end_seconds')}
-                back = ' '.join(link(key, 'supports claim') for key in reverse.get(o['id'], []))
+                back = ' '.join(link(key, 'used by claim') for key in reverse.get(o['id'], []))
                 candidate = any(c['evidence_id'] == o['id'] for c in record['treatment_candidates'])
                 measures.append(f'<details id="{e(o["id"])}"><summary>{e(o["field"].replace("_", " "))} · {e(o["state"].replace("_", " "))}'+
                     (' · inspection candidate' if candidate else '')+f'</summary><p>{back or "No narrative claim admitted from this observation."}</p><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{e(json.dumps(metadata, ensure_ascii=False, indent=2))}</pre></details>')
@@ -443,7 +445,7 @@ window.addEventListener('hashchange',revealEvidence);window.addEventListener('lo
 def markdown(record):
     lines = [f'# Pastor profile {record["profile"]["id"]}', '', record['scope'], '',
         'Display label: '+str(record['profile'].get('display_label') or 'not yet accepted; titles remain metadata')+'.', '', '## Assessment', '']
-    for paragraph in assessment(record):
+    for paragraph in record['assessment']:
         lines += [' '.join(text+f' [Evidence](index.html#{key})' for text, key in paragraph), '']
     lines += ['## At a glance', '', '| Family | Sample description | State |', '|---|---|---|']
     lines += [f'| {d["family"]} | {d["description"]} | {d["status"]} |' for d in record['dimensions']]

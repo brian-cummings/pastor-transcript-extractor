@@ -76,6 +76,19 @@ class DescriptionTests(unittest.TestCase):
         self.assertTrue(record['unresolved_leaves'])
         self.assertFalse(any(o['field'] in record['unresolved_leaves'] for o in record['observations']))
 
+    def test_all_below_threshold_remains_measured_without_positive_claim(self):
+        inv, sources = fixture(routed=True)
+        raw = sources[9]['classification']['search']['salvation_relationship_analysis']['blocks'][0]
+        raw['probabilities'] = {k: 0.01 for k in raw['probabilities']}
+        raw['observations'] = []
+        a = sources[9]['classification']['search']['topic_analysis']
+        layers = m.compatible_layers(sources[9]['classification'], a, [1])
+        inv = deepcopy(inv); inv['sermons'][0]['salvation'] = layers['salvation']
+        record = d.build(seal(inv), sources)
+        self.assertEqual('measured_local_only', record['dimensions'][2]['status'])
+        self.assertFalse(any(c['rule'] == 'salvation' for c in record['claims']))
+        self.assertEqual({'measured_below_threshold'}, {o['state'] for o in record['observations'] if o['layer'] == 'salvation'})
+
     def test_missing_treatment_is_not_low_or_measured(self):
         inv, sources = fixture()
         sources[9]['classification']['search']['semantic_analysis']['blocks'] = []
@@ -151,6 +164,25 @@ class DescriptionTests(unittest.TestCase):
             self.assertEqual(1, len(checks))
             self.assertTrue(all(v['checked'] == 1 for v in checks[0]['packs'].values()))
             self.assertEqual([], checks[0]['matches'])
+
+    def test_versioned_outputs_are_repeatable_and_cli_fingerprints_match(self):
+        import json
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from types import SimpleNamespace
+        from pastor_transcript_extractor.cli import app
+        record = d.build(*fixture())
+        with TemporaryDirectory() as base, patch.object(d, 'load', return_value=record), patch.object(d, 'build_paths', return_value=SimpleNamespace(evaluation=Path(base))):
+            manifest, path = d.prepare()
+            before = path.read_bytes()
+            self.assertEqual((manifest, path), d.prepare())
+            self.assertEqual(before, path.read_bytes())
+            self.assertTrue((path.parent / 'review-v1.json').exists())
+            generated = CliRunner().invoke(app, ['analysis', 'structure-readiness', '--segment-view', '--description', '--json'])
+            checked = CliRunner().invoke(app, ['analysis', 'structure-readiness', '--segment-view', '--description', '--check-only', '--json'])
+            self.assertEqual(0, generated.exit_code, generated.output)
+            self.assertEqual(0, checked.exit_code, checked.output)
+            self.assertEqual(json.loads(generated.output)['fingerprint'], json.loads(checked.output)['fingerprint'])
 
     def test_cli_description_check_only_cannot_write_and_rejects_execution_flags(self):
         from pastor_transcript_extractor.cli import app

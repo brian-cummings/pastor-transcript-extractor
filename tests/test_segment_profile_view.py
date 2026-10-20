@@ -38,6 +38,20 @@ class ProfileViewTests(unittest.TestCase):
             with self.assertRaises(ValueError):v.source_url(url,60)
         self.assertEqual('https://youtu.be/test?t=60',v.source_url('https://youtu.be/test',60))
 
+    def test_loader_rejects_changed_membership_source_and_eligibility(self):
+        from types import SimpleNamespace
+        inv, sources = fixture()
+        inv['selected_profile']['membership_fingerprint'] = 'member'
+        inv['sermons'][0].update(source_path='/source.json', source_sha256='source', gate={'input_fingerprint': 'gate'})
+        pointer = dict(inventory_fingerprint='inventory', inventory_sha256='inventory-sha')
+        inv['content_fingerprint'] = 'inventory'
+        def read(path, *args):
+            return pointer if path == v.POINTER else inv if str(path).endswith('inventory-v1.json') else sources[1]
+        for membership, source_hash, eligible in (('changed', 'source', True), ('member', 'changed', True), ('member', 'source', False)):
+            with patch.object(v.trace, 'read', side_effect=read), patch.object(v.trace, 'digest', side_effect=lambda p: source_hash if str(p) == '/source.json' else 'inventory-sha'), patch.object(v, 'build_paths', return_value=SimpleNamespace(evaluation=Path('/app/evaluation'), database=Path('/app/app.db'))), patch.object(v, 'Database') as database, patch.object(v, 'resolve_profile_sermon_scope'), patch.object(v, 'profile_membership_fingerprint', return_value=membership), patch.object(v, 'assess_topic_profile_projection', return_value=SimpleNamespace(eligible=eligible, profile_id=318, input_fingerprint='gate')):
+                with self.assertRaises(ValueError): v.load()
+                database.assert_called_once_with(Path('/app/app.db'), readonly=True)
+
     def test_cli_check_only_has_no_output_writes(self):
         from pastor_transcript_extractor.cli import app
         inventory,sources=fixture()
