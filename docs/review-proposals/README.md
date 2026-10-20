@@ -2,12 +2,13 @@
 
 **Active plan, 2026-10-19:** [segment evidence first; illustrative quotations last](../SEGMENT_EVIDENCE_PLAN.md). Brian confirmed that the existing nominal minute pipeline should support analysis, while optional Ollama quotes are selected afterward from the strongest segment plus its immediate neighbors.
 
-That inventory is now [complete with an actual sample](segment-cache-inventory-v1/REVIEW.md): reviewed profile 318, three sermons, 158 eligible topic/treatment blocks and 33 routed salvation blocks. The next recommendation is the first **read-only presentation of this existing segment-backed evidence**, with unknown fields exposed. Do not start another target/quote extractor as a prerequisite. Topic attention is not automatically an adopted position, and historical measurement/containment decisions retain their original scope. No new provider run, collection, profile inference/scoring, or quote implementation is authorized by this planning update.
+That inventory is now [complete with an actual sample](segment-cache-inventory-v1/REVIEW.md): reviewed profile 318, three sermons, 158 eligible topic/treatment blocks and 33 routed salvation blocks. The [first read-only interactive view](segment-profile-view-v1/REVIEW.md) is now built and browser-checked, with unknown fields exposed. Brian can review the actual source-linked presentation. Do not start another target/quote extractor as a prerequisite. Topic attention is not automatically an adopted position, and historical measurement/containment decisions retain their original scope. No new provider run, collection, profile inference/scoring, or quote implementation is authorized by this planning update.
 
 The tail-end quote must contain substantive content from the strongest CENTER minute. BEFORE and AFTER may contribute only necessary continuation, qualifications or attribution. Use full eligible adjacent segments with actual IDs/time bounds, verify a contiguous verbatim source excerpt, and withhold rather than invent, silently join or borrow an unrelated neighboring quote.
 
 | Material | Current status |
 |---|---|
+| `segment-profile-view-v1` | Current read-only interactive three-sermon view, source disclosures and timestamp links; zero model calls/writes. |
 | `segment-cache-inventory-v1` | Current completed provider-free inventory and concrete three-sermon sample; no model calls or database writes. |
 | `segment-evidence-plan-v1` / `docs/SEGMENT_EVIDENCE_PLAN.md` | **Active planning/retirement authority.** Read-only check: `pte analysis structure-readiness --segment-plan --json`. |
 | Existing topic, treatment/source/directive/salvation plans and code | Reuse established, compatible observations within their actual meanings; no duplicate inference merely for quotations. Older topic plan remains historical contract/implementation detail. |

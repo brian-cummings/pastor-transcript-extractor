@@ -1,0 +1,31 @@
+{
+  "version": "segment-profile-view-review-v1",
+  "date": "2026-10-19",
+  "status": "READ_ONLY_PROFILE_VIEW_READY_FOR_BRIAN",
+  "report_fingerprint": "e6ceb1da4880695e62b99c930f348b6494901eb60a635b9c14384b05e64154db",
+  "view_fingerprint": "f4e3b25d87aace72cddd4646943f314c883e7348fbc1d42245564e0b5b01df2f",
+  "inventory_fingerprint": "2fdec9947ae2ca5a11ab17094fb159e982365693dc5d10549d276e0cb6995559",
+  "files": {
+    "/Users/briancummings/Documents/PastorSearchData/evaluation/segment-profile-view-v1/e6ceb1da4880695e62b99c930f348b6494901eb60a635b9c14384b05e64154db/view-v1.json": "d1b5ec59779149213ed340f04851bd3812215ed3ede5ebd95063dd02c5d0fc7b",
+    "/Users/briancummings/Documents/PastorSearchData/evaluation/segment-profile-view-v1/e6ceb1da4880695e62b99c930f348b6494901eb60a635b9c14384b05e64154db/index.html": "e161f2ff39bfda2267e843ffd3005064fb6cffd047b0dce3152e5166d5b8b5b1"
+  },
+  "review_sha256": "eacd06483bfd0a1ed0c4c4c5971db9f5db4c102e44cad376281622c6e4742188",
+  "focused_tests_passed": 32,
+  "browser_checks": [
+    "recording filter hides other recordings",
+    "source disclosure reveals exact target and matching treatment values",
+    "timestamp recording link present",
+    "desktop screenshot visually inspected"
+  ],
+  "provider_requests": 0,
+  "database_writes": 0,
+  "new_measurements": false,
+  "new_profile_scores": false,
+  "quote_extraction": false,
+  "limitations": [
+    "UI verification does not revalidate semantic judgments",
+    "No complete pastor stance or recurrence claim",
+    "Not integrated into a production application or externally published"
+  ],
+  "content_fingerprint": "c08b9fb309c9409bd0ca4f3cf6cef6dbc6ef38ed88c4bd41b47799fcb57c960b"
+}
