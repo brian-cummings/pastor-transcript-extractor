@@ -14,7 +14,7 @@ from pathlib import Path
 
 from pastor_transcript_extractor.segment_profile_view import short_title, timestamp
 
-VERSION = 'pastor-profile-reader-v2'
+VERSION = 'pastor-profile-reader-v3'
 REVIEWS_PATH = Path(__file__).with_name('data') / 'profile-presentation-source-reviews-v1.json'
 TOPICS = {
     'god_character_action': 'God’s character and action',
@@ -26,7 +26,7 @@ TOPICS = {
 }
 THEMES = {
     'divine_grace_initiative': 'God’s grace and initiative',
-    'faith_as_receiving_response': 'faith as receiving salvation',
+    'faith_as_receiving_response': 'salvation received through faith',
     'sanctification_transformation': 'transformation and holiness',
     'judgment_final_destiny': 'judgment and final destiny',
     'atonement_as_basis': 'Christ’s saving work',
@@ -182,7 +182,8 @@ def build_reader(record, reviews=None):
     name = names[0] if n and set(named_sources) == set(sources) and len(set(names)) == 1 else None
     accepted = record['profile'].get('display_label')
     identity = 'Source titles identify the speaker as '+name+'. The speaker name has not yet been confirmed.' if name and not accepted else 'The speaker name has not yet been confirmed.' if not accepted else 'Confirmed speaker label: '+accepted+'.'
-    style_description = next((c['wording'] for c in claims if c['id'] == style_key), 'The preaching style has not yet been established from reviewed passages.')+' A dominant style is not yet established.'
+    short_styles = dict(exegetical_exposition='Biblical explanation', doctrinal_argument='Doctrinal reasoning', narrative_illustration='Illustration', practical_application='Practical application')
+    style_description = ' + '.join(short_styles[k] for k in short_styles if k in by_style)+'. No dominant mode established.' if by_style else 'Style not yet established from reviewed passages.'
     emphasis_description = phrase_list([labels[k] for k in shared+recurring]) if shared+recurring else 'See the supported subjects below; a shared emphasis is not established.'
     salvation_description = phrase_list([t['label'] for t in common_themes]) if common_themes else 'See the themes and named sermons below; a shared salvation emphasis is not established.'
     pastoral = 'Practical application is present; characteristic appeals and relational tone are not yet established.' if 'practical_application' in by_style else 'Characteristic listener appeals and relational tone are not yet established.'
@@ -238,7 +239,7 @@ def render(record):
     rows = ''.join('<tr><th>'+e(row['label'])+'</th><td>'+e(row['description'])+' '+link(row['target'], 'View evidence' if row['label'] != 'Confidence' else 'Read limits')+'</td></tr>' for row in reader['at_a_glance'])
     theme_rows = ''.join('<tr><th>'+e(t['label'])+'</th><td>'+e(t['seen_in'])+'</td><td>'+link(t['claim_id'], 'View evidence')+'</td></tr>' for t in reader['themes'])
     theme_table = '<div class="tablewrap"><table><thead><tr><th>Theme</th><th>Seen in</th><th>Support</th></tr></thead><tbody>'+theme_rows+'</tbody></table></div>' if theme_rows else '<p>There is not enough supporting evidence here to describe salvation themes.</p>'
-    style_examples = ''.join('<p>'+e(review['description'])+' '+link(passage_id(obs[review['evidence_id']]), 'View supporting passage · '+titles[review['video_id']])+'</p>' for review in reader['source_reviews'])
+    style_examples = ''.join('<p>'+e(review['description'])+' '+link(passage_id(obs[review['evidence_id']]), 'View supporting passage · '+titles[review['video_id']])+'</p>' for review in reader['source_reviews'] if review['dimension'] != 'practical_application')
     emphases = ''.join('<p>'+link(key, claims[key]['wording'])+'</p>' for key in reader['emphasis_claim_ids'])
     cards = []
     for c in reader['claims']:
@@ -286,8 +287,14 @@ def render(record):
             rules=record['rules'], reader_rule=reader['synthesis_rule'], coverage=record['coverage'], salvation_block_states=record['salvation_block_states'], unresolved_leaves=record['unresolved_leaves'], reuse_checks=record['reuse_checks']), ensure_ascii=False, indent=2))+'</pre>'+
         '<details><summary>Underlying per-sermon claim ledger</summary>'+''.join(raw_claims)+'</details></details>')
     filters = ''.join('<button type="button" data-filter="'+str(vid)+'" aria-pressed="false">'+e(title)+'</button>' for vid, title in titles.items())
-    style_text = reader['at_a_glance'][0]['description']
-    pastoral_text = reader['at_a_glance'][3]['description']
+    style_text = 'The passages below show different ways the preacher develops a point. Examples establish the presence of an approach, not how often it is used.' if reader['source_reviews'] else 'No source-reviewed style examples are available for this sample.'
+    pastoral_review = next((review for review in reader['source_reviews'] if review['dimension'] == 'practical_application'), None)
+    pastoral_text = pastoral_review['description'] if pastoral_review else reader['at_a_glance'][3]['description']
+    packet = record.get('capability_review', {})
+    next_capability = ''
+    if packet.get('cases'):
+        prepared = ''.join('<article><h3>'+e(case['title'])+'</h3><p>'+e(case['review_question'])+'</p><p>'+e(case['caution'])+'</p>'+link(f'passage-{case["video_id"]}-{case["block_id"]}', 'View prepared passage · '+case['sermon_title'])+'</article>' for case in packet['cases'])
+        next_capability = '<section class="panel" id="next-capability"><h2>What would most improve this assessment?</h2><p>'+e(packet['recommendation'])+'</p><p>'+e(packet['reader_value'])+'</p><p>Start with assurance of salvation, using the existing distinction between present acceptance, possible loss and continued salvation.</p><details id="next-capability-review"><summary>Read the prepared next-step proposal</summary><p>'+e(packet['why_first'])+'</p><p>'+e(packet['decision'])+'</p><p>No position review or new analysis has been executed. These are prepared questions, not findings about the preacher’s beliefs.</p>'+prepared+'<p><a href="next-capability-v1.md">Read the complete decision brief</a></p></details></section>'
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+e(reader['title'])+'</title><style>'+STYLE+'</style></head><body><main>'+
         '<span class="eyebrow">PASTOR TRANSCRIPT EXTRACTOR</span><h1>'+e(reader['title'])+'</h1><p class="scope">'+e(reader['sample_note'])+'</p><p class="muted">'+e(reader['identity_note'])+'</p>'+
         '<section class="assessment"><h2>Assessment of this sample</h2>'+(assessment or '<p>There is not enough supported evidence to describe this sample.</p>')+'</section>'+
@@ -300,7 +307,7 @@ def render(record):
         '<p class="note">A theme being discussed does not establish the preacher’s personal agreement with every view expressed. The evidence does not yet reliably separate affirmed positions from explanation, quotation or disagreement.</p></section>'+
         '<section class="panel" id="dimension-pastoral"><h2>Pastoral approach</h2><p>'+e(pastoral_text)+'</p>'+(''+link(passage_id(obs[r['evidence_id']]), 'View supporting passage · '+titles[r['video_id']]) if (r := next((r for r in reader['source_reviews'] if r['dimension'] == 'practical_application'), None)) else '')+'</section>'+
         '<section class="panel" id="why"><h2>Why PTE says this</h2>'+''.join(cards)+'</section>'+
-        '<section class="panel"><h2>What this sample cannot tell us</h2>'+''.join(gap_cards)+'</section>'+
+        next_capability+'<section class="panel"><h2>What this sample cannot tell us</h2>'+''.join(gap_cards)+'</section>'+
         '<h2>Sermons and supporting passages</h2><p class="muted">Choose a sermon or follow a description directly to its complete source passage. Filtering this section does not change the assessment above.</p>'+
         '<nav aria-label="Filter recordings"><button type="button" data-filter="all" aria-pressed="true">All sermons</button>'+filters+'</nav>'+''.join(source_sections)+technical+
         '<footer>This draft awaits review. Supporting passages are full transcript windows, not selected illustrative quotations.</footer></main><script>'+SCRIPT+'</script></body></html>')
@@ -333,11 +340,13 @@ def markdown(record):
             seen.add(key)
             lines += [f'- [View supporting passage · {titles[o["video_id"]]} · {timestamp(o["start_seconds"])}](index.html#passage-{o["video_id"]}-{o["block_id"]})']
         lines += ['']
+    if record.get('capability_review', {}).get('cases'):
+        lines += ['## Recommended next capability', '', record['capability_review']['recommendation'], '', record['capability_review']['reader_value'], '', '[Read the prepared next-step decision brief](next-capability-v1.md). No capability pilot has been executed.', '']
     lines += ['## What this sample cannot tell us', '']
     for gap in record['gaps']:
         title, cause, remedy = GAPS[gap['id']]
         lines += ['### '+title, '', cause, '', 'Next useful step: '+remedy, '']
     lines += ['<details><summary>Technical details</summary>', '',
-        'The [complete description record](description-v2.json) preserves every original observation, source hash, question/model/version, threshold, missing state, source-review receipt and claim link. The [review receipt](review-v2.json) records the scope and execution boundaries.', '',
+        'The [complete description record](description-v3.json) preserves every original observation, source hash, question/model/version, threshold, missing state, source-review receipt and claim link. The [review receipt](review-v3.json) records the scope and execution boundaries.', '',
         'Source-review descriptions are authored presentation inputs for individual passages, pending Brian’s acceptance. No raw probability, threshold, adopted position or frequency rule is changed.', '', '</details>', '']
     return '\n'.join(lines)

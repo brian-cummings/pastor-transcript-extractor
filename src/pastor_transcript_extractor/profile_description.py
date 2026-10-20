@@ -19,7 +19,7 @@ from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.sermon_topics import resolve_topic_analysis_artifact, resolve_topic_block_context
 from pastor_transcript_extractor.sermon_semantic_dimensions import SEMANTIC_ANALYSIS_QUESTION_VERSION, SEMANTIC_DIMENSIONS
 
-VERSION = 'pastor-profile-description-v2'
+VERSION = 'pastor-profile-description-v3'
 RULE_VERSION = 'cached-observation-wording-v1'
 FAMILIES = ('Preaching style', 'Theological emphasis', 'Theological orientation', 'Pastoral/rhetorical orientation')
 RULES = {
@@ -135,7 +135,7 @@ def gap_ledger():
     )]
 
 
-def build(inventory, sources, reuse_checks=None, source_reviews=None):
+def build(inventory, sources, reuse_checks=None, source_reviews=None, capability_inputs=None):
     """Pure assembly. Recheck layer identity so saved presentation cannot admit stale data."""
     if seal(inventory) != inventory:
         raise ValueError('Invalid inventory seal')
@@ -272,6 +272,8 @@ def build(inventory, sources, reuse_checks=None, source_reviews=None):
     from pastor_transcript_extractor.profile_presentation import build_reader
     record['reader'] = build_reader(record, source_reviews)
     record['assessment'] = record['reader']['assessment']
+    from pastor_transcript_extractor.profile_capability_review import build as build_capability_review
+    record['capability_review'] = build_capability_review(record, capability_inputs)
     return seal(record)
 
 
@@ -294,7 +296,8 @@ def load(base_dir=None):
             checks.append(dict(video_id=sermon['video_id'], state='current_scripture_input_unavailable', reason=str(error)))
     checks.extend(leaf_reuse_checks(inventory, sources))
     from pastor_transcript_extractor.profile_presentation import load_reviews
-    return build(inventory, sources, checks, source_reviews=load_reviews())
+    from pastor_transcript_extractor.profile_capability_review import load_inputs
+    return build(inventory, sources, checks, source_reviews=load_reviews(), capability_inputs=load_inputs())
 
 
 def leaf_reuse_checks(inventory, sources):
@@ -484,9 +487,11 @@ def markdown(record):
 
 def prepare(base_dir=None):
     record = load(base_dir)
-    from pastor_transcript_extractor import profile_presentation
+    from pastor_transcript_extractor import profile_presentation, profile_capability_review
     manifest = seal(dict(version=VERSION, description=record, implementation_files={
         str(Path(profile_presentation.__file__)): trace.digest(profile_presentation.__file__),
+        str(Path(profile_capability_review.__file__)): trace.digest(profile_capability_review.__file__),
+        str(profile_capability_review.CASES_PATH): trace.digest(profile_capability_review.CASES_PATH),
         str(profile_presentation.REVIEWS_PATH): trace.digest(profile_presentation.REVIEWS_PATH),
         str(Path(__file__)): trace.digest(__file__),
         str(Path(evidence_view.__file__)): trace.digest(evidence_view.__file__)}, provider_requests=0, database_writes=0))
@@ -500,9 +505,11 @@ def prepare(base_dir=None):
         check_command='pte analysis structure-readiness --segment-view --description --check-only --json',
         review_command='pte analysis structure-readiness --segment-view --description --json',
         held=['providers/models', 'broader collection', 'new semantic measurements', 'scoring/ranking/comparison', 'production activation', 'ministry stability', 'Ollama quotations']))
-    artifacts = {'review-v2.json': json.dumps(review, ensure_ascii=False, indent=2)+'\n',
-        'description-v2.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
-        'profile-v2.md': markdown(record), 'index.html': render(record)}
+    artifacts = {'review-v3.json': json.dumps(review, ensure_ascii=False, indent=2)+'\n',
+        'description-v3.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
+        'profile-v3.md': markdown(record), 'index.html': render(record),
+        'next-capability-v1.json': json.dumps(record['capability_review'], ensure_ascii=False, indent=2)+'\n',
+        'next-capability-v1.md': profile_capability_review.markdown(record['capability_review'])}
     for name, raw in artifacts.items():
         path = out / name
         if path.exists() and path.read_text() != raw:

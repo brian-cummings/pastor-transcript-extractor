@@ -143,6 +143,22 @@ class PresentationTests(unittest.TestCase):
         self.assertIn('not established', reader['at_a_glance'][2]['description'])
         self.assertFalse(any('rejects' in c['wording'] or 'denies' in c['wording'] for c in reader['claims']))
 
+    def test_assessment_glance_and_examples_have_distinct_jobs(self):
+        record = d.build(*fixture(text='The preacher explains Scripture, reasons, tells a story and gives guidance.'))
+        reviews = [review_for(record, dimension=k) for k in p.STYLES]
+        reader = p.build_reader(record, {'reviews':reviews})
+        record['reader'] = reader
+        record['assessment'] = reader['assessment']
+        full_prose = next(c['wording'] for c in reader['claims'] if c['id'] == reader['style_claim_id'])
+        glance = reader['at_a_glance'][0]['description']
+        self.assertNotEqual(full_prose, glance)
+        self.assertIn(' + ', glance)
+        page = d.render(record)
+        closer = page.split('id="dimension-style"',1)[1].split('id="dimension-emphases"',1)[0]
+        self.assertNotIn(full_prose, closer)
+        self.assertIn('Examples establish the presence', closer)
+        self.assertEqual('salvation received through faith', p.THEMES['faith_as_receiving_response'])
+
     def test_authored_review_input_is_bounded_and_not_an_identity_rule(self):
         reviews = p.load_reviews()
         self.assertEqual(4, len(reviews['reviews']))

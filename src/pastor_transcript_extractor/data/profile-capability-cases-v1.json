@@ -1,0 +1,36 @@
+{
+  "version": "profile-capability-cases-v1",
+  "purpose": "Prepared source-review inputs, not new measurements or adopted-position findings.",
+  "cases": [
+    {
+      "evidence_id": "e-4589-47-salvation-assurance_security",
+      "source_sha256": "2ccf222231ba84fa77736419a7775cea9624452a81b87c027a759a02ce78132d",
+      "target_sha256": "649123d7601078abe65ffaf758de07cbeca83a78796cfb2ea13a6acf78a9e63d",
+      "title": "Ongoing saving work and its qualifications",
+      "review_question": "Does the passage state present acceptance or retention, or describe transformation without asserting either? Preserve the prayer frame and the scriptural quotation.",
+      "caution": "God’s continuing work must not become a claim of unconditional permanent security.",
+      "proposed_position": null,
+      "position_status": "withheld_pending_separate_source_review"
+    },
+    {
+      "evidence_id": "e-3973-75-salvation-assurance_security",
+      "source_sha256": "814c5c662e4479131dcec244ed6d8097df77dbfdc9d46d3d647a3ae96d2886b6",
+      "target_sha256": "1705718d870fd737ac08d75922d8f344bce7c763801e5a19c0fcc9bd13dc0768",
+      "title": "Several voices within one passage",
+      "review_question": "Which statements belong to the preacher, Paul, Jesus and the reported middle-of-the-road Christians? Does any exact assertion express present acceptance, loss or retention?",
+      "caution": "An assurance finding does not make every quoted statement the preacher’s adopted position. Rejection must not manufacture an opposite doctrine.",
+      "proposed_position": null,
+      "position_status": "withheld_pending_separate_source_review"
+    },
+    {
+      "evidence_id": "e-281-123-salvation-assurance_security",
+      "source_sha256": "f29ea5209aebd467b42d054104dbeb021d926e03fa414043b3e8ee78dda0ab2a",
+      "target_sha256": "25a87081968076bce9c235daf8ecd45f943ea0be57676e7669204aed355ce65f",
+      "title": "An invitation rather than a resolved position",
+      "review_question": "Do the questions invite a response, assert present acceptance, or leave the assurance relation unresolved? The current assurance value is below its frozen observation threshold.",
+      "caution": "Do not turn a rhetorical question into affirmation, or a below-threshold value into denial. This window is a review contrast, not an admitted assurance positive.",
+      "proposed_position": null,
+      "position_status": "withheld_pending_separate_source_review"
+    }
+  ]
+}
