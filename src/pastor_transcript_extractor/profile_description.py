@@ -494,7 +494,7 @@ def prepare(base_dir=None):
     out.mkdir(parents=True, exist_ok=True)
     review = seal(dict(version=VERSION+'-review', status='READY_FOR_HUMAN_REVIEW',
         description_fingerprint=record['content_fingerprint'], manifest_fingerprint=manifest['content_fingerprint'],
-        claim_count=len(record['claims']), observation_count=len(record['observations']), gap_count=len(record['gaps']),
+        claim_count=len(record['claims']), reader_claim_count=len(record['reader']['claims']), source_review_count=len(record['reader']['source_reviews']), observation_count=len(record['observations']), gap_count=len(record['gaps']),
         coverage=record['coverage'], provider_requests=0, database_writes=0, new_measurements=False,
         source_audit_of_all_raw_judgments=False, interpretation_status=record['interpretation_status'],
         check_command='pte analysis structure-readiness --segment-view --description --check-only --json',
