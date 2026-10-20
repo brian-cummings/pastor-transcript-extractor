@@ -66,7 +66,7 @@ def panel(base_dir=None):
     return seal(dict(version=VERSION,model=auto.MODEL,min_probability=auto.MIN_PROBABILITY,sources=sources,
         source_inventory_fingerprint=reviewed['source_inventory_fingerprint'],membership_fingerprint=reviewed['membership_fingerprint'],
         reference_fingerprint=reviewed['content_fingerprint'],reference_visible_to_generation=False,
-        generator_sha256=trace.digest(auto.__file__),
+        generator_sha256=trace.digest(auto.__file__),runner_sha256=trace.digest(__file__),generic_compiler_sha256=trace.digest(auto.generic.__file__),
         reused_evidence='Existing exact targets/context, source/membership identity and generic/G2/G3 structures. Reviewed G2/G3 judgments are comparison references, not generation inputs; no compatible generated bindings from this new request policy are assumed.')),reviewed
 
 
@@ -92,6 +92,18 @@ def validate_request(request):
     if set(request['state']) not in ({'target_text','leading_context','trailing_context','context_diagnostics','source_candidates'}, {'target_text','leading_context','trailing_context','context_diagnostics','candidates'}):
         raise ValueError('Foreign/reference fields in generation state')
     if len(json.dumps(request,ensure_ascii=False))>240000:raise ValueError('Bounded request size exceeded')
+
+
+def compile_response(source,unit,response,spec):
+    key=unit['candidate_id'];prefix=key+'__'
+    inventory={k.removeprefix(prefix):v for k,v in response['request']['questions'].items() if k.startswith(prefix)}
+    raw=dict(answers={k.removeprefix(prefix):v for k,v in response['response']['answers'].items() if k.startswith(prefix)})
+    d,unknown=auto.choices(raw,inventory);pool=response['request']['state']['candidates'][key]['evidence_pool']
+    provenance={k:deepcopy(source[k]) for k in ('case_id','video_id','block_id','source_sha256','start_seconds','end_seconds','watch_url','context_diagnostics')}
+    provenance.update(target_sha256=text_digest(source['texts']['target_text']),texts_sha256=context_digest(source['texts']),source_inventory_fingerprint=spec['source_inventory_fingerprint'],membership_fingerprint=spec['membership_fingerprint'],request_fingerprint=response['request_fingerprint'],model=auto.MODEL,development_only=True)
+    try:binding=auto.compose(source['texts'],unit,pool,d,provenance);error=None
+    except (ValueError,KeyError,TypeError) as e:binding=None;error=str(e)
+    return dict(candidate_id=key,source_span=unit['span'],decisions=d,uncertain_fields=unknown,binding=binding,compile_error=error,request_fingerprint=response['request_fingerprint'])
 
 
 def execute(base_dir=None,*,provider_factory=None):
@@ -144,15 +156,7 @@ def execute(base_dir=None,*,provider_factory=None):
                 for start in range(0,len(included),auto.BATCH_SIZE):
                     units=included[start:start+auto.BATCH_SIZE];response=call(binding_request(source,units));used.append(response)
                     for unit in units:
-                        key=unit['candidate_id'];prefix=key+'__'
-                        inventory={k.removeprefix(prefix):v for k,v in response['request']['questions'].items() if k.startswith(prefix)}
-                        raw=dict(answers={k.removeprefix(prefix):v for k,v in response['response']['answers'].items() if k.startswith(prefix)})
-                        d,unknown=auto.choices(raw,inventory);pool=response['request']['state']['candidates'][key]['evidence_pool']
-                        provenance={k:deepcopy(source[k]) for k in ('case_id','video_id','block_id','source_sha256','start_seconds','end_seconds','watch_url','context_diagnostics')}
-                        provenance.update(target_sha256=text_digest(source['texts']['target_text']),texts_sha256=context_digest(source['texts']),source_inventory_fingerprint=spec['source_inventory_fingerprint'],membership_fingerprint=spec['membership_fingerprint'],request_fingerprint=response['request_fingerprint'],model=auto.MODEL,development_only=True)
-                        try:binding=auto.compose(source['texts'],unit,pool,d,provenance);error=None
-                        except (ValueError,KeyError,TypeError) as e:binding=None;error=str(e)
-                        generated.append(dict(candidate_id=key,source_span=unit['span'],decisions=d,uncertain_fields=unknown,binding=binding,compile_error=error,request_fingerprint=response['request_fingerprint']))
+                        generated.append(compile_response(source,unit,response,spec))
                 cases.append(dict(**source,discovery_decisions=decisions,discovery_uncertain=uncertain,discovery_request_fingerprint=discovery['request_fingerprint'],generated=generated))
         finally:
             if provider is not None:provider.close()
@@ -176,10 +180,26 @@ def execute(base_dir=None,*,provider_factory=None):
 def cached(base_dir=None):
     spec,reviewed=panel(base_dir);run=directory(base_dir)/'runs'/spec['content_fingerprint'];result=read(run/'generated-v1.json')
     if result['panel']!=spec:raise ValueError('Cached development panel differs')
-    for key in result['request_fingerprints']:
-        record=read(directory(base_dir)/'cache'/f'{key}.json')
-        if seal(record['request'])['content_fingerprint']!=key:raise ValueError('Response/request linkage differs')
-        validate_request(record['request'])
+    represented=[];unique={}
+    def response_for(request):
+        key=seal(request)['content_fingerprint'];record=read(directory(base_dir)/'cache'/f'{key}.json')
+        if record['request']!=request or record['request_fingerprint']!=key:raise ValueError('Response/request linkage differs')
+        validate_request(record['request']);represented.append(key);unique[key]=record
+        return record
+    if len(result['cases'])!=len(spec['sources']):raise ValueError('Generated source coverage differs')
+    for source,case in zip(spec['sources'],result['cases']):
+        if any(case[k]!=v for k,v in source.items()):raise ValueError('Generated source differs')
+        discovery=response_for(discovery_request(source))
+        decisions,uncertain=auto.choices(discovery['response'],discovery['request']['questions'])
+        if decisions!=case['discovery_decisions'] or uncertain!=case['discovery_uncertain']:raise ValueError('Discovery decisions differ from raw response')
+        included=[u for u in source['units'] if decisions[u['candidate_id']]=='include'];expected=[]
+        for start in range(0,len(included),auto.BATCH_SIZE):
+            units=included[start:start+auto.BATCH_SIZE];response=response_for(binding_request(source,units))
+            expected.extend(compile_response(source,unit,response,spec) for unit in units)
+        if expected!=case['generated']:raise ValueError('Generated bindings differ from cached source decisions')
+    if represented!=result['request_fingerprints'] or len(unique)!=result['unique_request_count']:raise ValueError('Request coverage differs')
+    usage={name:sum(r['response'].get('usage',{}).get(name) or 0 for r in unique.values()) for name in ('input_tokens','output_tokens')}
+    if usage!=result['usage']:raise ValueError('Usage differs from cached responses')
     return result,run,reviewed
 
 
@@ -234,8 +254,11 @@ def markdown(output):
             '## Field outcomes across these ten readings','', '| Field | Dispositions (10 readings per field) |','|---|---|']
         for field,counts in output['field_outcomes'].items():lines+=['| '+field.replace('_',' ')+' | '+', '.join(k.replace('_',' ')+': '+str(v) for k,v in counts.items())+' |']
         for row in comparison['readings']:
-            lines+=['','## '+row['reference_id'],'',row['summary'],'','Generated candidates: '+', '.join(row['generated_ids']),'','| Field | Outcome | Semantic comparison |','|---|---|---|']
-            for field,finding in row['fields'].items():lines+=['| '+field.replace('_',' ')+' | '+finding['outcome'].replace('_',' ')+' | '+finding['finding'].replace('|','/')+' |']
+            case_id=next(c['case_id'] for c in output['reference']['cases'] if any(r['binding']['binding_id']==row['reference_id'] for r in c['readings']))
+            lines+=['','## '+row['reference_id'],'',row['summary'],'','Generated candidates: '+', '.join('['+key+'](index.html#'+key+')' for key in row['generated_ids']),'','| Field | Outcome | Semantic comparison | Exact source evidence |','|---|---|---|---|']
+            for field,finding in row['fields'].items():
+                citations='<br>'.join('['+s['source_field']+' '+str(s['start'])+'–'+str(s['end'])+'](index.html#'+case_id+'-'+s['source_field']+'): “'+s['text'].replace('\n',' ').replace('|','/')+'”' for s in finding['evidence'])
+                lines+=['| '+field.replace('_',' ')+' | '+finding['outcome'].replace('_',' ')+' | '+finding['finding'].replace('|','/')+' | '+citations+' |']
             lines+=['','Correctly unresolved: '+row['correctly_unresolved'],'']
     for c in generated['cases']:
         lines+=['','## Generated: '+c['sermon_title'],'','[Watch source]('+c['watch_url']+')','']

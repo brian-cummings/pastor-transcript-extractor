@@ -1,5 +1,6 @@
 from copy import deepcopy
 import json
+import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -75,6 +76,39 @@ class DevelopmentTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'different generated'):dev.validate_comparison(dict(generated_fingerprint='foreign',reference_fingerprint='foreign'),result,reviewed)
             path=next((Path(root)/'cache').glob('*.json'));record=json.loads(path.read_text());record['request']['state']['target_text']='foreign';path.write_text(json.dumps(record))
             with self.assertRaisesRegex(ValueError,'seal'):dev.cached()
+
+    def test_resealed_generated_tampering_is_detected_by_replaying_cached_choices(self):
+        spec,reviewed=fixture()
+        with TemporaryDirectory() as root,patch.object(dev,'panel',return_value=(spec,reviewed)),patch.object(dev,'directory',return_value=Path(root)):
+            result,folder,_=dev.execute(provider_factory=FakeProvider)
+            result['cases'][0]['generated'][0]['binding']['polarity']['value']='denied'
+            dev.save(folder/'generated-v1.json',result)
+            with self.assertRaisesRegex(ValueError,'cached source decisions'):dev.cached()
+
+    def test_complete_field_aware_comparison_and_source_links(self):
+        spec,reviewed=fixture()
+        with TemporaryDirectory() as root,patch.object(dev,'panel',return_value=(spec,reviewed)),patch.object(dev,'directory',return_value=Path(root)):
+            result,folder,_=dev.execute(provider_factory=FakeProvider)
+            rows=[]
+            for c in reviewed['cases']:
+                key=c['case_id']+'-auto-'+result['cases'][0]['generated'][0]['candidate_id']
+                for r in c['readings']:
+                    rows.append(dict(reference_id=r['binding']['binding_id'],generated_ids=[key],summary='Authored fixture comparison, not a semantic evaluation.',correctly_unresolved='Permanent security is not established.',fields={f:dict(outcome='agreement',finding='Fixture source and generated field agree within scope.',evidence=[r['binding']['proposition']['span']]) for f in dev.FIELDS}))
+            comparison=dict(generated_fingerprint=result['content_fingerprint'],reference_fingerprint=reviewed['content_fingerprint'],readings=rows,extra_generated={},decision=dict(answer='no',finding='Mock fixture only.',recommendation='No live performance inferred from this unit test.'))
+            dev.save(folder/'semantic-review-v1.json',comparison)
+            report,page=dev.report();html=page.read_text();md=page.with_name('review-v1.md').read_text()
+            self.assertEqual('DEVELOPMENT_RUN_COMPARED',report['status'])
+            self.assertEqual({f:{'agreement':10} for f in dev.FIELDS},report['field_outcomes'])
+            ids=re.findall(r' id="([^"]+)"',html)
+            self.assertEqual(len(ids),len(set(ids)))
+            self.assertLessEqual(set(re.findall(r'href="#([^"]+)"',html)),set(ids))
+            self.assertIn('Exact source evidence',md);self.assertIn('index.html#C0-target_text',md)
+            bad=deepcopy(comparison);bad['readings'][0]['fields'].pop('adoption')
+            with self.assertRaisesRegex(ValueError,'all fields'):dev.validate_comparison(bad,result,reviewed)
+            bad=deepcopy(comparison);bad['readings'][0]['fields']['adoption'].update(outcome='attribution_adoption_error',evidence=[])
+            with self.assertRaisesRegex(ValueError,'exact source evidence'):dev.validate_comparison(bad,result,reviewed)
+            bad=deepcopy(comparison);bad['readings'][0]['generated_ids']=['foreign']
+            with self.assertRaisesRegex(ValueError,'foreign candidate'):dev.validate_comparison(bad,result,reviewed)
 
     def test_cli_default_has_no_model_calls_and_check_only_has_no_writes(self):
         from pastor_transcript_extractor.cli import app
