@@ -38,6 +38,28 @@ RULES = {
 }
 
 
+TOPIC_DISPLAY = {
+    'god_character_action': 'God’s character, will and action',
+    'jesus_person_work': 'the person and work of Jesus Christ',
+    'holy_spirit_person_work': 'the person and work of the Holy Spirit',
+}
+SALVATION_DISPLAY = {
+    'divine_grace_initiative': 'God’s unearned grace supplying salvation',
+    'atonement_as_basis': 'Christ’s saving work as the basis of salvation',
+    'forgiveness_pardon': 'divine forgiveness as a saving benefit',
+    'justification_right_standing': 'justification and right standing with God',
+    'conversion_new_birth': 'entry into saving life through conversion or new birth',
+    'sanctification_transformation': 'transformation as part of God’s saving work',
+    'assurance_security': 'assurance and security concerning salvation',
+    'judgment_final_destiny': 'judgment and final saving destiny',
+    'faith_as_receiving_response': 'faith as the response receiving a saving benefit',
+}
+
+
+def prose_list(values):
+    return ', '.join(values[:-1])+', and '+values[-1] if len(values) > 1 else values[0]
+
+
 @dataclass(frozen=True)
 class Claim:
     id: str
@@ -91,12 +113,12 @@ def gap_ledger():
             'Review candidate source windows; separately justify any descriptive prevalence rule with missingness, duration and dependence handling.',
             'interpretation / held aggregation', 'The reader can inspect examples without an invented summary scale.'),
         Gap('sampling', 1, 'All families', 'Stable ministry tendencies or comprehensive theology',
-            'Three development recordings do not establish independence across series, periods or settings.',
+            'This bounded development sample does not establish independence across series, periods or settings.',
             'Preserve reviewed membership, titles, dates where available and exact sample coverage.',
             'Keep the sample scope. Additional independent coverage requires a separate collection decision.',
-            'sampling / separate authorization', 'Prevents three correlated recordings from standing for a ministry.'),
+            'sampling / separate authorization', 'Prevents selected, potentially correlated recordings from standing for a ministry.'),
         Gap('identity', 2, 'Identity', 'Accepted pastor display name',
-            'Reviewed profile lacks a display label; recording titles name John Bradshaw.',
+            'Reviewed profile lacks a display label; recording titles are unaccepted identity metadata.',
             'Expose reviewed membership and source titles as provenance, without converting titles into accepted identity.',
             'Brian can approve a bounded metadata label using the displayed provenance; no automatic attribution rule.',
             'metadata decision', 'Makes the profile recognizable without silently accepting a new identity.'),
@@ -167,7 +189,7 @@ def build(inventory, sources, reuse_checks=None):
             current = cache_inventory.topics_projection._projection_measurements(analysis['sermon_projection'])[example['topic']]
             if current != example['existing_sermon_measurement']:
                 raise ValueError('Inventoried topic measurement differs')
-            labels.append(example['label'])
+            labels.append(TOPIC_DISPLAY.get(example['topic'], example['label'].lower().replace('&', 'and')))
             for block in ordered:
                 identifier = observe(block['block_id'], 'topic', example['topic'], block['scores'][example['topic']], 'measured',
                 dict(question_version=analysis['question_pack_version'], question_digest=analysis['question_pack_digest'],
@@ -180,8 +202,8 @@ def build(inventory, sources, reuse_checks=None):
                     counter_ids.append(identifier)
         if topic_ids:
             claims.append(asdict(Claim(f'c-topic-{vid}',
-                f'In “{evidence_view.short_title(sermon["title"])}” (recording {vid}), '+', '.join(labels)+
-                ' are among the highest stored topic-attention measurements. These identify subjects receiving attention in this recording; they do not establish agreement with every view discussed.',
+                f'“{evidence_view.short_title(sermon["title"])}” (recording {vid}) gives attention to '+prose_list(labels)+
+                '. These subjects appear among its highest stored measures of topical attention. They do not establish agreement with every view discussed.',
                 FAMILIES[1], scope, 'supported_cached_description', 'topic', topic_ids,
                 'The representative windows illustrate the stored summaries, not every minute. Topic attention cannot distinguish a quoted view from an adopted one.',
                 observation_input_ids=topic_inputs, counterevidence_ids=counter_ids)))
@@ -222,7 +244,7 @@ def build(inventory, sources, reuse_checks=None):
                 f'Recording {vid} has cached local observations of '+salvation.SALVATION_RELATIONSHIP_SPECS[leaf].description+'.',
                 FAMILIES[2], scope, 'supported_local_observation', 'salvation', refs,
                 'Local observation only: no automatic adopted position, polarity, frequency or ministry-level tendency. Below-threshold blocks are retained in the evidence ledger.')))
-    gaps = sorted(gap_ledger(), key=lambda g: (g['priority'], g['id']))
+    gaps = sorted([g for g in gap_ledger() if g['id'] != 'identity' or not inventory['selected_profile'].get('display_label')], key=lambda g: (g['priority'], g['id']))
     dimensions = []
     for family in FAMILIES:
         ids = [c['id'] for c in claims if c['family'] == family]
@@ -238,6 +260,7 @@ def build(inventory, sources, reuse_checks=None):
         inventory_fingerprint=inventory['content_fingerprint'], coverage=inventory['coverage'],
         source_identity=[dict(video_id=s['video_id'], title=s['title'], source_sha256=s['source_sha256'], source_path=s['source_path'], gate=s['gate']) for s in inventory['sermons']],
         scope=f'{len(sample_ids)} selected development recordings, not a representative ministry sample.',
+        source_audit_of_all_raw_judgments=False, interpretation_status='proposed descriptive rules for human review',
         assessment_claim_ids=[c['id'] for c in claims if c['rule'] == 'topic'], claims=claims,
         dimensions=dimensions, treatment_candidates=candidates, observations=observations,
         salvation_block_states=states, unresolved_leaves=inventory['coverage']['unresolved_salvation_leaves'],
@@ -324,9 +347,14 @@ def assessment(record):
         if claim['rule'] == 'salvation':
             field = next(o['field'] for o in record['observations'] if o['id'] == claim['evidence_ids'][0])
             leaves.setdefault(field, []).append(claim['id'])
+    if record['treatment_candidates']:
+        selected = {}
+        for candidate in record['treatment_candidates']:
+            selected.setdefault(candidate['dimension'], candidate['evidence_id'])
+        paragraphs.append([(('For preaching style, the available evidence consists of local judgments about ' if index == 0 else '')+dimension.replace('_', ' ')+('.' if index == len(selected)-1 else ';'), key) for index, (dimension, key) in enumerate(selected.items())]+[('These links open candidate source windows for inspecting how a point is developed. A strongest cached candidate is not a measure of frequency or predominance; the sample’s predominant style remains unknown.', 'gap-style')])
     if leaves:
-        paragraphs.append([('The cached local salvation observations include '+
-            salvation.SALVATION_RELATIONSHIP_SPECS[leaf].description+'.', ids[0]) for leaf, ids in sorted(leaves.items())])
+        paragraphs.append([(('In the routed segments, cached local salvation observations concern ' if index == 0 else '')+
+            SALVATION_DISPLAY[leaf]+('.' if index == len(leaves)-1 else ';'), ids[0]) for index, (leaf, ids) in enumerate(sorted(leaves.items()))])
     return paragraphs
 
 
@@ -338,8 +366,7 @@ def render(record):
     script = shell[shell.index('<script>'):]
     paragraphs = ''.join('<p class="lead">'+' '.join(e(text)+' '+link(key, 'evidence ↗') for text, key in paragraph)+'</p>' for paragraph in assessment(record))
     rows = ''.join('<tr><th>'+e(d['family'])+'</th><td>'+e(d['description'])+' '+
-        ' '.join(link(key, 'claim') for key in d['claim_ids'])+' '+
-        ' '.join(link(key, 'source candidate') for key in d['candidate_ids'])+'</td><td>'+e(d['status'].replace('_', ' '))+'</td></tr>' for d in record['dimensions'])
+        link('family-'+str(FAMILIES.index(d['family'])), 'Inspect this dimension')+'</td><td>'+e(d['status'].replace('_', ' '))+'</td></tr>' for d in record['dimensions'])
     claim_cards = []
     for claim in record['claims']:
         refs = ' '.join(link(key, key) for key in claim['evidence_ids'])
@@ -351,8 +378,9 @@ def render(record):
             f'{e(claim["interpretation_status"])}</p><p>Supporting observations: {refs}</p></details>')
     family_sections = []
     for d in record['dimensions']:
-        family_sections.append('<section class="sermon"><h2>'+e(d['family'])+'</h2><p>'+e(d['description'])+'</p>'+
+        family_sections.append('<section class="sermon" id="family-'+str(FAMILIES.index(d['family']))+'"><h2>'+e(d['family'])+'</h2><p>'+e(d['description'])+'</p>'+
             ''.join('<p>'+link(c['evidence_id'], f'Recording {c["video_id"]}: {c["wording"]}')+'</p>' for c in record['treatment_candidates'] if c['evidence_id'] in d['candidate_ids'])+
+            ('<details><summary>Read the supported local claims</summary>'+''.join('<p>'+link(key, next(c['wording'] for c in record['claims'] if c['id'] == key))+'</p>' for key in d['claim_ids'])+'</details>' if d['claim_ids'] else '')+
             '<p>Unknowns: '+' · '.join(link('gap-'+key, key) for key in d['gap_ids'])+'</p></section>')
     gap_cards = ''.join(f'<article id="gap-{e(g["id"])}"><h3>Priority {g["priority"]}: {e(g["withheld"])}</h3>'
         f'<p>{e(g["cause"])}</p><p>Why it matters: {e(g["reader_impact"])}</p><p>Reuse: {e(g["reuse"])}</p>'
@@ -404,7 +432,7 @@ window.addEventListener('hashchange',revealEvidence);window.addEventListener('lo
         '<details><summary>Interpretation rules and coverage</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+e(json.dumps(dict(rules=record['rules'], coverage=record['coverage'],
             salvation_block_states=record['salvation_block_states'], unresolved_leaves=record['unresolved_leaves']), indent=2))+'</pre></details></section>'+
         '<section class="sermon"><h2>Consequential gaps and code map</h2>'+gap_cards+
-        '<details><summary>Existing Scripture reuse checks</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+e(json.dumps(record['reuse_checks'], indent=2))+'</pre></details></section>'+
+        '<details><summary>Existing evidence reuse checks</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+e(json.dumps(record['reuse_checks'], indent=2))+'</pre></details></section>'+
         '<h2>Sermons and full source segments</h2><p>Filters apply to the source browser; the assessment always describes the complete declared sample. '
         'Below threshold is a measured state, not denial. Unrouted means unmeasured; unresolved leaves are unavailable.</p>'+
         '<nav aria-label="Filter recordings"><button type="button" data-filter="all" aria-pressed="true">All recordings</button>'+filters+'</nav>'+''.join(source_sections)+
@@ -439,7 +467,16 @@ def prepare(base_dir=None):
         str(Path(evidence_view.__file__)): trace.digest(evidence_view.__file__)}, provider_requests=0, database_writes=0))
     out = build_paths(base_dir).evaluation / VERSION / manifest['content_fingerprint']
     out.mkdir(parents=True, exist_ok=True)
-    artifacts = {'description-v1.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
+    review = seal(dict(version=VERSION+'-review', status='READY_FOR_HUMAN_REVIEW',
+        description_fingerprint=record['content_fingerprint'], manifest_fingerprint=manifest['content_fingerprint'],
+        claim_count=len(record['claims']), observation_count=len(record['observations']), gap_count=len(record['gaps']),
+        coverage=record['coverage'], provider_requests=0, database_writes=0, new_measurements=False,
+        source_audit_of_all_raw_judgments=False, interpretation_status=record['interpretation_status'],
+        check_command='pte analysis structure-readiness --segment-view --description --check-only --json',
+        review_command='pte analysis structure-readiness --segment-view --description --json',
+        held=['providers/models', 'broader collection', 'new semantic measurements', 'scoring/ranking/comparison', 'production activation', 'ministry stability', 'Ollama quotations']))
+    artifacts = {'review-v1.json': json.dumps(review, ensure_ascii=False, indent=2)+'\n',
+        'description-v1.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
         'profile-v1.md': markdown(record), 'index.html': render(record)}
     for name, raw in artifacts.items():
         path = out / name

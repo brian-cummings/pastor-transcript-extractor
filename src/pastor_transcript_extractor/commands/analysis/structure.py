@@ -215,7 +215,7 @@ def analysis_structure_readiness(
                 path = None
             else:
                 result, path = view.prepare(base_dir)
-                fingerprint = result['content_fingerprint']
+                fingerprint = result['description']['content_fingerprint'] if description else result['content_fingerprint']
         except (ValueError, OSError, KeyError, TypeError) as error:
             raise typer.BadParameter(str(error)) from error
         output = dict(status='READ_ONLY_PASTOR_PROFILE_DESCRIPTION' if description else 'READ_ONLY_EXISTING_SEGMENT_EVIDENCE_VIEW',fingerprint=fingerprint,provider_requests=0,database_writes=0,path=str(path) if path else None)

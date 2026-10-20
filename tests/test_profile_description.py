@@ -13,7 +13,7 @@ from pastor_transcript_extractor.collector_retrieval_json_v1_1 import seal
 def fixture(*, routed=False, measured=True, text='A quoted view is discussed, not adopted. <script>unsafe()</script>'):
     block = dict(block_id=1, start_seconds=0, end_seconds=60, segment_indexes=[0],
         resolved_model_id=m.DEFAULT_TYPESAFE_MODEL, projection_eligibility={'eligible': True},
-        context={'target_text': text}, scores={k: dict(score=0, probabilities={str(i): float(i == 0) for i in range(5)}) for k in m.TOPIC_SPECS})
+        context={'leading_context': '', 'target_text': text, 'trailing_context': '', 'diagnostics': {}}, scores={k: dict(score=0, probabilities={str(i): float(i == 0) for i in range(5)}) for k in m.TOPIC_SPECS})
     if routed:
         block['scores']['salvation_gospel'] = dict(score=3, probabilities={str(i): float(i == 3) for i in range(5)})
     projection = dict(eligible_block_ids=[1], measurements={k: dict(mean_normalized_expected_prominence=0.1,
@@ -55,7 +55,7 @@ class DescriptionTests(unittest.TestCase):
         for text in ('He quotes someone saying salvation is earned.', 'He affirms salvation is earned.'):
             record = d.build(*fixture(text=text))
             self.assertTrue(all(c['rule'] == 'topic' for c in record['claims']))
-            self.assertIn('do not establish agreement', record['claims'][0]['wording'])
+            self.assertIn('not establish agreement', record['claims'][0]['wording'])
             self.assertTrue(any(g['id'] == 'adoption' for g in record['gaps']))
 
     def test_lower_treatment_probabilities_never_admit_a_style_trait(self):
