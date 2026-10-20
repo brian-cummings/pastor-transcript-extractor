@@ -34,6 +34,7 @@ class CapabilityReviewTests(unittest.TestCase):
         case = packet['cases'][0]
         self.assertEqual('measured_below_threshold', case['current_state'])
         self.assertIsNone(case['proposed_position'])
+        self.assertEqual('not_established', case['opportunity_status'])
         self.assertFalse(case['historical_exact_target_match'])
         self.assertEqual([], packet['published_position_claims'])
 

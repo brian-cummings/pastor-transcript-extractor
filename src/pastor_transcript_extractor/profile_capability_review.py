@@ -65,13 +65,13 @@ def build(record, inputs=None):
         cases.append(dict(**prepared, video_id=o['video_id'], block_id=o['block_id'], sermon_title=titles[o['video_id']],
             start_seconds=o['start_seconds'], end_seconds=o['end_seconds'], watch_url=o['watch_url'],
             full_target_text=o['full_target_text'], current_state=o['state'], probability=o['value'],
-            threshold=o['threshold'], historical_exact_target_match=digest in inputs.get('historical_target_hashes', [])))
+            threshold=o['threshold'], opportunity_status='not_established', historical_exact_target_match=digest in inputs.get('historical_target_hashes', [])))
     return seal(dict(version=VERSION, status='READY_FOR_BOUNDED_DECISION' if cases and not excluded else 'PREPARED_CASES_INCOMPLETE',
         inventory_fingerprint=record['inventory_fingerprint'], membership_fingerprint=record['profile'].get('membership_fingerprint'),
         recommendation='Distinguish theological views the preacher personally affirms from views merely discussed, quoted or rejected.',
         reader_value='This would move the profile from what subjects occur to what is actually taught, with the qualifications that change its meaning.',
         why_first='The current profile already describes subjects, examples and practical guidance. More prose, quotations or style labels would not resolve the central uncertainty about the preacher’s own theological claims.',
-        first_scope='Assurance of salvation: knowing present acceptance, possible loss, and retention, with their stated conditions. Use only the prepared passages from this sample.',
+        first_scope='Assurance of salvation: knowing present acceptance, possible loss, and retention, with their stated conditions. Use only the prepared passages from this sample. They are review contrasts, not certified G1 opportunities or positive position findings.',
         reuse='Reuse the existing G1 bound-claim representation and its separate relation, polarity, expression, voice, adoption, conditions and scope fields. Keep the nine current salvation observations unchanged.',
         limits='G1 passed only fixed-passage feasibility and is closed. Natural discovery and coverage remain unestablished; G1 assurance discovery remains HOLD. The V3 source-only discovery review recommends HOLD, not a semantic admission decision. A1 is a bounded G3 containment decision, not authority for theological adoption. No G1 V3, replay, automatic provenance rule or upstream exact-span nomination follows.',
         proposed_delivery='A small, source-reviewed assurance account: exact supported statements, their speaker and adoption evidence, conditions and scope, plus explicit withheld readings. Codex prepares the readings and proposed bindings; Brian reviews concrete results, with no annotation or JSON authoring assigned. No eternal-security label or overall pastor position.',
