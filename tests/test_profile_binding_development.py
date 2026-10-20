@@ -128,6 +128,11 @@ class DevelopmentTests(unittest.TestCase):
             self.assertEqual(len(ids),len(set(ids)))
             self.assertLessEqual(set(re.findall(r'href="#([^"]+)"',html)),set(ids))
             self.assertIn('Exact source evidence',md);self.assertIn('index.html#C0-target_text',md)
+            g=result['cases'][0]['generated'][0]
+            for field in ('frame_request_fingerprint','request_fingerprint'):
+                self.assertIn('../../cache/'+g[field]+'.json',html)
+                self.assertIn('../../cache/'+g[field]+'.json',md)
+            self.assertIn('Recorded execution invocation:',html)
             bad=deepcopy(comparison);bad['readings'][0]['fields'].pop('adoption')
             with self.assertRaisesRegex(ValueError,'all fields'):dev.validate_comparison(bad,result,reviewed)
             bad=deepcopy(comparison);bad['readings'][0]['fully_faithful']=False;bad['readings'][0]['fields']['adoption'].update(outcome='attribution_adoption_error',evidence=[])
