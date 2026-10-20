@@ -177,6 +177,7 @@ def _print_structure_readiness(report: object) -> None:
 
 @analysis_app.command("structure-readiness", help="Report structure analysis readiness.")
 def analysis_structure_readiness(
+    segment_inventory: bool = typer.Option(False, "--segment-inventory", help="Inventory at most 12 current cached topic sources and render a bounded segment-backed sample; no inference or database writes."),
     segment_plan: bool = typer.Option(False, "--segment-plan", help="Verify the current segment-first plan and closed-experiment registry; no inference."),
     unit_span_check: bool = typer.Option(False, "--unit-span-check", help="Provider-free check of whole existing source-unit spans in the selected windows; no inference."),
     typesafe_selection: bool = typer.Option(False, "--typesafe-selection", help="Prepare/check the nomination-only packet; no inference unless separately authorized with --run-selection."),
@@ -192,6 +193,21 @@ def analysis_structure_readiness(
     as_json: bool = typer.Option(False, "--json"),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    if segment_inventory:
+        if any((segment_plan, unit_span_check, typesafe_selection, run_selection, typesafe_windows, reviewed_membership, prepare_handoff, check_handoff, handoff_proposal, evidence_trace)) or approve_input is not None:
+            raise typer.BadParameter("--segment-inventory is a separate provider-free mode")
+        from pastor_transcript_extractor import segment_cache_inventory as inventory
+        try:
+            if check_only:
+                result = inventory.build(base_dir)
+                path = None
+            else:
+                result, path = inventory.prepare(base_dir)
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            raise typer.BadParameter(str(error)) from error
+        output = dict(status=result['status'], fingerprint=result['content_fingerprint'], selected_profile=result['selected_profile']['id'], coverage=result['coverage'], provider_requests=0, database_writes=0, path=str(path) if path else None)
+        console.print_json(data=output) if as_json else console.print(output, markup=False)
+        return
     if segment_plan:
         if any((unit_span_check, typesafe_selection, run_selection, typesafe_windows, reviewed_membership, prepare_handoff, check_handoff, handoff_proposal, evidence_trace, check_only)) or approve_input is not None:
             raise typer.BadParameter("--segment-plan is a separate read-only mode")
