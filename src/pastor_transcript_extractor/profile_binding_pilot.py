@@ -7,12 +7,12 @@ Literal-coordinate checks are integrity checks, not independent semantic review.
 from __future__ import annotations
 
 from copy import deepcopy
-import hashlib
 import html
 import json
 from pathlib import Path
 
 from pastor_transcript_extractor import evidence_pipeline_trace as trace
+from pastor_transcript_extractor.binding_evidence import text_digest, validate_span
 from pastor_transcript_extractor.collector_retrieval_json_v1_1 import seal
 from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor import profile_description
@@ -65,20 +65,6 @@ GAPS['evaluation_target']['existing_support'] = 'G1 already requires the exact p
 GAPS['rhetorical_invitation']['gap_class'] = 'surface-expression limit / existing conservative handling'
 GAPS['rhetorical_invitation']['existing_support'] = 'Existing question, undetermined adoption and not_stated epistemic status preserve the safe partial reading. A general speech-act classifier is not required or established by this pilot.'
 
-
-def text_digest(text):
-    return hashlib.sha256(text.encode()).hexdigest()
-
-
-def validate_span(span, texts):
-    field = span.get('source_field')
-    if field not in ('target_text','leading_context','trailing_context'):
-        raise ValueError('Unknown evidence source field')
-    start, end = span.get('start'), span.get('end')
-    if type(start) is not int or type(end) is not int or not 0 <= start < end <= len(texts[field]):
-        raise ValueError('Evidence coordinates outside the supplied source')
-    if texts[field][start:end] != span.get('text'):
-        raise ValueError('Authored evidence no longer matches the literal source')
 
 
 def compile_reading(case_id, texts, authored):
@@ -254,10 +240,11 @@ def render(report):
 def prepare(base_dir=None):
     report = load(base_dir)
     authored = json.loads(READINGS_PATH.read_text())
-    from pastor_transcript_extractor import profile_presentation
+    from pastor_transcript_extractor import profile_presentation, binding_evidence
     manifest = seal(dict(version=VERSION, report=report, implementation_files={
         str(Path(__file__)):trace.digest(__file__), str(READINGS_PATH):trace.digest(READINGS_PATH),
         str(Path(profile_presentation.__file__)):trace.digest(profile_presentation.__file__),
+        str(Path(binding_evidence.__file__)):trace.digest(binding_evidence.__file__),
         str(trace.ROOT/authored['contract_path']):authored['contract_sha256'],
         str(trace.ROOT/authored['composer_path']):authored['composer_sha256']},provider_requests=0,database_writes=0))
     out = build_paths(base_dir).evaluation / VERSION / manifest['content_fingerprint']
