@@ -240,7 +240,12 @@ def render(record):
     theme_rows = ''.join('<tr><th>'+e(t['label'])+'</th><td>'+e(t['seen_in'])+'</td><td>'+link(t['claim_id'], 'View evidence')+'</td></tr>' for t in reader['themes'])
     theme_table = '<div class="tablewrap"><table><thead><tr><th>Theme</th><th>Seen in</th><th>Support</th></tr></thead><tbody>'+theme_rows+'</tbody></table></div>' if theme_rows else '<p>There is not enough supporting evidence here to describe salvation themes.</p>'
     style_examples = ''.join('<p>'+e(review['description'])+' '+link(passage_id(obs[review['evidence_id']]), 'View supporting passage · '+titles[review['video_id']])+'</p>' for review in reader['source_reviews'] if review['dimension'] != 'practical_application')
-    emphases = ''.join('<p>'+link(key, claims[key]['wording'])+'</p>' for key in reader['emphasis_claim_ids'])
+    topic_rows = []
+    for topic, vids in reader['shared_topic_membership'].items():
+        refs = [key for claim in record['claims'] if claim['rule'] == 'topic' for key in claim['evidence_ids'] if obs[key]['field'] == topic]
+        seen_in = 'All '+str(len(titles))+' sermons' if len(vids) == len(titles) and len(titles) > 1 else phrase_list([titles[vid] for vid in vids])
+        topic_rows.append('<tr><th>'+e(TOPICS.get(topic, topic.replace('_', ' ')))+'</th><td>'+e(seen_in)+'</td><td>'+supporting(refs)+'</td></tr>')
+    emphases = '<p>Compare the passages to see how these subjects are developed in the named sermons. Attention to a subject does not establish agreement with every view discussed.</p><div class="tablewrap"><table><thead><tr><th>Subject</th><th>Seen in</th><th>Supporting passages</th></tr></thead><tbody>'+''.join(topic_rows)+'</tbody></table></div>'
     cards = []
     for c in reader['claims']:
         cards.append('<details class="claim" id="'+e(c['id'])+'"><summary>'+e(c['wording'])+'</summary><p>'+e(c['reason'])+'</p>'+supporting(c['evidence_ids'])+

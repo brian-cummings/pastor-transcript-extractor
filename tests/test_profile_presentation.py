@@ -157,6 +157,11 @@ class PresentationTests(unittest.TestCase):
         closer = page.split('id="dimension-style"',1)[1].split('id="dimension-emphases"',1)[0]
         self.assertNotIn(full_prose, closer)
         self.assertIn('Examples establish the presence', closer)
+        emphasis_detail = page.split('id="dimension-emphases"',1)[1].split('id="dimension-salvation"',1)[0]
+        shared_wording = next((c['wording'] for c in reader['claims'] if c['id'] == 'reader-emphases'), '')
+        if shared_wording:
+            self.assertNotIn(shared_wording, emphasis_detail)
+        self.assertIn('Supporting passages', emphasis_detail)
         self.assertEqual('salvation received through faith', p.THEMES['faith_as_receiving_response'])
 
     def test_authored_review_input_is_bounded_and_not_an_identity_rule(self):
