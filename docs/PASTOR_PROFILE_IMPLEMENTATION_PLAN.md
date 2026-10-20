@@ -39,7 +39,7 @@ The concrete V2 review packet is under the configured base directory at `evaluat
 
 ## Current increment — small presentation fixes and a consequential capability decision
 
-The latest feedback explicitly discourages another language-polishing cycle. V3 keeps the successful product structure and makes the requested small changes: terse style descriptors at a glance, concrete examples and nuance in “A closer look,” and “salvation received through faith.” It adds a source-backed next-capability brief, not a new detector or another inventory gate.
+The latest feedback explicitly discourages another language-polishing cycle. V3 keeps the successful product structure and makes the requested small changes: terse style descriptors at a glance, concrete examples, sermon-level passage comparisons and nuance in “A closer look,” and “salvation received through faith.” It adds a source-backed next-capability brief, not a new detector or another inventory gate.
 
 **Recommended capability:** proposition-specific theological positions with voice/adoption, polarity, conditions and scope. This most directly changes the useful answer from “which subjects occur?” to “what does the preacher actually teach?” Pastoral tone is the next complementary gap; more style wording, quotations or comparison cannot resolve this missing distinction.
 
@@ -47,13 +47,13 @@ The latest feedback explicitly discourages another language-polishing cycle. V3 
 
 The existing G1 fixed-passage feasibility gate is PASS/closed, with disclosed conservative residuals; discovery and opportunity coverage are unestablished. The prepared targets are not exact matches to that closed pilot’s targets. The V3 source-only discovery review recommends G1 HOLD; A1’s bounded G3 containment decision is not theological adoption authority. No provider, closed-panel replay, G1 V3, collector change, automatic provenance rule, threshold change or broader collection has occurred.
 
-Implementation: `profile_capability_review.py` and exact-source prepared inputs, committed in `15fb892` and `378736b`, alongside the small presentation fixes. The profile and packet are reproducible through the existing CLI:
+Implementation: `profile_capability_review.py` and exact-source prepared inputs, committed in `15fb892`, `378736b` and `f554359`, alongside the small presentation fixes. The profile and packet are reproducible through the existing CLI:
 
 ```bash
 pte analysis structure-readiness --segment-view --description --json
 ```
 
-This writes `index.html`, `profile-v3.md`, `description-v3.json`, `review-v3.json`, and `next-capability-v1.md/json` under the configured base directory at `evaluation/pastor-profile-description-v3/431b8b0f376202643ecc2036a7ee551c1e601923328bf3777cb90b2b7584e322/`. Read-only freshness verification remains:
+This writes `index.html`, `profile-v3.md`, `description-v3.json`, `review-v3.json`, and `next-capability-v1.md/json` under the configured base directory at `evaluation/pastor-profile-description-v3/f3ecf29d342b7684399fe6b5449f6e49d5d173c5e5ef2a715f04552f3cc3e9ae/`. Read-only freshness verification remains:
 
 ```bash
 pte analysis structure-readiness --segment-view --description --check-only --json

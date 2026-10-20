@@ -87,7 +87,7 @@
   "missing_dimensions_silently_disappear": false,
   "draft_is_measurement_ground_truth": false,
   "implementation_path": "docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md",
-  "implementation_sha256": "80299ae8193e3cabb17a2697aae64ba25a16a9410244a6d5d0f763feef9e08f0",
+  "implementation_sha256": "18acf6c8c8e0821b90aaa6e1bd4d5a2c0ee048a10497cf064d971f8d7ebb67c0",
   "archive_manifest_path": "docs/review-proposals/pastor-profile-implementation-plan-v1/archive-manifest-v1.json",
   "archive_manifest_sha256": "1325c74052f22831f3de85728f6e6a7d79377545c8a87e37ec0ffc7176f2915f",
   "implementation_milestones": [
@@ -163,8 +163,9 @@
     "new_measurements": false,
     "implementation_commits": [
       "15fb892",
-      "378736b"
+      "378736b",
+      "f554359"
     ]
   },
-  "content_fingerprint": "59659afc486c92c4f178fa85067ee36bd532ca2f2f9e2f090481f11efc919aa3"
+  "content_fingerprint": "d69cc4aa9382b4843e0acf71a14d70a3af0b7b256725077b89b3b4cf7dbc16bd"
 }
