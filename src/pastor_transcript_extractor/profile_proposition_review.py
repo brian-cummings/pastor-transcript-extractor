@@ -87,6 +87,14 @@ def load(base_dir=None):
     return build(pilot.load(base_dir), authored)
 
 
+def voice_label(voice):
+    if voice['occurrence'] == 'projected':
+        return 'projected speech'
+    if voice['kind'] == 'quoted_or_reported':
+        return 'reported speech' if voice['occurrence'] == 'actual' else 'report / occurrence unresolved'
+    return 'current speech' if voice['kind'] == 'preacher' and voice['occurrence'] == 'actual' else 'occurrence unresolved'
+
+
 def fields(binding):
     p=binding
     out=[('What is expressed',p['proposition']['reading'],[p['proposition']['span']]),
@@ -114,7 +122,7 @@ def markdown(report):
     lines += ['', '## At a glance', '', '| Reading | Speaker / occurrence | Preacher’s use | Assurance mapping |', '|---|---|---|---|']
     for c in report['cases']:
         for r in c['readings']:
-            p=r['binding'];lines.append('| ['+p['title']+'](index.html#'+p['binding_id']+') | '+p['voice']['speaker']+' / '+p['voice']['occurrence']+' | '+p['adoption']['status'].replace('_',' ')+' | '+r['assurance_interpretation']['mapping_status']+' |')
+            p=r['binding'];lines.append('| ['+p['title']+'](index.html#'+p['binding_id']+') | '+p['voice']['speaker']+' / '+voice_label(p['voice'])+' | '+p['adoption']['status'].replace('_',' ')+' | '+r['assurance_interpretation']['mapping_status']+' |')
     for c in report['cases']:
         lines += ['', '## '+c['sermon_title'], '', '[Watch '+timestamp(c['start_seconds'])+'–'+timestamp(c['end_seconds'])+']('+c['watch_url']+')', '']
         for r in c['readings']:
@@ -146,9 +154,9 @@ def render(report):
         articles=[]
         for r in c['readings']:
             p=r['binding'];assurance=r['assurance_interpretation']
-            glance.append('<tr><th><a href="#'+e(p['binding_id'])+'">'+e(p['title'])+'</a></th><td>'+e(p['voice']['speaker'])+' · '+e(p['voice']['occurrence'])+'</td><td>'+e(p['adoption']['status'].replace('_',' '))+'</td><td>'+e(assurance['mapping_status'].replace('_',' '))+'</td></tr>')
+            glance.append('<tr><th><a href="#'+e(p['binding_id'])+'">'+e(p['title'])+'</a></th><td>'+e(p['voice']['speaker'])+' · '+e(voice_label(p['voice']))+'</td><td>'+e(p['adoption']['status'].replace('_',' '))+'</td><td>'+e(assurance['mapping_status'].replace('_',' '))+'</td></tr>')
             table=''.join('<tr><th>'+e(label)+'</th><td>'+e(reading)+'</td><td>'+evidence(spans,c['case_id'])+'</td></tr>' for label,reading,spans in fields(p))
-            articles.append('<article id="'+e(p['binding_id'])+'"><h3>'+e(p['title'])+'</h3><p class="note">'+e(p['proposition']['reading'])+'</p><p>'+e(p['voice']['speaker'])+' · '+e(p['voice']['occurrence'])+' speech · '+e(p['adoption']['status'].replace('_',' '))+'</p><details><summary>Inspect the reading and its exact supporting evidence</summary><div class="tablewrap"><table><thead><tr><th>Field</th><th>Source-reviewed meaning</th><th>Exact evidence</th></tr></thead><tbody>'+table+'</tbody></table></div></details><p><strong>Unknown or withheld</strong></p><ul>'+''.join('<li>'+e(s)+'</li>' for s in p['unknowns'])+'</ul><details class="technical"><summary>Separate assurance interpretation · '+e(assurance['mapping_status'].replace('_',' '))+' · original G1 unchanged</summary><p>A narrow non-match or unresolved predicate does not mean no theology, denial or no assertion. Generic adoption concerns the exact locally used proposition; the narrower interpretation retains its separately reviewed target and meanings.</p><pre>'+e(json.dumps(assurance,ensure_ascii=False,indent=2))+'</pre></details><details class="technical"><summary>Generic record, provenance and reviewed subject mapping</summary><pre>'+e(json.dumps(r,ensure_ascii=False,indent=2))+'</pre></details></article>')
+            articles.append('<article id="'+e(p['binding_id'])+'"><h3>'+e(p['title'])+'</h3><p class="note">'+e(p['proposition']['reading'])+'</p><p>'+e(p['voice']['speaker'])+' · '+e(voice_label(p['voice']))+' · '+e(p['adoption']['status'].replace('_',' '))+'</p><details><summary>Inspect the reading and its exact supporting evidence</summary><div class="tablewrap"><table><thead><tr><th>Field</th><th>Source-reviewed meaning</th><th>Exact evidence</th></tr></thead><tbody>'+table+'</tbody></table></div></details><p><strong>Unknown or withheld</strong></p><ul>'+''.join('<li>'+e(s)+'</li>' for s in p['unknowns'])+'</ul><details class="technical"><summary>Separate assurance interpretation · '+e(assurance['mapping_status'].replace('_',' '))+' · original G1 unchanged</summary><p>A narrow non-match or unresolved predicate does not mean no theology, denial or no assertion. Generic adoption concerns the exact locally used proposition; the narrower interpretation retains its separately reviewed target and meanings.</p><pre>'+e(json.dumps(assurance,ensure_ascii=False,indent=2))+'</pre></details><details class="technical"><summary>Generic record, provenance and reviewed subject mapping</summary><pre>'+e(json.dumps(r,ensure_ascii=False,indent=2))+'</pre></details></article>')
         source=''.join('<details id="'+e(c['case_id']+'-'+field)+'"><summary>'+e(field.replace('_',' ').capitalize())+'</summary><div class="source">'+e(text)+'</div><p>Back to readings: '+', '.join('<a href="#'+e(r['binding']['binding_id'])+'">'+e(r['binding']['title'])+'</a>' for r in c['readings'])+'</p></details>' for field,text in c['texts'].items())
         sections.append('<section class="panel" id="'+e(c['case_id'])+'"><h2>'+e(c['sermon_title'])+'</h2><p><a href="'+e(c['watch_url'])+'" target="_blank" rel="noopener noreferrer">Watch '+e(timestamp(c['start_seconds'])+'–'+timestamp(c['end_seconds']))+'</a></p>'+''.join(articles)+'<h3>Complete supplied passage and context</h3>'+source+'<p class="muted">Only target evidence supplies assertions and semantic links. Context resolves references; original truncation remains disclosed.</p><details class="technical"><summary>Source identity and context diagnostics</summary><pre>'+e(json.dumps({k:v for k,v in c.items() if k not in ('readings','texts')},ensure_ascii=False,indent=2))+'</pre></details></section>')
     limits=''.join('<article id="limit-'+e(v['id'])+'"><h3>'+e(v['title'])+'</h3><p>'+e(v['meaning'])+'</p><p><strong>Smallest next remedy:</strong> '+e(v['remedy'])+'</p></article>' for v in report['limitations'])
