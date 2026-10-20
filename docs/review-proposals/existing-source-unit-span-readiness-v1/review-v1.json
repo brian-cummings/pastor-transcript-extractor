@@ -1,0 +1,20 @@
+{
+  "version": "existing-source-unit-span-review-v1",
+  "status": "STOP_BEFORE_INFERENCE_EXISTING_UNITS_TOO_COARSE",
+  "report_fingerprint": "3d6645132f01a80e11f47afbe2cf15cd33655f4d45ccc7a2c0485731fb6cad37",
+  "report_path": "/Users/briancummings/Documents/PastorSearchData/evaluation/existing-source-unit-span-readiness-v1/3d6645132f01a80e11f47afbe2cf15cd33655f4d45ccc7a2c0485731fb6cad37/readiness-v1.json",
+  "report_sha256": "09d06e2110bd2f95bf336e22f0bdd891eac009515aaf14c62a6d8c94d1787442",
+  "review_sha256": "10611ef848a211c23345529e8f56feb6ed85a4123e6bb49bc983dfca3390a5ac",
+  "counts": {
+    "selected_contexts": 17,
+    "adequate_diagnostic_cases": 12,
+    "exact_case_geometries": 0,
+    "G2_same_unit_role_collisions": 2
+  },
+  "provider_requests": 0,
+  "inference_packet_prepared": false,
+  "focused_tests_passed": 50,
+  "contracts_changed": false,
+  "recommendation": "Do not execute whole-existing-unit selection; source units cannot separate required roles and often mix acts/voices.",
+  "content_fingerprint": "9e1f312a82f0ce855becc06b2499175d1f2cce355e70118974968e7450bb7430"
+}

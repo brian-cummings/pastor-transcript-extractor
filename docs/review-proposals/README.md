@@ -1,10 +1,11 @@
 # Evidence-supply review navigation
 
-The current result is [the TypeSafe position-selection source audit](typesafe-position-selection-source-audit-v1/REVIEW.md), dated 2026-10-19. The completed run used 30 total requests and $0.033297516 list price. It returned one supported current-preacher nomination, seven invalid geometries and eight withheld outcomes; no G2 pair or reported-local G3 nomination. The audit recommends stopping this endpoint formulation. No measurement/admission or collection/projection ran.
+The current provider-free result is [the existing source-unit span check](existing-source-unit-span-readiness-v1/REVIEW.md), dated 2026-10-19. Whole units cannot separate two demonstrated G2 role pairs and often mix G3 acts/voices. No inference packet was prepared; no new provider calls occurred. The prior endpoint-selection run and source audit remain preserved.
 
 | Material | How to use it now |
 |---|---|
-| `typesafe-position-selection-source-audit-v1` | Current audited diagnostic result; stop endpoint formulation, no more inference recommended. |
+| `existing-source-unit-span-readiness-v1` | Current provider-free representation check: stop before inference; whole existing units are too coarse. |
+| `typesafe-position-selection-source-audit-v1` | Supporting audited diagnostic result; stop endpoint formulation, no more inference recommended. |
 | `typesafe-position-selection-v1` | Historical preparation, authorization and receipt-preserving bugfix handoffs; run now completed, see current audit. |
 | `typesafe-selected-window-bridge-v1` | Supporting provider-free position/measurement interface and capped usage plan; nomination questions remain unvalidated and execution held. |
 | `minute-membership-reconciliation-v1` | Supporting unchanged 24/24 context preparation with fixture-only membership authority. |
