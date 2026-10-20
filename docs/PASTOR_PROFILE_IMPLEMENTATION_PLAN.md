@@ -106,6 +106,16 @@ The first writes immutable HTML/Markdown/JSON under the configured base director
 
 **Next:** Brian reviews the concrete updated readings, especially the discourse-based adoption and projected confidence language; Codex interprets feedback and recommends bounded revisions. Automatic binding/accuracy, discovery/coverage, positive condition/exception and explicit-uncertainty examples absent from this sample, external quote verification and pastor-wide projection remain unestablished. Provider/model calls, new measurements, broader collection, comparison/scoring and Ollama quotation execution remain held. No further implementation authorization is needed to inspect the delivered packet.
 
+## Current development increment — automatic generic binding
+
+**2026-10-20: code implemented; live run awaits direct confirmation required by automatic approval review.** Following positive feedback on the separated architecture, the new goal requests a bounded automatic development run on the same three supplied passages and ten reviewed readings. Source-only discovery and independent field judgments, compatible request caches, raw-response replay verification, the `pte` workflow and a field-aware semantic comparison renderer are implemented in commits `3a5e670` and `675825c`.
+
+Run after direct confirmation with `pte analysis profile-binding-development --run --json`. Read-only cache verification uses `--check-only`; ordinary rendering uses the command without either flag. See [exact payload, implementation, safeguards and current execution status](PROFILE_BINDING_DEVELOPMENT.md). The generator never receives the reviewed bindings or assurance judgments. Codex owns post-output semantic comparison and the recommendation; Brian reviews concrete results.
+
+**Actual state:** both attempted launches were rejected before process creation. This workflow has zero provider requests, no model-generated results and no development-performance finding. Automatic approval review rejects the attachment as trusted transmission/payment authorization and requires direct confirmation for TypeSafe `jev-1.13.0` on the same three passages/context. A confirmation question has been presented; no workaround execution is permitted. The request ledger/output directory do not exist. The prior delivered ten-reading source review remains the latest runnable result.
+
+**Local verification:** 83 focused tests pass, including 13 new generator/runner tests. They use mock responses and establish structural/regression behavior, not live performance. The existing reviewed readings, original G1 interpretations and profile remain unchanged. Broader collection, production activation, automatic acceptance, assurance measurement/threshold changes, profile projection, benchmark comparison/scoring and quotation execution remain held. Live execution and the required semantic discrepancy report/decision remain unfinished until the provider run is permitted and completed.
+
 ## Starting point: what already exists
 
 | Existing component | Reuse in the feature |

@@ -7,7 +7,7 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('GENERIC_BINDING_SEPARATED_TEN_READINGS_DELIVERED',plan['status'])
+        self.assertEqual('AUTOMATIC_BINDING_DEV_IMPLEMENTED_RUN_CONFIRMATION_PENDING',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['next_capability_decision']['pilot_execution'])
@@ -15,6 +15,8 @@ class SegmentPlanTests(unittest.TestCase):
         self.assertTrue(plan['binding_separation']['new_implementation_verified'])
         self.assertTrue(plan['binding_separation']['original_G1_records_unchanged'])
         self.assertEqual(10,plan['binding_separation']['source_readings'])
+        self.assertFalse(plan['binding_development']['live_results_available'])
+        self.assertEqual(0,plan['binding_development']['live_provider_requests'])
         self.assertEqual('assurance_of_salvation',plan['source_review_pilot']['test_domain'])
         self.assertEqual('pastor-profile-description-v2',plan['presentation_revision']['version'])
         self.assertEqual('unchanged_from_V1',plan['presentation_revision']['raw_observations_and_underlying_claims'])
