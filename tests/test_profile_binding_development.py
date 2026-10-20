@@ -133,6 +133,7 @@ class DevelopmentTests(unittest.TestCase):
                 self.assertIn('../../cache/'+g[field]+'.json',html)
                 self.assertIn('../../cache/'+g[field]+'.json',md)
             self.assertIn('Recorded execution invocation:',html)
+            self.assertIn('../../cache/'+result['cases'][0]['discovery_request_fingerprint']+'.json',html)
             bad=deepcopy(comparison);bad['readings'][0]['fields'].pop('adoption')
             with self.assertRaisesRegex(ValueError,'all fields'):dev.validate_comparison(bad,result,reviewed)
             bad=deepcopy(comparison);bad['readings'][0]['fully_faithful']=False;bad['readings'][0]['fields']['adoption'].update(outcome='attribution_adoption_error',evidence=[])

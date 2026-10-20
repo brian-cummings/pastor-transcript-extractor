@@ -1,10 +1,16 @@
 # Automatic generic proposition binding: bounded development workflow
 
-**Current revision, 2026-10-20: V2 implemented and prepared; not executed.** Brian approved proceeding with the task-decomposition repairs after discussing TypeSafe versus Ollama. This revision retains TypeSafe for the bounded development workflow; no backend comparison or Ollama run is included. Brian runs the next dataset command; Codex owns the subsequent source-inspected comparison and recommendation.
+**Current result, 2026-10-20: V2 executed by Brian and semantically compared by Codex. Decision: do not expand validation or run another menu/cutoff-tuning iteration.** The same three passages produced 35 structurally valid candidates in 39 provider requests (zero cache hits), using 503,108 input and 65,691 output tokens. A monetary cost was not returned. All subsequent comparison, verification and report formatting used caches with provider construction blocked; Brian's original invocation receipt remains unchanged.
 
-V2 separates theological relevance from candidate completeness, keeps overlapping candidates eligible rather than forcing a preferred wording, preserves multi-sentence embedded quotations and their outer frames, limits named-speaker options to explicit speech attributions, narrows evidence menus and resolves attribution before dependent interpretation. The second stage receives the first stage's generated decisions and abstentions, not reference answers. Missing attribution evidence withholds the frame before downstream use. Unresolved conditions, qualifications, relations and address fields remain explicit in unknowns even when no record can be compiled.
+Seven reviewed proposition contents are located, none are partial and three are missing; **zero readings preserve all twelve reviewed field groups**. Paul’s confession, the reported middle-road identity and the place-in-heaven declaration are newly located. The mercy account, saving-desire statement and lukewarm warning are now missing. This trades which content is recovered; it does not establish faithful binding or general improvement. All 26 unmapped generated candidates have source-inspected dispositions; extra source-backed theology is not automatically a false positive.
 
-A provider-free preflight on the unchanged three passages passes with 43, 54 and 12 source candidates. These are lexical alternatives, not accepted propositions. The `.80` development cutoff, model, measurement contracts, reference readings, assurance adapter and profile remain unchanged. V2 has **zero live requests and no semantic results**; focused tests establish code behavior, not improved extraction performance. The completed V1 packet below remains the latest observed result.
+Seven generated candidates have structurally resolved voice/speaker pairs, but two repeated Jesus lines cite only an unattributed line as attribution evidence. All 35 adoption states remain undetermined. No qualification, development-link or address-act record survives. P3 outer invitations now withhold occurrence instead of emitting V1's projected occurrence error; the supported actual preacher frame is still absent. No generated observation is accepted or projected into the profile.
+
+**Concrete failures:** relevance 1.00 does not save the complete saving-desire compound statement from a boundary score of .57, or the attributed warning from .78. The mercy prayer has no complete standalone lexical candidate; its broad paragraph has boundary .64. Conversely an incomplete scoundrel-if fragment passes the boundary gate. Paul and invited-listener identities are often recognized, but competing evidence windows withhold their voice bindings. Even the completion claim's resolved preacher frame leaves own assertion and adoption split. The explicit unknown disclosures are useful, but do not supply the omitted G2/G3 links.
+
+**Recommendation:** retain the source-reviewed bindings as current usable evidence and stop further tuning of this selection-based binder. The next proposed architecture extracts a connected proposition, speech frame and evidence structure from each whole supplied passage, validates literal spans in code and uses narrow judgments afterward for verification. Any new backend or provider experiment needs a separate decision; no Ollama execution, model comparison or quotation work is authorized by this result. This is a diagnosis of this implementation on these cases, not proof that another model is better.
+
+The V2 packet is under the configured base directory at `evaluation/automatic-generic-proposition-binding-dev-v2/runs/0e8c2a1ae48b2bcc4b3a9511bb2bfea055a794967f4c10292eaf5a87cb6c9eb8/`: `index.html`, `review-v1.md/json`, `semantic-review-v1.json`, immutable `generated-v1.json`, the original invocation and verification receipts. Report fingerprint: `63c63f7c007eeabbb558c147cbddae736c259ac16a95ea61ff245ae232eaa9af`. Generated fingerprint: `c817a55019514eedc221951f5be82f547677d7ef4c3de74364deb15eb2526ba0`. The report links to the original discovery, frame and interpretation requests and raw probabilities. To keep those relative receipt links available over HTTP, serve the V2 evaluation directory with the report at `runs/<fingerprint>/index.html`.
 
 ## Preserved V1 result
 
@@ -30,13 +36,13 @@ Read-only preflight, without provider construction or artifact writes:
 pte analysis profile-binding-development --prepare --json
 ```
 
-Brian's next command executes/resumes only the same three passages:
+The execution/resumption command is preserved for reproducibility; **do not run it again for this review**:
 
 ```bash
 pte analysis profile-binding-development --run --json
 ```
 
-After Brian runs V2, render its cached results and any completed semantic comparison without provider calls:
+Render the completed V2 results and semantic comparison without provider calls:
 
 ```bash
 pte analysis profile-binding-development --json
@@ -48,7 +54,7 @@ Verify source identity, request caches, reconstructed generated records and the 
 pte analysis profile-binding-development --check-only --json
 ```
 
-The latter commands require a completed V2 run; until then they fail without opening a provider. V1 caches cannot satisfy changed V2 requests. Generated results, raw response caches, request ledger, invocation receipt and HTML/Markdown/JSON review live only under the configured application base directory, never the repository. The command rejects repository-local artifact directories. An interrupted transmission without a reusable response requires inspection and cannot silently retry.
+The latter commands reuse the completed V2 run without opening a provider. `--prepare` checks source/request preparation only; it is not an execution-status query. V1 caches cannot satisfy changed V2 requests. Generated results, raw response caches, request ledger, invocation receipt and HTML/Markdown/JSON review live only under the configured application base directory, never the repository. The command rejects repository-local artifact directories. An interrupted transmission without a reusable response requires inspection and cannot silently retry.
 
 ## Implementation and boundaries
 
@@ -74,7 +80,7 @@ Every reading must show generated candidate links, the unchanged reference, agre
 
 The report counts those dispositions across these ten readings and individual fields; it does not call them general accuracy, precision, recall, production readiness or corpus validation. Structurally valid records are not automatically semantically faithful. Token usage and provider requests/cache hits are reported from receipts; a monetary cost is not invented when absent from the provider response.
 
-The final decision must answer whether these development results justify a separate broader validation step. A negative answer must identify concrete failures and smallest remedies; a positive answer must propose the smallest independent validation. The completed comparison answers **no** for this implementation on these development cases, with the concrete remedies above. This is not a general claim about TypeSafe or automatic theological binding.
+The final decision must answer whether these development results justify a separate broader validation step. A negative answer must identify concrete failures and smallest remedies; a positive answer must propose the smallest independent validation. Both completed comparisons answer **no** for their implementations on these development cases. V2 supports changing the extraction approach before any further run, not repeating the V1 menu remedies. This is not a general claim about TypeSafe or automatic theological binding.
 
 ## Local verification
 
@@ -82,8 +88,8 @@ The final decision must answer whether these development results justify a separ
 
 No broader collection, additional sermons/pastors, production activation, automatic acceptance, frozen assurance changes, profile projection, benchmark comparison/scoring, ontology expansion or Ollama quotation execution is included.
 
-### V2 verification and next handoff
+### V2 verification and completed comparison
 
 The focused suite now contains 89 tests. New regression controls cover multi-sentence quote boundaries, separate relevance/completeness decisions, attribution-only speaker candidates, disjoint request stages, dependent-frame linkage/tampering, explicit unresolved links and write-free/provider-free CLI preparation. Mock provider outputs check transport/composition behavior, not model quality. V2 preflight checks exact current source identity and both request-stage shapes/sizes. It does not execute a model or reuse V1's semantic verdict as a V2 verdict.
 
-After Brian runs the prepared command, Codex will inspect the generated output against the same ten readings and source windows, author all twelve field dispositions and extra-candidate reviews, and issue a concrete decision. No case selection or annotation is assigned to Brian. Neither provider superiority nor readiness for a wider sample has been established.
+Codex inspected all 35 generated candidates against the source and unchanged ten readings, authored all 120 field dispositions and 26 extra-candidate reviews, and issued the negative expansion decision. Read-only reconstruction checks all 39 raw response caches and the exact generated records. Browser checks cover ten comparison sections, 35 generated cards, exact source/return links and raw probability receipt access. The original generic readings, G1 records, V1 report and V3 profile remain unchanged. No case selection or annotation is assigned to Brian. Neither provider superiority nor readiness for a wider sample has been established.
