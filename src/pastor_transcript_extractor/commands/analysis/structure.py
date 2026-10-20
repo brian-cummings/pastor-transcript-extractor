@@ -177,6 +177,7 @@ def _print_structure_readiness(report: object) -> None:
 
 @analysis_app.command("structure-readiness", help="Report structure analysis readiness.")
 def analysis_structure_readiness(
+    description: bool = typer.Option(False, "--description", help="Add a readable, claim-linked descriptive profile to --segment-view; no inference."),
     segment_view: bool = typer.Option(False, "--segment-view", help="Render the reviewed cached segment sample as a read-only profile view; no models or database writes."),
     segment_inventory: bool = typer.Option(False, "--segment-inventory", help="Inventory at most 12 current cached topic sources and render a bounded segment-backed sample; no inference or database writes."),
     segment_plan: bool = typer.Option(False, "--segment-plan", help="Verify the current segment-first plan and closed-experiment registry; no inference."),
@@ -194,12 +195,20 @@ def analysis_structure_readiness(
     as_json: bool = typer.Option(False, "--json"),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    if description and not segment_view:
+        raise typer.BadParameter("--description requires --segment-view")
     if segment_view:
         if any((segment_inventory, segment_plan, unit_span_check, typesafe_selection, run_selection, typesafe_windows, reviewed_membership, prepare_handoff, check_handoff, handoff_proposal, evidence_trace)) or approve_input is not None:
             raise typer.BadParameter("--segment-view is a separate read-only presentation mode")
         from pastor_transcript_extractor import segment_profile_view as view
+        if description:
+            from pastor_transcript_extractor import profile_description as view
         try:
-            if check_only:
+            if check_only and description:
+                result = view.load(base_dir)
+                fingerprint = result["content_fingerprint"]
+                path = None
+            elif check_only:
                 inventory, sources = view.load(base_dir)
                 result = view.build_view(inventory, sources)
                 fingerprint = result['content_fingerprint']
@@ -209,7 +218,7 @@ def analysis_structure_readiness(
                 fingerprint = result['content_fingerprint']
         except (ValueError, OSError, KeyError, TypeError) as error:
             raise typer.BadParameter(str(error)) from error
-        output = dict(status='READ_ONLY_EXISTING_SEGMENT_EVIDENCE_VIEW',fingerprint=fingerprint,provider_requests=0,database_writes=0,path=str(path) if path else None)
+        output = dict(status='READ_ONLY_PASTOR_PROFILE_DESCRIPTION' if description else 'READ_ONLY_EXISTING_SEGMENT_EVIDENCE_VIEW',fingerprint=fingerprint,provider_requests=0,database_writes=0,path=str(path) if path else None)
         console.print_json(data=output) if as_json else console.print(output,markup=False)
         return
     if segment_inventory:
