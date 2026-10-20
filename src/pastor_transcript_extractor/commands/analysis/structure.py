@@ -235,7 +235,7 @@ def analysis_structure_readiness(
             plan, path = verify()
         except (ValueError, OSError, KeyError) as error:
             raise typer.BadParameter(str(error)) from error
-        output = dict(status=plan['status'], fingerprint=plan['content_fingerprint'], path=str(path), pipeline_order=plan['pipeline_order'], product_order=plan['product_order'], analytical_families=plan['analytical_families'], next_deliverables=plan['next_deliverables'], next_step=plan['next_step'], retired_paths=plan['retired_paths'], provider_requests=0)
+        output = dict(status=plan['status'], fingerprint=plan['content_fingerprint'], path=str(path), implementation_path=str(path.parent/Path(plan['implementation_path']).name), pipeline_order=plan['pipeline_order'], product_order=plan['product_order'], analytical_families=plan['analytical_families'], next_deliverables=plan['next_deliverables'], next_step=plan['next_step'], retired_paths=plan['retired_paths'], provider_requests=0)
         console.print_json(data=output) if as_json else console.print(output, markup=False)
         return
     if unit_span_check:

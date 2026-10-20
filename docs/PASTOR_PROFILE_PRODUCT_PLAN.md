@@ -1,6 +1,8 @@
 # Current product plan: readable pastor profile with evidence underneath
 
-**Brian's accepted direction, 2026-10-19.** Build a human-readable, evidence-backed pastor description first, then work backward to the observations, interpretation rules and code needed to produce it. The immediate deliverable is a concrete draft from the existing three-sermon sample, with a claim ledger and prioritized gaps. It is not a blank template, a new measurement target, an approved theology assessment or authorization to execute a model.
+**Brian's accepted direction, 2026-10-19.** Build a human-readable, evidence-backed pastor description first, then work backward to the observations, interpretation rules and code needed to produce it. The first implementation should deliver a working descriptive profile with an embedded three-sermon example, traceable claims and explicit gaps. It is not a blank template, a new measurement target, an approved theology assessment or authorization to execute a model.
+
+The companion [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) defines the code changes, milestones and acceptance checks. The two documents are the active product/engineering pair; the worked example is part of implementation, not a separate preliminary document.
 
 This product plan builds on [segment evidence first, illustrative quotations last](SEGMENT_EVIDENCE_PLAN.md). Its minute-based processing and downstream Ollama quotation policy remain. The current [read-only evidence view](review-proposals/segment-profile-view-v1/REVIEW.md) becomes the lower evidence layer rather than the entire product. Earlier exact-span extraction and collector dead ends remain closed.
 
@@ -25,11 +27,11 @@ The reader's hierarchy is **assessment → at-a-glance → benchmark comparison 
 
 Names and boundaries are a product organization, not new measurement contracts. A dimension can be discussed qualitatively where source evidence supports it, but it must not be silently populated by an adjacent topic proxy. Preserve existing G1/G2/G3/A1 semantics and historical scopes; do not reintroduce exact-span nomination as a universal requirement.
 
-## Immediate next iteration: draft the actual profile and work backward
+## Worked example for the first implementation
 
 Use reviewed profile **318**, its three current member recordings **4589 / 281 / 3973**, and the [compatible cached inventory](review-proposals/segment-cache-inventory-v1/REVIEW.md): 158 topic/treatment blocks and 33 routed salvation blocks. Video titles name John Bradshaw, while the reviewed profile currently lacks a display label. Preserve that distinction in the prototype and record identity labeling as a metadata gap rather than silently creating a new accepted name. The materials are already used development/review evidence, not a new confirmation set.
 
-Deliver together:
+Deliver the following together within [implementation milestones 1–3](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md#milestone-1--implement-the-descriptive-profile-contract-and-worked-example):
 
 - **A complete, human-readable profile draft.** Populate the proposed sections to the extent supported by these recordings. Use unavailable placeholders for comparison and unsupported conclusions. The supplied example prose is an aspirational product example, not accepted wording: claims such as strongly Bible-centered, frequent cross-book argument, direct appeals or stability must be independently substantiated, narrowed or withheld.
 - **A claim ledger.** For each substantive clause, record the proposed wording, scope, family, support status, exact cached fields/question/model/version and eligible sermon/segment/time/source-hash links. Explain the inference from observations to wording, alternatives/counterevidence and the proposed code responsibility. Segment-level evidence links are sufficient for this step; no quote or minimal utterance extraction is required.
@@ -37,7 +39,7 @@ Deliver together:
 - **A prioritized gap ledger.** Every desired unsupported sentence/field gets a precise cause, existing reuse options, smallest remedy, impact on the reader and an implementation-versus-data distinction. Do not assume that five or ten new measurements are needed; let the draft reveal which gaps matter.
 - **A code-backward map.** Separate deterministic reuse/eligibility/link assembly, proposed descriptive aggregation or wording rules, genuinely missing semantic distinctions and insufficient sampling. Describe the smallest implementation that could reproduce the supported draft without altering frozen raw results. The draft is a reviewable product example, not ground truth that future measurements must be tuned to match.
 
-No source or profile-wide aggregation rule is implemented by this plan. The actual draft is the next task; it has not been written or accepted here. Completing it may expose an unknown field rather than a useful sentence, which is a valid outcome.
+No source or profile-wide aggregation rule is implemented by this plan. Produce the worked draft alongside the first code, schema and screen; do not add a standalone draft-approval gate before implementation. No draft is written or accepted here. Completing it may expose an unknown field rather than a useful sentence, which is a valid outcome.
 
 ## Gap classification and priority
 
@@ -63,9 +65,11 @@ Choose one contiguous verbatim excerpt; no paraphrase, silent stitching, invente
 
 **Done:** minute/segment evidence lineage and context work; existing compatible topic/treatment/salvation inventory; a working read-only three-sermon evidence view; retirement of the upstream exact-span detour.
 
-**Next:** a provider-free actual profile draft, claim ledger, at-a-glance interpretation slate, gap ledger and code-backward map for this fixed sample. Brian reviews a concrete result, not a blank template or open-ended annotation/design assignment.
+**Next implementation proposal:** [milestones 1–3](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md#delivery-order-and-current-authorization) as one bounded provider-free feature: description contract, evidence-to-wording rules, embedded worked example, readable screen, claim links, explicit unknowns, tests and the consequential gap map. Brian reviews a working result rather than a blank template or another standalone planning exercise.
 
-**Held:** new model/provider calls, broader collection, production activation, new automatic provenance/adoption rules, changing frozen measurements/thresholds, implementing new profile aggregation/scoring or comparison/ranking, recurrence/stability claims and Ollama quote execution. This user request authorizes plan updates only; it does not execute the next draft task or implement the proposed rules. Existing approved descriptive projections and raw observations are retained, not invalidated or enlarged in meaning.
+**Held:** new model/provider calls, broader collection, production activation, new automatic provenance/adoption rules, changing frozen measurements/thresholds, implementing new profile aggregation/scoring or comparison/ranking, recurrence/stability claims and Ollama quote execution. This user request authorizes plan updates only; it does not execute the implementation milestones or implement the proposed rules. Existing approved descriptive projections and raw observations are retained, not invalidated or enlarged in meaning.
+
+See the [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for delivery order, files to reuse and acceptance criteria.
 
 Current plan check:
 

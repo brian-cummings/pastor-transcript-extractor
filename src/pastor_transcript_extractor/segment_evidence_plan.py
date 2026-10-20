@@ -1,13 +1,13 @@
 """Read-only current planning/retirement registry; never inference."""
 from pastor_transcript_extractor import evidence_pipeline_trace as trace
 
-HERE=trace.ROOT/'docs/review-proposals/pastor-profile-product-plan-v2'
+HERE=trace.ROOT/'docs/review-proposals/pastor-profile-implementation-plan-v1'
 OLD_SELECTION_INPUT='19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceabaa8a2'
 
 
 def verify():
-    plan=trace.read(HERE/'plan-v2.json',True)
-    if (plan['version']!='pastor-profile-product-plan-v2'
+    plan=trace.read(HERE/'plan-v3.json',True)
+    if (plan['version']!='pastor-profile-product-and-implementation-plan-v3'
             or plan['analytical_families']!=['preaching_style','theological_emphasis','theological_orientation','pastoral_rhetorical_orientation']
             or any(plan[k] for k in ('model_probability_is_pastor_score','benchmark_percentages_authorized','single_pastor_score_proposed','draft_is_measurement_ground_truth'))
             or plan['high_labels_require_explicit_rules'] is not True
@@ -21,6 +21,17 @@ def verify():
         raise ValueError('Current segment/quotation planning scope differs')
     path=trace.ROOT/plan['plan_path']
     if trace.digest(path)!=plan['plan_sha256']:raise ValueError('Current plan text differs')
+    implementation=trace.ROOT/plan['implementation_path']
+    if trace.digest(implementation)!=plan['implementation_sha256']:
+        raise ValueError('Current implementation plan text differs')
+    if implementation.name not in path.read_text() or path.name not in implementation.read_text():
+        raise ValueError('Product and implementation plans must reference each other')
+    manifest=trace.ROOT/plan['archive_manifest_path']
+    if trace.digest(manifest)!=plan['archive_manifest_sha256']:
+        raise ValueError('Planning archive manifest differs')
+    for row in trace.read(manifest,True)['archives']:
+        if trace.digest(trace.ROOT/row['archive_path'])!=row['original_sha256'] or row['archive_sha256']!=row['original_sha256']:
+            raise ValueError('Historical planning document differs')
     return plan,path
 
 

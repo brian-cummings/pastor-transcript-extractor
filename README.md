@@ -1,6 +1,6 @@
 # Pastor Transcript Extractor
 
-Current product direction: [readable pastor profile, dimensions and linked evidence](docs/PASTOR_PROFILE_PRODUCT_PLAN.md). Segment evidence comes first; illustrative quotations remain last. The exact-span nomination detour is closed; use the [current status registry](docs/review-proposals/README.md) rather than historical execution instructions.
+Current product direction: [readable pastor profile, dimensions and linked evidence](docs/PASTOR_PROFILE_PRODUCT_PLAN.md). Engineering roadmap: [current implementation plan](docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md). Segment evidence comes first; illustrative quotations remain last. The exact-span nomination detour is closed; use the [current status registry](docs/review-proposals/README.md) rather than historical execution instructions.
 
 Generated evaluation artifacts now default to `<base-dir>/evaluation/`; reviewed
 fixtures, policies, evidence, and documentation remain in the repository's
@@ -721,10 +721,10 @@ primary; missing evidence stays unmeasured. Omission ranges are sample sensitivi
 diagnostics, and zero detections mean insufficient positive evidence. The command
 shares a fingerprint-checked measurement cache with `salvation-nine-leaf-convergence`,
 skipping classification reads and projection work on unchanged inputs. See the
-[implementation plan](docs/TYPESAFE_TOPIC_ANALYSIS_PLAN.md#next-iteration) for the
+[current implementation plan](docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for the
 next-agent handoff. Brian accepted salvation measurement readiness on 2026-10-13:
 the nine V9 leaves are frozen for broader use, while pastor-level sample-size
-sufficiency remains unestablished. The next question set is listener directives.
+sufficiency remains unestablished. Listener-directive question validation is already complete. The current next implementation is the descriptive profile screen, with the worked example and claim/gap map delivered alongside code.
 
 TypeSafe with `jev-1.13.0` is the default classifier and recording verifier for
 `pte run`, `pte extract`, and `pte reclassify`, so those flags are only needed for

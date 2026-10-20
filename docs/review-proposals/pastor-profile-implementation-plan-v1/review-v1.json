@@ -1,0 +1,27 @@
+{
+  "version": "pastor-profile-implementation-plan-review-v1",
+  "date": "2026-10-19",
+  "status": "PAIRED_PLANS_UPDATED_IMPLEMENTATION_NOT_EXECUTED",
+  "plan_fingerprint": "030bbe83c03f7696b36ea1885eab17bd35cfd21a4fa4b9edc9843442b8f5e996",
+  "files": {
+    "docs/PASTOR_PROFILE_PRODUCT_PLAN.md": "c0cb8f75f8831f497285245fc22f41f744ac81e1f25e2267befd0680866ef647",
+    "docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md": "8608593f5606893f68d8f2931fa6d08e5d0bd55d4476cfe86eaa632ada113851",
+    "docs/review-proposals/pastor-profile-implementation-plan-v1/plan-v3.json": "ad241de2f98cb0d9cca00257d3581f90bb7c3c35afdb7d8148e6c67e5d0ab7cc",
+    "docs/review-proposals/pastor-profile-implementation-plan-v1/archive-manifest-v1.json": "1325c74052f22831f3de85728f6e6a7d79377545c8a87e37ec0ffc7176f2915f",
+    "docs/review-proposals/pastor-profile-implementation-plan-v1/REVIEW.md": "5dad737751b092791559cab31bef918b73bcdabae435ff9894e66c0513099941",
+    "src/pastor_transcript_extractor/segment_evidence_plan.py": "11a8f193f8d5e2490bfa080623986a142ea52c0b4a167bb681e913ec4912eb9a",
+    "src/pastor_transcript_extractor/commands/analysis/structure.py": "f35e25c57ce7a4f3e840db9c1cc31d53953a2c7d4fd96d8fe2dbee6b666ce0ac",
+    "README.md": "32f96001b2cc3c4de18a173a2abe5f783242d156ab57df75c9bce96664828eda",
+    "docs/review-proposals/README.md": "1965635ef1ea64c47de30d91573f4aa973625d06f6ae9ce8b912c15becef6beb"
+  },
+  "reciprocal_plan_links_verified": true,
+  "archived_original_bytes_verified": true,
+  "focused_tests_passed": 21,
+  "next_step": "implement_milestones_1_to_3_as_one_provider_free_descriptive_profile_feature_when_authorized",
+  "provider_requests": 0,
+  "database_writes": 0,
+  "implementation_executed": false,
+  "measurement_contracts_changed": false,
+  "frozen_measurement_review_packets_unchanged": true,
+  "content_fingerprint": "41ab7a268af11d7b7ae946b2f216c311a0835711259b1a64507abc91d679f86d"
+}
