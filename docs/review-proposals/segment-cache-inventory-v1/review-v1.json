@@ -1,0 +1,69 @@
+{
+  "version": "segment-cache-inventory-review-v1",
+  "date": "2026-10-19",
+  "status": "READY_FOR_READ_ONLY_SEGMENT_PROFILE_PRESENTATION",
+  "inventory_fingerprint": "2fdec9947ae2ca5a11ab17094fb159e982365693dc5d10549d276e0cb6995559",
+  "inventory_path": "/Users/briancummings/Documents/PastorSearchData/evaluation/segment-cache-inventory-v1/2fdec9947ae2ca5a11ab17094fb159e982365693dc5d10549d276e0cb6995559/inventory-v1.json",
+  "inventory_sha256": "1ae259d462ecfefff26d84c366494910ed02f588de147d5a723abe0fab1f373b",
+  "sample_path": "/Users/briancummings/Documents/PastorSearchData/evaluation/segment-cache-inventory-v1/2fdec9947ae2ca5a11ab17094fb159e982365693dc5d10549d276e0cb6995559/sample-v1.md",
+  "sample_sha256": "fa9bf81c353d4e19bc0a464fcc3095bffb2c713b61497c78bfadae479d925fca",
+  "review_sha256": "75f593bd5c5a6fe742445af32d506a6183bf0dc59c7dc8145c68dbcba84ceebf",
+  "selected_profile": {
+    "id": 318,
+    "display_label": null,
+    "lifecycle_state": "active",
+    "created_reason": "reviewed_anonymous_speaker",
+    "membership_fingerprint": "b68b622f1b9ac8b4b3ea3c7c9b171b947ed4221f8330b5c2594a660ca9a15e3f",
+    "effective_member_video_ids": [
+      281,
+      3973,
+      4589
+    ],
+    "selection_rule": "Most compatible eligible cached topic blocks in this bounded inventory, then sermon count, then lower profile ID; independent of positive answers."
+  },
+  "coverage": {
+    "cached_sources_considered": 12,
+    "compatible_sources": 12,
+    "stale_materializations_not_reused": 9,
+    "sample_sermons": 3,
+    "eligible_topic_blocks": 158,
+    "compatible_treatment_blocks": 158,
+    "salvation_measured_blocks": 33,
+    "approved_salvation_leaves": [
+      "divine_grace_initiative",
+      "atonement_as_basis",
+      "forgiveness_pardon",
+      "justification_right_standing",
+      "conversion_new_birth",
+      "sanctification_transformation",
+      "assurance_security",
+      "judgment_final_destiny",
+      "faith_as_receiving_response"
+    ],
+    "unresolved_salvation_leaves": [
+      "obedience_as_condition_or_means",
+      "obedience_as_consequence_or_evidence",
+      "repentance_as_receiving_response"
+    ],
+    "production_layers_not_present": [
+      "listener_directives",
+      "public_life_treatment",
+      "source_material"
+    ]
+  },
+  "supplemental_full_pack_cache_check": {
+    "blocks": 158,
+    "packs": 3,
+    "exact_paths_checked": 474,
+    "matches": 0,
+    "scope": "Selected profile only; exact current full-pack paths using existing TypeSafeBlockCache pure identity/path helpers; no assess/client calls, directory writes or cache refill. Not a global/legacy/individual-leaf cache census."
+  },
+  "focused_tests_passed": 28,
+  "provider_requests": 0,
+  "database_writes": 0,
+  "quote_execution": false,
+  "new_collection": false,
+  "new_profile_projection": false,
+  "recommendation": "Use the existing observations in the first read-only profile view; keep unsupported positions/enrichments/recurrence visibly unknown.",
+  "content_fingerprint": "05abf12fa216d6cf4c62554f8c6a7ce83a842c8b2bed31717db68a7ccf72201a"
+}
