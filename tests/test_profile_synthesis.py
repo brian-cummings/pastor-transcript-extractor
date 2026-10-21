@@ -65,6 +65,10 @@ class ProfileSynthesisTests(unittest.TestCase):
         self.assertEqual(0,result['metadata_reads'])
         self.assertEqual(0,result['provider_requests'])
         body = synthesis.request_body(spec)
+        model_input = json.loads(body['messages'][1]['content'])
+        self.assertNotIn('source_claim_map',model_input)
+        self.assertEqual(list(spec['packet']['source_claim_map']),
+            spec['schema']['$defs']['Sentence']['properties']['source_ids']['items']['enum'])
         self.assertEqual(32768,body['options']['num_ctx'])
         self.assertEqual(3072,body['options']['num_predict'])
         oversized = deepcopy(spec);oversized['instructions'] += 'x'*40000

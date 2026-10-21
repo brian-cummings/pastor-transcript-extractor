@@ -102,6 +102,7 @@ def evidence_packet(record):
     explained_refs = {key for point in points.values() for key in point['evidence_ids']}
     observations = {o['id']: o for o in record['observations']}
     sources = []
+    source_claim_map = {}
     for claim in record['reader']['claims']:
         refs = claim['evidence_ids']
         if not refs or any(key not in observations for key in refs):
@@ -109,7 +110,9 @@ def evidence_packet(record):
         point = points.get(claim['id'])
         if not point and set(refs) <= explained_refs:
             continue  # Prefer the exact reviewed accounts over their duplicate generic summaries.
-        row = dict(source_id=claim['id'], text=claim['wording'],
+        handle = 'S'+str(len(sources)+1)
+        source_claim_map[handle] = claim['id']
+        row = dict(source_id=handle, text=claim['wording'],
             recording_ids=claim['scope']['video_ids'], status=claim['interpretation_status'],
             basis=claim.get('analytical_basis', 'existing_descriptive_rule_not_semantic_admission'),
             counterevidence_present=bool(claim.get('counterevidence_ids')))
@@ -129,7 +132,7 @@ def evidence_packet(record):
     return dict(profile_id=record['profile']['id'], confirmed_name=record['profile'].get('display_label'),
         source_profile_fingerprint=record['content_fingerprint'],
         recording_ids=[s['video_id'] for s in record['source_identity']],
-        scope=record['scope'], sources=sources,
+        scope=record['scope'], sources=sources,source_claim_map=source_claim_map,
         unavailable=[dict(dimension=g['id'], missing=g['withheld'], reason=g['cause']) for g in record['gaps']],
         comparison_status='unavailable', confidence_status='preliminary_selected_sample_not_calibrated')
 
@@ -151,19 +154,25 @@ def panel(base_dir=None):
     if record['profile']['id'] != 318 or sorted(s['video_id'] for s in record['source_identity']) != [281,3973,4589]:
         raise ValueError('This bounded synthesis uses only profile 318 and its three supplied recordings')
     config = configuration()
+    packet = evidence_packet(record)
+    schema = Draft.model_json_schema()
+    schema['$defs']['Sentence']['properties']['source_ids']['items']['enum'] = list(packet['source_claim_map'])
     spec = seal(dict(version=VERSION, source_profile_fingerprint=record['content_fingerprint'],
-        packet=evidence_packet(record), backend=dict(base_url=config.base_url,model=config.model,
+        packet=packet, backend=dict(base_url=config.base_url,model=config.model,
             context_size=config.context_size,timeout_seconds=config.timeout_seconds),
         max_generation_requests=1, max_output_tokens=MAX_OUTPUT_TOKENS,
-        schema=Draft.model_json_schema(), instructions=INSTRUCTIONS,
+        schema=schema, instructions=INSTRUCTIONS,
         implementation_sha256=trace.digest(__file__), renderer_sha256=trace.digest(presentation.__file__)))
     request_body(spec)  # No provider or metadata; fail before any execution if over budget.
     return spec, record
 
 
 def request_body(spec):
+    # Short source handles save output tokens and avoid asking the writer to copy
+    # hashes. Code owns the exact handle-to-existing-claim mapping in the audit.
+    model_packet = {k:v for k,v in spec['packet'].items() if k != 'source_claim_map'}
     body = dict(model=spec['backend']['model'], messages=[dict(role='system',content=spec['instructions']),
-        dict(role='user',content=json.dumps(spec['packet'],ensure_ascii=False))],
+        dict(role='user',content=json.dumps(model_packet,ensure_ascii=False))],
         format=spec['schema'], stream=False,
         options=dict(temperature=0,num_ctx=spec['backend']['context_size'],num_predict=spec['max_output_tokens']))
     # Count decoded model-visible content, not JSON transport escaping. One token
@@ -327,6 +336,7 @@ def report(base_dir=None, *, run_model=False, provider_factory=None):
         invocation = dict(provider_requests=0,metadata_reads=0,cache_hits=1)
     e = lambda value:html.escape(str(value),quote=True)
     section_map = {s['key']:s for s in (result['draft'] or {}).get('sections', [])}
+    claim_map = result['panel']['packet']['source_claim_map']
     parts = ['<section class="panel" id="pastor-synthesis"><h2>Pastor-level synthesis</h2><p class="note">'+e(REVIEW_WARNING)+'</p>']
     lines = ['# Pastor-level synthesis', '', REVIEW_WARNING, '']
     if result['rejection']:
@@ -338,10 +348,10 @@ def report(base_dir=None, *, run_model=False, provider_factory=None):
             prose = []
             md = []
             for sentence in section['sentences']:
-                links = ' '.join('<a class="claimref" href="#'+e(ref)+'">evidence</a>' for ref in sentence['source_ids'])
+                links = ' '.join('<a class="claimref" href="#'+e(claim_map[ref])+'">evidence</a>' for ref in sentence['source_ids'])
                 prose.append(e(sentence['text'])+' '+links)
                 safe_text = html.escape(sentence['text']).replace('\\','\\\\').replace('[','\\[').replace(']','\\]')
-                md.append(safe_text+' '+' '.join('[evidence](index.html#'+ref+')' for ref in sentence['source_ids']))
+                md.append(safe_text+' '+' '.join('[evidence](index.html#'+claim_map[ref]+')' for ref in sentence['source_ids']))
             parts += ['<h3>'+e(title)+'</h3><p>'+' '.join(prose)+'</p>']
             lines += ['## '+title, '', ' '.join(md), '']
         elif result['draft']:
