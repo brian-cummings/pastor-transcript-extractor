@@ -7,7 +7,7 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('REUSE_INCREMENT_DELIVERED_BOUNDED_ARTIFACT_VERIFIED',plan['status'])
+        self.assertEqual('V4_TECHNICALLY_DELIVERED_DESCRIPTION_REVISION_PLANNED',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['historical_capability_decision']['pilot_execution'])
@@ -63,6 +63,25 @@ class SegmentPlanTests(unittest.TestCase):
                 changed['profile_reuse_increment'][field]=value
                 with patch.object(p.trace,'read',return_value=changed):
                     with self.assertRaisesRegex(ValueError,'Reuse-first'):
+                        p.verify()
+
+    def test_description_revision_keeps_evidence_and_execution_boundaries(self):
+        from copy import deepcopy
+        plan,_=p.verify()
+        self.assertEqual(['D1','D2','D3','D4'],plan['description_increment']['sequence'])
+        self.assertEqual('PLANNED_NOT_IMPLEMENTED',plan['description_increment']['status'])
+        self.assertEqual('V4_description_revision_requested_too_high_level',plan['verification']['human_acceptance'])
+        for field,value in (('provider_execution',True),
+                ('promote_reviewed_proposals_to_production',True),
+                ('example_is_measurement_ground_truth',True),
+                ('technical_delivery_is_reader_acceptance',True),
+                ('preserve_meaning_changing_qualifications',False),
+                ('listener_directive_run_is_next',True)):
+            with self.subTest(field=field):
+                changed=deepcopy(plan)
+                changed['description_increment'][field]=value
+                with patch.object(p.trace,'read',return_value=changed):
+                    with self.assertRaisesRegex(ValueError,'description planning'):
                         p.verify()
 
     def test_closed_run_rejected_before_provider_or_frozen_input(self):

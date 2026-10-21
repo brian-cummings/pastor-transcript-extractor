@@ -6,12 +6,12 @@ OLD_SELECTION_INPUT='19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceab
 
 
 def verify():
-    plan=trace.read(HERE/'plan-v18.json',True)
-    if (plan['version']!='pastor-profile-product-and-implementation-status-v18'
+    plan=trace.read(HERE/'plan-v19.json',True)
+    if (plan['version']!='pastor-profile-product-and-implementation-status-v19'
             or plan['analytical_families']!=['preaching_style','theological_emphasis','theological_orientation','pastoral_rhetorical_orientation']
             or any(plan[k] for k in ('model_probability_is_pastor_score','benchmark_percentages_authorized','single_pastor_score_proposed','draft_is_measurement_ground_truth'))
             or plan['high_labels_require_explicit_rules'] is not True
-            or plan['status']!='REUSE_INCREMENT_DELIVERED_BOUNDED_ARTIFACT_VERIFIED' or plan['exact_span_extraction_required_upstream'] is not False
+            or plan['status']!='V4_TECHNICALLY_DELIVERED_DESCRIPTION_REVISION_PLANNED' or plan['exact_span_extraction_required_upstream'] is not False
             or plan['pipeline_order']!=['existing_segment_observations','supported_evidence_accumulation','bounded_profile_review','strongest_supporting_segment','optional_Ollama_illustrative_quote']
             or plan['quote_context']!=['preceding_segment','center_segment','following_segment']
             or plan['quote_anchor']!='substantive_content_in_center'
@@ -31,6 +31,18 @@ def verify():
                     'quote_supplies_analytical_authority','standalone_inventory_gate',
                     'failed_experiment_automatically_starts_variant','unknowns_block_supported_delivery'))):
         raise ValueError('Reuse-first responsibility and delivery scope differs')
+    descriptions=plan['description_increment']
+    if (descriptions['status']!='PLANNED_NOT_IMPLEMENTED'
+            or descriptions['sequence']!=['D1','D2','D3','D4']
+            or any(descriptions[k] for k in ('provider_execution','full_transcript_reprocessing',
+                'new_measurements','collection','production_admission','quote_execution',
+                'example_is_measurement_ground_truth','promote_reviewed_proposals_to_production',
+                'infer_missing_meaning_from_topic_or_probability','listener_directive_run_is_next',
+                'technical_delivery_is_reader_acceptance'))
+            or not all(descriptions[k] for k in ('preserve_clause_evidence_links',
+                'preserve_meaning_changing_qualifications','preserve_unknowns_and_counterevidence',
+                'require_full_sermon_coverage_for_sermon_summary','changed_outputs_require_new_version'))):
+        raise ValueError('Human-friendly description planning scope differs')
     development=plan['binding_development']
     if (development['passages']!=3 or development['development_references']!=10
             or not development['semantic_comparison_complete'] or development['reference_visible_to_generation']
