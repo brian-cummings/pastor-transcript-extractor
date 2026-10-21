@@ -254,6 +254,7 @@ def persisted_scripture(database, run, prepared):
     from pastor_transcript_extractor.sermon_analysis import ANALYZER_KEY, ANALYZER_VERSION
     if (run.input_fingerprint != prepared.input_fingerprint or
         run.source_content_sha256 != prepared.source_content_sha256 or
+        run.source_path != str(prepared.source_path) or
         run.analyzer_key != ANALYZER_KEY or run.analyzer_version != ANALYZER_VERSION):
         raise ValueError('Persisted Scripture run differs from exact-current input')
     evidence = [asdict(row) for row in database.list_sermon_analysis_evidence(run.id)

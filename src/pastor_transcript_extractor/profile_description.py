@@ -6,6 +6,7 @@ All selection rules describe the cached answers, not a new pastor measurement.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from copy import deepcopy
 import html
 import json
 from pathlib import Path
@@ -267,7 +268,7 @@ def build(inventory, sources, reuse_checks=None, source_reviews=None, capability
         dimensions=dimensions, treatment_candidates=candidates, observations=observations,
         salvation_block_states=states, unresolved_leaves=inventory['coverage']['unresolved_salvation_leaves'],
         benchmark=dict(status='unavailable', reason='Comparison not yet established; no compatible benchmark method or calibration.'),
-        gaps=gaps, reuse_checks=reuse_checks or [], evidence_view=lower,
+        gaps=gaps, reuse_checks=deepcopy(reuse_checks or []), evidence_view=lower,
         provider_requests=0, database_writes=0, new_measurements=False, profile_scores=False, quote_execution=False)
     from pastor_transcript_extractor.profile_evidence_supply import attach, reviewed_bindings
     attach(record)

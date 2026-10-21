@@ -47,7 +47,9 @@ class SupplyTests(unittest.TestCase):
             original = path.read_bytes()
             with patch.object(TypeSafeBlockCache, 'assess_packs', side_effect=AssertionError('inference')), patch.object(TypeSafeBlockCache, '_write_pack', side_effect=AssertionError('writes')), patch.object(TypeSafeBlockCache, 'compose_leaf_answer', side_effect=AssertionError('composition')):
                 checks = description.leaf_reuse_checks(inv, sources)
+                before = deepcopy(checks)
                 record = description.build(inv, sources, checks)
+                self.assertEqual(before, checks)
             self.assertEqual(original, path.read_bytes())
             leaf = next(o for o in record['observations'] if o['layer'] == 'cached_leaf')
             self.assertEqual([LISTENER_DIRECTIVES.version], leaf['current_question_matches'])
@@ -140,6 +142,7 @@ class SupplyTests(unittest.TestCase):
         from pastor_transcript_extractor.sermon_analysis import ANALYZER_KEY, ANALYZER_VERSION
         prepared = SimpleNamespace(input_fingerprint='input', source_content_sha256='source', source_path=Path('/identified.json'))
         run = SimpleNamespace(id=7, input_fingerprint='input', source_content_sha256='source',
+            source_path='/identified.json',
             analyzer_key=ANALYZER_KEY, analyzer_version=ANALYZER_VERSION)
         database = Mock()
         database.list_sermon_analysis_evidence.return_value = [SermonAnalysisEvidence(
