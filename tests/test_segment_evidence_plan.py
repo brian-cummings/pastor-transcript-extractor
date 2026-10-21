@@ -7,7 +7,7 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('LOCAL_EDITORIAL_SYNTHESIS_IMPLEMENTED_AWAITING_BRIAN_RUN',plan['status'])
+        self.assertEqual('LOCAL_EDITORIAL_SYNTHESIS_REJECTED_REVIEWED_NO_RERUN',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['historical_capability_decision']['pilot_execution'])
@@ -91,7 +91,8 @@ class SegmentPlanTests(unittest.TestCase):
         for field,value in (('max_generation_requests',2),('semantic_acceptance',True),
                 ('benchmark_comparison_available',True),('confidence_calibrated',True),
                 ('citations_prove_entailment',True),('no_raw_transcripts',False),
-                ('automatic_retries',True),('default_description_command_provider_free',False)):
+                ('automatic_retries',True),('default_description_command_provider_free',False),
+                ('review_provider_requests',1),('decision_required_before_variant',False)):
             with self.subTest(field=field):
                 changed=deepcopy(plan);changed['editorial_synthesis'][field]=value
                 with patch.object(p.trace,'read',return_value=changed):

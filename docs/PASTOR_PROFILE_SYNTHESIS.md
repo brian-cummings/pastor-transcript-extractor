@@ -81,3 +81,26 @@ Focused checks:
 ```bash
 python -m unittest discover -s tests -p 'test_profile_synthesis.py'
 ```
+
+## Inspected first run — 2026-10-21
+
+The first run is rejected, not awaiting another execution. Panel
+`d40b9159249df6f35bbe3e2afc3c66329b874cc4e633fed51713f3dd8756b855`
+produced review fingerprint
+`4c27cbb617686fc657c20be7b864e6aefdda437c7837125b5b226326fefc507f`.
+The raw output contains only `theological_orientation`, with three sentences.
+The first two copy supplied S1/S2 descriptions. The third changes topic attention
+into an inferred consistent emphasis, and uses plural “preachers.” It is not accepted.
+
+The exact structural rejection is `A unique portrait section is required`.
+Ollama stopped normally (`done_reason=stop`); this was not output truncation.
+Receipt: one generation, two metadata reads, 5,863 input tokens, 147 output tokens,
+26.409 seconds model duration. No additional model request was made for review.
+
+The request prompt required portrait presence, while its JSON schema allowed any
+section. Post-response validation correctly caught this mismatch. The proposed
+next change is a versioned contract requiring a portrait property in the generation
+schema, keeping citations and semantic review intact. That is a concrete proposal,
+not an executed variant or a promise of better prose; Brian must decide before
+another experiment. Keep V5 and the original rejected response. The cached commands
+above remain available for inspection and do not rerun the model.
