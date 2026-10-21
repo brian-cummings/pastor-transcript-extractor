@@ -19,7 +19,7 @@ from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.sermon_topics import resolve_topic_analysis_artifact, resolve_topic_block_context
 from pastor_transcript_extractor.sermon_semantic_dimensions import SEMANTIC_ANALYSIS_QUESTION_VERSION, SEMANTIC_DIMENSIONS
 
-VERSION = 'pastor-profile-description-v3'
+VERSION = 'pastor-profile-description-v4'
 RULE_VERSION = 'cached-observation-wording-v1'
 FAMILIES = ('Preaching style', 'Theological emphasis', 'Theological orientation', 'Pastoral/rhetorical orientation')
 RULES = {
@@ -269,9 +269,14 @@ def build(inventory, sources, reuse_checks=None, source_reviews=None, capability
         benchmark=dict(status='unavailable', reason='Comparison not yet established; no compatible benchmark method or calibration.'),
         gaps=gaps, reuse_checks=reuse_checks or [], evidence_view=lower,
         provider_requests=0, database_writes=0, new_measurements=False, profile_scores=False, quote_execution=False)
+    from pastor_transcript_extractor.profile_evidence_supply import attach, reviewed_bindings
+    attach(record)
+    reviewed_bindings(record, sources)
     from pastor_transcript_extractor.profile_presentation import build_reader
     record['reader'] = build_reader(record, source_reviews)
     record['assessment'] = record['reader']['assessment']
+    from pastor_transcript_extractor.profile_supporting_blocks import build as build_supporting_blocks
+    record['supporting_examples'] = build_supporting_blocks(record)
     from pastor_transcript_extractor.profile_capability_review import build as build_capability_review
     record['capability_review'] = build_capability_review(record, capability_inputs)
     return seal(record)
@@ -301,51 +306,9 @@ def load(base_dir=None):
 
 
 def leaf_reuse_checks(inventory, sources):
-    """Bounded exact-path reads of all registered leaf packs, including refinements.
-
-    Never call assess, hydrate or compose: those interfaces can write or infer.
-    Full-pack, individual-leaf and previously composed packs share this identity
-    path; role/treatment-only legacy hydration cannot supply new leaf semantics.
-    """
-    from pastor_transcript_extractor.sermon_classifier_typesafe import TypeSafeBlockCache
-    from pastor_transcript_extractor.sermon_classification import TranscriptBlock
-    from pastor_transcript_extractor.sermon_leaf_packs import LEAF_PACKS
-    from pastor_transcript_extractor.sermon_topics import TopicBlockContext
-    checks = []
-    for sermon in inventory['sermons']:
-        cache = TypeSafeBlockCache(Path(sermon['source_path']).parent / 'inference-cache', model=sermon['model'])
-        totals = {pack: dict(checked=0, compatible=0, incompatible=0) for pack in LEAF_PACKS}
-        matches = []
-        analysis = resolve_topic_analysis_artifact(sources[sermon['video_id']]['classification'])
-        eligible = set(sermon['eligible_block_ids'])
-        for raw in analysis['blocks']:
-            if raw['block_id'] not in eligible:
-                continue
-            context = resolve_topic_block_context(raw)
-            block = TranscriptBlock(block_id=raw['block_id'], start_seconds=raw['start_seconds'],
-                end_seconds=raw['end_seconds'], segment_indexes=raw['segment_indexes'], text=context['target_text'])
-            target = TopicBlockContext(leading_context=context['leading_context'], target_text=context['target_text'],
-                trailing_context=context['trailing_context'], diagnostics=context['diagnostics'])
-            for pack in LEAF_PACKS:
-                identity = cache._pack_identity({}, block, pack=pack, role_context=None, topic_context=target)
-                path = cache._pack_path(pack, identity)
-                totals[pack]['checked'] += 1
-                if not path.exists():
-                    continue
-                try:
-                    payload = json.loads(path.read_text())
-                    answer = payload['answer']
-                    compatible = (payload['identity'] == identity and isinstance(answer, dict) and cache._pack_payload_is_valid(pack, answer)
-                        and answer.get('resolved_model_id') == sermon['model'])
-                except (OSError, ValueError, KeyError, TypeError):
-                    compatible = False
-                totals[pack]['compatible' if compatible else 'incompatible'] += 1
-                if compatible:
-                    matches.append(dict(block_id=block.block_id, pack=pack, path=str(path), sha256=trace.digest(path)))
-        checks.append(dict(video_id=sermon['video_id'], path=str(cache.root),
-            state='bounded_exact_registered_leaf_cache_check', packs=totals, matches=matches,
-            limit='Includes historical refinements and any composed answers at exact registered identities; not a global cache census. No cache writes or refill. Legacy migration only supplies role/treatment, already present here. Compatible leaf answers require separate integration within their admitted semantics.'))
-    return checks
+    """Reuse registered complete, individual/refinement and saved composed answers."""
+    from pastor_transcript_extractor.profile_evidence_supply import inspect
+    return inspect(inventory, sources)
 
 
 def assessment(record):
@@ -487,8 +450,10 @@ def markdown(record):
 
 def prepare(base_dir=None):
     record = load(base_dir)
-    from pastor_transcript_extractor import profile_presentation, profile_capability_review
+    from pastor_transcript_extractor import profile_presentation, profile_capability_review, profile_evidence_supply, profile_supporting_blocks
     manifest = seal(dict(version=VERSION, description=record, implementation_files={
+        str(Path(profile_evidence_supply.__file__)): trace.digest(profile_evidence_supply.__file__),
+        str(Path(profile_supporting_blocks.__file__)): trace.digest(profile_supporting_blocks.__file__),
         str(Path(profile_presentation.__file__)): trace.digest(profile_presentation.__file__),
         str(Path(profile_capability_review.__file__)): trace.digest(profile_capability_review.__file__),
         str(profile_capability_review.CASES_PATH): trace.digest(profile_capability_review.CASES_PATH),
@@ -505,11 +470,11 @@ def prepare(base_dir=None):
         check_command='pte analysis structure-readiness --segment-view --description --check-only --json',
         review_command='pte analysis structure-readiness --segment-view --description --json',
         held=['providers/models', 'broader collection', 'new semantic measurements', 'scoring/ranking/comparison', 'production activation', 'ministry stability', 'Ollama quotations']))
-    artifacts = {'review-v3.json': json.dumps(review, ensure_ascii=False, indent=2)+'\n',
-        'description-v3.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
-        'profile-v3.md': markdown(record), 'index.html': render(record),
-        'next-capability-v1.json': json.dumps(record['capability_review'], ensure_ascii=False, indent=2)+'\n',
-        'next-capability-v1.md': profile_capability_review.markdown(record['capability_review'])}
+    artifacts = {'review-v4.json': json.dumps(review, ensure_ascii=False, indent=2)+'\n',
+        'description-v4.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
+        'profile-v4.md': markdown(record), 'index.html': render(record),
+        'next-capability-v2.json': json.dumps(record['capability_review'], ensure_ascii=False, indent=2)+'\n',
+        'next-capability-v2.md': profile_capability_review.markdown(record['capability_review'])}
     for name, raw in artifacts.items():
         path = out / name
         if path.exists() and path.read_text() != raw:
