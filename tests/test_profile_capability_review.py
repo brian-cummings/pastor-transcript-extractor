@@ -20,11 +20,13 @@ class CapabilityReviewTests(unittest.TestCase):
         record = d.build(*fixture(routed=True)); before = deepcopy(record)
         packet = c.build(record, {'cases': [prepared(record)]})
         self.assertEqual(before, record)
-        self.assertEqual('READY_FOR_BOUNDED_DECISION', packet['status'])
+        self.assertEqual('SUPPORTED_PROFILE_WITH_CONSEQUENTIAL_GAPS', packet['status'])
         self.assertEqual([], packet['published_position_claims'])
         for field in ('pilot_execution','automatic_adoption','new_measurements','collection','quote_execution'):
             self.assertFalse(packet[field])
         self.assertEqual(0, packet['provider_requests'])
+        self.assertIn('No fresh pilot authorization', packet['decision'])
+        self.assertEqual(record['gaps'], packet['consequential_gaps'])
         self.assertIn('No G1 V3', packet['limits'])
         self.assertIn('existing G1', packet['reuse'])
 
@@ -43,7 +45,8 @@ class CapabilityReviewTests(unittest.TestCase):
         for field in ('source_sha256','target_sha256','evidence_id'):
             case = prepared(record); case[field] = 'changed'
             packet = c.build(record, {'cases':[case]})
-            self.assertEqual('PREPARED_CASES_INCOMPLETE', packet['status'])
+            self.assertEqual('SUPPORTED_PROFILE_WITH_CONSEQUENTIAL_GAPS', packet['status'])
+            self.assertEqual('incomplete_or_not_supplied', packet['prepared_cases_status'])
             self.assertEqual([], packet['cases'])
             self.assertEqual(1, len(packet['excluded_cases']))
 
