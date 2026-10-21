@@ -6,12 +6,12 @@ OLD_SELECTION_INPUT='19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceab
 
 
 def verify():
-    plan=trace.read(HERE/'plan-v15.json',True)
-    if (plan['version']!='pastor-profile-product-and-implementation-status-v15'
+    plan=trace.read(HERE/'plan-v16.json',True)
+    if (plan['version']!='pastor-profile-product-and-implementation-status-v16'
             or plan['analytical_families']!=['preaching_style','theological_emphasis','theological_orientation','pastoral_rhetorical_orientation']
             or any(plan[k] for k in ('model_probability_is_pastor_score','benchmark_percentages_authorized','single_pastor_score_proposed','draft_is_measurement_ground_truth'))
             or plan['high_labels_require_explicit_rules'] is not True
-            or plan['status']!='CONNECTED_BINDING_EXECUTED_FAILED_REVIEWED_NO_RERUN' or plan['exact_span_extraction_required_upstream'] is not False
+            or plan['status']!='REUSE_FIRST_PROFILE_INTEGRATION_PLAN_REVISED' or plan['exact_span_extraction_required_upstream'] is not False
             or plan['pipeline_order']!=['existing_segment_observations','supported_evidence_accumulation','bounded_profile_review','strongest_supporting_segment','optional_Ollama_illustrative_quote']
             or plan['quote_context']!=['preceding_segment','center_segment','following_segment']
             or plan['quote_anchor']!='substantive_content_in_center'
@@ -19,6 +19,18 @@ def verify():
             or plan['quotes_change_measurements'] is not False
             or any(plan[k] for k in ('provider_execution','new_collection','new_projection_scoring','quote_implementation'))):
         raise ValueError('Current segment/quotation planning scope differs')
+    reuse=plan['profile_reuse_increment']
+    if (reuse['status']!='PLANNED_NOT_IMPLEMENTED'
+            or reuse['main_path']!=['R1','R3','R4']
+            or reuse['conditional_branch']!='R2' or reuse['held_followup']!='R5'
+            or reuse['steps']['R2']['status']!='conditional' or reuse['steps']['R5']['status']!='held'
+            or reuse['semantic_owner']!='responsible_upstream_category_leaf_or_existing_shared_binding'
+            or reuse['quote_input']!=['established_point','eligible_center_block','labeled_eligible_neighbors']
+            or not reuse['reuse_before_new_inference'] or not reuse['changed_outputs_require_new_version']
+            or any(reuse[k] for k in ('full_pack_miss_proves_constituent_absence','end_stage_general_extractor',
+                    'quote_supplies_analytical_authority','standalone_inventory_gate',
+                    'failed_experiment_automatically_starts_variant','unknowns_block_supported_delivery'))):
+        raise ValueError('Reuse-first responsibility and delivery scope differs')
     development=plan['binding_development']
     if (development['passages']!=3 or development['development_references']!=10
             or not development['semantic_comparison_complete'] or development['reference_visible_to_generation']
@@ -40,6 +52,8 @@ def verify():
             or any(connected[k] for k in ('reference_visible_to_generation','broader_collection','new_measurements','production_activation','automatic_acceptance','profile_projection','benchmark_comparison','ollama_quotation_execution','model_pulls','automatic_retries','provider_fallback'))):
         raise ValueError('Completed failed connected extraction scope differs')
     path=trace.ROOT/plan['plan_path']
+    if trace.digest(trace.ROOT/plan['agents_path'])!=plan['agents_sha256']:
+        raise ValueError('Project reuse instructions differ from current plan')
     if trace.digest(path)!=plan['plan_sha256']:raise ValueError('Current plan text differs')
     implementation=trace.ROOT/plan['implementation_path']
     if trace.digest(implementation)!=plan['implementation_sha256']:

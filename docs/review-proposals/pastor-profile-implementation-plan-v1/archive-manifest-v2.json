@@ -1,0 +1,41 @@
+{
+  "archives": [
+    {
+      "original_path": "docs/TYPESAFE_TOPIC_ANALYSIS_PLAN.md",
+      "original_sha256": "67a8e7e183e1fa3e7acf4aa471586feb46042dffdfa4356d5129f42bc3b91526",
+      "archive_path": "docs/TYPESAFE_TOPIC_ANALYSIS_PLAN.historical-2026-10-19.md",
+      "archive_sha256": "67a8e7e183e1fa3e7acf4aa471586feb46042dffdfa4356d5129f42bc3b91526"
+    },
+    {
+      "original_path": "docs/PASTOR_PROFILE_EVIDENCE_ARCHITECTURE.md",
+      "original_sha256": "fcec7c7b43671884cbe96c9c3d47bd12b98b6f81a90b0255744afef418db770e",
+      "archive_path": "docs/PASTOR_PROFILE_EVIDENCE_ARCHITECTURE.historical-2026-10-19.md",
+      "archive_sha256": "fcec7c7b43671884cbe96c9c3d47bd12b98b6f81a90b0255744afef418db770e"
+    },
+    {
+      "original_path": "docs/analytical-review/IMPLEMENTATION-PLAN.md",
+      "original_sha256": "d5b49d3ff8d83d0a073940e9fe0d592f12c35bdfcb1f87b9137ca5f13219b078",
+      "archive_path": "docs/analytical-review/IMPLEMENTATION-PLAN.historical-2026-10-19.md",
+      "archive_sha256": "d5b49d3ff8d83d0a073940e9fe0d592f12c35bdfcb1f87b9137ca5f13219b078"
+    },
+    {
+      "original_path": "docs/PASTOR_PROFILE_PRODUCT_PLAN.md",
+      "original_sha256": "d8af7b2fe2eb544536dbdc61509f7f26444a7fdd0b56c679d3a8550df0b6d42f",
+      "archive_path": "docs/PASTOR_PROFILE_PRODUCT_PLAN.historical-2026-10-19.md",
+      "archive_sha256": "d8af7b2fe2eb544536dbdc61509f7f26444a7fdd0b56c679d3a8550df0b6d42f"
+    },
+    {
+      "original_path": "docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md",
+      "original_sha256": "dcdcc4de6aabd8f9e10780ae514b2843da30a8d7fc230bcfaf81c655ef8541ed",
+      "archive_path": "docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.historical-before-reuse-first-2026-10-20.md",
+      "archive_sha256": "dcdcc4de6aabd8f9e10780ae514b2843da30a8d7fc230bcfaf81c655ef8541ed"
+    },
+    {
+      "original_path": "docs/PASTOR_PROFILE_PRODUCT_PLAN.md",
+      "original_sha256": "58c51568b41d54ff89fe1571c21cb108197913decf205b76505b6677b7258bdc",
+      "archive_path": "docs/PASTOR_PROFILE_PRODUCT_PLAN.historical-before-reuse-first-2026-10-20.md",
+      "archive_sha256": "58c51568b41d54ff89fe1571c21cb108197913decf205b76505b6677b7258bdc"
+    }
+  ],
+  "content_fingerprint": "9e751339671e7e4a22046491cf925a9bfeffcda4eb0e68ef76f1a92f66f31742"
+}

@@ -7,11 +7,13 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('CONNECTED_BINDING_EXECUTED_FAILED_REVIEWED_NO_RERUN',plan['status'])
+        self.assertEqual('REUSE_FIRST_PROFILE_INTEGRATION_PLAN_REVISED',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
-        self.assertTrue(plan['next_capability_decision']['pilot_execution'])
-        self.assertEqual('connected-proposition-binding-dev-v1',plan['current_delivery'])
+        self.assertTrue(plan['historical_capability_decision']['pilot_execution'])
+        self.assertEqual('pastor-profile-description-v3',plan['current_delivery'])
+        self.assertEqual(['R1','R3','R4'],plan['profile_reuse_increment']['main_path'])
+        self.assertFalse(plan['verification']['feature_increment_executed'])
         self.assertEqual('Brian',plan['connected_binding_development']['executor'])
         self.assertEqual(3,plan['connected_binding_development']['max_generation_requests'])
         self.assertEqual(3,plan['connected_binding_development']['live_provider_requests'])
@@ -42,6 +44,24 @@ class SegmentPlanTests(unittest.TestCase):
         self.assertEqual('optional_Ollama_illustrative_quote',plan['pipeline_order'][-1])
         self.assertFalse(plan['provider_execution']);self.assertFalse(plan['exact_span_extraction_required_upstream'])
         self.assertEqual(['preceding_segment','center_segment','following_segment'],plan['quote_context'])
+
+    def test_rejects_reinference_and_misplaced_semantics(self):
+        from copy import deepcopy
+        plan,_=p.verify()
+        for field,value in (
+                ('full_pack_miss_proves_constituent_absence',True),
+                ('end_stage_general_extractor',True),
+                ('quote_supplies_analytical_authority',True),
+                ('semantic_owner','final_profile_summarizer'),
+                ('standalone_inventory_gate',True),
+                ('failed_experiment_automatically_starts_variant',True),
+                ('unknowns_block_supported_delivery',True)):
+            with self.subTest(field=field):
+                changed=deepcopy(plan)
+                changed['profile_reuse_increment'][field]=value
+                with patch.object(p.trace,'read',return_value=changed):
+                    with self.assertRaisesRegex(ValueError,'Reuse-first'):
+                        p.verify()
 
     def test_closed_run_rejected_before_provider_or_frozen_input(self):
         from pastor_transcript_extractor import typesafe_selection_execution as e
