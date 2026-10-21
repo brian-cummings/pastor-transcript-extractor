@@ -213,6 +213,8 @@ def compile_response(raw, spec, verified_digest):
         if usage['input_tokens'] is not None and usage['output_tokens'] is not None:
             if usage['input_tokens']+usage['output_tokens'] > spec['backend']['context_size']:
                 raise ValueError('Synthesis usage exceeds context budget')
+        if usage['output_tokens'] is not None and usage['output_tokens'] > spec['max_output_tokens']:
+            raise ValueError('Synthesis usage exceeds output budget')
         result = Draft.model_validate_json(envelope['message']['content']).model_dump()
         keys = [s['key'] for s in result['sections']]
         if len(keys) != len(set(keys)) or 'portrait' not in keys:
@@ -298,6 +300,8 @@ def cached(base_dir=None):
     spec,record = panel(base_dir);folder = directory(base_dir)/'runs'/spec['content_fingerprint']
     result = read(folder/'generated-v1.json');raw = read(folder/'raw-response-v1.json')
     pin = read(folder/'backend-v1.json')
+    if pin['model'] != spec['backend']['model'] or not isinstance(pin['model_digest'],str) or not pin['model_digest']:
+        raise ValueError('Cached synthesis backend pin differs')
     expected = seal(dict(base_url=spec['backend']['base_url'],model_digest=pin['model_digest'],
         body=request_body(spec),panel_fingerprint=spec['content_fingerprint']))
     if result['panel'] != spec or result['request'] != expected or raw['request'] != expected:

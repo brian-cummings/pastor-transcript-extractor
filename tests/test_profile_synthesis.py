@@ -121,6 +121,7 @@ class ProfileSynthesisTests(unittest.TestCase):
         original = json.loads(FakeProvider().generate(body))
         mutations = {
             'length':lambda e:e.update(done_reason='length'),
+            'output_budget':lambda e:e.update(eval_count=synthesis.MAX_OUTPUT_TOKENS+1),
             'model':lambda e:e.update(model='other'),
             'invalid_json':lambda e:e['message'].update(content='{'),
             'unknown_citation':lambda e:e['message'].update(content=json.dumps(dict(sections=[dict(key='portrait',sentences=[dict(text='Unsupported text',source_ids=['missing'])])]))),
