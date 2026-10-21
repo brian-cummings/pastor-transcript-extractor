@@ -2,11 +2,11 @@
 
 **Active direction — 2026-10-20: reuse existing analytical evidence; repair a demonstrated gap at its responsible producer; aggregate and illustrate downstream.** This replaces the earlier experiment-led next steps. The [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) remains authoritative for the reader experience. [AGENTS.md](../AGENTS.md#reuse-and-responsibility-in-the-evidence-pipeline) makes this responsibility split a project rule.
 
-The current increment is bounded provider-free integration and aggregation on **profile 318, recordings 4589 / 281 / 3973**. It must improve the working profile, not deliver another standalone inventory or feasibility study. R1/R3/R4 are implemented in V4 and awaiting Brian’s bounded dataset validation. This delivery does not authorize new measurement semantics or release any provider, collection, admission, benchmark or quotation hold.
+The current increment is bounded provider-free integration and aggregation on **profile 318, recordings 4589 / 281 / 3973**. It must improve the working profile, not deliver another standalone inventory or feasibility study. R1/R3/R4 are implemented in V4; Brian generated the bounded profile and Codex verified the saved artifact on 2026-10-20. Human wording acceptance remains pending. This delivery does not authorize new measurement semantics or release any provider, collection, admission, benchmark or quotation hold.
 
 ## Delivery status — 2026-10-20
 
-**Reuse increment implemented, dataset review pending.** V4 integrates compatible saved leaf answers and source-reviewed binding proposals, attaches claim/gap supply traces, adds recording comparisons and selects point-linked full supporting blocks. Authored bindings and raw leaf judgments retain their non-production status. Focused tests use small prepared inputs; Brian runs the existing generation command below against profile 318. No new dataset results are claimed here.
+**Reuse increment delivered; bounded generation and artifact checks passed.** V4 integrates compatible saved leaf answers and source-reviewed binding proposals, attaches claim/gap supply traces, adds recording comparisons and selects point-linked full supporting blocks. Authored bindings and raw leaf judgments retain their non-production status. Brian’s run produced 15 reader claims, 24 underlying claims, 39 selected example sets, ten reused source-reviewed proposals and eight consequential gaps. No additional compatible raw leaf answers or exact-current Scripture runs were found at the checked identities; this is not global cache absence. Seals, current source/implementation hashes, claim references and HTML links passed direct checks. Browser security blocked local-file visual inspection, so Codex reviewed the generated HTML and Markdown directly; visual/wording acceptance remains Brian’s.
 
 | Existing delivery | Status and treatment |
 |---|---|
@@ -57,7 +57,7 @@ No row means that compatible observations for these three recordings have alread
 
 ### R1 — integrate reusable evidence into the existing profile claim ledger
 
-**Implemented; provider-free; dataset validation pending.** Work only backward from the current reader claims, the four product families and the existing consequential gaps. Reuse the current bounded checks; do not rescan a corpus or write another general inventory report before coding.
+**Implemented; provider-free; bounded artifact checks passed.** Work only backward from the current reader claims, the four product families and the existing consequential gaps. Reuse the current bounded checks; do not rescan a corpus or write another general inventory report before coding.
 
 1. For each point already displayed or consequentially withheld, identify its exact required observation and current upstream owner. Keep topic attention, treatment, local relationships and adopted positions separate.
 2. Check the existing materialization and applicable registered pack, individual-leaf/refinement and saved composition paths for these recordings. Use safe readers only: no assessment, hydration, refill or composition API that can silently infer or write caches. Inspect relevant existing Scripture/G1/G2/G3 results only when the point calls for them.
@@ -121,7 +121,7 @@ Only this task's model/digest, prompt/schema, runtime/output/context limits, cac
 
 **Main path:** R1 integration → R3 sample aggregation → R4 supporting blocks → Brian reviews the concrete profile. **Conditional branch:** R2 only for a named blocked statement; unsupported points remain unknown. **Optional held follow-up:** R5 quotations. Benchmarks, broader collection and stability claims are outside this sequence.
 
-The immediate next action is Brian’s bounded V4 generation command, followed by Codex’s interpretation of the receipt and concrete profile. R1/R3/R4 ship through the existing loader/ledger/rendering path; no new planning document, global inventory or generic binding experiment is required. R2 remains conditional on demonstrated gaps, and held semantic/provider work stays held.
+Brian’s bounded V4 generation and Codex’s artifact review are complete. The next action is Brian’s product/wording review of that concrete profile; no further provider or data work is recommended by default. R1/R3/R4 ship through the existing loader/ledger/rendering path; no new planning document, global inventory or generic binding experiment is required. R2 remains conditional on demonstrated gaps, and held semantic/provider work stays held.
 
 Use the existing entry points for profile delivery and verification; new user-facing checks must also attach to `pte`:
 

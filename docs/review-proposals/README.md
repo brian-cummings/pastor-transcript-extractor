@@ -2,9 +2,11 @@
 
 **Active direction — reuse existing analytical evidence; aggregate and illustrate downstream.** The [product plan](../PASTOR_PROFILE_PRODUCT_PLAN.md) and [implementation plan](../PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) define the current work. [AGENTS.md](../../AGENTS.md#reuse-and-responsibility-in-the-evidence-pipeline) records the reuse and insertion-point philosophy.
 
-**Implemented V4, awaiting Brian’s bounded dataset review:** R1 integrates compatible existing observations into the current claim ledger and runnable profile; R3 aggregates supported recording-level evidence into scoped sample patterns; R4 selects supporting blocks for established points. R2 is a conditional upstream branch for a specifically demonstrated missing semantic distinction. R5 illustrative quotes remains held. No new general extraction, model switch, global inventory or provider experiment is the active next step. See the implementation plan for exact deliverables and exit criteria.
+**Delivered V4; Brian’s bounded generation and Codex’s artifact checks passed:** R1 integrates compatible existing observations into the current claim ledger and runnable profile; R3 aggregates supported recording-level evidence into scoped sample patterns; R4 selects supporting blocks for established points. R2 is a conditional upstream branch for a specifically demonstrated missing semantic distinction. R5 illustrative quotes remains held. No new general extraction, model switch, global inventory or provider experiment is the active next step. See the implementation plan for exact deliverables and exit criteria.
 
 The current readable profile, source-reviewed readings and original measurement/admission boundaries remain intact. The failed TypeSafe and connected-extraction outputs below are preserved evidence, not active work queues. In particular, prior recommendations for another connected/minimal extractor are superseded by the reuse-first sequence. The three implementation slices now ship together through the existing profile CLI. No model/collection/quotation execution or dataset validation was run by Codex.
+
+The actual run contains 15 reader claims, 24 underlying claims, 39 selected example sets, ten reused local binding proposals and eight explicit gaps. No additional compatible raw leaf answers or exact-current Scripture runs were found at the checked identities. Brian’s wording/visual acceptance remains pending.
 
 Existing commands:
 
@@ -42,4 +44,4 @@ The tail-end quote must contain substantive content from the strongest CENTER mi
 | Source-unit Repair V1 | Retain source-processing support and bounded development result; no production-readiness claim. |
 | Original G1/G2/G3/V4/A1/consumer decisions | Retain original scopes. G1 passage feasibility PASS/closed differs from G1 discovery HOLD. V4 raw FAIL/containment HOLD and bounded A1 PASS stand. No automatic authority for a new segment-level theological claim. |
 
-Frozen source, reference, receipt, acceptance and hash-pinned proposal files are preserved. `STATUS.md` sidecars and [the current registry](pastor-profile-implementation-plan-v1/plan-v17.json) supersede their active recommendations, not their historical evidence. Do not follow an old AUTHORIZED command as a new execution instruction. No cache/model deletion or broad refactor occurred.
+Frozen source, reference, receipt, acceptance and hash-pinned proposal files are preserved. `STATUS.md` sidecars and [the current registry](pastor-profile-implementation-plan-v1/plan-v18.json) supersede their active recommendations, not their historical evidence. Do not follow an old AUTHORIZED command as a new execution instruction. No cache/model deletion or broad refactor occurred.
