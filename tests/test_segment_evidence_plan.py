@@ -7,11 +7,11 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('REUSE_FIRST_PROFILE_INTEGRATION_PLAN_REVISED',plan['status'])
+        self.assertEqual('REUSE_INCREMENT_IMPLEMENTED_AWAITING_BRIAN_DATASET_REVIEW',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['historical_capability_decision']['pilot_execution'])
-        self.assertEqual('pastor-profile-description-v3',plan['current_delivery'])
+        self.assertEqual('pastor-profile-description-v4',plan['current_delivery'])
         self.assertEqual(['R1','R3','R4'],plan['profile_reuse_increment']['main_path'])
         self.assertFalse(plan['verification']['feature_increment_executed'])
         self.assertEqual('Brian',plan['connected_binding_development']['executor'])

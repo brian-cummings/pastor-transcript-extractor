@@ -2,9 +2,11 @@
 
 **Active direction — 2026-10-20: reuse existing analytical evidence; repair a demonstrated gap at its responsible producer; aggregate and illustrate downstream.** This replaces the earlier experiment-led next steps. The [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) remains authoritative for the reader experience. [AGENTS.md](../AGENTS.md#reuse-and-responsibility-in-the-evidence-pipeline) makes this responsibility split a project rule.
 
-The next work is a bounded provider-free integration and aggregation increment on **profile 318, recordings 4589 / 281 / 3973**. It must improve the working profile, not deliver another standalone inventory or feasibility study. This planning revision does not execute that increment, authorize new measurement semantics, or release any provider, collection, admission, benchmark or quotation hold.
+The current increment is bounded provider-free integration and aggregation on **profile 318, recordings 4589 / 281 / 3973**. It must improve the working profile, not deliver another standalone inventory or feasibility study. R1/R3/R4 are implemented in V4 and awaiting Brian’s bounded dataset validation. This delivery does not authorize new measurement semantics or release any provider, collection, admission, benchmark or quotation hold.
 
 ## Delivery status — 2026-10-20
+
+**Reuse increment implemented, dataset review pending.** V4 integrates compatible saved leaf answers and source-reviewed binding proposals, attaches claim/gap supply traces, adds recording comparisons and selects point-linked full supporting blocks. Authored bindings and raw leaf judgments retain their non-production status. Focused tests use small prepared inputs; Brian runs the existing generation command below against profile 318. No new dataset results are claimed here.
 
 | Existing delivery | Status and treatment |
 |---|---|
@@ -36,6 +38,8 @@ Processing order: **existing category/leaf observations → compatible evidence 
 
 ## Existing code to reuse
 
+The implementation extends `profile_description.py` / `profile_presentation.py` with narrow pure helpers `profile_evidence_supply.py`, `profile_sample_patterns.py` and `profile_supporting_blocks.py`. `profile_capability_review.py` now reports current consequential gaps rather than requesting another completed pilot.
+
 | Responsibility | Existing entry points and contracts |
 |---|---|
 | Read-only scope, eligibility and source identity | `profile_analysis.py`, `segment_cache_inventory.py`, `segment_profile_view.py`, `sermon_topic_projection.py` |
@@ -53,7 +57,7 @@ No row means that compatible observations for these three recordings have alread
 
 ### R1 — integrate reusable evidence into the existing profile claim ledger
 
-**First implementation slice; provider-free.** Work only backward from the current reader claims, the four product families and the existing consequential gaps. Reuse the current bounded checks; do not rescan a corpus or write another general inventory report before coding.
+**Implemented; provider-free; dataset validation pending.** Work only backward from the current reader claims, the four product families and the existing consequential gaps. Reuse the current bounded checks; do not rescan a corpus or write another general inventory report before coding.
 
 1. For each point already displayed or consequentially withheld, identify its exact required observation and current upstream owner. Keep topic attention, treatment, local relationships and adopted positions separate.
 2. Check the existing materialization and applicable registered pack, individual-leaf/refinement and saved composition paths for these recordings. Use safe readers only: no assessment, hydration, refill or composition API that can silently infer or write caches. Inspect relevant existing Scripture/G1/G2/G3 results only when the point calls for them.
@@ -83,7 +87,7 @@ Each row must contain:
 
 ### R3 — aggregate supported observations into within-sample patterns
 
-**Provider-free; follows R1 using available evidence.** Extend the existing deterministic description/reader rules rather than generating an independent assessment from transcripts.
+**Implemented; provider-free; follows R1 using available evidence.** Extend the existing deterministic description/reader rules rather than generating an independent assessment from transcripts.
 
 - Assemble each recording first, then compare the three recording summaries. Retain the exact supporting observations, contrary evidence and measured/missing state by recording.
 - Reuse current topic summaries and frozen local observation rules. Do not create a probability average, numerical score, qualitative bin or threshold merely to obtain stronger wording. Additional wording/aggregation rules must state their inputs, scope, deduplication, counterevidence and withholding behavior and remain reviewable proposals until accepted where required.
@@ -97,7 +101,7 @@ Each row must contain:
 
 ### R4 — select supporting blocks for already-established points
 
-**Provider-free; follows R3.** Use the point's eligible support set, not a fresh search over all text or a new inference pass.
+**Implemented; provider-free; follows R3.** Use the point's eligible support set, not a fresh search over all text or a new inference pass.
 
 For each point, retain its claim/rule ID, recording-level support, selected CENTER block with source hash/time/eligibility, the support reason, any necessary attribution/qualification and relevant contrary evidence. Prefer existing support strength and an inspectable representative example. Use deterministic time/block-ID ties. Preserve an unknown selection if no eligible block supports the point. An example illustrates the aggregate finding; it does not establish frequency or coverage.
 
@@ -117,7 +121,7 @@ Only this task's model/digest, prompt/schema, runtime/output/context limits, cac
 
 **Main path:** R1 integration → R3 sample aggregation → R4 supporting blocks → Brian reviews the concrete profile. **Conditional branch:** R2 only for a named blocked statement; unsupported points remain unknown. **Optional held follow-up:** R5 quotations. Benchmarks, broader collection and stability claims are outside this sequence.
 
-The immediate next coding work is R1 in the existing profile loader/ledger/rendering path, with compatible evidence integrated in the same slice. This planning request does not itself execute those code changes or release held semantic/provider work. It does not require a new planning document, global inventory or generic binding experiment before implementation can begin under the user's existing authorizations.
+The immediate next action is Brian’s bounded V4 generation command, followed by Codex’s interpretation of the receipt and concrete profile. R1/R3/R4 ship through the existing loader/ledger/rendering path; no new planning document, global inventory or generic binding experiment is required. R2 remains conditional on demonstrated gaps, and held semantic/provider work stays held.
 
 Use the existing entry points for profile delivery and verification; new user-facing checks must also attach to `pte`:
 
@@ -127,7 +131,7 @@ pte analysis structure-readiness --segment-view --description --check-only --jso
 pte analysis structure-readiness --segment-plan --json
 ```
 
-Current commands reproduce the existing V3 feature; R1/R3/R4 extensions described here are not yet implemented. Changed outputs must use a new version so the current profile remains reproducible. Generated reports/caches/receipts belong in the app base; intentional plan/contracts and curated inputs belong in source control.
+These commands now target V4; V3 artifacts remain preserved. The JSON receipt identifies the profile version, recordings, reused raw leaf count, selected/partial/unknown examples and remaining gaps. Check-only returns the same description fingerprint without writing artifacts. Changed outputs use a new version so earlier profiles remain reproducible. Generated reports/caches/receipts belong in the app base; intentional plan/contracts and curated inputs belong in source control.
 
 Codex implements, prepares exact cases/defaults/commands, interprets results and recommends a next action. Brian runs bounded dataset validation, reviews the concrete result, makes minor edits and decides consequential held choices. No open-ended case selection, JSON authoring or annotation is assigned to him.
 
