@@ -164,6 +164,42 @@ class PresentationTests(unittest.TestCase):
         self.assertIn('Supporting passages', emphasis_detail)
         self.assertEqual('salvation received through faith', p.THEMES['faith_as_receiving_response'])
 
+    def test_reviewed_local_readings_are_inspectable_proposals_without_promoting_claims(self):
+        from pastor_transcript_extractor.theological_binding import bind
+        from test_theological_binding import fixture as binding_fixture
+        record = d.build(*fixture(text='God creates <Review>.'))
+        before = deepcopy(record['reader']['assessment'])
+        before_claims = deepcopy(record['reader']['claims'])
+        rebuilt_assessment = p.build_reader(record)['assessment']
+        texts, authored, provenance = binding_fixture('God creates <Review>.')
+        authored['title'] = '<Local reading>'
+        authored['unknowns'] = ['No <ministry conclusion>.']
+        binding = bind(texts, authored, provenance)
+        evidence_id = record['observations'][0]['id']
+        record.setdefault('evidence_supply', {})['reviewed_bound_records'] = [dict(
+            binding=binding, evidence_id=evidence_id,
+            status='source_reviewed_proposal_not_production_admission')]
+        page = d.render(record)
+        md = p.markdown(record)
+        for output in (page, md):
+            self.assertIn('Reviewed local readings · proposals', output)
+            self.assertIn('not production-admitted measurements or pastor-wide positions', output)
+            self.assertIn('God creates &lt;Review&gt;.', output)
+            self.assertIn('preacher · preacher · actual', output)
+            self.assertIn('own assertion · Direct source-reviewed statement.', output)
+            self.assertIn('Local statement only.', output)
+            self.assertIn('No &lt;ministry conclusion&gt;.', output)
+            self.assertIn('None bound to this proposition', output)
+            self.assertIn('#passage-9-1', output)
+            self.assertNotIn('<Local reading>', output)
+            self.assertNotIn('<Review>', output)
+        section = page.split('id="reviewed-local-readings"', 1)[1].split('</section>', 1)[0]
+        self.assertIn('<details><summary>Inspect the existing source-reviewed local readings', section)
+        self.assertNotIn('<details open', section)
+        self.assertEqual(before, record['reader']['assessment'])
+        self.assertEqual(before_claims, record['reader']['claims'])
+        self.assertEqual(rebuilt_assessment, p.build_reader(record)['assessment'])
+
     def test_authored_review_input_is_bounded_and_not_an_identity_rule(self):
         reviews = p.load_reviews()
         self.assertEqual(4, len(reviews['reviews']))

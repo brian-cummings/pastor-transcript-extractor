@@ -242,6 +242,27 @@ def recording_comparison(reader):
     return result
 
 
+REVIEWED_READING_WARNING = ('These are source-reviewed local proposals, not production-admitted measurements or pastor-wide positions. '
+    'They do not change the assessment above or the original assurance interpretation. Adoption describes the exact local proposition only.')
+
+
+def reviewed_local_readings(record):
+    """Expose existing reviewed fields without deriving additional profile claims."""
+    from pastor_transcript_extractor.profile_proposition_review import fields
+    observations = {o['id']: o for o in record['observations']}
+    result = []
+    for item in record.get('evidence_supply', {}).get('reviewed_bound_records', []):
+        observation = observations.get(item['evidence_id'])
+        if observation is None:
+            continue  # Cannot display a source link outside this current profile.
+        binding = item['binding']
+        result.append(dict(title=binding['title'],
+            fields=[dict(label=label, reading=reading) for label, reading, spans in fields(binding)],
+            unknowns=list(binding['unknowns']),
+            passage_id=f'passage-{observation["video_id"]}-{observation["block_id"]}'))
+    return result
+
+
 STYLE = '''
 :root{--ink:#20332f;--muted:#61716b;--line:#d9e2dc;--accent:#28634e;--paper:#fffefb}*{box-sizing:border-box}body{margin:0;background:#f4f5ef;color:var(--ink);font:16px/1.65 system-ui,sans-serif}main{max-width:1060px;padding:48px 28px 80px;margin:auto}h1,h2{font-family:Georgia,serif;font-weight:500;line-height:1.2}h1{font-size:clamp(32px,5vw,50px);margin:10px 0}h2{font-size:27px;margin:30px 0 16px}h3{font-size:18px;margin:12px 0}p{margin:12px 0}.eyebrow{font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--accent)}.scope,.muted{color:var(--muted);font-size:14px}.assessment{max-width:850px;font-size:18px}.claimref{color:var(--accent);font-size:12px;vertical-align:super;white-space:nowrap;text-decoration:none;border-bottom:1px solid #b8cdbf}.claimref:hover{color:var(--accent)}a{color:var(--accent)}.panel,.sermon{background:var(--paper);border:1px solid var(--line);padding:22px;border-radius:12px;margin:20px 0}.note{border-left:3px solid var(--accent);padding:8px 18px;background:#eaf0e7}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.grid .panel{margin:0}table{border-collapse:collapse;width:100%}td,th{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:12px 10px}th{font-weight:600}th:first-child{width:24%}.tablewrap{overflow-x:auto}summary{cursor:pointer;font-weight:600;color:var(--accent);padding:10px 0}details[open]>summary{margin-bottom:8px}details.claim{border-top:1px solid var(--line);padding:8px 0}.source{white-space:pre-wrap;border-left:2px solid var(--line);padding:12px 18px;background:#f6f7f1;font:17px/1.7 Georgia,serif;overflow-wrap:anywhere}.technical{font-size:14px;color:var(--muted);border-top:1px solid var(--line);margin-top:20px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}nav{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}button{font:inherit;font-size:14px;padding:7px 14px;border:1px solid var(--line);border-radius:20px;background:var(--paper);cursor:pointer}button[aria-pressed=true]{background:var(--accent);color:white}a:focus-visible,summary:focus-visible,button:focus-visible{outline:3px solid #bb8d3e;outline-offset:4px}:target{scroll-margin-top:20px}footer{color:var(--muted);font-size:13px;padding-top:24px}[hidden]{display:none!important}.passage{border-top:1px solid var(--line)}.evidence-links{display:grid;gap:8px;margin:12px 0}.gap{border-top:1px solid var(--line);padding-top:12px;margin-top:16px}@media(max-width:720px){main{padding:28px 18px 50px}.grid{grid-template-columns:1fr}.panel,.sermon{padding:18px}th:first-child{width:30%}td,th{padding:10px 6px}}
 '''
@@ -298,6 +319,9 @@ def render(record):
         examples += ''.join('<p class="muted">'+e(note)+'</p>' for note in selection.get('qualifications', []))
         cards.append('<details class="claim" id="'+e(c['id'])+'"><summary>'+e(c['wording'])+'</summary><p>'+e(c['reason'])+'</p>'+examples+supporting(c['evidence_ids'])+
             '<details class="technical"><summary>Technical details</summary><pre>'+e(json.dumps(c, ensure_ascii=False, indent=2))+'</pre></details></details>')
+    reviewed = reviewed_local_readings(record)
+    reviewed_cards = ''.join('<article><h3>'+e(item['title'])+'</h3><dl>'+''.join('<dt><strong>'+e(field['label'])+'</strong></dt><dd>'+e(field['reading'])+'</dd>' for field in item['fields'])+'</dl><p><strong>Unknown or withheld</strong></p><ul>'+''.join('<li>'+e(value)+'</li>' for value in item['unknowns'])+'</ul><p>'+link(item['passage_id'], 'Inspect the current supporting passage')+'</p></article>' for item in reviewed)
+    reviewed_section = '<section class="panel" id="reviewed-local-readings"><h2>Reviewed local readings · proposals</h2><p class="muted">'+e(REVIEWED_READING_WARNING)+'</p><details><summary>Inspect the existing source-reviewed local readings</summary>'+reviewed_cards+'</details></section>' if reviewed else ''
     gap_cards = []
     for gap in record['gaps']:
         title, explanation, next_step = GAPS[gap['id']]
@@ -360,7 +384,7 @@ def render(record):
         '<p class="note">A theme being discussed does not establish the preacher’s personal agreement with every view expressed. The evidence does not yet reliably separate affirmed positions from explanation, quotation or disagreement.</p></section>'+
         '<section class="panel" id="dimension-pastoral"><h2>Pastoral approach</h2><p>'+e(pastoral_text)+'</p>'+(''+link(passage_id(obs[r['evidence_id']]), 'View supporting passage · '+titles[r['video_id']]) if (r := next((r for r in reader['source_reviews'] if r['dimension'] == 'practical_application'), None)) else '')+'</section>'+
         '<section class="panel" id="why"><h2>Why PTE says this</h2>'+''.join(cards)+'</section>'+
-        next_capability+'<section class="panel"><h2>What this sample cannot tell us</h2>'+''.join(gap_cards)+'</section>'+
+        reviewed_section+next_capability+'<section class="panel"><h2>What this sample cannot tell us</h2>'+''.join(gap_cards)+'</section>'+
         '<h2>Sermons and supporting passages</h2><p class="muted">Choose a sermon or follow a description directly to its complete source passage. Filtering this section does not change the assessment above.</p>'+
         '<nav aria-label="Filter recordings"><button type="button" data-filter="all" aria-pressed="true">All sermons</button>'+filters+'</nav>'+''.join(source_sections)+technical+
         '<footer>This draft awaits review. Supporting passages are full transcript windows, not selected illustrative quotations.</footer></main><script>'+SCRIPT+'</script></body></html>')
@@ -396,6 +420,16 @@ def markdown(record):
             seen.add(key)
             lines += [f'- [View supporting passage · {titles[o["video_id"]]} · {timestamp(o["start_seconds"])}](index.html#passage-{o["video_id"]}-{o["block_id"]})']
         lines += ['']
+    reviewed = reviewed_local_readings(record)
+    if reviewed:
+        lines += ['## Reviewed local readings · proposals', '', REVIEWED_READING_WARNING, '', '<details><summary>Inspect the existing source-reviewed local readings</summary>', '']
+        for item in reviewed:
+            lines += ['### '+html.escape(item['title']), '']
+            for field in item['fields']:
+                lines += ['**'+html.escape(field['label'])+':** '+html.escape(field['reading']), '']
+            lines += ['**Unknown or withheld:**', ''] + ['- '+html.escape(value) for value in item['unknowns']]
+            lines += ['', '[Inspect the current supporting passage](index.html#'+item['passage_id']+')', '']
+        lines += ['</details>', '']
     if record.get('capability_review', {}).get('recommendation'):
         lines += ['## Recommended next capability', '', record['capability_review']['recommendation'], '', record['capability_review']['reader_value'], '', '[Read the prepared next-step decision brief](next-capability-v2.md). Historical cases do not confer new execution authority.', '']
     lines += ['## What this sample cannot tell us', '']
