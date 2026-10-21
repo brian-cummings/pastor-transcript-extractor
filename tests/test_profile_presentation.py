@@ -90,7 +90,7 @@ class PresentationTests(unittest.TestCase):
         review = review_for(record)
         reader = p.build_reader(record, {'reviews': [review]})
         self.assertEqual('reader-style', reader['style_claim_id'])
-        self.assertIn('Practical application is present', reader['at_a_glance'][3]['description'])
+        self.assertEqual(review['description'], reader['at_a_glance'][3]['description'])
         for key in ('source_sha256', 'target_sha256', 'start_seconds', 'dimension'):
             changed = deepcopy(review); changed[key] = 'changed'
             reader = p.build_reader(record, {'reviews': [changed]})
@@ -152,7 +152,8 @@ class PresentationTests(unittest.TestCase):
         full_prose = next(c['wording'] for c in reader['claims'] if c['id'] == reader['style_claim_id'])
         glance = reader['at_a_glance'][0]['description']
         self.assertNotEqual(full_prose, glance)
-        self.assertIn(' + ', glance)
+        self.assertIn(reviews[0]['description'], glance)
+        self.assertNotIn('Biblical explanation +', glance)
         page = d.render(record)
         closer = page.split('id="dimension-style"',1)[1].split('id="dimension-emphases"',1)[0]
         self.assertNotIn(full_prose, closer)
@@ -199,6 +200,29 @@ class PresentationTests(unittest.TestCase):
         self.assertEqual(before, record['reader']['assessment'])
         self.assertEqual(before_claims, record['reader']['claims'])
         self.assertEqual(rebuilt_assessment, p.build_reader(record)['assessment'])
+
+    def test_concrete_accounts_reuse_authored_explanation_with_trace_and_local_scope(self):
+        record = d.build(*fixture(text='Read the Bible and pray every day.'))
+        before = deepcopy(record['observations'])
+        review = review_for(record)
+        reader = p.build_reader(record, {'reviews': [review]})
+        point = reader['explanatory_descriptions']['points'][0]
+        claim = next(c for c in reader['claims'] if c['id'] == point['claim_id'])
+        self.assertEqual(review['description'], reader['assessment'][0][0][0])
+        self.assertEqual([review['evidence_id']], claim['evidence_ids'])
+        self.assertEqual('source_reviewed_style_example', claim['analytical_basis'])
+        self.assertEqual(point['point_id'], claim['description_point_id'])
+        comparison = p.recording_comparison(reader)
+        self.assertEqual(review['description'], comparison[0]['accounts'][0]['text'])
+        self.assertEqual(before, record['observations'])
+        record['reader'] = reader
+        record['assessment'] = reader['assessment']
+        visible = VisibleText(); visible.feed(p.render(record))
+        self.assertIn(review['description'], ' '.join(visible.text))
+        self.assertIn('not complete sermon summaries', ' '.join(visible.text))
+        empty = p.build_reader(record)
+        self.assertEqual([], empty['explanatory_descriptions']['points'])
+        self.assertFalse(any(c.get('description_point_id') for c in empty['claims']))
 
     def test_authored_review_input_is_bounded_and_not_an_identity_rule(self):
         reviews = p.load_reviews()
