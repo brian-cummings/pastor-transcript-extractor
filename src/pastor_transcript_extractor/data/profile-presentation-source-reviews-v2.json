@@ -1,0 +1,79 @@
+{
+  "version": "profile-presentation-source-reviews-v2",
+  "purpose": "Authored presentation inputs tied to complete existing source windows; no raw results or new measurements. V2 adds concise descriptors for the unchanged reviewed explanations.",
+  "reviews": [
+    {
+      "evidence_id": "e-3973-74-treatment-exegetical_exposition",
+      "video_id": 3973,
+      "block_id": 74,
+      "dimension": "exegetical_exposition",
+      "source_sha256": "814c5c662e4479131dcec244ed6d8097df77dbfdc9d46d3d647a3ae96d2886b6",
+      "target_sha256": "b9b8842c325187a1d709b9607962ed039aa020fa423edb32a1a0fc1fdef3c7da",
+      "start_seconds": 2636.96,
+      "end_seconds": 2720.72,
+      "description": "The preacher explains the wording of Revelation’s message to Laodicea, distinguishing “the beginning of the creation of God” from the claim that Jesus was created.",
+      "reviewer": "Codex source inspection; Brian product acceptance pending",
+      "scope": "This passage only; descriptive illustration within the existing treatment meaning, not a new measurement, adoption judgment or frequency rule.",
+      "descriptor": "Explaining disputed biblical wording"
+    },
+    {
+      "evidence_id": "e-3973-52-treatment-narrative_illustration",
+      "video_id": 3973,
+      "block_id": 52,
+      "dimension": "narrative_illustration",
+      "source_sha256": "814c5c662e4479131dcec244ed6d8097df77dbfdc9d46d3d647a3ae96d2886b6",
+      "target_sha256": "273c3091dddf97b23070595c4a28a760cbc83979ab57ae82358d42b4443e1f30",
+      "start_seconds": 1648.799,
+      "end_seconds": 1707.12,
+      "description": "The preacher recounts being in a hotel during an earthquake, giving the sermon’s shaking image a concrete personal setting.",
+      "reviewer": "Codex source inspection; Brian product acceptance pending",
+      "scope": "This passage only; descriptive illustration within the existing treatment meaning, not a new measurement, adoption judgment or frequency rule.",
+      "descriptor": "Making a sermon image concrete through personal experience"
+    },
+    {
+      "evidence_id": "e-281-72-treatment-doctrinal_argument",
+      "video_id": 281,
+      "block_id": 72,
+      "dimension": "doctrinal_argument",
+      "source_sha256": "f29ea5209aebd467b42d054104dbeb021d926e03fa414043b3e8ee78dda0ab2a",
+      "target_sha256": "495fc6eecf3de24c523f3d9558bfa66fddd064dd4b95387f9acad6f798f4356e",
+      "start_seconds": 3152.0,
+      "end_seconds": 3200.88,
+      "description": "The preacher interprets Revelation’s second beast and reasons that harmful religious or political action need not come from consciously wicked motives.",
+      "reviewer": "Codex source inspection; Brian product acceptance pending",
+      "scope": "This passage only; descriptive illustration within the existing treatment meaning, not a new measurement, adoption judgment or frequency rule.",
+      "descriptor": "Reasoning about religious and political motives"
+    },
+    {
+      "evidence_id": "e-4589-32-treatment-practical_application",
+      "video_id": 4589,
+      "block_id": 32,
+      "dimension": "practical_application",
+      "source_sha256": "2ccf222231ba84fa77736419a7775cea9624452a81b87c027a759a02ce78132d",
+      "target_sha256": "55c6743f616a8027c7d3596c6e0bfeb1e6305868372bb409655112a0d340c49b",
+      "start_seconds": 1380.0,
+      "end_seconds": 1440.0,
+      "description": "The preacher connects dependence on Jesus with everyday practices: reading the Bible, prayer, church participation, Bible study and sharing faith.",
+      "reviewer": "Codex source inspection; Brian product acceptance pending",
+      "scope": "This passage only; descriptive illustration within the existing treatment meaning, not a new measurement, adoption judgment or frequency rule.",
+      "descriptor": "Connecting dependence on Jesus with everyday practices"
+    }
+  ],
+  "title_metadata": [
+    {
+      "video_id": 3973,
+      "source_sha256": "814c5c662e4479131dcec244ed6d8097df77dbfdc9d46d3d647a3ae96d2886b6",
+      "speaker_name_in_title": "John Bradshaw"
+    },
+    {
+      "video_id": 281,
+      "source_sha256": "f29ea5209aebd467b42d054104dbeb021d926e03fa414043b3e8ee78dda0ab2a",
+      "speaker_name_in_title": "John Bradshaw"
+    },
+    {
+      "video_id": 4589,
+      "source_sha256": "2ccf222231ba84fa77736419a7775cea9624452a81b87c027a759a02ce78132d",
+      "speaker_name_in_title": "John Bradshaw"
+    }
+  ]
+}

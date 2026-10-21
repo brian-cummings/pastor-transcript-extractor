@@ -20,7 +20,7 @@ from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.sermon_topics import resolve_topic_analysis_artifact, resolve_topic_block_context
 from pastor_transcript_extractor.sermon_semantic_dimensions import SEMANTIC_ANALYSIS_QUESTION_VERSION, SEMANTIC_DIMENSIONS
 
-VERSION = 'pastor-profile-description-v4'
+VERSION = 'pastor-profile-description-v5'
 RULE_VERSION = 'cached-observation-wording-v1'
 FAMILIES = ('Preaching style', 'Theological emphasis', 'Theological orientation', 'Pastoral/rhetorical orientation')
 RULES = {
@@ -93,8 +93,8 @@ class Gap:
 
 def gap_ledger():
     return [asdict(g) for g in (
-        Gap('adoption', 1, FAMILIES[2], 'Affirmed theological positions and relationships between obedience, repentance and salvation',
-            'Topic attention and local relationship judgments do not bind proposition, voice, polarity and adoption; three leaves are unresolved.',
+        Gap('adoption', 1, FAMILIES[2], 'A comprehensive account of affirmed theological positions and relationships between obedience, repentance and salvation',
+            'Existing reviewed readings retain local proposition, voice and use distinctions, but topic/local relationship measurements do not provide systematic adopted-position coverage; three leaves remain unresolved.',
             'Reuse the nine admitted local salvation leaves, preserving their meanings. Existing G1/G2/G3/A1 contracts retain their historical scopes.',
             'Review compatible proposition/voice/polarity evidence for a specific desired claim; separately authorize any missing semantic measurement. Keep unresolved leaves withheld.',
             'semantic distinction / separate authorization', 'Prevents turning discussion, reported views or low probabilities into the pastor’s beliefs.'),
@@ -104,7 +104,7 @@ def gap_ledger():
             'Expose compatible references/alignments if available. Any cross-book argument or frequency conclusion needs its own justified interpretation, not a count proxy.',
             'existing evidence exposure / interpretation', 'Distinguishes explaining a text from merely mentioning many references.'),
         Gap('pastoral', 1, FAMILIES[3], 'Reassurance versus warning, characteristic appeals, certainty, individual versus communal orientation',
-            'Application treatment does not supply listener/act/proposition bindings in these materialized sources.',
+            'Reviewed local applications and invitations are inspectable; application treatment does not establish characteristic listener appeals, their balance or real listener circumstances.',
             'Reuse practical_application locally. Full-pack cache misses do not rule out individual-leaf or composed answers. Legacy migration supports role/treatment only; leaf composition requires identical questions, context and model.',
             'Inspect exact compatible leaf identities for the chosen claim before any refill; compose only compatible existing answers through a separately reviewed integration. Do not run cache assess or a provider.',
             'evidence integration / semantic distinction', 'Avoids labeling relational posture from an application proxy.'),
@@ -454,8 +454,10 @@ def markdown(record):
 
 def prepare(base_dir=None):
     record = load(base_dir)
-    from pastor_transcript_extractor import profile_presentation, profile_capability_review, profile_evidence_supply, profile_supporting_blocks
+    from pastor_transcript_extractor import profile_presentation, profile_capability_review, profile_evidence_supply, profile_supporting_blocks, profile_explanatory_descriptions, profile_sample_patterns
     manifest = seal(dict(version=VERSION, description=record, implementation_files={
+        str(Path(profile_explanatory_descriptions.__file__)): trace.digest(profile_explanatory_descriptions.__file__),
+        str(Path(profile_sample_patterns.__file__)): trace.digest(profile_sample_patterns.__file__),
         str(Path(profile_evidence_supply.__file__)): trace.digest(profile_evidence_supply.__file__),
         str(Path(profile_supporting_blocks.__file__)): trace.digest(profile_supporting_blocks.__file__),
         str(Path(profile_presentation.__file__)): trace.digest(profile_presentation.__file__),
@@ -469,14 +471,16 @@ def prepare(base_dir=None):
     review = seal(dict(version=VERSION+'-review', status='READY_FOR_HUMAN_REVIEW',
         description_fingerprint=record['content_fingerprint'], manifest_fingerprint=manifest['content_fingerprint'],
         claim_count=len(record['claims']), reader_claim_count=len(record['reader']['claims']), source_review_count=len(record['reader']['source_reviews']), observation_count=len(record['observations']), gap_count=len(record['gaps']),
-        coverage=record['coverage'], provider_requests=0, database_writes=0, new_measurements=False,
+        coverage=record['coverage'], reader_acceptance='pending_concrete_wording_review',
+        expected_reader_outcome='Concrete source-linked descriptions and local accounts rather than category inventory',
+        provider_requests=0, database_writes=0, new_measurements=False,
         source_audit_of_all_raw_judgments=False, interpretation_status=record['interpretation_status'],
         check_command='pte analysis structure-readiness --segment-view --description --check-only --json',
         review_command='pte analysis structure-readiness --segment-view --description --json',
         held=['providers/models', 'broader collection', 'new semantic measurements', 'scoring/ranking/comparison', 'production activation', 'ministry stability', 'Ollama quotations']))
-    artifacts = {'review-v4.json': json.dumps(review, ensure_ascii=False, indent=2)+'\n',
-        'description-v4.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
-        'profile-v4.md': markdown(record), 'index.html': render(record),
+    artifacts = {'review-v5.json': json.dumps(review, ensure_ascii=False, indent=2)+'\n',
+        'description-v5.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
+        'profile-v5.md': markdown(record), 'index.html': render(record),
         'next-capability-v2.json': json.dumps(record['capability_review'], ensure_ascii=False, indent=2)+'\n',
         'next-capability-v2.md': profile_capability_review.markdown(record['capability_review'])}
     for name, raw in artifacts.items():

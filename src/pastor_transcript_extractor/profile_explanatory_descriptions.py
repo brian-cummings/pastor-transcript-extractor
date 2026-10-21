@@ -57,7 +57,7 @@ def _frame_notes(binding):
         voice_note = 'The voiced speaker or whether the words were actually spoken remains unresolved.'
     use_note = {
         'own_assertion': 'The reviewed reading treats this as the preacher’s own local assertion.',
-        'adopted': 'The reviewed reading treats the preacher as endorsing this local proposition.',
+        'adopted': 'The preacher affirmatively uses the statement in the way described by this local reading.',
         'reported_not_adopted': 'The reviewed reading reports this proposition without establishing preacher endorsement.',
         'rejected': 'The reviewed reading treats the preacher as rejecting this proposition; no opposite proposition is inferred.',
         'undetermined': 'The preacher’s use of this local proposition remains undetermined.',

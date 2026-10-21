@@ -15,7 +15,7 @@ from pathlib import Path
 from pastor_transcript_extractor.segment_profile_view import short_title, timestamp
 
 VERSION = 'pastor-profile-reader-v5'
-REVIEWS_PATH = Path(__file__).with_name('data') / 'profile-presentation-source-reviews-v1.json'
+REVIEWS_PATH = Path(__file__).with_name('data') / 'profile-presentation-source-reviews-v2.json'
 TOPICS = {
     'god_character_action': 'God’s character and action',
     'sin_fallenness_human_need': 'sin and human need',
@@ -42,7 +42,7 @@ STYLES = {
     'practical_application': 'practical application',
 }
 GAPS = {
-    'adoption': ('The beliefs this preacher personally affirms', 'Discussion can include explanation, quotation or disagreement. These findings do not yet reliably distinguish those uses. Some relationships between repentance, obedience and salvation also remain unresolved.', 'Keep those conclusions open; examine the precise position and its context before proposing additional analysis.'),
+    'adoption': ('A complete account of the preacher’s affirmed beliefs', 'The reviewed local proposals distinguish particular statements, speakers and uses. They do not establish complete coverage of affirmed beliefs across these sermons. Some relationships between repentance, obedience and salvation remain unresolved.', 'Use the scoped local readings where available; retain broader conclusions as unknown.'),
     'scripture': ('How the preacher builds arguments across the Bible', 'Explaining a passage does not establish how often the preacher reasons across books or how central Scripture is across a ministry.', 'Use any current Scripture evidence first. A stronger conclusion needs a clear meaning and supporting passages.'),
     'pastoral': ('Characteristic appeals and relational tone', 'Practical guidance is visible in individual passages. It does not yet establish a characteristic balance of reassurance, warning or other listener appeals.', 'Describe the supported passages locally; retain the broader pastoral assessment as unknown.'),
     'style': ('A dominant preaching style', 'Examples show ways a point is developed. They do not tell us which approach predominates.', 'Review the examples as examples; do not turn them into a frequency or quality score.'),
@@ -266,7 +266,7 @@ def _explain_existing_points(record, reader):
             elif row['label'] == 'Pastoral approach':
                 chosen = [p for p in style if p.get('dimension') == 'practical_application']
             if chosen:
-                row['description'] = ' '.join(('Reviewed local proposal: ' if p['kind'] == 'reviewed_binding' else '')+p['explanation'] for p in chosen)
+                row['description'] = ' '.join(('Reviewed local proposal: ' if p['kind'] == 'reviewed_binding' else '')+p['descriptor'] for p in chosen)
                 row['claim_ids'] = [p['claim_id'] for p in chosen]
                 row['target'] = chosen[0]['claim_id']
     return reader
@@ -316,7 +316,7 @@ def recording_comparison(reader):
             limits.append('Other measured relationships do not support a theme description.')
         if local['unresolved_leaves']:
             limits.append('Some salvation relationships remain unresolved.')
-        result.append(dict(video_id=vid, title=titles[vid], description=' '.join(statements), accounts=[dict(point_id=p['point_id'], claim_id=p['claim_id'], text=local_account(p) if p['kind'] == 'reviewed_binding' else p['explanation']) for p in accounts], limits=' '.join(limits), claim_ids=list(dict.fromkeys([point['claim_id'] for point in accounts] + local['reader_claim_ids']))))
+        result.append(dict(video_id=vid, title=titles[vid], description=' '.join(statements), accounts=[dict(point_id=p['point_id'], claim_id=p['claim_id'], descriptor=p['descriptor'], text=local_account(p) if p['kind'] == 'reviewed_binding' else p['explanation']) for p in accounts], limits=' '.join(limits), claim_ids=list(dict.fromkeys([point['claim_id'] for point in accounts] + local['reader_claim_ids']))))
     return result
 
 
@@ -380,22 +380,22 @@ def render(record):
     rows = ''.join('<tr><th>'+e(row['label'])+'</th><td>'+e(row['description'])+' '+link(row['target'], 'View evidence' if row['label'] != 'Confidence' else 'Read limits')+'</td></tr>' for row in reader['at_a_glance'])
     theme_rows = ''.join('<tr><th>'+e(t['label'])+'</th><td>'+e(t['seen_in'])+'</td><td>'+link(t['claim_id'], 'View evidence')+'</td></tr>' for t in reader['themes'])
     theme_table = '<div class="tablewrap"><table><thead><tr><th>Theme</th><th>Seen in</th><th>Support</th></tr></thead><tbody>'+theme_rows+'</tbody></table></div>' if theme_rows else '<p>There is not enough supporting evidence here to describe salvation themes.</p>'
-    style_examples = ''.join('<p>'+e(review['description'])+' '+link(passage_id(obs[review['evidence_id']]), 'View supporting passage · '+titles[review['video_id']])+'</p>' for review in reader['source_reviews'] if review['dimension'] != 'practical_application')
+    style_examples = ''.join('<p>'+link('account-'+point['point_id'], point['descriptor'])+'</p>' for point in reader.get('explanatory_descriptions', {}).get('points', []) if point['kind'] == 'style' and point.get('dimension') != 'practical_application')
     topic_rows = []
     for topic, vids in reader['shared_topic_membership'].items():
         refs = [key for claim in record['claims'] if claim['rule'] == 'topic' for key in claim['evidence_ids'] if obs[key]['field'] == topic]
         seen_in = 'All '+str(len(titles))+' sermons' if len(vids) == len(titles) and len(titles) > 1 else phrase_list([titles[vid] for vid in vids])
         topic_rows.append('<tr><th>'+e(TOPICS.get(topic, topic.replace('_', ' ')))+'</th><td>'+e(seen_in)+'</td><td>'+supporting(refs)+'</td></tr>')
     emphases = '<p>Compare the passages to see how these subjects are developed in the named sermons. Attention to a subject does not establish agreement with every view discussed.</p><div class="tablewrap"><table><thead><tr><th>Subject</th><th>Seen in</th><th>Supporting passages</th></tr></thead><tbody>'+''.join(topic_rows)+'</tbody></table></div>'
-    comparison = ''.join('<tr><th>'+e(item['title'])+'</th><td>'+(''.join('<p>'+e(account['text'])+' '+link(account['claim_id'], 'View evidence')+'</p>' for account in item['accounts']) if item['accounts'] else e(item['description']))+'<p class="muted">'+e(item['limits'])+'</p>'+ ' '.join(link(key, 'View evidence') for key in item['claim_ids'])+'</td></tr>' for item in recording_comparison(reader))
+    comparison = ''.join('<tr><th>'+e(item['title'])+'</th><td>'+(''.join('<p>'+link('account-'+account['point_id'], account['descriptor'])+'</p>' for account in item['accounts']) if item['accounts'] else e(item['description']))+'<p class="muted">'+e(item['limits'])+'</p>'+ ' '.join(link(key, 'View evidence') for key in item['claim_ids'])+'</td></tr>' for item in recording_comparison(reader))
     comparison = '<section class="panel" id="recording-comparison"><h2>How the recordings compare</h2><p>Accounts describe selected reviewed passages, not the complete argument or balance of a sermon. Missing support does not establish absence or disagreement.</p><div class="tablewrap"><table><thead><tr><th>Recording</th><th>Supported observations and limits</th></tr></thead><tbody>'+comparison+'</tbody></table></div></section>'
     explanatory_cards = []
     for point in reader.get('explanatory_descriptions', {}).get('points', []):
         frame = point.get('frame', {})
         notes = list(dict.fromkeys([point.get('voice_note', ''), point.get('use_note', ''), frame.get('scope', {}).get('reading', '')] + [q['reading'] for q in frame.get('qualifications', [])] + [q['rationale'] for q in frame.get('conditions', [])]))
         unknowns = '<p><strong>Unknown or withheld</strong></p><ul>'+''.join('<li>'+e(value)+'</li>' for value in frame.get('unknowns', []))+'</ul>' if frame.get('unknowns') else ''
-        explanatory_cards.append('<article class="gap"><h3>'+e(point['descriptor'])+'</h3><p>'+e(point['explanation'])+'</p>'+('<p class="note">Reviewed local proposal · selected passage only.</p>' if point['kind'] == 'reviewed_binding' else '')+''.join('<p class="muted">'+e(note)+'</p>' for note in notes if note)+unknowns+supporting(point['evidence_ids'])+'<p>'+link(point['claim_id'], 'How this description is supported')+'</p></article>')
-    explanatory_section = '<section class="panel" id="concrete-descriptions"><h2>What the selected passages show</h2><p>These are separate local examples, not complete sermon summaries.</p>'+''.join(explanatory_cards)+'</section>' if explanatory_cards else ''
+        explanatory_cards.append((point['video_ids'][0], '<article class="gap" id="account-'+e(point['point_id'])+'"><h4>'+e(point['descriptor'])+'</h4><p>'+e(point['explanation'])+'</p>'+('<p class="note">Reviewed local proposal · selected passage only.</p>' if point['kind'] == 'reviewed_binding' else '')+''.join('<p class="muted">'+e(note)+'</p>' for note in notes if note)+unknowns+supporting(point['evidence_ids'])+'<p>'+link(point['claim_id'], 'How this description is supported')+'</p></article>'))
+    explanatory_section = '<section class="panel" id="concrete-descriptions"><h2>What the selected passages show</h2><p>These are separate local examples, not complete sermon summaries.</p>'+''.join('<section><h3>'+e(title)+'</h3>'+''.join(card for source,card in explanatory_cards if source == vid)+'</section>' for vid,title in titles.items() if any(source == vid for source,_ in explanatory_cards))+'</section>' if explanatory_cards else ''
     selections = {item['claim_id']: item for item in record.get('supporting_examples', [])}
     cards = []
     for c in reader['claims']:
@@ -491,27 +491,32 @@ def markdown(record):
         lines += ['### '+item['title'], '']
         if item['accounts']:
             for account in item['accounts']:
-                lines += [html.escape(account['text'])+' [View evidence](index.html#'+account['claim_id']+')', '']
+                lines += ['- ['+html.escape(account['descriptor'])+'](index.html#account-'+account['point_id']+')', '']
         else:
             lines += [item['description'], '']
         lines += [item['limits'], '', ' '.join(f'[View evidence](index.html#{key})' for key in item['claim_ids']), '']
     points = reader.get('explanatory_descriptions', {}).get('points', [])
     if points:
         lines += ['## What the selected passages show', '', 'Separate local examples, not complete sermon summaries.', '']
-        for point in points:
-            lines += ['### '+html.escape(point['descriptor']), '', html.escape(local_account(point) if point['kind'] == 'reviewed_binding' else point['explanation']), '']
-            for unknown in point.get('frame', {}).get('unknowns', []):
-                lines += ['- Unknown or withheld: '+html.escape(unknown)]
-            lines += ['']
-            if point['kind'] == 'style':
-                lines += [note for note in point.get('qualifications', [])] + ['']
-            lines += ['[How this description is supported](index.html#'+point['claim_id']+')', '']
+        for vid,title in titles.items():
+            local_points = [point for point in points if vid in point['video_ids']]
+            if not local_points:
+                continue
+            lines += ['### '+html.escape(title), '']
+            for point in local_points:
+                lines += ['#### '+html.escape(point['descriptor']), '', html.escape(local_account(point) if point['kind'] == 'reviewed_binding' else point['explanation']), '']
+                for unknown in point.get('frame', {}).get('unknowns', []):
+                    lines += ['- Unknown or withheld: '+html.escape(unknown)]
+                lines += ['']
+                if point['kind'] == 'style':
+                    lines += [note for note in point.get('qualifications', [])] + ['']
+                lines += ['[How this description is supported](index.html#'+point['claim_id']+')', '']
     lines += ['', '## Benchmark comparison', '', 'Comparison with other preachers is not yet established.', '', '## Salvation themes in these sermons', '', '| Theme | Seen in | Support |', '|---|---|---|']
     lines += ['| '+theme['label']+' | '+theme['seen_in'].replace('|', '/')+f' | [View evidence](index.html#{theme["claim_id"]}) |' for theme in reader['themes']]
     lines += ['', 'This table records discussed themes. The local proposals above preserve more specific reviewed readings; neither establishes a complete doctrinal position.', '', '## Preaching style: source examples', '']
     for review in reader['source_reviews']:
         o = obs[review['evidence_id']]
-        lines += [review['description']+f' [View supporting passage: {titles[o["video_id"]]}](index.html#passage-{o["video_id"]}-{o["block_id"]})', '']
+        lines += [review.get('descriptor', review['description'])+f' [View supporting passage: {titles[o["video_id"]]}](index.html#passage-{o["video_id"]}-{o["block_id"]})', '']
     lines += ['## Why PTE says this', '']
     for c in reader['claims']:
         lines += ['### '+c['wording'], '', c['reason'], '']

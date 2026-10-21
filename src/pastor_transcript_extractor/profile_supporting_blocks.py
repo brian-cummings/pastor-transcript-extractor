@@ -7,7 +7,7 @@ from collections import defaultdict
 from copy import deepcopy
 import hashlib
 
-VERSION = 'point-linked-supporting-blocks-v1'
+VERSION = 'point-linked-supporting-blocks-v2'
 
 
 def _digest(text):
@@ -39,6 +39,8 @@ def build(record):
     raw = {c['id']: c for c in record['claims']}
     reader = record.get('reader', {})
     reviews = {r['evidence_id']: r for r in reader.get('source_reviews', [])}
+    descriptions = {p['point_id']: p for p in reader.get('explanatory_descriptions', {}).get('points', [])}
+    bindings = {r['binding']['binding_id']: r for r in record.get('evidence_supply', {}).get('reviewed_bound_records', [])}
     established = defaultdict(set)
     for claim in raw.values():
         if claim.get('rule') == 'topic' and claim.get('support_state') == 'supported_cached_description':
@@ -46,7 +48,7 @@ def build(record):
         elif claim.get('rule') == 'salvation' and claim.get('support_state') == 'supported_local_observation':
             established['salvation'].update(claim['evidence_ids'])
 
-    def eligibility(o):
+    def eligibility(o, local_proposal=False):
         source = sources.get(o['video_id'])
         if not source or source.get('gate', {}).get('eligible') is not True:
             return 'Source is not eligible in the current profile membership.'
@@ -56,6 +58,8 @@ def build(record):
             return 'Complete source text or valid source bounds are unavailable.'
         if o.get('eligibility', {}).get('eligible') is False or o.get('projection_eligibility', {}).get('eligible') is False:
             return 'Observation is explicitly ineligible.'
+        if local_proposal:
+            return None
         layer = o.get('layer')
         if layer == 'topic' and o['id'] in established['topic'] and o.get('state') == 'measured':
             return None
@@ -75,15 +79,33 @@ def build(record):
     for claim in all_claims:
         is_raw = claim['id'] in raw
         refs = list(dict.fromkeys(claim.get('evidence_ids', [])))
+        requests_proposal = claim.get('analytical_basis') == 'source_reviewed_local_proposal'
+        point = descriptions.get(claim.get('description_point_id'), {}) if requests_proposal else {}
+        reviewed_ids = point.get('reviewed_binding_ids', [])
+        local_proposal = bool(not is_raw and requests_proposal and point.get('kind') == 'reviewed_binding'
+            and point.get('status') == 'source_reviewed_proposal_not_production_admission'
+            and point.get('source_compatibility', {}).get('status') == 'compatible'
+            and reviewed_ids and set(reviewed_ids) == set(claim.get('reviewed_binding_ids', []))
+            and set(refs) <= set(point.get('evidence_ids', []))
+            and all(key in bindings and bindings[key].get('original_g1_record_unchanged') is True
+                and bindings[key].get('status') == 'source_reviewed_proposal_not_production_admission'
+                and bindings[key]['evidence_id'] in refs for key in reviewed_ids)
+            and all(key in observations and all(point['source_compatibility'].get(field) == value
+                for field,value in dict(video_id=observations[key]['video_id'],
+                    block_id=observations[key]['block_id'], source_sha256=observations[key].get('source_sha256'),
+                    target_sha256=_digest(observations[key].get('full_target_text', ''))).items()) for key in refs))
         upstream = [raw[key] for key in claim.get('upstream_claim_ids', []) if key in raw]
         counter = list(dict.fromkeys(claim.get('counterevidence_ids', []) + [key for c in upstream for key in c.get('counterevidence_ids', [])]))
         qualifications = list(dict.fromkeys(text for text in [claim.get('uncertainty'), claim.get('reason'), *[c.get('uncertainty') for c in upstream],
+            *point.get('qualifications', []), point.get('voice_note'), point.get('use_note'),
             'Examples illustrate this point within the selected recordings; selection does not establish frequency, coverage or ministry-wide stability.'] if text))
         groups = defaultdict(list)
         withheld = []
         for key in refs:
             o = observations.get(key)
-            reason = 'Supporting observation is unavailable.' if o is None else eligibility(o)
+            reason = 'Supporting observation is unavailable.' if o is None else eligibility(o, local_proposal)
+            if requests_proposal and not local_proposal:
+                reason = 'Compatible source-reviewed local proposal provenance is unavailable; a topic or probability cannot replace it.'
             if is_raw and (claim.get('rule'), claim.get('support_state')) not in (
                     ('topic', 'supported_cached_description'), ('salvation', 'supported_local_observation')):
                 reason = 'This raw claim has no established example-selection rule.'
@@ -101,9 +123,12 @@ def build(record):
             if any(any(o.get(k) != chosen.get(k) for k in geometry) for o in windows[(chosen['video_id'], chosen['block_id'])]):
                 raise ValueError('Conflicting source block copies in supporting observations')
             layer = chosen['layer']
-            reason = {'topic': 'Existing representative support for topic attention; this does not establish agreement with the views discussed.',
-                'salvation': 'An existing observed local relationship supports this descriptive point; this does not establish preacher adoption or polarity.',
-                'treatment': 'An exact source-reviewed passage illustrates this treatment; a candidate probability alone supplies no authority.'}[layer]
+            if local_proposal:
+                reason = 'This block contains the linked source-reviewed local proposal. Its observation locates the passage; its probability does not admit the proposed reading or establish a broader position.'
+            else:
+                reason = {'topic': 'Existing representative support for topic attention; this does not establish agreement with the views discussed.',
+                    'salvation': 'An existing observed local relationship supports this descriptive point; this does not establish preacher adoption or polarity.',
+                    'treatment': 'An exact source-reviewed passage illustrates this treatment; a candidate probability alone supplies no authority.'}[layer]
             selected.append(dict(evidence_id=chosen['id'], evidence_ids=sorted(o['id'] for o in groups[group] if o['block_id'] == chosen['block_id']),
                 video_id=chosen['video_id'], block_id=chosen['block_id'],
                 passage_id=f'passage-{chosen["video_id"]}-{chosen["block_id"]}',
@@ -112,8 +137,10 @@ def build(record):
                 eligibility=dict(eligible=True, basis='Current eligible source and established claim support set'),
                 support_reason=reason, qualifications=qualifications,
                 source_review=deepcopy(reviews.get(chosen['id'])) if layer == 'treatment' else None))
-        result.append(dict(claim_id=claim['id'], rule_id=claim.get('rule', claim.get('rule_version')),
+        result.append(dict(claim_id=claim['id'], rule_id=claim.get('rule', claim.get('rule_id', claim.get('rule_version'))),
             selection_rule_version=VERSION, point=claim['wording'],
+            analytical_basis=claim.get('analytical_basis', 'existing_supported_observation_or_reviewed_example'),
+            reviewed_binding_ids=reviewed_ids if local_proposal else [],
             status='partial' if selected and withheld else 'selected' if selected else 'unknown',
             reason='Selection uses only this established point’s eligible support set; no new text search or semantic inference.' if selected else 'No eligible authoritative supporting block is available.',
             eligible_observation_ids=sorted(o['id'] for values in groups.values() for o in values),

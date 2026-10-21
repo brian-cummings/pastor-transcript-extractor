@@ -106,6 +106,36 @@ class SupportingBlocksTests(unittest.TestCase):
         profile['observations'].reverse()
         self.assertEqual(selected, next(item for item in examples.build(profile) if item['claim_id'] == claim['id']))
 
+    def test_reviewed_proposal_example_uses_review_authority_not_locator_probability(self):
+        from test_profile_description_revision import supplied_record
+        profile = supplied_record('projected')
+        locator = next(o for o in profile['observations'] if o['layer'] == 'treatment')
+        profile['evidence_supply']['reviewed_bound_records'][0]['evidence_id'] = locator['id']
+        locator.update(layer='salvation', field='assurance_security', state='measured_below_threshold', value=.01)
+        before = deepcopy(profile['observations'])
+        profile['reader'] = presentation.build_reader(profile)
+        claim = next(c for c in profile['reader']['claims'] if c.get('analytical_basis') == 'source_reviewed_local_proposal')
+        selected = next(item for item in examples.build(profile) if item['claim_id'] == claim['id'])
+        self.assertEqual('selected', selected['status'])
+        self.assertEqual('source_reviewed_local_proposal', selected['analytical_basis'])
+        self.assertEqual(claim['reviewed_binding_ids'], selected['reviewed_binding_ids'])
+        self.assertIn('probability does not admit', selected['selected_blocks'][0]['support_reason'])
+        self.assertTrue(any('actually spoken' in note for note in selected['qualifications']))
+        self.assertEqual(before, profile['observations'])
+        profile['evidence_supply']['reviewed_bound_records'][0]['original_g1_record_unchanged'] = False
+        selected = next(item for item in examples.build(profile) if item['claim_id'] == claim['id'])
+        self.assertEqual('unknown', selected['status'])
+
+    def test_stale_description_receipt_cannot_borrow_positive_observation_authority(self):
+        from test_profile_description_revision import supplied_record
+        profile = supplied_record()
+        profile['reader'] = presentation.build_reader(profile)
+        point = profile['reader']['explanatory_descriptions']['points'][0]
+        point['source_compatibility']['target_sha256'] = 'stale'
+        selected = next(item for item in examples.build(profile) if item['claim_id'] == point['claim_id'])
+        self.assertEqual('unknown', selected['status'])
+        self.assertEqual([], selected['selected_blocks'])
+
     def test_partial_support_and_conflicting_source_copies_are_visible(self):
         profile = record()
         profile['claims'][0]['evidence_ids'].append('missing')
