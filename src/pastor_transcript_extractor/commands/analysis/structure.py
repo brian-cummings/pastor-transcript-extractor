@@ -520,6 +520,9 @@ def analysis_profile_connected_binding(
         else:
             result,path=dev.report(base_dir,run_model=run_model)
             output=dict(status=result['status'],fingerprint=result['content_fingerprint'],passages=3,generated_candidates=result['generated_candidates'],structurally_valid_candidates=result['structurally_valid_candidates'],passage_rejections=result['passage_rejections'],invocation=result['invocation'],usage=result['generated']['usage'],path=str(path))
+            if result.get('comparison') and result['comparison'].get('raw_output_diagnostics'):
+                raw=result['comparison']['raw_output_diagnostics']
+                output.update(raw_model_propositions=raw['raw_propositions'],raw_model_frames=raw['raw_frames'])
     except (ValueError,OSError,KeyError,TypeError,RuntimeError) as error:
         raise typer.BadParameter(str(error)) from error
     console.print_json(data=output) if as_json else console.print(output,markup=False)
