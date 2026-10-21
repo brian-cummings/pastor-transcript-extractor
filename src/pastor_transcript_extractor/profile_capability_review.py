@@ -103,11 +103,12 @@ def markdown(packet):
         '## Next action', '', packet['decision'], '',
         '## Consequential gaps and insertion points', '']
     for gap in packet['consequential_gaps']:
+        supply = gap.get('evidence_supply', {})
         lines += ['### '+gap['withheld'], '', gap['reader_impact'], '',
             'Missing: '+gap['cause'], '', 'Existing reuse: '+gap['reuse'], '',
-            'Smallest remedy: '+gap.get('smallest_change', gap['remedy']), '',
-            'Responsible producer: '+str(gap.get('upstream_owner', gap['work_kind'])), '',
-            'Boundary: '+str(gap.get('boundary', gap['work_kind'])), '',
+            'Smallest remedy: '+supply.get('smallest_change', gap['remedy']), '',
+            'Responsible producer: '+str(supply.get('upstream_owner', gap['work_kind'])), '',
+            'Boundary: '+str(supply.get('authorization_boundary', gap['work_kind'])), '',
             '<details><summary>Inspected reuse and exact missing information</summary>', '', '```json',
             json.dumps(gap, indent=2, ensure_ascii=False), '```', '', '</details>', '']
     if packet['cases']:

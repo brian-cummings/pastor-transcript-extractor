@@ -219,6 +219,16 @@ def analysis_structure_readiness(
         except (ValueError, OSError, KeyError, TypeError) as error:
             raise typer.BadParameter(str(error)) from error
         output = dict(status='READ_ONLY_PASTOR_PROFILE_DESCRIPTION' if description else 'READ_ONLY_EXISTING_SEGMENT_EVIDENCE_VIEW',fingerprint=fingerprint,provider_requests=0,database_writes=0,path=str(path) if path else None)
+        if description:
+            record = result if check_only else result['description']
+            examples = record.get('supporting_examples', [])
+            output.update(profile_version=record['version'],
+                recording_ids=[source['video_id'] for source in record['source_identity']],
+                reader_claims=len(record['reader']['claims']), consequential_gaps=len(record['gaps']),
+                reused_raw_leaf_observations=len(record.get('evidence_supply', {}).get('supplied_observation_ids', [])),
+                supporting_examples={state: sum(item['status'] == state for item in examples)
+                    for state in ('selected', 'partial', 'unknown')},
+                new_measurements=False, quote_execution=False)
         console.print_json(data=output) if as_json else console.print(output,markup=False)
         return
     if segment_inventory:
