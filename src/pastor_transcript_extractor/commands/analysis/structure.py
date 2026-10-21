@@ -228,6 +228,9 @@ def analysis_structure_readiness(
                 reused_raw_leaf_observations=len(record.get('evidence_supply', {}).get('supplied_observation_ids', [])),
                 supporting_examples={state: sum(item['status'] == state for item in examples)
                     for state in ('selected', 'partial', 'unknown')},
+                explanatory_points=len(record['reader'].get('explanatory_descriptions', {}).get('points', [])),
+                withheld_descriptions=len(record['reader'].get('explanatory_descriptions', {}).get('withheld', [])),
+                reader_acceptance='pending_concrete_wording_review',
                 new_measurements=False, quote_execution=False)
         console.print_json(data=output) if as_json else console.print(output,markup=False)
         return

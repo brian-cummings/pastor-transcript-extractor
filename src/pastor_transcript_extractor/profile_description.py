@@ -471,6 +471,8 @@ def prepare(base_dir=None):
     review = seal(dict(version=VERSION+'-review', status='READY_FOR_HUMAN_REVIEW',
         description_fingerprint=record['content_fingerprint'], manifest_fingerprint=manifest['content_fingerprint'],
         claim_count=len(record['claims']), reader_claim_count=len(record['reader']['claims']), source_review_count=len(record['reader']['source_reviews']), observation_count=len(record['observations']), gap_count=len(record['gaps']),
+        explanatory_point_count=len(record['reader']['explanatory_descriptions']['points']),
+        withheld_descriptions=record['reader']['explanatory_descriptions']['withheld'],
         coverage=record['coverage'], reader_acceptance='pending_concrete_wording_review',
         expected_reader_outcome='Concrete source-linked descriptions and local accounts rather than category inventory',
         provider_requests=0, database_writes=0, new_measurements=False,
