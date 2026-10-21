@@ -120,3 +120,31 @@ Run `pte analysis profile-synthesis --prepare --json` and then
 `pte analysis profile-synthesis --run --json`. Codex has made no model or metadata
 calls for this revision. A valid portrait still requires sentence-level semantic
 and readability review; this correction alone promises neither fidelity nor quality.
+
+## V2 run and semantic review — 2026-10-21
+
+Brian explicitly authorized Codex to execute and check the small V2 request.
+It ran once with `gemma3:4b`: 5,872 input tokens, 377 output tokens, 34.017 seconds
+model duration, one generation and two metadata reads. The required portrait is
+present; the structural status is `DRAFT_AWAITING_SEMANTIC_AND_WORDING_REVIEW`.
+The separate reviewed verdict is **REJECT_SYNTHESIS_KEEP_V5**.
+
+All six generated entries copy a source description and add an unsupported
+interpretation. Attention to grace does not establish affirmed unearned salvation;
+attention to faith does not establish evangelical alignment; transformation topic
+presence does not establish a consistent exhortation or salvation mechanism.
+The remaining entries similarly add breadth, motive or disposition. Only S1–S6
+were cited; the richer reviewed descriptions were not used. Do not repair these
+claims by relabeling the existing measurements or silently citing different sources.
+
+The original raw response and draft remain unchanged. Separate
+`semantic-review-v1.md` and sealed `semantic-review-v1.json` in the V2 run directory
+record each copied supported prefix, unsupported addition, cited source and limit.
+Panel: `ada8c143376fda95d6deb741ee313e7b6b5c9fdb6deca99eb4c45cd3dad757ae`.
+Semantic review: `7bb1c0b9ae7f3d0fad811b3bc56b482286b476c8aa7dc45cc07e0139e9d68d99`.
+The original HTML remains an explicitly unaccepted draft; use the semantic review
+for the reviewed verdict. Cached CLI status reports structural validity only.
+
+Keep V5 and withhold this synthesis. No retry or further variant was started.
+Any further experiment needs a specific decision; quality/economics parity remains
+unmeasured. Review itself made no provider or metadata requests.

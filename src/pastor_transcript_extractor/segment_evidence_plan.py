@@ -6,12 +6,12 @@ OLD_SELECTION_INPUT='19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceab
 
 
 def verify():
-    plan=trace.read(HERE/'plan-v24.json',True)
-    if (plan['version']!='pastor-profile-product-and-implementation-status-v24'
+    plan=trace.read(HERE/'plan-v25.json',True)
+    if (plan['version']!='pastor-profile-product-and-implementation-status-v25'
             or plan['analytical_families']!=['preaching_style','theological_emphasis','theological_orientation','pastoral_rhetorical_orientation']
             or any(plan[k] for k in ('model_probability_is_pastor_score','benchmark_percentages_authorized','single_pastor_score_proposed','draft_is_measurement_ground_truth'))
             or plan['high_labels_require_explicit_rules'] is not True
-            or plan['status']!='LOCAL_EDITORIAL_SYNTHESIS_V2_IMPLEMENTED_AWAITING_BRIAN_RUN' or plan['exact_span_extraction_required_upstream'] is not False
+            or plan['status']!='LOCAL_EDITORIAL_SYNTHESIS_V2_SEMANTICALLY_REJECTED_KEEP_V5' or plan['exact_span_extraction_required_upstream'] is not False
             or plan['pipeline_order']!=['existing_segment_observations','supported_evidence_accumulation','bounded_profile_review','strongest_supporting_segment','optional_Ollama_editorial_synthesis','optional_Ollama_illustrative_quote']
             or plan['quote_context']!=['preceding_segment','center_segment','following_segment']
             or plan['quote_anchor']!='substantive_content_in_center'
@@ -44,8 +44,12 @@ def verify():
                 'require_full_sermon_coverage_for_sermon_summary','changed_outputs_require_new_version'))):
         raise ValueError('Human-friendly description planning scope differs')
     synthesis=plan['editorial_synthesis']
-    if (synthesis['status']!='V2_REQUIRED_PORTRAIT_IMPLEMENTED_AWAITING_BRIAN_RUN'
+    if (synthesis['status']!='V2_EXECUTED_SEMANTICALLY_REJECTED_KEEP_V5'
             or synthesis['version']!='pastor-profile-synthesis-v2'
+            or synthesis['agent_generation_requests']!=1 or synthesis['agent_metadata_reads']!=2
+            or synthesis['review_provider_requests']!=0 or synthesis['review_metadata_reads']!=0
+            or synthesis['semantic_verdict']!='REJECT_SYNTHESIS_KEEP_V5'
+            or not synthesis['sentence_review_complete']
             or not all(synthesis[k] for k in ('required_portrait_in_generation_schema',
                 'optional_sections_exclude_portrait','evidence_packet_unchanged','prior_run_preserved'))
             or synthesis['input']!='existing_supported_descriptions_and_scoped_reviewed_proposals'
@@ -55,8 +59,7 @@ def verify():
             or any(synthesis[k] for k in ('automatic_retries','model_pulls','cloud_or_provider_fallback',
                 'new_measurements','collection','production_admission','quote_execution',
                 'benchmark_comparison_available','comparative_uniqueness_authorized',
-                'confidence_calibrated','citations_prove_entailment','semantic_acceptance',
-                'agent_generation_requests','agent_metadata_reads'))
+                'confidence_calibrated','citations_prove_entailment','semantic_acceptance'))
             or not all(synthesis[k] for k in ('no_raw_transcripts','no_raw_probability_inventory',
                 'source_analysis_unchanged','requires_semantic_review','raw_response_and_usage_preserved',
                 'cached_reconstruction_no_network','default_description_command_provider_free'))):

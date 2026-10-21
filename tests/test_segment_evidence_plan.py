@@ -7,7 +7,7 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('LOCAL_EDITORIAL_SYNTHESIS_V2_IMPLEMENTED_AWAITING_BRIAN_RUN',plan['status'])
+        self.assertEqual('LOCAL_EDITORIAL_SYNTHESIS_V2_SEMANTICALLY_REJECTED_KEEP_V5',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['historical_capability_decision']['pilot_execution'])
