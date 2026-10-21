@@ -55,6 +55,15 @@ The CLI receipt and review JSON explicitly keep reader acceptance pending. Brian
 inspected the actual wording. Concrete wording acceptance remains pending; the
 revision’s reader usefulness is not inferred from successful generation.
 
+## Optional natural-language synthesis
+
+The [local editorial synthesis workflow](PASTOR_PROFILE_SYNTHESIS.md) adds a draft
+portrait above this existing profile using supported descriptions and local
+proposals, not another transcript analysis. It has a separate explicit one-request
+command; normal description generation and check-only remain provider-free.
+Comparison stays unavailable and confidence remains a code-owned coverage account.
+No generated draft is automatically accepted or projected into measurements.
+
 ## Evidence integration
 
 The existing loader checks source membership, source hashes, eligibility,
