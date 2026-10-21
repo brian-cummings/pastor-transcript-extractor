@@ -26,7 +26,7 @@ reports the configured model and budgets without contacting Ollama.
 The new `index.html` places a clearly labeled synthesis draft above the existing
 profile and full source evidence. Companion `synthesis-v1.md`, `review-v1.json`,
 `raw-response-v1.json`, `source-profile-v5.json`, backend pin and request ledger
-are under the configured app base in `evaluation/pastor-profile-synthesis-v1/`.
+are under the configured app base in `evaluation/pastor-profile-synthesis-v2/`.
 The response receipt retains token counts, model duration and wall time when
 available; these are not claims of measured product parity or cost savings.
 
@@ -104,3 +104,19 @@ schema, keeping citations and semantic review intact. That is a concrete proposa
 not an executed variant or a promise of better prose; Brian must decide before
 another experiment. Keep V5 and the original rejected response. The cached commands
 above remain available for inspection and do not rerun the model.
+
+## Approved V2 correction — 2026-10-21
+
+Brian approved the required-portrait correction. The current CLI now prepares V2:
+`portrait` is a required, nonempty array of cited sentences; optional `sections`
+cannot contain another portrait. Code normalizes that structure for the existing
+renderer without altering generated wording. Inputs, configured model, budgets,
+citation rules and semantic acceptance checks remain unchanged. Nine focused mock
+tests pass, including the original missing-portrait failure shape, empty portrait
+and attempted duplicate portrait. V1 files remain in their original directory;
+the `*-v1.json` receipt filenames within V2 describe the unchanged receipt format.
+
+Run `pte analysis profile-synthesis --prepare --json` and then
+`pte analysis profile-synthesis --run --json`. Codex has made no model or metadata
+calls for this revision. A valid portrait still requires sentence-level semantic
+and readability review; this correction alone promises neither fidelity nor quality.

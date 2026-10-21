@@ -25,7 +25,7 @@ from pastor_transcript_extractor.config import build_llm_config, build_paths
 from pastor_transcript_extractor.local_llm import OllamaClient
 from pastor_transcript_extractor.profile_binding_development import exclusive, read, save
 
-VERSION = 'pastor-profile-synthesis-v1'
+VERSION = 'pastor-profile-synthesis-v2'
 CONTEXT_SIZE = 32768
 MAX_OUTPUT_TOKENS = 3072
 MAX_RESPONSE_BYTES = 1_000_000
@@ -68,8 +68,8 @@ confidence or quality/economics percentages. Do not select or invent quotations.
 Do not ask for more text, call tools, expand the sample or fill missing dimensions.
 Missing dimensions may be omitted; code will keep them explicitly unavailable.
 
-Return only the requested JSON. Include portrait; other section keys are optional
-when supported. Write 250–450 words total if evidence warrants it, maximum 650.
+Return only the requested JSON. The required portrait property is a nonempty array
+of cited sentences. Optional sections contains only additional supported dimensions. Write 250–450 words total if evidence warrants it, maximum 650.
 Within each section the sentences will be joined into a readable paragraph. Keep
 meaning-changing qualifications in the relevant sentence; avoid repetitive generic
 disclaimers. Generic sample limits and the draft label are already displayed.
@@ -84,14 +84,15 @@ class Sentence(BaseModel):
 
 class Section(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
-    key: Literal['portrait', 'sample_characteristics', 'preaching_style',
+    key: Literal['sample_characteristics', 'preaching_style',
                  'theological_emphasis', 'theological_orientation', 'pastoral_orientation']
     sentences: list[Sentence] = Field(min_length=1, max_length=6)
 
 
 class Draft(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
-    sections: list[Section] = Field(min_length=1, max_length=6)
+    portrait: list[Sentence] = Field(min_length=1, max_length=6)
+    sections: list[Section] = Field(default_factory=list, max_length=5)
 
 
 def evidence_packet(record):
@@ -224,7 +225,10 @@ def compile_response(raw, spec, verified_digest):
                 raise ValueError('Synthesis usage exceeds context budget')
         if usage['output_tokens'] is not None and usage['output_tokens'] > spec['max_output_tokens']:
             raise ValueError('Synthesis usage exceeds output budget')
-        result = Draft.model_validate_json(envelope['message']['content']).model_dump()
+        validated = Draft.model_validate_json(envelope['message']['content']).model_dump()
+        # Normalize only structure for the existing renderer; never repair prose/citations.
+        result = dict(sections=[dict(key='portrait',sentences=validated['portrait']),
+                                *validated['sections']])
         keys = [s['key'] for s in result['sections']]
         if len(keys) != len(set(keys)) or 'portrait' not in keys:
             raise ValueError('A unique portrait section is required')

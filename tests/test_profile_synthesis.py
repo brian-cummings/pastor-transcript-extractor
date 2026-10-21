@@ -33,9 +33,9 @@ class FakeProvider:
     def digest(self):return 'a'*64
     def generate(self,body):
         packet = json.loads(body['messages'][1]['content'])
-        draft = dict(sections=[dict(key='portrait',sentences=[dict(
+        draft = dict(portrait=[dict(
             text='These selected recordings discuss God’s character and action.',
-            source_ids=[packet['sources'][0]['source_id']])])])
+            source_ids=[packet['sources'][0]['source_id']])])
         return json.dumps(dict(model=body['model'],done=True,done_reason='stop',
             message=dict(content=json.dumps(draft)),prompt_eval_count=500,eval_count=100,total_duration=1200000))
 
@@ -128,8 +128,8 @@ class ProfileSynthesisTests(unittest.TestCase):
             'output_budget':lambda e:e.update(eval_count=synthesis.MAX_OUTPUT_TOKENS+1),
             'model':lambda e:e.update(model='other'),
             'invalid_json':lambda e:e['message'].update(content='{'),
-            'unknown_citation':lambda e:e['message'].update(content=json.dumps(dict(sections=[dict(key='portrait',sentences=[dict(text='Unsupported text',source_ids=['missing'])])]))),
-            'confidence_score':lambda e:e['message'].update(content=json.dumps(dict(sections=[dict(key='portrait',sentences=[dict(text='Confidence is 95%.',source_ids=[spec['packet']['sources'][0]['source_id']])])]))),
+            'unknown_citation':lambda e:e['message'].update(content=json.dumps(dict(portrait=[dict(text='Unsupported text',source_ids=['missing'])]))),
+            'confidence_score':lambda e:e['message'].update(content=json.dumps(dict(portrait=[dict(text='Confidence is 95%.',source_ids=[spec['packet']['sources'][0]['source_id']])]))),
             'extra_comparison':lambda e:e['message'].update(content=json.dumps(dict(sections=[],nearest_preacher='Invented'))),
         }
         for name,mutate in mutations.items():
@@ -140,10 +140,32 @@ class ProfileSynthesisTests(unittest.TestCase):
                 self.assertIsNone(compiled['draft']);self.assertFalse(compiled['semantic_acceptance'])
         # Even a cited but false statement cannot be declared faithful by structure.
         unsupported=deepcopy(original);draft=json.loads(unsupported['message']['content'])
-        draft['sections'][0]['sentences'][0]['text']='The preacher secretly rejects the gospel.'
+        draft['portrait'][0]['text']='The preacher secretly rejects the gospel.'
         unsupported['message']['content']=json.dumps(draft)
         compiled=synthesis.compile_response(dict(raw_envelope=json.dumps(unsupported),status='verified',digest_after='digest'),spec,'digest')
         self.assertFalse(compiled['semantic_acceptance'])
+
+    def test_required_portrait_contract_rejects_original_failure_and_empty_or_duplicate_portrait(self):
+        spec,_ = panel()
+        schema = spec['schema']
+        self.assertIn('portrait',schema['required'])
+        self.assertEqual(1,schema['properties']['portrait']['minItems'])
+        self.assertNotIn('portrait',schema['$defs']['Section']['properties']['key']['enum'])
+        envelope = json.loads(FakeProvider().generate(synthesis.request_body(spec)))
+        sentence = json.loads(envelope['message']['content'])['portrait'][0]
+        cases = [
+            {'sections':[{'key':'theological_orientation','sentences':[sentence]}]},
+            {'portrait':[]},
+            {'portrait':[sentence],'sections':[{'key':'portrait','sentences':[sentence]}]},
+        ]
+        for draft in cases:
+            with self.subTest(draft=draft):
+                envelope['message']['content']=json.dumps(draft)
+                compiled=synthesis.compile_response(dict(raw_envelope=json.dumps(envelope),
+                    status='verified',digest_after='digest'),spec,'digest')
+                self.assertEqual('REJECTED_SYNTHESIS_OUTPUT',compiled['status'])
+                self.assertIsNone(compiled['draft'])
+        self.assertEqual('pastor-profile-synthesis-v2',spec['version'])
 
     def test_raw_replay_detects_resealed_generated_tampering(self):
         spec,r = panel()
