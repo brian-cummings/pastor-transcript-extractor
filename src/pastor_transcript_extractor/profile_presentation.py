@@ -243,7 +243,9 @@ def _explain_existing_points(record, reader):
         # Representative existing accounts, not a new ranking or inferred sermon outline.
         overview = []
         if style:
-            overview.append([(p['explanation'], p['claim_id']) for p in style if p.get('dimension') != 'practical_application'])
+            methods = [(p['explanation'], p['claim_id']) for p in style if p.get('dimension') != 'practical_application']
+            if methods:
+                overview.append(methods)
             practical = [p for p in style if p.get('dimension') == 'practical_application']
             if practical:
                 overview.append([(p['explanation'], p['claim_id']) for p in practical])
