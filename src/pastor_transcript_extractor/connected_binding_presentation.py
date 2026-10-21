@@ -11,6 +11,12 @@ def markdown(output):
     lines=['# Connected passage binding review','',output['status'],'','Same three supplied passages; reviewed answers excluded from generation. No accepted observation or profile projection.','',f"Generated records: {output['generated_candidates']}; structurally valid: {output['structurally_valid_candidates']}; passage rejections: {len(output['passage_rejections'])}.",'','Recorded initial execution: '+json.dumps(output['invocation'])+'. Token receipt: '+json.dumps(r['usage'])+'.', '','Model: '+r['panel']['backend']['model']+'; installed digest: '+r['backend_pin']['model_digest']+'.','']
     if comp:
         lines+=['## Decision','',comp['decision']['answer'].upper()+': '+comp['decision'].get('finding',''),'',comp['decision']['recommendation'],'']
+        if comp.get('raw_output_diagnostics'):
+            lines+=['## What the model actually returned','',json.dumps(comp['raw_output_diagnostics'],ensure_ascii=False),'','[Complete rejection diagnostics](diagnostics-v1.html) · [Markdown](diagnostics-v1.md) · [JSON](diagnostics-v1.json)','']
+        for f in comp.get('consequential_failures',[]):lines+=['### '+f['failure'],'',f['evidence'],'','Recommendation: '+f['smallest_remedy'],'']
+        for row in comp.get('raw_proposition_reviews',[]):
+            lines+=['### Raw '+row['case_id']+' / '+row['local_id'],'',row['finding'],'']
+            lines+=['> '+s['text'].replace('\n','\n> ')+' ('+s['source_field']+' '+str(s['start'])+'–'+str(s['end'])+')' for s in row['evidence']]+['']
         for row in comp['readings']:
             lines+=['## '+row['reference_id'],'',row['summary'],'','Correctly unresolved: '+row['correctly_unresolved'],'','| Field | Outcome | Comparison |','|---|---|---|']
             for name,f in row['fields'].items():lines+=['| '+name+' | '+f['outcome']+' | '+f['finding'].replace('|','/')+' |']
@@ -43,6 +49,12 @@ def render(output):
     refs={x['binding']['binding_id']:(c,x) for c in output['reference']['cases'] for x in c['readings']}
     if comp:
         parts+=['<section class="panel"><h2>Review decision</h2><p>'+e(comp['decision']['answer'].upper()+': '+comp['decision'].get('finding',''))+'</p><p>'+e(comp['decision']['recommendation'])+'</p></section>']
+        if comp.get('raw_output_diagnostics'):
+            raw=comp['raw_output_diagnostics']
+            parts+=['<section class="panel"><h2>What the model actually returned</h2><p>'+e(str(raw['raw_propositions']))+' proposed propositions and '+e(str(raw['raw_frames']))+' frames. All three passages failed before their propositions could compile; zero compiled bindings does not mean the model returned no content.</p><p><a href="diagnostics-v1.html">Inspect every rejection</a> · <a href="diagnostics-v1.md">Markdown</a> · <a href="diagnostics-v1.json">JSON</a></p><details><summary>Complete diagnostic counts</summary><pre>'+e(json.dumps(raw,ensure_ascii=False,indent=2))+'</pre></details></section>']
+        failures=''.join('<h3>'+e(f['failure'])+'</h3><p>'+e(f['evidence'])+'</p><p>'+e(f['smallest_remedy'])+'</p>' for f in comp.get('consequential_failures',[]))
+        if failures:parts+=['<section class="panel"><h2>Consequential failures and recommendation</h2>'+failures+'</section>']
+        for row in comp.get('raw_proposition_reviews',[]):parts+=['<section class="panel" id="raw-'+e(row['case_id']+'-'+row['local_id'])+'"><h3>Raw '+e(row['case_id']+' / '+row['local_id'])+'</h3><p>'+e(row['finding'])+'</p>'+evidence(row['evidence'],row['case_id'])+'</section>']
         glance=''.join('<tr><th><a href="#review-'+e(row['reference_id'])+'">'+e(refs[row['reference_id']][1]['binding']['title'])+'</a></th><td>'+e(row['content_recovery'])+'</td><td>'+e(row['summary'])+'</td></tr>' for row in comp['readings'])
         parts+=['<section class="panel"><h2>At a glance</h2><p>Located content is distinct from faithful binding across all reviewed fields.</p><table>'+glance+'</table></section>']
         for row in comp['readings']:

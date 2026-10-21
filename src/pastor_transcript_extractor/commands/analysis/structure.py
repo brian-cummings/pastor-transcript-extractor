@@ -497,6 +497,7 @@ def analysis_profile_binding_review(
 
 @analysis_app.command('profile-connected-binding', help='Extract connected propositions from only the same three supplied passages with the configured local Ollama backend.')
 def analysis_profile_connected_binding(
+    diagnostics_only: bool = typer.Option(False, '--diagnostics', help='Write exhaustive rejection diagnostics from cached raw responses; no generation or metadata probes.'),
     prepare_only: bool = typer.Option(False, '--prepare', help='Read-only source/request preflight; no Ollama probes, generation or writes.'),
     run_model: bool = typer.Option(False, '--run', help='Execute/resume at most one extraction per supplied passage; no retries or model downloads.'),
     check_only: bool = typer.Option(False, '--check-only', help='Reconstruct cached records and verify comparison without providers or writes.'),
@@ -504,9 +505,13 @@ def analysis_profile_connected_binding(
     base_dir: Path | None = typer.Option(None, help='Override app data directory.'),
 ) -> None:
     from pastor_transcript_extractor import connected_binding_development as dev
-    if sum((prepare_only,run_model,check_only))>1:raise typer.BadParameter('--prepare, --run and --check-only are mutually exclusive')
+    if sum((diagnostics_only,prepare_only,run_model,check_only))>1:raise typer.BadParameter('--diagnostics, --prepare, --run and --check-only are mutually exclusive')
     try:
-        if prepare_only:output=dev.prepare(base_dir)
+        if diagnostics_only:
+            from pastor_transcript_extractor import connected_binding_diagnostics as diagnostics
+            result,path=diagnostics.prepare(base_dir)
+            output=dict(status='CACHED_REJECTION_DIAGNOSTICS_COMPLETE',fingerprint=result['content_fingerprint'],summary=result['summary'],provider_requests=0,metadata_reads=0,path=str(path))
+        elif prepare_only:output=dev.prepare(base_dir)
         elif check_only:
             result,folder,reference=dev.cached(base_dir)
             path=folder/'semantic-review-v1.json'
