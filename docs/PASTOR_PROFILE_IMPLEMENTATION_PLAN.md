@@ -2,13 +2,13 @@
 
 **Active direction — 2026-10-20: reuse existing analytical evidence; repair a demonstrated gap at its responsible producer; aggregate and illustrate downstream.** This replaces the earlier experiment-led next steps. The [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) remains authoritative for the reader experience. [AGENTS.md](../AGENTS.md#reuse-and-responsibility-in-the-evidence-pipeline) makes this responsibility split a project rule.
 
-The current increment is bounded provider-free integration and aggregation on **profile 318, recordings 4589 / 281 / 3973**. It must improve the working profile, not deliver another standalone inventory or feasibility study. R1/R3/R4 are implemented in V4; Brian generated the bounded profile and Codex verified the saved artifact on 2026-10-20. Brian’s subsequent review finds the descriptions too high level; a provider-free description revision is the active next increment. This delivery does not authorize new measurement semantics or release any provider, collection, admission, benchmark or quotation hold.
+The current increment is bounded provider-free integration and aggregation on **profile 318, recordings 4589 / 281 / 3973**. It must improve the working profile, not deliver another standalone inventory or feasibility study. R1/R3/R4 are implemented in V4; Brian generated the bounded profile and Codex verified the saved artifact on 2026-10-20. Brian’s subsequent review finds the descriptions too high level; the provider-free V5 description revision is now implemented and awaiting Brian’s bounded generation and wording review. This delivery does not authorize new measurement semantics or release any provider, collection, admission, benchmark or quotation hold.
 
 ## Delivery status — 2026-10-20
 
 **Reuse increment delivered; bounded generation and artifact checks passed.** V4 integrates compatible saved leaf answers and source-reviewed binding proposals, attaches claim/gap supply traces, adds recording comparisons and selects point-linked full supporting blocks. Authored bindings and raw leaf judgments retain their non-production status. Brian’s run produced 15 reader claims, 24 underlying claims, 39 selected example sets, ten reused source-reviewed proposals and eight consequential gaps. No additional compatible raw leaf answers or exact-current Scripture runs were found at the checked identities; this is not global cache absence. Seals, current source/implementation hashes, claim references and HTML links passed direct checks. Browser security blocked local-file visual inspection, so Codex reviewed the generated HTML and Markdown directly; visual/wording acceptance remains Brian’s.
 
-**Product outcome correction:** the V4 run proves working assembly, provenance and navigation, not sufficient descriptive usefulness. Brian finds the profile too high level. The next increment is **D1–D4: explain existing findings with concrete local examples**, using the four reviewed style descriptions, ten source-reviewed local readings, existing claim ledger and supporting blocks. No listener-directive run or new measurement is the default follow-up. Technical delivery and reader acceptance remain separate.
+**Product outcome correction:** the V4 run proves working assembly, provenance and navigation, not sufficient descriptive usefulness. Brian finds the profile too high level. The implemented V5 increment is **D1–D4: explain existing findings with concrete local examples**, using the four reviewed style descriptions, ten source-reviewed local readings, existing claim ledger and supporting blocks. No listener-directive run or new measurement is the default follow-up. V5 has passed 104 focused profile checks, including independent description tests; no V5 profile-318 dataset run or reader acceptance is claimed yet. Technical delivery and reader acceptance remain separate.
 
 | Existing delivery | Status and treatment |
 |---|---|
@@ -40,7 +40,7 @@ Processing order: **existing category/leaf observations → compatible evidence 
 
 ## Existing code to reuse
 
-The implementation extends `profile_description.py` / `profile_presentation.py` with narrow pure helpers `profile_evidence_supply.py`, `profile_sample_patterns.py` and `profile_supporting_blocks.py`. `profile_capability_review.py` now reports current consequential gaps rather than requesting another completed pilot.
+The implementation extends `profile_description.py` / `profile_presentation.py` with narrow pure helpers `profile_evidence_supply.py`, `profile_sample_patterns.py`, `profile_supporting_blocks.py` and `profile_explanatory_descriptions.py`. `profile_capability_review.py` now reports current consequential gaps rather than requesting another completed pilot.
 
 | Responsibility | Existing entry points and contracts |
 |---|---|
@@ -57,9 +57,9 @@ No row means that compatible observations for these three recordings have alread
 
 ## Next increment — useful descriptions from existing evidence
 
-**Status: planned; not implemented by this documentation revision.** This is a bounded extension of R3/R4 presentation, after completed R1 integration. Keep profile 318 and its three recordings fixed. The Henry Johnson example supplied by Brian is a reference for specificity and readability, not evidence about this pastor, accepted theology, or wording the system must reproduce. Its 17-sermon coverage does not transfer to this three-recording sample.
+**Status: implemented in V5; focused prepared-input checks passed; Brian’s bounded generation and concrete wording review pending.** This is a bounded extension of R3/R4 presentation, after completed R1 integration. Keep profile 318 and its three recordings fixed. The Henry Johnson example supplied by Brian is a reference for specificity and readability, not evidence about this pastor, accepted theology, or wording the system must reproduce. Its 17-sermon coverage does not transfer to this three-recording sample.
 
-**Reader outcome:** replace lists such as “biblical explanation + practical application” with short accounts of what the preacher explains, how he develops a point and what he asks listeners to consider, where existing evidence establishes those details. A reader should be able to describe a concrete example in ordinary language before opening Technical details.
+**Reader outcome to review:** replace lists such as “biblical explanation + practical application” with short accounts of what the preacher explains, how he develops a point and what he asks listeners to consider, where existing evidence establishes those details. A reader should be able to describe a concrete example in ordinary language before opening Technical details.
 
 ### D1 — assemble point-level descriptions from existing records
 
@@ -95,7 +95,7 @@ Do not import stronger judgments from Brian’s example: theological-school alig
 
 ### D4 — verify and deliver the revised profile through the existing CLI
 
-Ship a single revised HTML/Markdown/JSON profile packet, not a separate descriptive proposal that becomes another implementation gate. Use a new description/reader artifact version (proposed V5), retain V4 reproducibility and include description assembly inputs in the manifest. Extend the existing `pte analysis structure-readiness --segment-view --description` workflow; no standalone script is the user entry point. This planning revision does not change the currently generated V4 outputs.
+Ship a single revised HTML/Markdown/JSON profile packet, not a separate descriptive proposal that becomes another implementation gate. Use a new description/reader artifact version (proposed V5), retain V4 reproducibility and include description assembly inputs in the manifest. Extend the existing `pte analysis structure-readiness --segment-view --description` workflow; no standalone script is the user entry point. The existing command now targets V5; existing V4 artifacts and the V1 authored review input remain preserved. A V2 authored presentation input adds concise descriptors to the unchanged four reviewed explanations; it is not a new measurement or validation result.
 
 Focused checks must cover clause-to-evidence links; exact source/review compatibility; missing or fewer reviewed records; preservation of speaker, adoption, invitation, qualification and contrary-evidence distinctions; unchanged original observations/G1 interpretation; and identical analytical authority with absent/rejected examples or quotes. Include positive, negative and ambiguous existing controls; tests of string presence alone cannot establish semantic correctness. Generic fallback must not produce invented explanations or become tuned to the three-sermon example.
 
@@ -111,7 +111,7 @@ Brian runs the same bounded generation command when the implementation is ready.
 - **No new analytical dependency:** no provider/model calls, full-transcript OpenAI processing, new collection, new measurement/admission, score, benchmark, stability claim or Ollama quotation execution. No new fixed number of descriptors, summaries or claims is a completion target.
 - **Concrete handoff:** one runnable versioned packet, its claim/evidence trace and changed/withheld explanation, focused checks and exact CLI command. Brian’s assessment of reader usefulness is recorded separately from technical delivery.
 
-**Order:** D1 description records → D2 concrete accounts → D3 overview/at-a-glance → D4 verification and profile review. This sequence is now the active next work; R2 upstream repair remains conditional only after this use of existing evidence exposes a specific consequential gap. Do not start listener-directive inference, another binding experiment, model selection or a new measurement before completing this description increment.
+**Order:** D1 description records → D2 concrete accounts → D3 overview/at-a-glance → D4 verification and profile review. This sequence is implemented and ready for bounded validation; R2 upstream repair remains conditional only after this use of existing evidence exposes a specific consequential gap. Do not start listener-directive inference, another binding experiment, model selection or a new measurement before completing this description increment.
 
 ## Active work sequence
 
@@ -181,7 +181,7 @@ Only this task's model/digest, prompt/schema, runtime/output/context limits, cac
 
 **Delivered foundation:** R1 integration → R3 sample aggregation → R4 supporting blocks. **Active next path:** D1 description records → D2 concrete accounts → D3 overview/at-a-glance → D4 verification and Brian’s profile review. **Conditional branch:** R2 only for a named blocked statement that survives this use of existing evidence; unsupported points remain unknown. **Optional held follow-up:** R5 quotations. Benchmarks, broader collection and stability claims are outside this sequence.
 
-Brian’s bounded V4 generation and Codex’s artifact review are complete. Brian’s product feedback requests richer, human-friendly descriptions. The next action is implementing D1–D4 above using existing evidence; this request updates the plan/outcomes, not the feature implementation. No new provider or data work is recommended by default. R1/R3/R4 ship through the existing loader/ledger/rendering path; no new planning document, global inventory or generic binding experiment is required. R2 remains conditional on demonstrated gaps, and held semantic/provider work stays held.
+Brian’s bounded V4 generation and Codex’s artifact review are complete. Brian’s product feedback requests richer, human-friendly descriptions. D1–D4 are now implemented using existing evidence. The next action is Brian’s bounded V5 generation, followed by Codex’s inspection and Brian’s concrete wording review; do not equate successful generation with reader acceptance. No new provider or data work is recommended by default. R1/R3/R4 ship through the existing loader/ledger/rendering path; no new planning document, global inventory or generic binding experiment is required. R2 remains conditional on demonstrated gaps, and held semantic/provider work stays held.
 
 Use the existing entry points for profile delivery and verification; new user-facing checks must also attach to `pte`:
 
@@ -191,7 +191,7 @@ pte analysis structure-readiness --segment-view --description --check-only --jso
 pte analysis structure-readiness --segment-plan --json
 ```
 
-These commands now target V4; V3 artifacts remain preserved. The JSON receipt identifies the profile version, recordings, reused raw leaf count, selected/partial/unknown examples and remaining gaps. Check-only returns the same description fingerprint without writing artifacts. Changed outputs use a new version so earlier profiles remain reproducible. Generated reports/caches/receipts belong in the app base; intentional plan/contracts and curated inputs belong in source control.
+These commands now target V5; V3/V4 artifacts remain preserved. The JSON receipt identifies the profile version, recordings, reused raw leaf count, explanatory points, withheld descriptions, selected/partial/unknown examples, remaining gaps and pending reader acceptance. Check-only returns the same description fingerprint without writing artifacts. Changed outputs use a new version so earlier profiles remain reproducible. Generated reports/caches/receipts belong in the app base; intentional plan/contracts and curated inputs belong in source control.
 
 Codex implements, prepares exact cases/defaults/commands, interprets results and recommends a next action. Brian runs bounded dataset validation, reviews the concrete result, makes minor edits and decides consequential held choices. No open-ended case selection, JSON authoring or annotation is assigned to him.
 

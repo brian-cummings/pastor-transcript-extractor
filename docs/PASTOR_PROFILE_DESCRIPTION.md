@@ -23,12 +23,38 @@ prepares the inputs and interpretation. No provider, cache refill, new collectio
 or corpus evaluation is part of this workflow.
 
 The generation command returns `index.html` under the configured application base.
-V4 companions are `profile-v4.md`, `description-v4.json`, `review-v4.json` and
+V5 companions are `profile-v5.md`, `description-v5.json`, `review-v5.json` and
 `next-capability-v2.md/json`. The latter is the current consequential-gap review,
-not another request to run the completed assurance pilot. V4 outputs live under
-`evaluation/pastor-profile-description-v4/`; earlier versions remain preserved.
+not another request to run the completed assurance pilot. V5 outputs live under
+`evaluation/pastor-profile-description-v5/`; earlier versions, including V4, remain preserved.
 Check-only and generation return the same description fingerprint. The output
 directory additionally identifies the implementation/renderer manifest.
+
+## Concrete descriptions and local accounts
+
+V5 assembles explanations from the existing reviewed style descriptions and local
+binding proposals. It does not summarize full transcripts again or infer a
+position from a topic/probability. Explanatory points retain clause-level links,
+source compatibility, speaker/use/scope, qualifications, unknowns and proposal status.
+Incompatible or missing reviewed inputs are withheld without replacing them with
+nearby text. With fewer or no reviewed inputs, the narrower existing view remains.
+
+The assessment uses concrete reviewed explanations. The at-a-glance uses concise
+authored descriptors linked to those accounts; recording navigation groups the
+fuller accounts by their actual source recording. Reviewed local proposals are
+visible in the main reading path. Separate examples do not establish a connected
+argument, complete sermon summary or dominant preaching method. General limits
+are consolidated while meaning-changing qualifications stay with the reading.
+
+The four reviewed explanations retain their original text and source identity.
+`data/profile-presentation-source-reviews-v2.json` adds concise presentation
+descriptors; V1 remains unchanged. The manifest pins that input and the explanatory
+assembly helper. Descriptor counts are not an acceptance target.
+
+The CLI receipt and review JSON explicitly keep reader acceptance pending. Brian’s
+bounded V5 run and concrete wording review are required before claiming the
+revision achieves its intended reader usefulness. No V5 dataset result is inferred
+from the focused tests.
 
 ## Evidence integration
 

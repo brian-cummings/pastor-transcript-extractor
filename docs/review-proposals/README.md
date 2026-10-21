@@ -1,6 +1,6 @@
 # Evidence and pastor-profile work: current status
 
-**Active next increment — explain existing evidence with concrete, human-friendly descriptions (D1–D4).** The [product plan](../PASTOR_PROFILE_PRODUCT_PLAN.md) and [implementation plan](../PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) define the current work. [AGENTS.md](../../AGENTS.md#reuse-and-responsibility-in-the-evidence-pipeline) records the reuse and insertion-point philosophy.
+**V5 description increment implemented — awaiting Brian’s bounded generation and wording review.** The [product plan](../PASTOR_PROFILE_PRODUCT_PLAN.md) and [implementation plan](../PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) define the current work. [AGENTS.md](../../AGENTS.md#reuse-and-responsibility-in-the-evidence-pipeline) records the reuse and insertion-point philosophy.
 
 **Delivered V4; Brian’s bounded generation and Codex’s artifact checks passed:** R1 integrates compatible existing observations into the current claim ledger and runnable profile; R3 aggregates supported recording-level evidence into scoped sample patterns; R4 selects supporting blocks for established points. R2 is a conditional upstream branch for a specifically demonstrated missing semantic distinction. R5 illustrative quotes remains held. No new general extraction, model switch, global inventory or provider experiment is the active next step. See the implementation plan for exact deliverables and exit criteria.
 
@@ -8,7 +8,7 @@ The current readable profile, source-reviewed readings and original measurement/
 
 The actual run contains 15 reader claims, 24 underlying claims, 39 selected example sets, ten reused local binding proposals and eight explicit gaps. No additional compatible raw leaf answers or exact-current Scripture runs were found at the checked identities. Brian’s wording/visual acceptance remains pending.
 
-**Product outcome:** V4’s successful generation does not establish sufficient descriptive usefulness. Brian finds it too high level. The next work is D1–D4 in the implementation plan: assemble existing point/review descriptions, explain concrete examples, rebuild the overview/at-a-glance and deliver one revised packet. No new provider run or listener-directive inference is the default next step. This description increment is planned, not implemented by the plan update.
+**Product outcome:** V4’s successful generation does not establish sufficient descriptive usefulness. Brian finds it too high level. The implemented V5 work follows D1–D4 in the implementation plan: assemble existing point/review descriptions, explain concrete examples, rebuild the overview/at-a-glance and deliver one revised packet. No new provider run or listener-directive inference is the default next step. The increment now passes 104 focused profile checks, including independent description and CLI checks. This is technical readiness, not reader acceptance; Brian runs V5 against the bounded sample next.
 
 Existing commands:
 
@@ -46,4 +46,4 @@ The tail-end quote must contain substantive content from the strongest CENTER mi
 | Source-unit Repair V1 | Retain source-processing support and bounded development result; no production-readiness claim. |
 | Original G1/G2/G3/V4/A1/consumer decisions | Retain original scopes. G1 passage feasibility PASS/closed differs from G1 discovery HOLD. V4 raw FAIL/containment HOLD and bounded A1 PASS stand. No automatic authority for a new segment-level theological claim. |
 
-Frozen source, reference, receipt, acceptance and hash-pinned proposal files are preserved. `STATUS.md` sidecars and [the current registry](pastor-profile-implementation-plan-v1/plan-v19.json) supersede their active recommendations, not their historical evidence. Do not follow an old AUTHORIZED command as a new execution instruction. No cache/model deletion or broad refactor occurred.
+Frozen source, reference, receipt, acceptance and hash-pinned proposal files are preserved. `STATUS.md` sidecars and [the current registry](pastor-profile-implementation-plan-v1/plan-v20.json) supersede their active recommendations, not their historical evidence. Do not follow an old AUTHORIZED command as a new execution instruction. No cache/model deletion or broad refactor occurred.

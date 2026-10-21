@@ -7,11 +7,11 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('V4_TECHNICALLY_DELIVERED_DESCRIPTION_REVISION_PLANNED',plan['status'])
+        self.assertEqual('V5_DESCRIPTIONS_IMPLEMENTED_AWAITING_BOUNDED_RUN_AND_WORDING_REVIEW',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['historical_capability_decision']['pilot_execution'])
-        self.assertEqual('pastor-profile-description-v4',plan['current_delivery'])
+        self.assertEqual('pastor-profile-description-v5',plan['current_delivery'])
         self.assertEqual(['R1','R3','R4'],plan['profile_reuse_increment']['main_path'])
         self.assertTrue(plan['verification']['feature_increment_executed'])
         self.assertEqual(10,plan['bounded_delivery']['reviewed_local_proposals'])
@@ -69,8 +69,8 @@ class SegmentPlanTests(unittest.TestCase):
         from copy import deepcopy
         plan,_=p.verify()
         self.assertEqual(['D1','D2','D3','D4'],plan['description_increment']['sequence'])
-        self.assertEqual('PLANNED_NOT_IMPLEMENTED',plan['description_increment']['status'])
-        self.assertEqual('V4_description_revision_requested_too_high_level',plan['verification']['human_acceptance'])
+        self.assertEqual('IMPLEMENTED_AWAITING_BOUNDED_RUN_AND_WORDING_REVIEW',plan['description_increment']['status'])
+        self.assertEqual('V5_pending_Brian_generation_and_concrete_wording_review',plan['verification']['human_acceptance'])
         for field,value in (('provider_execution',True),
                 ('promote_reviewed_proposals_to_production',True),
                 ('example_is_measurement_ground_truth',True),
