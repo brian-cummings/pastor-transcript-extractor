@@ -90,3 +90,68 @@ class SupplyTests(unittest.TestCase):
             self.assertEqual('supplied_existing_materialized_observations', claim['evidence_supply']['status'])
             self.assertTrue(claim['evidence_supply']['inspected_reuse'])
             self.assertEqual([], claim['evidence_supply']['missing_fields'])
+
+    def test_matching_curated_bindings_preserve_original_G1_without_pilot_loader(self):
+        from test_profile_proposition_review import fixture as reviewed_fixture
+        from test_profile_binding_pilot import fixture as original_fixture
+        from pastor_transcript_extractor import profile_binding_pilot as pilot
+        from pastor_transcript_extractor import profile_proposition_review as review
+        from pastor_transcript_extractor import evidence_pipeline_trace as trace
+        baseline, authored = reviewed_fixture()
+        record, definitions, contexts = original_fixture()
+        real_definitions = json.loads(pilot.READINGS_PATH.read_text())
+        for key in ('contract_path', 'contract_sha256', 'composer_path', 'composer_sha256'):
+            definitions[key] = real_definitions[key]
+        for case, compiled in zip(definitions['cases'], baseline['cases']):
+            case['readings'] = compiled['readings']
+        record['observations'] = [dict(id=case['evidence_id'], video_id=case['video_id'],
+            block_id=case['block_id'], source_sha256=case['source_sha256'])
+            for case in record['capability_review']['cases']]
+        record['evidence_supply'] = {}
+        record['gaps'] = []
+        sources = {case['video_id']: dict(classification=dict(search=dict(topic_analysis=dict(
+            blocks=[dict(block_id=case['block_id'], context=contexts[case['evidence_id']])]))))
+            for case in record['capability_review']['cases']}
+        authored['reused_contracts'] = {}
+        with TemporaryDirectory() as base:
+            original_path = Path(base) / 'original.json'
+            original_path.write_text(json.dumps(definitions))
+            authored['baseline_input_sha256'] = trace.digest(original_path)
+            authored_path = Path(base) / 'authored.json'
+            authored_path.write_text(json.dumps(authored))
+            with patch.object(pilot, 'READINGS_PATH', original_path), patch.object(review, 'READINGS_PATH', authored_path), patch.object(pilot, 'load', side_effect=AssertionError('Recursive loader forbidden')):
+                supply.reviewed_bindings(record, sources)
+                actual = record['evidence_supply']['reviewed_bound_records']
+                self.assertEqual(10, len(actual))
+                expected = {r['id']: r['g1_record'] for c in baseline['cases'] for r in c['readings']}
+                for value in actual:
+                    self.assertEqual(expected[value['binding']['binding_id']], value['assurance_interpretation']['g1_record'])
+                    self.assertEqual('source_reviewed_proposal_not_production_admission', value['status'])
+                self.assertTrue(all(c['state'] == 'compatible_reviewed_proposals_reused' for c in record['evidence_supply']['reviewed_binding_checks']))
+                # A context mutation with the same target must withhold that case.
+                sources[0]['classification']['search']['topic_analysis']['blocks'][0]['context']['leading_context'] = 'changed'
+                supply.reviewed_bindings(record, sources)
+                self.assertEqual(2, len(record['evidence_supply']['reviewed_bound_records']))
+
+    def test_exact_current_scripture_payload_exposed_under_original_meanings(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from pastor_transcript_extractor.models import SermonAnalysisEvidence, SermonAnalysisMeasurement
+        from pastor_transcript_extractor.sermon_analysis import ANALYZER_KEY, ANALYZER_VERSION
+        prepared = SimpleNamespace(input_fingerprint='input', source_content_sha256='source', source_path=Path('/identified.json'))
+        run = SimpleNamespace(id=7, input_fingerprint='input', source_content_sha256='source',
+            analyzer_key=ANALYZER_KEY, analyzer_version=ANALYZER_VERSION)
+        database = Mock()
+        database.list_sermon_analysis_evidence.return_value = [SermonAnalysisEvidence(
+            id=1, analysis_run_id=7, evidence_kind='scripture_reference', evidence_key='reference',
+            segment_index=0, start_seconds=0, end_seconds=5, char_start=0, char_end=8,
+            excerpt='John 3:16', payload_json='{"canonical_reference":"John 3:16"}')]
+        database.list_sermon_analysis_measurements.return_value = [SermonAnalysisMeasurement(
+            id=2, analysis_run_id=7, metric_key='scripture_reference_mentions', value_json='1', unit='mentions')]
+        output = supply.persisted_scripture(database, run, prepared)
+        self.assertEqual('John 3:16', output['evidence'][0]['payload']['canonical_reference'])
+        self.assertEqual(1, output['measurements'][0]['value'])
+        self.assertIn('not cross-book reasoning', output['limit'])
+        run.source_content_sha256 = 'changed'
+        with self.assertRaisesRegex(ValueError, 'exact-current'):
+            supply.persisted_scripture(database, run, prepared)

@@ -293,8 +293,11 @@ def load(base_dir=None):
         try:
             prepared = prepare_sermon_analysis(database, database.get_video_by_id(sermon['video_id']))
             run = database.get_sermon_analysis_run_by_fingerprint(prepared.input_fingerprint)
+            from pastor_transcript_extractor.profile_evidence_supply import persisted_scripture
+            scripture_payload = persisted_scripture(database, run, prepared) if run else None
             checks.append(dict(video_id=sermon['video_id'], path='exact-current sermon-basics input fingerprint',
-                state='compatible_persisted_run_available_not_yet_exposed' if run else 'no_exact_current_persisted_run',
+                state='compatible_persisted_scripture_payload_exposed' if run else 'no_exact_current_persisted_run',
+                scripture_payload=scripture_payload,
                 run_id=run.id if run else None, input_fingerprint=prepared.input_fingerprint,
                 limit='No inference of cross-book reasoning or frequency; no assertion that older artifacts are absent.'))
         except ValueError as error:

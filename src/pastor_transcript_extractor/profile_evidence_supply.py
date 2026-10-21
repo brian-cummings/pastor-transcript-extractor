@@ -130,6 +130,7 @@ def attach(record):
     record['evidence_supply'] = dict(version='profile-evidence-supply-v1',
         status='bounded_read_only_integration', provider_requests=0, cache_writes=0,
         supplied_observation_ids=[o['id'] for o in supplied],
+        persisted_scripture=[c['scripture_payload'] for c in checks if c.get('scripture_payload')],
         inspected_reuse=[{k: v for k, v in check.items() if k != 'observations'} for check in checks],
         limit='Only exact supplied identities inspected. Compatible raw judgments are not new admitted measurements or adopted positions.')
     by_id = {o['id']: o for o in record['observations']}
@@ -154,8 +155,8 @@ def attach(record):
                 'style': 'profile_description.build', 'sampling': 'profile_analysis',
                 'identity': 'profile_analysis', 'benchmark': 'separately held future comparison',
                 'quotes': 'separately held downstream quotation workflow'}[gap['id']],
-            not_inspected=([dict(path='exact-current Scripture payload', state='not_inspected',
-                reason='Only persisted-run identity checked; payload is not loaded or interpreted.')] if gap['id'] == 'scripture' else []),
+            not_inspected=([dict(path='other G1/G2/G3 persisted results', state='not_inspected',
+                reason='Only the curated ten source-reviewed bindings and their existing G1/G2/G3 structures are checked; no general artifact census or automatic admission.')] if gap['id'] in ('adoption', 'pastoral') else []),
             inspected_reuse=[dict(video_id=c['video_id'], state=c['state'], path=c.get('path'),
                 packs=c.get('packs'), matches=c.get('matches'), reason=c.get('reason'),
                 limit=c.get('limit')) for c in relevant],
@@ -241,3 +242,32 @@ def reviewed_bindings(record, sources):
             gap['evidence_supply']['reviewed_binding_checks'] = outcomes
             gap['evidence_supply']['reviewed_proposal_ids'] = [r['binding']['binding_id'] for r in records]
             gap['evidence_supply']['limit'] = 'Compatible authored local proposals are inspectable; they do not supply general automatic coverage or production admission.'
+
+
+def persisted_scripture(database, run, prepared):
+    """Expose exact-current stored references/alignment without running detectors.
+
+    The analysis uses identified-sermon segments, not the topic block projection;
+    retain that source domain and do not turn references into block-level claims.
+    """
+    from dataclasses import asdict
+    from pastor_transcript_extractor.sermon_analysis import ANALYZER_KEY, ANALYZER_VERSION
+    if (run.input_fingerprint != prepared.input_fingerprint or
+        run.source_content_sha256 != prepared.source_content_sha256 or
+        run.analyzer_key != ANALYZER_KEY or run.analyzer_version != ANALYZER_VERSION):
+        raise ValueError('Persisted Scripture run differs from exact-current input')
+    evidence = [asdict(row) for row in database.list_sermon_analysis_evidence(run.id)
+        if row.evidence_kind in ('scripture_reference', 'scripture_text_alignment')]
+    measurements = [asdict(row) for row in database.list_sermon_analysis_measurements(run.id)
+        if row.metric_key.startswith(('scripture_', 'explicit_scripture_', 'contextual_scripture_',
+            'distinct_scripture_', 'anchored_scripture_', 'independent_scripture_'))]
+    for row in evidence:
+        row['payload'] = json.loads(row.pop('payload_json'))
+    for row in measurements:
+        row['value'] = json.loads(row.pop('value_json'))
+    return dict(state='compatible_persisted_scripture_payload_exposed',
+        input_fingerprint=prepared.input_fingerprint, source_path=str(prepared.source_path),
+        source_content_sha256=prepared.source_content_sha256,
+        analyzer_key=run.analyzer_key, analyzer_version=run.analyzer_version,
+        evidence=evidence, measurements=measurements,
+        limit='Saved citation occurrences and text alignments on identified-sermon segments only. They are not cross-book reasoning, exposition frequency, adopted interpretation, or mapped eligible topic-block support.')
