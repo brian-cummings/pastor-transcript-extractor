@@ -508,6 +508,35 @@ def analysis_profile_binding_review(
     console.print_json(data=output) if as_json else console.print(output,markup=False)
 
 
+@analysis_app.command('profile-synthesis', help='Prepare or review one local Ollama editorial synthesis of profile 318; no new measurements or comparisons.')
+def analysis_profile_synthesis(
+    prepare_only: bool = typer.Option(False, '--prepare', help='Inspect the bounded request without model probes, generation or writes.'),
+    run_model: bool = typer.Option(False, '--run', help='Make at most one local synthesis request; cache reuse, no retries, pulls or fallback.'),
+    check_only: bool = typer.Option(False, '--check-only', help='Verify cached raw response and source/request identity without network or writes.'),
+    as_json: bool = typer.Option(False, '--json'),
+    base_dir: Path | None = typer.Option(None, help='Override app data directory.'),
+) -> None:
+    if sum((prepare_only,run_model,check_only)) > 1:
+        raise typer.BadParameter('--prepare, --run and --check-only are mutually exclusive')
+    from pastor_transcript_extractor import profile_synthesis as synthesis
+    try:
+        if prepare_only:output = synthesis.prepare(base_dir)
+        elif check_only:
+            result,folder,_ = synthesis.cached(base_dir)
+            output = dict(status=result['status'],fingerprint=result['content_fingerprint'],
+                provider_requests=0,metadata_reads=0,writes=0,semantic_acceptance=False,path=str(folder))
+        else:
+            result,path,invocation = synthesis.report(base_dir,run_model=run_model)
+            output = dict(status=result['status'],fingerprint=result['content_fingerprint'],
+                provider_requests=invocation['provider_requests'],invocation=invocation,
+                usage=result['generated']['usage'],semantic_acceptance=False,
+                comparison_available=False,confidence_calibrated=False,
+                new_measurements=False,quote_execution=False,path=str(path))
+    except (ValueError,OSError,KeyError,TypeError,RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print_json(data=output) if as_json else console.print(output,markup=False)
+
+
 @analysis_app.command('profile-connected-binding', help='Extract connected propositions from only the same three supplied passages with the configured local Ollama backend.')
 def analysis_profile_connected_binding(
     diagnostics_only: bool = typer.Option(False, '--diagnostics', help='Write exhaustive rejection diagnostics from cached raw responses; no generation or metadata probes.'),
