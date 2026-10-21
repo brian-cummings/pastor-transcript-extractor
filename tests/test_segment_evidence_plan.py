@@ -7,7 +7,7 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('V5_DESCRIPTIONS_IMPLEMENTED_AWAITING_BOUNDED_RUN_AND_WORDING_REVIEW',plan['status'])
+        self.assertEqual('V5_GENERATED_ARTIFACT_VERIFIED_AWAITING_WORDING_REVIEW',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['historical_capability_decision']['pilot_execution'])
@@ -69,8 +69,8 @@ class SegmentPlanTests(unittest.TestCase):
         from copy import deepcopy
         plan,_=p.verify()
         self.assertEqual(['D1','D2','D3','D4'],plan['description_increment']['sequence'])
-        self.assertEqual('IMPLEMENTED_AWAITING_BOUNDED_RUN_AND_WORDING_REVIEW',plan['description_increment']['status'])
-        self.assertEqual('V5_pending_Brian_generation_and_concrete_wording_review',plan['verification']['human_acceptance'])
+        self.assertEqual('BOUNDED_RUN_VERIFIED_WORDING_REVIEW_PENDING',plan['description_increment']['status'])
+        self.assertEqual('V5_concrete_wording_acceptance_pending',plan['verification']['human_acceptance'])
         for field,value in (('provider_execution',True),
                 ('promote_reviewed_proposals_to_production',True),
                 ('example_is_measurement_ground_truth',True),

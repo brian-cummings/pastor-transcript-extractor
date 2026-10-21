@@ -51,10 +51,9 @@ The four reviewed explanations retain their original text and source identity.
 descriptors; V1 remains unchanged. The manifest pins that input and the explanatory
 assembly helper. Descriptor counts are not an acceptance target.
 
-The CLI receipt and review JSON explicitly keep reader acceptance pending. Brian’s
-bounded V5 run and concrete wording review are required before claiming the
-revision achieves its intended reader usefulness. No V5 dataset result is inferred
-from the focused tests.
+The CLI receipt and review JSON explicitly keep reader acceptance pending. Brian generated V5 on 2026-10-21, and Codex verified the saved artifacts and
+inspected the actual wording. Concrete wording acceptance remains pending; the
+revision’s reader usefulness is not inferred from successful generation.
 
 ## Evidence integration
 
