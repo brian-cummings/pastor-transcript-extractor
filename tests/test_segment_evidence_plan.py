@@ -7,7 +7,7 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('LOCAL_EDITORIAL_SYNTHESIS_V2_SEMANTICALLY_REJECTED_KEEP_V5',plan['status'])
+        self.assertEqual('PROVIDER_FREE_V6_EDITORIAL_REVISION_IMPLEMENTED_AWAITING_BRIAN_RUN',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['historical_capability_decision']['pilot_execution'])
@@ -98,6 +98,16 @@ class SegmentPlanTests(unittest.TestCase):
                 with patch.object(p.trace,'read',return_value=changed):
                     with self.assertRaisesRegex(ValueError,'editorial synthesis'):
                         p.verify()
+
+    def test_direct_editorial_revision_cannot_change_measurements_or_weaken_reuse_checks(self):
+        from copy import deepcopy
+        plan,_=p.verify()
+        for field,value in (('provider_requests',1),('reader_acceptance',True),
+                ('full_point_digest_required',False),('original_evidence_unchanged',False)):
+            changed=deepcopy(plan);changed['direct_editorial_revision'][field]=value
+            with self.subTest(field=field),patch.object(p.trace,'read',return_value=changed):
+                with self.assertRaisesRegex(ValueError,'Direct editorial'):
+                    p.verify()
 
     def test_closed_run_rejected_before_provider_or_frozen_input(self):
         from pastor_transcript_extractor import typesafe_selection_execution as e

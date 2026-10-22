@@ -4,7 +4,9 @@
 
 The current increment is bounded provider-free integration and aggregation on **profile 318, recordings 4589 / 281 / 3973**. It must improve the working profile, not deliver another standalone inventory or feasibility study. R1/R3/R4 are implemented in V4; Brian generated the bounded profile and Codex verified the saved artifact on 2026-10-20. Brian’s subsequent review finds the descriptions too high level; Brian generated the provider-free V5 revision on 2026-10-21; Codex verified the saved artifact and inspected its wording. Brian’s concrete wording acceptance remains pending. This delivery does not authorize new measurement semantics or release any provider, collection, admission, benchmark or quotation hold.
 
-**Latest direction — 2026-10-21:** Brian says V5 is getting better and requests an Ollama final synthesis for a more natural pastor-level portrait. Brian executed S1 once; its output was rejected and has now been inspected. No usable editorial portrait was produced. Brian approved the required-portrait contract correction; S1 V2 was executed once by Codex with Brian’s explicit authorization; the required portrait passed structural checks, but sentence review recommends rejection for unsupported additions. Keep V5. V5 and all analytical meanings remain unchanged; no model or metadata calls were made during implementation. “90%+ of OpenAI product quality” and dramatically better economics are product hypotheses, not measured outcomes.
+**Current direction — 2026-10-22:** Brian approved a provider-free revision of V5 using the richer existing reviewed descriptions. D5 below is implemented as V6; Brian runs bounded generation next. No new model calls or measurements.
+
+**Prior direction — 2026-10-21:** Brian says V5 is getting better and requests an Ollama final synthesis for a more natural pastor-level portrait. Brian executed S1 once; its output was rejected and has now been inspected. No usable editorial portrait was produced. Brian approved the required-portrait contract correction; S1 V2 was executed once by Codex with Brian’s explicit authorization; the required portrait passed structural checks, but sentence review recommends rejection for unsupported additions. Keep V5. V5 and all analytical meanings remain unchanged; no model or metadata calls were made during implementation. “90%+ of OpenAI product quality” and dramatically better economics are product hypotheses, not measured outcomes.
 
 ## Delivery status — 2026-10-20
 
@@ -56,6 +58,30 @@ The implementation extends `profile_description.py` / `profile_presentation.py` 
 | Profile wording, evidence ledger and UI | `profile_description.py`, `profile_presentation.py`, `profile_capability_review.py` and current CLI/rendering |
 
 No row means that compatible observations for these three recordings have already been found. Distinguish **contract designed / producer implemented / judgment validated / result persisted / observation admitted / profile integrated**. A missing exact full-pack identity is a bounded lookup result, not proof that each independent leaf or compatible prior composition is absent. Conversely, a historical pilot receipt cannot be relabeled as a production result for a different source window.
+
+## Current increment D5 — provider-free prose revision from reviewed descriptions
+
+**2026-10-22: implemented, awaiting Brian’s bounded V6 generation and wording review.** Brian approved improving V5 directly from the richer reviewed descriptions without new model calls. V5 remains the last generated delivery; both rejected Ollama drafts and their reviews remain preserved. D5 is the sole active implementation slice. It does not reopen S1 experiments or upstream binding work.
+
+**Concrete change:** V6 uses concise authored paraphrases of the four existing reviewed style examples and ten existing local readings. The assessment gives one paragraph of observed ways of developing a point, followed by local accounts grouped by the actual source sermon. Unlike V5’s first-reading-per-recording selection, the overview can include the other supported readings: confidence in God completing a good work, Paul’s confession as an honesty example, the warning against neutrality, and the offered confidence language about forgiveness and heaven. It does not infer a connecting argument, ranking, dominant style or ministry-wide personality from them. The at-a-glance wording uses the matching reviewed paraphrase; the complete original explanations, frames, source passages and qualifications remain underneath.
+
+**Evidence guard:** `data/profile-reader-editorial-v1.json` contains authored wording keyed to each existing explanatory point and an exact digest of the complete point, including its source identity, evidence, frame, qualifications, unknowns and reviewed interpretation. Code applies a paraphrase only when that full input matches. Changed/unmatched inputs retain fuller supported wording independently; they cannot inherit a nearby point’s prose. Scope/proposal limits appear before the assessment; meaning-changing limits remain in the relevant local account. All clause links still resolve to the original point’s claim and supporting evidence. No point, observation, measurement, threshold or binding is promoted or rewritten.
+
+**Versioning and verification:** new output version `pastor-profile-description-v6` / reader V6; filenames `profile-v6.md`, `description-v6.json`, `review-v6.json` and `index.html` under the app base. V5 and both synthesis runs remain immutable. The manifest pins the authored editorial file as well as implementation inputs. CLI/review receipts expose applied and withheld editorial records, with acceptance pending. Focused profile tests: 116 pass, including exact-input matching, independent stale-point fallback and source/claim-link scope checks. Implementation commit `9721787`. No provider calls, metadata probes, database writes, quote execution or dataset output generation occurred during this slice.
+
+**Brian’s prepared command:**
+
+```bash
+pte analysis structure-readiness --segment-view --description --json
+```
+
+Optional read-only reconstruction:
+
+```bash
+pte analysis structure-readiness --segment-view --description --check-only --json
+```
+
+Codex then inspects the generated V6 wording and links against the unchanged reviewed inputs and recommends acceptance or specific edits. Successful generation, a higher word count or fourteen applied paraphrases does not establish reader acceptance. Keep all eight consequential gaps and all existing holds. No further Ollama request is part of this slice.
 
 ## Current increment S1 — local editorial synthesis of the existing profile
 

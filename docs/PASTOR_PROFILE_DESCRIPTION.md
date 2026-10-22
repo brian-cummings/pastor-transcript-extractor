@@ -23,10 +23,10 @@ prepares the inputs and interpretation. No provider, cache refill, new collectio
 or corpus evaluation is part of this workflow.
 
 The generation command returns `index.html` under the configured application base.
-V5 companions are `profile-v5.md`, `description-v5.json`, `review-v5.json` and
+V6 companions are `profile-v6.md`, `description-v6.json`, `review-v6.json` and
 `next-capability-v2.md/json`. The latter is the current consequential-gap review,
-not another request to run the completed assurance pilot. V5 outputs live under
-`evaluation/pastor-profile-description-v5/`; earlier versions, including V4, remain preserved.
+not another request to run the completed assurance pilot. V6 outputs live under
+`evaluation/pastor-profile-description-v6/`; earlier versions, including V5, remain preserved.
 Check-only and generation return the same description fingerprint. The output
 directory additionally identifies the implementation/renderer manifest.
 
@@ -146,3 +146,25 @@ Brian’s acceptance step is to run the generation command, open the returned HT
 and review the assessment, recording variation, source support and withheld
 conclusions. Codex owns interpretation and any concrete follow-up proposal.
 No annotation files, new case selection or JSON authoring are required.
+
+## V6: approved direct editorial revision
+
+V6 uses the richer reviewed descriptions directly, with no model request. The
+four style examples and ten local readings supply shorter authored prose, grouped
+by their actual source sermon. The original readings and complete evidence remain
+underneath. Scope and proposal status appear before the assessment; local limits
+about attribution, invited words, saving desire and unresolved salvation meanings
+remain attached to the relevant account.
+
+`data/profile-reader-editorial-v1.json` pins each paraphrase to a digest of the
+complete explanatory point, including source compatibility and semantic frame.
+Changed points cannot receive the paraphrase: code keeps their fuller wording and
+records the withheld edit. Unmatched points also retain their existing wording.
+The manifest pins this file; JSON receipts include applied and withheld edits.
+These counts measure presentation reuse, not semantic admission or quality.
+
+The existing commands at the top now generate/check V6. Brian runs generation;
+Codex reviews the resulting words and evidence links. V6 generation and reader
+acceptance are pending. The Ollama V1/V2 results remain preserved; V2 passed shape
+checks but was rejected in semantic review. No further model run is authorized by
+this direct editorial revision.
