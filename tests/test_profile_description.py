@@ -177,7 +177,7 @@ class DescriptionTests(unittest.TestCase):
             before = path.read_bytes()
             self.assertEqual((manifest, path), d.prepare())
             self.assertEqual(before, path.read_bytes())
-            self.assertTrue((path.parent / 'review-v5.json').exists())
+            self.assertTrue((path.parent / 'review-v6.json').exists())
             self.assertTrue((path.parent / 'next-capability-v2.md').exists())
             self.assertTrue((path.parent / 'next-capability-v2.json').exists())
             generated = CliRunner().invoke(app, ['analysis', 'structure-readiness', '--segment-view', '--description', '--json'])

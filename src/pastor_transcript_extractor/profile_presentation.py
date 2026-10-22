@@ -14,7 +14,8 @@ from pathlib import Path
 
 from pastor_transcript_extractor.segment_profile_view import short_title, timestamp
 
-VERSION = 'pastor-profile-reader-v5'
+VERSION = 'pastor-profile-reader-v6'
+EDITORIAL_PATH = Path(__file__).with_name('data') / 'profile-reader-editorial-v1.json'
 REVIEWS_PATH = Path(__file__).with_name('data') / 'profile-presentation-source-reviews-v2.json'
 TOPICS = {
     'god_character_action': 'God’s character and action',
@@ -269,6 +270,57 @@ def _explain_existing_points(record, reader):
                 row['description'] = ' '.join(('Reviewed local proposal: ' if p['kind'] == 'reviewed_binding' else '')+p['descriptor'] for p in chosen)
                 row['claim_ids'] = [p['claim_id'] for p in chosen]
                 row['target'] = chosen[0]['claim_id']
+    return _apply_reviewed_editorial(reader)
+
+
+def _apply_reviewed_editorial(reader, entries=None):
+    """Use authored wording only for an exact unchanged reviewed point.
+
+    The full point pins evidence, frame, qualifications, unknowns and source identity.
+    No point is reinterpreted or admitted; unmatched inputs keep the fuller wording.
+    """
+    entries = json.loads(EDITORIAL_PATH.read_text())['entries'] if entries is None else entries
+    by_id = {item['point_id']: item for item in entries}
+    points = reader['explanatory_descriptions']['points']
+    accepted = {}
+    withheld = []
+    for point in points:
+        item = by_id.get(point['point_id'])
+        if item is None:
+            continue
+        original = {k:v for k,v in point.items() if k != 'claim_id'}
+        fingerprint = hashlib.sha256(json.dumps(original,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
+        if fingerprint != item['expected_point_sha256'] or not item['text'].strip():
+            withheld.append(dict(point_id=point['point_id'],reason='Exact reviewed point differs; retain full wording.'))
+            continue
+        accepted[point['point_id']] = item['text']
+    reader['editorial_review'] = dict(version='profile-reader-editorial-v1',
+        applied_point_ids=list(accepted),withheld=withheld,semantic_admission=False)
+    if not accepted:
+        return reader
+    # One method paragraph, then local accounts grouped by their actual recording.
+    overview = []
+    style = [point for point in points if point['kind'] == 'style']
+    if style:
+        overview.append([(accepted.get(p['point_id'],p['explanation']),p['claim_id']) for p in style])
+    for vid,title in reader['titles'].items():
+        local = [p for p in points if p['kind'] == 'reviewed_binding' and int(vid) in p['video_ids']]
+        paragraph = [(accepted.get(p['point_id'],local_account(p)),p['claim_id']) for p in local]
+        if paragraph:
+            text,key = paragraph[0]
+            paragraph[0] = ('In “'+title+'”: '+text,key)
+            overview.append(paragraph)
+    reader['assessment'] = overview
+    reader['assessment_scope'] = ('These descriptions draw on reviewed passages in the selected sermons. '
+        'The local readings below are proposals, not a complete account of affirmed beliefs. '
+        'Examples establish neither a dominant style nor a ministry-wide pattern.')
+    for row in reader['at_a_glance']:
+        ids = row.get('claim_ids',[])
+        selected = [p for p in points if p['claim_id'] in ids and p['point_id'] in accepted]
+        if selected:
+            row['description'] = ' '.join(accepted[p['point_id']] for p in selected)
+            if any(p['kind'] == 'reviewed_binding' for p in selected):
+                row['description'] = 'Local reviewed proposal: '+row['description']
     return reader
 
 
@@ -459,7 +511,7 @@ def render(record):
         next_capability = '<section class="panel" id="next-capability"><h2>What would most improve this assessment?</h2><p>'+e(packet['recommendation'])+'</p><p>'+e(packet['reader_value'])+'</p><details id="next-capability-review"><summary>Read the prepared next-step proposal</summary><p>'+e(packet['why_first'])+'</p><p>'+e(packet['decision'])+'</p><p>Historical prepared cases remain inspectable; they do not confer new measurement or execution authority.</p>'+prepared+'<p><a href="next-capability-v2.md">Read the complete decision brief</a></p></details></section>'
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+e(reader['title'])+'</title><style>'+STYLE+'</style></head><body><main>'+
         '<span class="eyebrow">PASTOR TRANSCRIPT EXTRACTOR</span><h1>'+e(reader['title'])+'</h1><p class="scope">'+e(reader['sample_note'])+'</p><p class="muted">'+e(reader['identity_note'])+'</p>'+
-        '<section class="assessment"><h2>Assessment of this sample</h2>'+(assessment or '<p>There is not enough supported evidence to describe this sample.</p>')+'</section>'+
+        '<section class="assessment"><h2>Assessment of this sample</h2>'+('<p class="scope">'+e(reader['assessment_scope'])+'</p>' if reader.get('assessment_scope') else '')+(assessment or '<p>There is not enough supported evidence to describe this sample.</p>')+'</section>'+
         '<p class="muted">Select a description to inspect its supporting passages.</p>'+
         '<section id="at-a-glance"><h2>Pastor at a glance</h2><div class="tablewrap"><table><thead><tr><th>Dimension</th><th>What these sermons suggest</th></tr></thead><tbody>'+rows+'</tbody></table></div></section>'+
         '<section class="panel" id="sample-limits"><h2>How to read this sample</h2><p>These selected recordings and reviewed passages give a preliminary picture. Examples do not establish a dominant method, a usual sermon structure or a ministry-wide pattern. Subject attention does not establish agreement. Local proposals retain their voice, use and qualifications; they are not production-admitted measurements. Repeated source content does not add independent teaching occasions.</p></section>'+
@@ -481,6 +533,8 @@ def markdown(record):
     obs = {o['id']: o for o in record['observations']}
     titles = {int(key): value for key, value in reader['titles'].items()}
     lines = ['# '+reader['title'], '', reader['sample_note'], '', reader['identity_note'], '', '## Assessment', '']
+    if reader.get('assessment_scope'):
+        lines += [reader['assessment_scope'], '']
     for paragraph in reader['assessment']:
         lines += [' '.join(text+f' [View evidence](index.html#{key})' for text, key in paragraph), '']
     lines += ['## Pastor at a glance', '', '| Dimension | What these sermons suggest |', '|---|---|']
@@ -546,6 +600,6 @@ def markdown(record):
         title, cause, remedy = GAPS[gap['id']]
         lines += ['### '+title, '', cause, '', 'Next useful step: '+remedy, '']
     lines += ['<details><summary>Technical details</summary>', '',
-        'The [complete description record](description-v5.json) preserves every original observation, source hash, question/model/version, threshold, missing state, source-review receipt and claim link. The [review receipt](review-v5.json) records the scope and execution boundaries.', '',
+        'The [complete description record](description-v6.json) preserves every original observation, source hash, question/model/version, threshold, missing state, source-review receipt and claim link. The [review receipt](review-v6.json) records the scope and execution boundaries.', '',
         'Source-review descriptions are authored presentation inputs for individual passages, pending Brian’s acceptance. No raw probability, threshold, adopted position or frequency rule is changed.', '', '</details>', '']
     return '\n'.join(lines)

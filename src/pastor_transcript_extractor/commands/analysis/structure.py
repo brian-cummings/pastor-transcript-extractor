@@ -230,6 +230,8 @@ def analysis_structure_readiness(
                     for state in ('selected', 'partial', 'unknown')},
                 explanatory_points=len(record['reader'].get('explanatory_descriptions', {}).get('points', [])),
                 withheld_descriptions=len(record['reader'].get('explanatory_descriptions', {}).get('withheld', [])),
+                editorial_points=len(record['reader'].get('editorial_review', {}).get('applied_point_ids', [])),
+                withheld_editorial_points=len(record['reader'].get('editorial_review', {}).get('withheld', [])),
                 reader_acceptance='pending_concrete_wording_review',
                 new_measurements=False, quote_execution=False)
         console.print_json(data=output) if as_json else console.print(output,markup=False)

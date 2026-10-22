@@ -1,0 +1,76 @@
+{
+  "version": "profile-reader-editorial-v1",
+  "scope": "Authored paraphrases of exact existing source-reviewed descriptions, not new analytical judgments; local readings remain proposals.",
+  "entries": [
+    {
+      "point_id": "reader-description-style-ab63f704f8d88f24",
+      "expected_point_sha256": "a29b05d6947a98ee0039abb944dfdfbcdc4eda955e8b834c3e81f67ebe38bfb9",
+      "text": "The preacher works through disputed biblical wording: in the message to Laodicea, he distinguishes Jesus being the beginning of creation from the claim that Jesus was created."
+    },
+    {
+      "point_id": "reader-description-style-831b1bbb79c1d8b0",
+      "expected_point_sha256": "6a082bfc95980ce22cbb21aa5ff07b7b716d0354d740e2133d61f5ff086ec589",
+      "text": "A personal earthquake story gives the sermon’s image of shaking a concrete setting: he recalls being in a hotel when it happened."
+    },
+    {
+      "point_id": "reader-description-style-063d7849aa8a544b",
+      "expected_point_sha256": "ec2d8128cf92b1e9837e9194ebb3429b4f5b59b8a4ebb5594264422a0189b022",
+      "text": "His discussion of Revelation’s second beast considers motives as well as actions: he argues that harmful religious or political action need not come from consciously wicked intentions."
+    },
+    {
+      "point_id": "reader-description-style-a7e4efd9fa1ce5d6",
+      "expected_point_sha256": "36bb7b501235b75c95a3696f5b8d305cddc1e525600dc6c9cd9a54e46896f6cc",
+      "text": "Dependence on Jesus is connected to everyday practices—Bible reading, prayer, church participation, Bible study and sharing faith."
+    },
+    {
+      "point_id": "reader-description-reviewed_binding-898332c679a3cf22",
+      "expected_point_sha256": "25298675ec8114b65f29ba2aa1b96dd1c6986853bc9915281a8129238f818ea6",
+      "text": "He invites listeners to describe salvation as God’s mercy rather than the result of their righteous works, and endorses that account as the gospel at work. This is an offered prayer, not evidence that a listener prayed it or was saved."
+    },
+    {
+      "point_id": "reader-description-reviewed_binding-240a94b6341ca99e",
+      "expected_point_sha256": "133810de26eab930c53cefa4c133e9dc9005d1feb1209fee8d171967d3d76cf1",
+      "text": "He expresses confidence that God will finish the good work begun in the listener. The passage does not explicitly identify that work with retaining salvation."
+    },
+    {
+      "point_id": "reader-description-reviewed_binding-646d7a005dc260b9",
+      "expected_point_sha256": "0970d1814c468bdc80ed8bb91ea6f7afd55c5338aff6802932c834c2325699a7",
+      "text": "He tells listeners that Jesus knows their works yet wants to save them, loves them and does not reject them. Knowing their works does not cancel that stated love or saving desire; this does not declare them already saved or impose a salvation condition."
+    },
+    {
+      "point_id": "reader-description-reviewed_binding-f30df42b0446a935",
+      "expected_point_sha256": "5b60317da49992de2751f09eee04342416fd1f9439e7db422e63a344c1ee3af5",
+      "text": "Paul’s confession of being the chief of sinners becomes an example of honesty about sin. The words remain Paul’s, and the reading does not establish a literal ranking of sinners."
+    },
+    {
+      "point_id": "reader-description-reviewed_binding-3e073e8798e97f64",
+      "expected_point_sha256": "de512953fd64618aa10ac216ef56507784b087b6a21e851c580dec0081ff1fc2",
+      "text": "He uses Jesus’ warning to the lukewarm as a warning against neutrality. The image of being vomited out is not assigned a particular loss-of-salvation meaning."
+    },
+    {
+      "point_id": "reader-description-reviewed_binding-4c0587e972480545",
+      "expected_point_sha256": "2c7816fd9b961896ade5e08a037ae80d1a1e7ba55aff66cea9432f1dfaf35f62",
+      "text": "He reports people describing themselves as middle-of-the-road Christians, then challenges that stance. Reporting their description does not make it his own position or establish an adopted opposite."
+    },
+    {
+      "point_id": "reader-description-reviewed_binding-e3dd774e15b34cf1",
+      "expected_point_sha256": "c25e30cfec76351b9a9767c803f63f2a7aa26cbaf9402db1adb3008cdc4a8b12",
+      "text": "He portrays the middle of the road as unsafe and evaluates neutrality negatively. This does not declare a relationship about assurance of salvation."
+    },
+    {
+      "point_id": "reader-description-reviewed_binding-40b062d2ddb71d1d",
+      "expected_point_sha256": "6a922de1df42fe7ef6a7961bea4470627e39e1eb03a6201ebeedd039b94e16de",
+      "text": "He asks listeners to look beyond their mistakes and voice confidence in God’s forgiveness. The invitation is his; whether he asserts the listener’s actual saving state remains unresolved. It is not an unanswered question about whether present acceptance can be known."
+    },
+    {
+      "point_id": "reader-description-reviewed_binding-55a234fe2224703d",
+      "expected_point_sha256": "1bffb811f5ac156a7aa8cbf7b3fe3a4d8ef114a0021fd0c457499b919b5fa1e2",
+      "text": "He affirmatively offers the words about God’s future forgiveness for a listener to say. They are proposed words, not an attested response, a statement of his own saving status or an unconditional guarantee."
+    },
+    {
+      "point_id": "reader-description-reviewed_binding-2336468a403025c0",
+      "expected_point_sha256": "ce52be028839d1f1d70ec498c34e834534b80ce9aa59cc86796281b0690fc898",
+      "text": "He also invites listeners to speak of Jesus preparing a place in heaven for them. That expresses the confidence being invited, not evidence that someone spoke or is permanently secure."
+    }
+  ]
+}
