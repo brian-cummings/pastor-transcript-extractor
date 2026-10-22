@@ -14,8 +14,8 @@ from pathlib import Path
 
 from pastor_transcript_extractor.segment_profile_view import short_title, timestamp
 
-VERSION = 'pastor-profile-reader-v6'
-EDITORIAL_PATH = Path(__file__).with_name('data') / 'profile-reader-editorial-v1.json'
+VERSION = 'pastor-profile-reader-v7'
+EDITORIAL_PATH = Path(__file__).with_name('data') / 'profile-reader-editorial-v2.json'
 REVIEWS_PATH = Path(__file__).with_name('data') / 'profile-presentation-source-reviews-v2.json'
 TOPICS = {
     'god_character_action': 'God’s character and action',
@@ -273,13 +273,16 @@ def _explain_existing_points(record, reader):
     return _apply_reviewed_editorial(reader)
 
 
-def _apply_reviewed_editorial(reader, entries=None):
+def _apply_reviewed_editorial(reader, entries=None, groups=None, tables=None):
     """Use authored wording only for an exact unchanged reviewed point.
 
     The full point pins evidence, frame, qualifications, unknowns and source identity.
     No point is reinterpreted or admitted; unmatched inputs keep the fuller wording.
     """
-    entries = json.loads(EDITORIAL_PATH.read_text())['entries'] if entries is None else entries
+    packet = json.loads(EDITORIAL_PATH.read_text()) if entries is None else {}
+    entries = packet['entries'] if entries is None else entries
+    groups = packet.get('groups',[]) if groups is None else groups
+    tables = packet.get('at_a_glance',[]) if tables is None else tables
     by_id = {item['point_id']: item for item in entries}
     points = reader['explanatory_descriptions']['points']
     accepted = {}
@@ -294,8 +297,8 @@ def _apply_reviewed_editorial(reader, entries=None):
             withheld.append(dict(point_id=point['point_id'],reason='Exact reviewed point differs; retain full wording.'))
             continue
         accepted[point['point_id']] = item['text']
-    reader['editorial_review'] = dict(version='profile-reader-editorial-v1',
-        applied_point_ids=list(accepted),withheld=withheld,semantic_admission=False)
+    reader['editorial_review'] = dict(version='profile-reader-editorial-v2',
+        applied_point_ids=list(accepted),withheld=withheld,merged_point_groups=[],semantic_admission=False)
     if not accepted:
         return reader
     # One method paragraph, then local accounts grouped by their actual recording.
@@ -305,7 +308,26 @@ def _apply_reviewed_editorial(reader, entries=None):
         overview.append([(accepted.get(p['point_id'],p['explanation']),p['claim_id']) for p in style])
     for vid,title in reader['titles'].items():
         local = [p for p in points if p['kind'] == 'reviewed_binding' and int(vid) in p['video_ids']]
-        paragraph = [(accepted.get(p['point_id'],local_account(p)),p['claim_id']) for p in local]
+        paragraph = []
+        consumed = set()
+        local_by_id = {p['point_id']:p for p in local}
+        for point in local:
+            identity = point['point_id']
+            if identity in consumed:
+                continue
+            group = next((g for g in groups if g['point_ids'] and g['point_ids'][0] == identity
+                and set(g['point_ids']) <= set(accepted) & set(local_by_id)
+                and not set(g['point_ids']) & consumed),None)
+            if group:
+                paragraph.append((group['text'],point['claim_id']))
+                # Keep a separate evidence link for every original reading, even
+                # when the shared wording is rendered only once.
+                paragraph.extend(('',local_by_id[key]['claim_id']) for key in group['point_ids'][1:])
+                consumed.update(group['point_ids'])
+                reader['editorial_review']['merged_point_groups'].append(group['point_ids'])
+            else:
+                paragraph.append((accepted.get(identity,local_account(point)),point['claim_id']))
+
         if paragraph:
             text,key = paragraph[0]
             paragraph[0] = ('In “'+title+'”: '+text,key)
@@ -314,13 +336,13 @@ def _apply_reviewed_editorial(reader, entries=None):
     reader['assessment_scope'] = ('These descriptions draw on reviewed passages in the selected sermons. '
         'The local readings below are proposals, not a complete account of affirmed beliefs. '
         'Examples establish neither a dominant style nor a ministry-wide pattern.')
+    point_by_id = {p['point_id']:p for p in points}
     for row in reader['at_a_glance']:
-        ids = row.get('claim_ids',[])
-        selected = [p for p in points if p['claim_id'] in ids and p['point_id'] in accepted]
-        if selected:
-            row['description'] = ' '.join(accepted[p['point_id']] for p in selected)
-            if any(p['kind'] == 'reviewed_binding' for p in selected):
-                row['description'] = 'Local reviewed proposal: '+row['description']
+        table = next((t for t in tables if t['label'] == row['label']
+            and t['point_ids'] and set(t['point_ids']) <= set(accepted)),None)
+        if table:
+            row['description'] = table['text']
+            row['claim_ids'] = [point_by_id[key]['claim_id'] for key in table['point_ids']]
     return reader
 
 
@@ -600,6 +622,6 @@ def markdown(record):
         title, cause, remedy = GAPS[gap['id']]
         lines += ['### '+title, '', cause, '', 'Next useful step: '+remedy, '']
     lines += ['<details><summary>Technical details</summary>', '',
-        'The [complete description record](description-v6.json) preserves every original observation, source hash, question/model/version, threshold, missing state, source-review receipt and claim link. The [review receipt](review-v6.json) records the scope and execution boundaries.', '',
+        'The [complete description record](description-v7.json) preserves every original observation, source hash, question/model/version, threshold, missing state, source-review receipt and claim link. The [review receipt](review-v7.json) records the scope and execution boundaries.', '',
         'Source-review descriptions are authored presentation inputs for individual passages, pending Brian’s acceptance. No raw probability, threshold, adopted position or frequency rule is changed.', '', '</details>', '']
     return '\n'.join(lines)

@@ -20,7 +20,7 @@ from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.sermon_topics import resolve_topic_analysis_artifact, resolve_topic_block_context
 from pastor_transcript_extractor.sermon_semantic_dimensions import SEMANTIC_ANALYSIS_QUESTION_VERSION, SEMANTIC_DIMENSIONS
 
-VERSION = 'pastor-profile-description-v6'
+VERSION = 'pastor-profile-description-v7'
 RULE_VERSION = 'cached-observation-wording-v1'
 FAMILIES = ('Preaching style', 'Theological emphasis', 'Theological orientation', 'Pastoral/rhetorical orientation')
 RULES = {
@@ -482,9 +482,9 @@ def prepare(base_dir=None):
         check_command='pte analysis structure-readiness --segment-view --description --check-only --json',
         review_command='pte analysis structure-readiness --segment-view --description --json',
         held=['providers/models', 'broader collection', 'new semantic measurements', 'scoring/ranking/comparison', 'production activation', 'ministry stability', 'Ollama quotations']))
-    artifacts = {'review-v6.json': json.dumps(review, ensure_ascii=False, indent=2)+'\n',
-        'description-v6.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
-        'profile-v6.md': markdown(record), 'index.html': render(record),
+    artifacts = {'review-v7.json': json.dumps(review, ensure_ascii=False, indent=2)+'\n',
+        'description-v7.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
+        'profile-v7.md': markdown(record), 'index.html': render(record),
         'next-capability-v2.json': json.dumps(record['capability_review'], ensure_ascii=False, indent=2)+'\n',
         'next-capability-v2.md': profile_capability_review.markdown(record['capability_review'])}
     for name, raw in artifacts.items():
