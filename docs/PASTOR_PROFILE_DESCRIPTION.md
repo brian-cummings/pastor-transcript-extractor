@@ -164,7 +164,9 @@ The manifest pins this file; JSON receipts include applied and withheld edits.
 These counts measure presentation reuse, not semantic admission or quality.
 
 The existing commands at the top now generate/check V6. Brian runs generation;
-Codex reviews the resulting words and evidence links. V6 generation and reader
-acceptance are pending. The Ollama V1/V2 results remain preserved; V2 passed shape
+Codex reviews the resulting words and evidence links. Brian explicitly authorized Codex to generate and analyze V6. Saved generation
+and evidence checks are complete; reader acceptance remains pending. The Ollama V1/V2 results remain preserved; V2 passed shape
 checks but was rejected in semantic review. No further model run is authorized by
 this direct editorial revision.
+
+The saved V6 folder includes `wording-review-v1.md/json` with the per-point review. Evidence preservation passes; readability remains partial because neutrality accounts overlap, table entries are long and some technical language remains. No visual browser review was performed. The original HTML/Markdown and generation receipt remain unchanged.
