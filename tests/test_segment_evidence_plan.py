@@ -7,11 +7,11 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('PROVIDER_FREE_V6_GENERATED_VERIFIED_READABILITY_PARTIAL',plan['status'])
+        self.assertEqual('PROVIDER_FREE_V7_POLISH_GENERATED_VERIFIED_READER_REVIEW_PENDING',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['historical_capability_decision']['pilot_execution'])
-        self.assertEqual('pastor-profile-description-v6',plan['current_delivery'])
+        self.assertEqual('pastor-profile-description-v7',plan['current_delivery'])
         self.assertEqual(['R1','R3','R4'],plan['profile_reuse_increment']['main_path'])
         self.assertTrue(plan['verification']['feature_increment_executed'])
         self.assertEqual(10,plan['bounded_delivery']['reviewed_local_proposals'])
@@ -70,7 +70,7 @@ class SegmentPlanTests(unittest.TestCase):
         plan,_=p.verify()
         self.assertEqual(['D1','D2','D3','D4'],plan['description_increment']['sequence'])
         self.assertEqual('BOUNDED_RUN_VERIFIED_WORDING_REVIEW_PENDING',plan['description_increment']['status'])
-        self.assertEqual('V6_pending_concrete_wording_review',plan['verification']['human_acceptance'])
+        self.assertEqual('V7_pending_concrete_wording_review',plan['verification']['human_acceptance'])
         for field,value in (('provider_execution',True),
                 ('promote_reviewed_proposals_to_production',True),
                 ('example_is_measurement_ground_truth',True),

@@ -23,10 +23,10 @@ prepares the inputs and interpretation. No provider, cache refill, new collectio
 or corpus evaluation is part of this workflow.
 
 The generation command returns `index.html` under the configured application base.
-V6 companions are `profile-v6.md`, `description-v6.json`, `review-v6.json` and
+V7 companions are `profile-v7.md`, `description-v7.json`, `review-v7.json` and
 `next-capability-v2.md/json`. The latter is the current consequential-gap review,
-not another request to run the completed assurance pilot. V6 outputs live under
-`evaluation/pastor-profile-description-v6/`; earlier versions, including V5, remain preserved.
+not another request to run the completed assurance pilot. V7 outputs live under
+`evaluation/pastor-profile-description-v7/`; earlier versions, including V6, remain preserved.
 Check-only and generation return the same description fingerprint. The output
 directory additionally identifies the implementation/renderer manifest.
 
@@ -170,3 +170,20 @@ checks but was rejected in semantic review. No further model run is authorized b
 this direct editorial revision.
 
 The saved V6 folder includes `wording-review-v1.md/json` with the per-point review. Evidence preservation passes; readability remains partial because neutrality accounts overlap, table entries are long and some technical language remains. No visual browser review was performed. The original HTML/Markdown and generation receipt remain unchanged.
+
+## V7: verified prose polish
+
+The existing CLI now generates/checks V7. The saved V7 profile is the current
+review draft. It merges overlapping neutrality and forgiveness accounts while
+retaining a separate evidence link for every original point. A merge requires
+all exact reviewed inputs and a common recording; otherwise the individual
+accounts remain. `profile-reader-editorial-v2.json` pins the unchanged reviewed
+points and supplies the merged text and short table descriptors. Its V1 input
+and all earlier generated profiles remain unchanged.
+
+The overview is 354 words, with all fourteen point links. The table no longer
+repeats full explanations. Meaning-changing qualifications remain in the local
+accounts; complete original readings and technical distinctions remain below.
+Saved seals, hashes, evidence equality and links pass. The separate
+`wording-review-v1.md/json` beside V7 records the checks and manual review.
+Human acceptance remains pending. No model or database calls occurred.
