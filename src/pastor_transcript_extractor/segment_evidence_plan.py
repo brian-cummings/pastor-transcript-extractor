@@ -6,12 +6,12 @@ OLD_SELECTION_INPUT='19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceab
 
 
 def verify():
-    plan=trace.read(HERE/'plan-v30.json',True)
-    if (plan['version']!='pastor-profile-product-and-implementation-status-v30'
+    plan=trace.read(HERE/'plan-v31.json',True)
+    if (plan['version']!='pastor-profile-product-and-implementation-status-v31'
             or plan['analytical_families']!=['preaching_style','theological_emphasis','theological_orientation','pastoral_rhetorical_orientation']
             or any(plan[k] for k in ('model_probability_is_pastor_score','benchmark_percentages_authorized','single_pastor_score_proposed','draft_is_measurement_ground_truth'))
             or plan['high_labels_require_explicit_rules'] is not True
-            or plan['status']!='V8_DELIVERED_IMPLEMENTATION_GOAL_COMPLETE_PORTABILITY_PROPOSED' or plan['exact_span_extraction_required_upstream'] is not False
+            or plan['status']!='V8_PRESERVED_P1_DELIVERED_READER_ACCEPTANCE_PENDING' or plan['exact_span_extraction_required_upstream'] is not False
             or plan['pipeline_order']!=['existing_segment_observations','supported_evidence_accumulation','bounded_profile_review','reviewed_portrait_interpretation','strongest_supporting_segment','optional_Ollama_illustrative_quote']
             or plan['quote_context']!=['preceding_segment','center_segment','following_segment']
             or plan['quote_anchor']!='substantive_content_in_center'
@@ -24,18 +24,22 @@ def verify():
             or any(goal[k] for k in ('formal_reader_acceptance','general_generator_validated','new_goal_created'))):
         raise ValueError('Implementation goal closure differs')
     portability=plan['portability_proposal']
-    if (portability['status']!='PROPOSED_NOT_IMPLEMENTED' or portability['selected_profile_id'] is not None
+    if (portability['status']!='DELIVERED_ARTIFACT_REVIEWED_READER_ACCEPTANCE_PENDING' or portability['selected_profile_id'] != 130
             or portability['max_additional_profiles']!=1
-            or any(portability[k] for k in ('execution_authorized','implemented','executed','new_goal_created',
+            or portability['recording_ids'] != [1037,350,4430]
+            or portability['authored_style_descriptions'] != 4 or portability['authored_interpretations'] != 3
+            or any(portability[k] for k in ('reader_acceptance','general_generator_validated',
                 'provider_requests','metadata_reads','database_writes','new_measurements','collection',
                 'production_admission','benchmark_comparison','confidence_calibrated','ministry_stability',
                 'quote_execution','full_pack_miss_proves_constituent_absence','profile_318_wording_transplant',
                 'source_frame_reinterpretation'))
-            or not all(portability[k] for k in ('cached_evidence_only','reuse_existing_cli_and_loader',
+            or not all(portability[k] for k in ('execution_authorized','implemented','executed','new_goal_created','implementation_complete','artifact_review_complete','stop_after_this_case',
+                'cached_evidence_only','reuse_existing_cli_and_loader',
                 'requires_real_cli_input_before_handoff','manual_interpretation_disclosure',
                 'unknowns_do_not_block_supported_output','original_profile_318_reproducible',
-                'v8_is_reader_quality_reference_not_semantic_ground_truth'))):
-        raise ValueError('Proposed portability scope differs')
+                'v8_is_reader_quality_reference_not_semantic_ground_truth'))
+            or trace.digest(trace.ROOT/portability['authored_file']) != portability['authored_sha256']):
+        raise ValueError('Completed portability scope differs')
     reuse=plan['profile_reuse_increment']
     if (reuse['status']!='DELIVERED_BOUNDED_ARTIFACT_VERIFIED'
             or reuse['main_path']!=['R1','R3','R4']

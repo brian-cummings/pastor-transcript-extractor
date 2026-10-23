@@ -13,7 +13,7 @@
 | Supporting examples | Same 53 original selected example sets; interpretation uses the reviewed-point ledger rather than independently selecting measured examples. |
 | Consequential-gap map | Delivered; eight gaps remain visible. Remedies are conditional on actual reuse and authorization. |
 | General profile generator | Not demonstrated. Profile 318’s authored interpretations are example-specific. |
-| Original goal | Complete. No active portability goal has been created. |
+| Original goal | Complete. The separately authorized P1 case is now delivered; reader acceptance remains pending. |
 
 V8’s description fingerprint is `0b6f4d0cedaf64a0f4cfc2958c3101e8605823c5090e845a43fcbea2daed8545`; manifest `b1f0bd2b0830157196e722586daaed08aca87c84bc0fbc949d758685c2b928a5`. The 163-word opening and `portrait-review-v1.md/json` are saved under the app base in `evaluation/pastor-profile-description-v8/<manifest>/`. Review fingerprint: `48fb5acf6eefa9413158408977be65f09bb12a0d07b6032e97f240e9e490fe28`.
 
@@ -32,50 +32,55 @@ Processing order: **compatible category/leaf evidence → reviewed local meaning
 | `profile_supporting_blocks` | Reuse eligible full-block examples for established point records. Portrait interpretations trace through those records. |
 | Existing category-leaf/shared binding producer | Own missing support/refutation, speaker/adoption, conditions and related local semantic distinctions. The portrait cannot supply them. |
 
-The current workflow is centered on the prepared profile 318 example. The generic rendering/validation helpers do not establish that an arbitrary second profile can be selected and populated by the current CLI. Exposing a bounded profile input, if needed, is part of the proposed portability work below; no unsupported second-profile command is advertised.
+The default workflow remains profile 318/V8. The bounded selector below adds exactly one prepared case through the same assembly, leaf-reuse inspection, reviewed-point validation, portrait-warrant validator, supporting-block selection and HTML/Markdown reader. It does not enable arbitrary-profile selection.
 
-## Next proposed increment P1: one cached second-profile portability case
+## Completed P1: one cached second-profile portability case
 
-**Status: proposed, not implemented or executed.** This documentation update does not start another goal or authorize provider, collection or semantic expansion. Complete this bounded slice before considering general automatic synthesis or further model work.
+**Status: delivered and artifact-reviewed, 2026-10-23; Brian reader acceptance pending.** Brian explicitly authorized Codex to select, prepare and execute this provider-free case. P1 stops here; no third case or upstream semantic experiment is active.
 
-### P1.1 Prepare one concrete case
+### P1.1 Prepared case and reuse
 
-Codex selects one different profile with existing reviewed membership, eligible canonical source text and compatible saved analytical evidence. Use its existing bounded recording set; do not collect sermons, invent a sample or run a corpus inventory/evaluation. Inspect only enough existing state to select this one case and establish exact compatibility. Brian is not assigned selection, JSON authoring or experimental design.
+Profile **130**, recordings **1037 / 350 / 4430**, was selected from the existing twelve-source inventory by remaining eligible-block coverage after excluding 318. Current reviewed ownership, eligible canonical sources, topic question/model identities, treatment targets, salvation routing/policy and frozen observation thresholds pass. The other twelve effective profile members are outside this sample.
 
-If no suitable case exists in the inspected scope, report the exact missing prerequisite and smallest remedy; do not replace the task with a new global inventory or an inference run. Do not call the case independent validation or a statistical benchmark.
+The existing assembler reuses 154 topic blocks, 154 treatment blocks and 47 routed salvation blocks. Independent exact-path checks also find **36 saved answers / 220 raw leaf observations** across nine listener/public-life/source-material packs on four blocks of recording 4430, including individual/refinement forms. Same-question dependence, original question meaning, request provenance and unadmitted status remain in the ledger. Full-pack absence was not treated as constituent absence. Exact-current Scripture runs are unavailable for all three recordings. The curated reviewed binding packet fails exact source/inventory/membership compatibility and supplies zero bindings; no remapping is attempted. Other G1/G2/G3 result stores were not inventoried, and global absence is not asserted.
 
-### P1.2 Reuse the existing assembly path
+### P1.2 Narrow CLI integration
 
-Reuse current loaders/resolvers, observations, individual leaf/refinement/composed answers and compatible reviewed bindings. Trace source/context, question meaning, model/version, eligibility and admission status. A full-pack mismatch does not establish constituent absence.
+`profile_portability.py` pins profile 130 and its three prepared recording IDs. The existing inventory builder can read only those IDs and fails if any becomes incompatible or changes ownership. `pte analysis structure-readiness --segment-view --description --profile-id 130` uses that path; other explicit IDs fail. Omit the selector for unchanged profile 318. No collector, provider, cache refill, new semantic contract or production projection was added.
 
-Add only the narrow profile-selection/input plumbing required by this concrete case and wire it through `pte analysis`, reusing the existing loader, reader and artifact path. Keep profile 318 reproducible. Prepare the exact CLI command once the input and supported option actually exist; do not require standalone scripts or fabricate a currently runnable selector.
+The source-controlled `data/profile-portability-130-v1.json` contains **four manually authored style descriptions and three cross-point interpretations**. The existing exact-source and full-point-digest guards withhold changed support. The opening connects a repertoire of textual comparison, contrasting accounts, anecdote and application; its possible benefit and review question remain explicitly interpretive. This is manual authoring by Codex pending Brian’s acceptance, not automatic discovery.
 
-Never copy profile 318’s source hashes, reviewed propositions or portrait wording onto the new case. Reusable code/record shapes and evidence-responsibility rules may transfer; example-specific interpretations require their own support.
+The apparent adopted theological center and pastoral posture are visibly unknown. Authored style descriptions do not create proposition, voice, adoption, polarity, recipient or qualification bindings. Topic summaries retain attention-only meaning. Missing/below-threshold/unrouted/unresolved states remain distinct.
 
-### P1.3 Produce a second readable profile with explicit authoring boundaries
+### P1.3 Delivered artifacts and review
 
-Work backward from the portrait facets: theological center, preaching approach, sample emphases, pastoral posture, possible strengths and questions. Use only meanings supported by the available evidence. Describe topic attention as attention; do not upgrade it to belief.
+```bash
+pte analysis structure-readiness --segment-view --description --profile-id 130 --json
+pte analysis structure-readiness --segment-view --description --profile-id 130 --check-only --json
+```
 
-Where compatible reviewed meanings support a broader interpretation, prepare the explicit warrant, limits, alternative explanation and source links. Mark any Codex-authored interpretation as manual reviewed work pending reader acceptance; do not present it as automatic discovery. Keep a count/list of authored inputs so the actual degree of automation is visible. Authored interpretation can connect established meanings but cannot reconstruct missing local semantics from raw passages or probabilities.
+Final artifacts are under the configured app base in:
 
-Missing facets remain unknown. Complete the best defensible readable profile instead of making completeness a prerequisite. Keep meaning-changing limits in the sentence and technical reasoning underneath. Sampling/selection bias must be visible where it affects the apparent center or posture.
+`evaluation/pastor-profile-portability-p1/b71806632436ea3eff9f5df37d10edd3ca232ca2875ea7de76d79673efe97a67/`
 
-### P1.4 Verify and deliver, without a new evaluation program
+- `index.html`, `profile-p1.md`, `description-p1.json`: actual readable profile, evidence, exact source identities and authoring ledger.
+- `review-p1.md/json`: automatic reuse, manual interpretation and consequential gaps.
+- `consequential-gaps-p1.md/json`: compact gap table plus full inspected paths, missing fields, producer, smallest remedy, acceptance and authorization boundaries.
+- `artifact-review-p1.md/json`: saved artifact and manual warrant review. Fingerprint `ec6b65a03804628ee74f670026c83a92bd38c415b3cb89f905e49566ea79feb9`.
 
-Deliver through `pte`: the second profile HTML/Markdown/JSON, supporting evidence, interpretation ledger, authoring disclosure and a concise consequential-gap report. Generated files belong under the configured app base. Use focused unit checks and one bounded artifact review, not large fixtures, reclassification or corpus evaluation.
+Description fingerprint: `f33f0ab5d9eff2144f129986aa89fa9b008b4138b3908a76d061e00f1a778e40`.
 
-Acceptance checks:
+The case has 20 reader claims, four explanatory points, three portrait interpretations and 34 selected full-block example sets. Artifact checks pass for seals, current source/implementation hashes, claim-to-observation links, exact interpretation supports, 2,090 unique HTML targets and 1,297 internal links, plus Markdown navigation. Manual review confirms the warrants stay within the reviewed style meanings. No browser layout inspection was performed. An initial render exposed fallback machine topic labels; one display-label/grammar and gap-summary repair was rendered for this same case. Both immutable artifact directories remain preserved; original observations, style points and portrait warrants match exactly between them. No new evidence generation or experiment followed.
 
-- Every substantive clause traces through the reviewed meaning to exact observations and source segments.
-- No profile 318 wording or source identity is transplanted; missing/changed inputs cannot inherit its interpretation.
-- Original evidence and measurement meanings remain unchanged; missing, unresolved, below-threshold and contrary findings stay distinct.
-- Output is readable even where dimensions remain unknown; manual interpretation and automatic assembly are distinguishable.
-- No provider calls, new measurements, collection, scoring/ranking, production activation or quotation execution occur.
-- The existing profile 318 output remains reproducible; source/hash/link checks pass for both concrete cases.
+Profile 318 still resolves to V8 description fingerprint `0b6f4d0cedaf64a0f4cfc2958c3101e8605823c5090e845a43fcbea2daed8545`; its original manifest and artifacts are unchanged. Focused verification: 29 profile/inventory/portability tests and 10 plan tests; no corpus evaluation. Implementation commits: `32ec7c0`, `9e547cf`.
 
-The final report must distinguish **reused automatically**, **authored interpretation required**, and **missing upstream meaning**. For each consequential gap, name the blocked statement, inspected reuse outcomes, responsible producer, smallest remedy, acceptance check and authorization boundary. Generality is established only to the extent this case demonstrates it; two examples do not validate a ministry-wide assessment system.
+### P1.4 Consequential recommendation and exit
 
-**Exit:** one actual second profile plus a concrete account of the remaining repeatability gap, or an exact cached-evidence prerequisite that blocks it. No third case, model variant, broader collection or upstream semantic change follows automatically. Brian reviews the prepared result and any consequential proposal; Codex owns interpretation and recommendations.
+Deliver this partial profile for Brian’s concrete review. Do not require a complete theological portrait to deliver supported style and emphasis. The highest-impact missing statement is an apparent adopted center: exact compatible local proposition/voice/adoption/conditions are absent from the supplied reviewed packet. The smallest conditional remedy is one bounded reading at the existing upstream theological/shared binding producer for a specific center-relevant proposition, reusing compatible saved evidence first. Pastoral posture similarly needs an act/recipient/voice/adoption binding; raw listener answers and application examples are insufficient. Neither remedy is authorized automatically, and other G1/G2/G3 stores remain an explicit uninspected reuse path before any new judgment.
+
+Sampling, dominant style, Scripture argument, accepted identity, comparison and short quotations retain their separate precise gaps and boundaries. Automatic assembly now works for this second bounded case, but useful local descriptions and cross-point warrants still require manual authoring. Two examples do not establish a general generator, independent validation, calibration or ministry-wide stability.
+
+**Exit met:** one actual second profile and its consequential-gap report. Stop after this case; Brian reviews the prepared result. No provider/model calls, new measurements, broader collection, production admission, ranking or quotation execution occurred.
 
 ## Holds and closed branches
 
@@ -93,6 +98,6 @@ pte analysis structure-readiness --segment-view --description --check-only --jso
 pte analysis structure-readiness --segment-plan --json
 ```
 
-These commands do not run P1. Normally Brian executes dataset validation; a specific exception may authorize Codex, as it did for V6–V8. No standing permission for future model calls is inferred. All new workflows need a `pte` CLI tie-in, exact prepared inputs and Markdown/JSON review reports. Preserve unrelated working-tree changes and commit coherent work frequently.
+These default commands preserve profile 318. The explicit profile 130 commands above reproduce P1. Normally Brian executes dataset validation; a specific exception may authorize Codex, as it did for V6–V8. No standing permission for future model calls is inferred. All new workflows need a `pte` CLI tie-in, exact prepared inputs and Markdown/JSON review reports. Preserve unrelated working-tree changes and commit coherent work frequently.
 
 The [pre-portability implementation snapshot](PASTOR_PROFILE_IMPLEMENTATION_PLAN.historical-before-portability-2026-10-23.md) preserves the full prior roadmap and completed increments. [Historical documentation index](PASTOR_PROFILE_HISTORY.md) identifies the exact snapshots. Archived commands are not active instructions. No cached results, receipts, source evidence or prior profile output has been deleted.

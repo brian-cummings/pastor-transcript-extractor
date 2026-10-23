@@ -1,6 +1,6 @@
 # Pastor profile: current workflow
 
-**Current as of 2026-10-23: V8 is the generated review profile for profile 318.** The [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) defines the experience; the [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) defines completed work and the proposed next portability case.
+**Current as of 2026-10-23: V8 is the generated review profile for profile 318.** The [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) defines the experience; the [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) defines completed work and the delivered P1 portability case.
 
 ## Reproduce the current example
 
@@ -16,7 +16,16 @@ pte analysis structure-readiness --segment-view --description --check-only --jso
 
 The generation command writes `index.html`, `profile-v8.md`, `description-v8.json`, `review-v8.json` and the existing `next-capability-v2.md/json` beneath the configured app base in `evaluation/pastor-profile-description-v8/<manifest>/`. The source/implementation manifest identifies the immutable output directory. Check-only and generation share the description fingerprint; check-only returns no artifact path.
 
-These commands reproduce the prepared profile 318 case. A selector for a second profile is not yet delivered. The proposed portability increment must prepare one concrete case and expose any required narrow selection input through `pte`, rather than advertise an unsupported command.
+These default commands reproduce the prepared profile 318 case. P1 adds one explicit prepared selection:
+
+```bash
+pte analysis structure-readiness --segment-view --description --profile-id 130 --json
+pte analysis structure-readiness --segment-view --description --profile-id 130 --check-only --json
+```
+
+Other explicit profile IDs are rejected. Profile 130 uses only recordings 1037 / 350 / 4430 from the prior bounded inventory, not its full membership. It reuses existing assembly and rendering. Its apparent adopted theological center and pastoral posture remain unknown; four style descriptions and three cross-point interpretations were manually authored by Codex, pending Brian’s acceptance.
+
+Open the [profile 130 HTML](/Users/briancummings/Documents/PastorSearchData/evaluation/pastor-profile-portability-p1/b71806632436ea3eff9f5df37d10edd3ca232ca2875ea7de76d79673efe97a67/index.html), [readable Markdown](/Users/briancummings/Documents/PastorSearchData/evaluation/pastor-profile-portability-p1/b71806632436ea3eff9f5df37d10edd3ca232ca2875ea7de76d79673efe97a67/profile-p1.md), [artifact review](/Users/briancummings/Documents/PastorSearchData/evaluation/pastor-profile-portability-p1/b71806632436ea3eff9f5df37d10edd3ca232ca2875ea7de76d79673efe97a67/artifact-review-p1.md) or [consequential gaps](/Users/briancummings/Documents/PastorSearchData/evaluation/pastor-profile-portability-p1/b71806632436ea3eff9f5df37d10edd3ca232ca2875ea7de76d79673efe97a67/consequential-gaps-p1.md). Companion JSON files preserve the evidence, authoring inputs and per-path reuse outcomes. All generated artifacts remain under the configured app base. The final description fingerprint is `f33f0ab5d9eff2144f129986aa89fa9b008b4138b3908a76d061e00f1a778e40`.
 
 Normally Brian runs dataset validation. A specific instruction may authorize Codex to execute a small bounded run; V6–V8 were generated under such instructions. Neither command calls a provider, fills caches, changes measurements, writes the database or collects data.
 
@@ -44,6 +53,6 @@ Current manifest: `b1f0bd2b0830157196e722586daaed08aca87c84bc0fbc949d758685c2b92
 
 ## Next step and historical workflows
 
-The old D1–D4 goal is complete. The next proposed work is one cached second-profile portability case, with explicit disclosure of automatic reuse, manual interpretation and missing upstream meaning. This is proposed, not implemented or executed. No new goal has been created.
+The old D1–D4 goal is complete. The separately authorized P1 case is delivered and artifact-reviewed, with automatic reuse, manual interpretation and missing upstream meaning disclosed. Stop after this case and its report. Brian’s concrete reader acceptance remains pending; no further case, semantic expansion or model experiment is active.
 
 The [Ollama synthesis experiments](PASTOR_PROFILE_SYNTHESIS.md) are closed diagnostic history. Do not run them as the default next step. Their rejected outputs remain preserved alongside all earlier profile versions. [Historical snapshots](PASTOR_PROFILE_HISTORY.md) preserve earlier workflow descriptions; their command examples do not override current holds.
