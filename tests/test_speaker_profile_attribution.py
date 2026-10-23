@@ -211,6 +211,14 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
             metadata_attributions={candidate.membership_fingerprint: proposal})[0]
         self.assertIsNone(candidate.metadata_attribution)
 
+    def test_rejected_source_pastor_is_not_reoffered_as_a_default(self):
+        pastor = self.database.add_pastor("byron", "Byron Reynolds")
+        self.database.add_source(self.source.url, SourceType.CHANNEL, pastor_id=pastor.id)
+        self._legacy_name("Byron Reynolds")
+        self.assertEqual(1, len(list_source_pastor_profile_attribution_candidates(self.database)))
+        self._correct_name(rejected_name="Byron Reynolds")
+        self.assertEqual((), list_source_pastor_profile_attribution_candidates(self.database))
+
     def test_name_quality_packet_is_bounded_and_does_not_mutate_registry(self):
         legacy = self._legacy_name()
         with self.database.connect() as connection:

@@ -180,6 +180,11 @@ def list_source_pastor_profile_attribution_candidates(
         )
         if pastor is None:
             continue
+        rejected_names = database.list_rejected_speaker_names_for_observations(
+            database.list_effective_observation_ids_for_profile(candidate.profile_id)
+        )
+        if normalize_person_name(pastor.display_name) in rejected_names:
+            continue
         configured_profile_id = database.get_pastor_speaker_profile_id(pastor.id)
         if configured_profile_id is not None:
             canonical_profile_id = database.resolve_speaker_profile_id(
