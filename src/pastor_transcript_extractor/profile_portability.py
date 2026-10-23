@@ -25,6 +25,21 @@ def validate_selection(profile_id):
         raise ValueError('Only prepared portability profile 130 is supported; omit --profile-id for preserved profile 318')
 
 
+def readable_topics(reader):
+    """Use the existing contract labels where the legacy reader falls back to IDs."""
+    from pastor_transcript_extractor.sermon_topics import TOPIC_SPECS
+    def label(text):
+        for key, spec in TOPIC_SPECS.items():
+            text = text.replace(key.replace('_', ' '), spec.label.replace('&', 'and'))
+        return text
+    for claim in reader['claims']:
+        claim['wording'] = label(claim['wording'])
+        if claim['id'] == 'reader-shared-emphases' and sum(len(v) == len(reader['titles']) for v in reader['shared_topic_membership'].values()) == 1:
+            claim['wording'] = claim['wording'].replace(' form a shared focus.', ' forms a shared focus of topical attention.')
+    for row in reader['at_a_glance']:
+        row['description'] = label(row['description'])
+
+
 def assemble(inventory, sources, checks, packet):
     if inventory['selected_profile']['id'] != PROFILE_ID or {s['video_id'] for s in inventory['sermons']} != set(VIDEO_IDS):
         raise ValueError('Foreign portability sample')
@@ -33,6 +48,7 @@ def assemble(inventory, sources, checks, packet):
     # The legacy authoring packets are exact-point guarded. None may transfer.
     if reader['portrait']['entries'] or record['evidence_supply']['reviewed_bound_records']:
         raise ValueError('Unexpected foreign portrait/binding reuse')
+    readable_topics(reader)
     topic_paragraphs = [[(c['wording'], c['id'])] for c in reader['claims'] if c['id'] in reader['emphasis_claim_ids']]
     profile_portrait.apply(reader, packet['portrait'])
     reader['assessment'].extend(topic_paragraphs)
@@ -134,7 +150,11 @@ def prepare(base_dir=None, profile_id=PROFILE_ID):
     page = profile_description.render(record)
     notice = '<p class="note">Manual authoring: Codex supplied '+str(len(disclosure['style_reviews']))+' local style descriptions and '+str(len(disclosure['portrait_interpretations']))+' cross-point interpretations; Brian acceptance pending. No theological or listener/adoption bindings were authored. Inspect the reasoning below.</p>'
     page = page.replace('<h2>Pastor at a glance</h2>', notice+'<h2>Pastor at a glance</h2>', 1)
-    gap_md = profile_capability_review.markdown(record['capability_review'])
+    gap_summary = ['# Consequential gaps: profile 130', '',
+        'Reuse: '+str(record['coverage']['eligible_topic_blocks'])+' compatible topic blocks, '+str(record['coverage']['compatible_treatment_blocks'])+' treatment blocks, '+str(record['coverage']['salvation_measured_blocks'])+' routed salvation blocks and '+str(len(record['evidence_supply']['supplied_observation_ids']))+' raw leaf observations. Compatible reviewed bindings: '+str(len(record['evidence_supply']['reviewed_bound_records']))+'; exact-current persisted Scripture payloads: '+str(len(record['evidence_supply']['persisted_scripture']))+'. Other G1/G2/G3 stores were not inventoried. Raw leaf answers are not adopted positions or listener bindings.', '',
+        '| Blocked statement | Responsible producer | Smallest next step |', '|---|---|---|']
+    gap_summary += ['| '+g['withheld'].replace('|','/')+' | '+g['evidence_supply']['upstream_owner']+' | '+g['evidence_supply']['smallest_change'].replace('|','/')+' |' for g in record['gaps']]
+    gap_md = '\n'.join(gap_summary)+'\n\nThe detailed records below retain inspected paths, missing fields, acceptance checks and authorization boundaries. No remedy is automatically authorized.\n\n'+profile_capability_review.markdown(record['capability_review'])
     review_md = '# P1 profile 130 review\n\n'+disclosure_text+'Automatically reused: '+str(len(record['observations']))+' observations; '+str(len(record['evidence_supply']['supplied_observation_ids']))+' exact cached leaf observations; '+str(len(record['evidence_supply']['reviewed_bound_records']))+' compatible reviewed bindings.\n\n'+gap_md
     artifacts = {'index.html':page, 'profile-p1.md':md, 'description-p1.json':json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',
         'review-p1.json':json.dumps(review,ensure_ascii=False,indent=2)+'\n', 'review-p1.md':review_md,
