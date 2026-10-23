@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 
-ATTRIBUTION_EXTRACTOR_VERSION = "grounded_attribution_v3"
+ATTRIBUTION_EXTRACTOR_VERSION = "grounded_attribution_v4"
 INTRO_CONTEXT_BEFORE_SECONDS = 300.0
 INTRO_CONTEXT_AFTER_SECONDS = 180.0
 _HONORIFIC_PATTERN = r"Pastor|Elder|Sis\.?|Sister|Dr\.?|Pr\.?"
@@ -42,6 +42,10 @@ _TITLE_LEADING_NAME_RE = re.compile(
 )
 _TITLE_TRAILING_NAME_RE = re.compile(
     rf"\|\s*(?:(?:{_HONORIFIC_PATTERN})\s+)?"
+    rf"(?P<name>{_PERSON_NAME_PATTERN})\s*$"
+)
+_TITLE_SUFFIX_NAME_RE = re.compile(
+    rf"(?:[-–—:])\s*(?:(?:{_HONORIFIC_PATTERN})\s+)?"
     rf"(?P<name>{_PERSON_NAME_PATTERN})\s*$"
 )
 _COORDINATED_NAME_RE = re.compile(
@@ -158,6 +162,7 @@ def _candidate_mentions(
     target_name: str | None,
     *,
     include_bare: bool = False,
+    include_title_suffix: bool = False,
 ) -> list[tuple[str, int, int]]:
     candidates: list[tuple[str, int, int]] = []
     target_pattern = _target_pattern(target_name) if target_name else None
@@ -173,6 +178,8 @@ def _candidate_mentions(
         _TITLE_TRAILING_NAME_RE,
         _COORDINATED_NAME_RE,
     ]
+    if include_title_suffix:
+        patterns.append(_TITLE_SUFFIX_NAME_RE)
     if include_bare:
         patterns.append(_BARE_PERSON_NAME_RE)
     for pattern in patterns:
@@ -211,6 +218,7 @@ def extract_person_name_spans(
             text,
             None,
             include_bare=include_bare,
+            include_title_suffix=True,
         )
         if _normalized_person(name)
     )
@@ -270,8 +278,10 @@ def _metadata_is_explicit(field_path: str, text: str, name_start: int, name_end:
             return True
         if re.search(
             r"(?:^|[-|–—:])\s*"
-            r"(?:(?:pastor|elder|sis\.?|sister|dr\.?|pr\.?)\s+)?$",
+            r"(?:pastor|elder|sis\.?|sister|dr\.?|pr\.?)\s+$",
             prefix,
+        ) and not re.search(
+            r"\b(?:memorial|funeral|celebration of life|concert)\b", text, re.IGNORECASE
         ):
             return True
     context_start = max(0, name_start - 140)

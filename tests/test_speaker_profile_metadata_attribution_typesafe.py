@@ -56,8 +56,9 @@ def judgment(
     remainder = 1.0 - speaker
     probabilities = {
         "sermon_speaker": speaker,
+        "not_a_person": remainder if choice == "not_a_person" else 0.0,
         "other_person": remainder if choice == "other_person" else 0.0,
-        "ambiguous": remainder if choice != "other_person" else 0.0,
+        "ambiguous": remainder if choice not in {"other_person", "not_a_person"} else 0.0,
     }
     return TypeSafeNameJudgment(choice, probabilities, confidence, "jev-1.13.0")
 
@@ -83,6 +84,22 @@ class AggregationPolicyTests(unittest.TestCase):
             (),
             extract_person_name_spans("When Justice and Mercy Meet"),
         )
+
+    def test_trailing_name_candidate_is_not_lost_after_series_title(self) -> None:
+        text = "Faith Journey – Byron Reynolds"
+        spans = extract_person_name_spans(text)
+        self.assertEqual({"Faith Journey", "Byron Reynolds"}, {s.exact_text for s in spans})
+        for span in spans:
+            self.assertEqual(span.exact_text, text[span.start:span.end])
+
+    def test_repeated_series_title_is_not_a_person(self) -> None:
+        items = (occurrence("a", "Summer Shorts", "v1"), occurrence("b", "Summer Shorts", "v2"))
+        result, _ = _aggregate(
+            items, {item.occurrence_id: judgment("not_a_person") for item in items},
+            confidence_threshold=0.7, speaker_probability_threshold=0.7, model_failed=False,
+        )
+        self.assertEqual("insufficient_evidence", result["decision"])
+        self.assertIsNone(result["proposed_name"])
 
     def test_two_independent_speaker_credits_propose_exact_name(self) -> None:
         items = (

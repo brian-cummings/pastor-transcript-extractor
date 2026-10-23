@@ -24,21 +24,21 @@ from pastor_transcript_extractor.speaker_registry import normalize_person_name
 from pastor_transcript_extractor.storage import Database
 
 
-TYPESAFE_ATTRIBUTION_VERSION = "profile_metadata_attribution_typesafe_v2"
-TYPESAFE_QUESTION_VERSION = "profile-metadata-role-choice-v2"
+TYPESAFE_ATTRIBUTION_VERSION = "profile_metadata_attribution_typesafe_v3"
+TYPESAFE_QUESTION_VERSION = "profile-metadata-role-choice-v3"
 TYPESAFE_POLICY_VERSION = "profile-metadata-grounded-policy-v1"
 DEFAULT_TYPESAFE_MODEL = "jev-1.13.0"
 DEFAULT_CONFIDENCE_THRESHOLD = 0.70
 DEFAULT_SPEAKER_PROBABILITY_THRESHOLD = 0.70
-_CHOICES = frozenset({"sermon_speaker", "other_person", "ambiguous"})
+_CHOICES = frozenset({"sermon_speaker", "other_person", "not_a_person", "ambiguous"})
 
 
 def role_question(candidate_path: str) -> dict[str, Any]:
     return {
         "instructions": {
             "task": (
-                f"Classify the role of the exact person-name occurrence at "
-                f"`{candidate_path}` using only its supplied metadata context."
+                f"Classify what the exact candidate text at "
+                f"`{candidate_path}` represents using only its supplied metadata context. The candidate is not necessarily a person."
             ),
             "scope": (
                 "Decide whether this occurrence explicitly credits the person as "
@@ -48,6 +48,12 @@ def role_question(candidate_path: str) -> dict[str, Any]:
             ),
         },
         "criteria": {
+            "not_a_person": (
+                "The candidate denotes a sermon title, series, service, organization, "
+                "event, or other non-person text. Capitalization, separators, and "
+                "repetition across recordings do not establish a person or speaker. "
+                "Examples include Summer Shorts, Faith Journey, and Full Service."
+            ),
             "sermon_speaker": (
                 "The metadata explicitly credits this person as preaching, speaking, "
                 "delivering, presenting, or giving the sermon/message in this recording."

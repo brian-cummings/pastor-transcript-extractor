@@ -177,6 +177,17 @@ class GroundedAttributionTests(unittest.TestCase):
         self.assertEqual(("no_attribution_evidence",), result.outcomes)
         self.assertEqual((), result.observations)
 
+    def test_title_position_alone_does_not_establish_speaker_attribution(self) -> None:
+        for title in (
+            "Summer Shorts - 2 John", "Full Service - 11:15 am",
+            "Faith Journey – Byron Reynolds", "Andy Crosby - Genuine Conversion",
+            "Vonda Cook - Celebration of Life", "Pastor Vonda Cook - Memorial Service",
+        ):
+            with self.subTest(title=title):
+                result = analyze(metadata(title), proposed())
+                self.assertTrue(result.observations)
+                self.assertFalse(any(o["explicit_speaker_attribution"] for o in result.observations))
+
     def test_leading_person_name_in_title_is_a_selection_hint(self) -> None:
         self.assertEqual(
             "andy crosby",

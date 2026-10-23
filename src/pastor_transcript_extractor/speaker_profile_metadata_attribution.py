@@ -21,6 +21,7 @@ _SUPPORTED_ATTRIBUTION_VERSIONS = {
     PROFILE_METADATA_ATTRIBUTION_VERSION,
     "profile_metadata_attribution_typesafe_v1",
     "profile_metadata_attribution_typesafe_v2",
+    "profile_metadata_attribution_typesafe_v3",
 }
 PROFILE_METADATA_OUTPUT_TOKEN_BUDGET = 768
 PROFILE_METADATA_TEXT_LIMIT = 800
