@@ -569,7 +569,7 @@ def analyze_profile_metadata_command(
         help="Override the selected backend's model.",
     ),
     backend: str = typer.Option(
-        "ollama",
+        "typesafe",
         "--backend",
         help="Attribution backend: ollama or typesafe.",
     ),

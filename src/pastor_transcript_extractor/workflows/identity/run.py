@@ -63,7 +63,7 @@ class IdentityWorkflowRequest:
     base_dir: Path | None
     jobs: int
     evaluate_profile_promotions: bool = True
-    metadata_backend: str = "ollama"
+    metadata_backend: str = "typesafe"
     metadata_model: str | None = None
     promotion_model: str = "jev-1.13.0"
     promotion_judgment_root: Path = Path(
@@ -606,7 +606,7 @@ def run_metadata_attribution_stage(
     output_root: Path,
     plan_only: bool,
     database_video_id: int | None,
-    backend: str = "ollama",
+    backend: str = "typesafe",
     model: str | None = None,
     progress_callback: Callable[[int, int, int, str], None] | None = None,
 ) -> MetadataAttributionStageResult:

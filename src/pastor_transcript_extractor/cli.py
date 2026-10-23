@@ -3115,7 +3115,7 @@ def run_identity_workflow_service(
     review_prewarm_limit: int = 24,
     base_dir: Path | None,
     jobs: int = 2,
-    metadata_backend: str = "ollama",
+    metadata_backend: str = "typesafe",
     metadata_model: str | None = None,
     evaluate_profile_promotions: bool = False,
     promotion_model: str = DEFAULT_PROMOTION_TYPESAFE_MODEL,

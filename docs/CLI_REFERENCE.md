@@ -1607,7 +1607,7 @@ pte identity analyze-profile-metadata [OPTIONS]
 | `--all, --all-anonymous-profiles` | Analyze every current unnamed canonical profile. | no | False |
 | `--profile-id INTEGER` | Analyze one exact canonical profile. | no | — |
 | `--model TEXT` | Override the selected backend's model. | no | — |
-| `--backend TEXT` | Attribution backend: ollama or typesafe.  [default: ollama] | no | ollama |
+| `--backend TEXT` | Attribution backend: ollama or typesafe.  [default: typesafe] | no | typesafe |
 | `--details` | Show names, evidence excerpts, failures, and artifact paths. | no | False |
 | `--plan-only` | Show eligible profiles without model calls or artifact writes. | no | False |
 | `--base-dir PATH` | Override app data directory. | no | — |
@@ -1855,7 +1855,7 @@ pte identity run [OPTIONS] [YOUTUBE_VIDEO_ID]
 | `--promotion-contaminated-profile-cost FLOAT RANGE` | Utility cost of a contaminated provisional profile.  [default: 3.0; x>=0.0] | no | 3.0 |
 | `--apply-machine-canary` | Activate only eligible reversible machine assignments without also applying profile confirmations or promotions. Requires --all. | no | False |
 | `--machine-assignment-policy PATH` | Use a versioned machine-assignment policy artifact. The default checked-in policy is shadow-only. | no | — |
-| `--metadata-backend TEXT` | Metadata name attribution backend: ollama or typesafe.  [default: ollama] | no | ollama |
+| `--metadata-backend TEXT` | Metadata name attribution backend: ollama or typesafe.  [default: typesafe] | no | typesafe |
 | `--metadata-model TEXT` | Model for the selected metadata backend; defaults match analyze-profile-metadata. | no | — |
 | `--review-prewarm-limit INTEGER RANGE` | Precompute exact clips for this many current actionable review observations during an --all run; use 0 to disable.  [default: 24; x>=0] | no | 24 |
 | `--jobs INTEGER RANGE` | Concurrent acoustic comparison jobs; registry mutations and artifact aggregation remain serialized.  [default: 2; x>=1] | no | 2 |

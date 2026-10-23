@@ -311,6 +311,20 @@ class TypeSafeAttributionIntegrationTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
+    def test_metadata_cli_defaults_to_typesafe_without_constructing_ollama(self):
+        from unittest.mock import patch
+        from typer.testing import CliRunner
+        from pastor_transcript_extractor.cli import app
+        provider = FakeProvider()
+        with patch("pastor_transcript_extractor.config.remember_base_dir"), patch("pastor_transcript_extractor.commands.identity.metadata.TypeSafeSdkNameAttributionProvider", return_value=provider), patch(
+            "pastor_transcript_extractor.commands.identity.metadata.OllamaClient",
+        ) as ollama:
+            result = CliRunner().invoke(app, ["identity", "analyze-profile-metadata", "--profile-id",
+                str(self.database.list_speaker_profiles()[0].id), "--base-dir", str(self.database.database_path.parent)])
+        self.assertEqual(0, result.exit_code, result.output)
+        self.assertEqual(1, provider.calls)
+        ollama.assert_not_called()
+
     def test_cache_reuse_makes_zero_duplicate_requests(self) -> None:
         provider = FakeProvider()
         output = self.root / "attribution"

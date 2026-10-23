@@ -506,12 +506,13 @@ class IdentityRunWorkflowTests(unittest.TestCase):
                 output_root=Path("metadata"),
                 plan_only=False,
                 database_video_id=None,
+                backend="ollama",
             )
 
         self.assertEqual("disabled", result.status)
         candidates.assert_not_called()
 
-    def test_typesafe_backend_does_not_depend_on_ollama_enablement(self):
+    def test_default_backend_uses_typesafe_without_ollama_enablement(self):
         provider = Mock()
         run = Mock()
         with patch.object(identity_run, "Database"), patch.object(identity_run, "build_llm_config") as config, patch.object(
@@ -520,7 +521,7 @@ class IdentityRunWorkflowTests(unittest.TestCase):
             identity_run, "run_typesafe_profile_metadata_attribution", return_value=run,
         ) as execute:
             result = run_metadata_attribution_stage(Path("app.db"), output_root=Path("metadata"),
-                plan_only=False, database_video_id=None, backend="typesafe")
+                plan_only=False, database_video_id=None)
         self.assertEqual("executed", result.status)
         self.assertIs(run, result.run)
         config.assert_not_called()
@@ -556,6 +557,7 @@ class IdentityRunWorkflowTests(unittest.TestCase):
                 output_root=Path("metadata"),
                 plan_only=False,
                 database_video_id=None,
+                backend="ollama",
             )
 
         self.assertEqual("failed", result.status)

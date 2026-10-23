@@ -1647,11 +1647,13 @@ explicitly superseded. The profile table labels unreviewed claims as unconfirmed
 The consolidated workflow exposes the same backend choice as metadata analysis:
 
 ```bash
-pte identity run --all --metadata-backend typesafe --metadata-model jev-1.13.0 --plan-only
+pte identity run --all --plan-only
 ```
 
-Both commands retain the `ollama` default. Selecting TypeSafe bypasses local
-Ollama enablement. The versioned TypeSafe question distinguishes speaker credits,
+Both commands default to `typesafe`, independently of local Ollama enablement.
+Use `--metadata-backend ollama` on `identity run`, or `--backend ollama` on
+`analyze-profile-metadata`, to explicitly select the local backend. The versioned
+TypeSafe question distinguishes speaker credits,
 other people, non-person text, and ambiguity; two distinct supporting recordings
 and human confirmation remain necessary for a profile name. Question changes
 require new compatible judgments; historical artifacts are preserved. Name rejection
@@ -1694,17 +1696,17 @@ support is grounded deterministically against the original fields across
 distinct recordings; the model does not need to reproduce punctuation or the
 supporting excerpt verbatim.
 
-The default backend remains `ollama` for compatibility. The `typesafe` backend
-extracts conservative exact person-name spans in code and asks Jev only to
+The default backend is `typesafe`. The `ollama` backend remains available as an
+explicit override. TypeSafe extracts conservative exact person-name spans in code and asks Jev only to
 classify each occurrence as an explicit sermon-speaker credit, another person,
-or ambiguous. Code owns confidence routing and requires the same normalized
-candidate to have high-confidence speaker credit in at least two distinct
+non-person text, or ambiguous. Code owns confidence routing and requires the same
+normalized candidate to have high-confidence speaker credit in at least two distinct
 recordings. Competing supported candidates require human review; missing,
 ambiguous, low-confidence, invalid, or unavailable Jev results fail closed with
 no Ollama fallback. TypeSafe artifacts and per-occurrence judgments are keyed by
-the pinned model identity, question and policy versions, profile membership,
-and exact metadata/candidate state, so legacy Ollama attempts cannot satisfy a
-TypeSafe run.
+the pinned model identity and exact question/source state. Aggregate results also
+include policy versions, profile membership, and name rejections. Legacy Ollama
+attempts cannot satisfy a TypeSafe run.
 Displayed identity proposals omit a leading `Pastor`; other honorifics remain
 visible, while common variants such as `Doctor`/`Dr.` and `Reverend`/`Rev.` are
 removed from the normalized identity used for matching.
