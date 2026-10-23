@@ -77,6 +77,10 @@ def build(record):
     if len({c['id'] for c in all_claims}) != len(all_claims):
         raise ValueError('Duplicate claim identity in supporting blocks')
     for claim in all_claims:
+        # A portrait interpretation is justified through its reviewed point ledger,
+        # not promoted into an independently measured/example-selected finding.
+        if claim.get('analytical_basis') == 'reviewed_cross_point_interpretation':
+            continue
         is_raw = claim['id'] in raw
         refs = list(dict.fromkeys(claim.get('evidence_ids', [])))
         requests_proposal = claim.get('analytical_basis') == 'source_reviewed_local_proposal'

@@ -14,7 +14,7 @@ from pathlib import Path
 
 from pastor_transcript_extractor.segment_profile_view import short_title, timestamp
 
-VERSION = 'pastor-profile-reader-v7'
+VERSION = 'pastor-profile-reader-v8'
 EDITORIAL_PATH = Path(__file__).with_name('data') / 'profile-reader-editorial-v2.json'
 REVIEWS_PATH = Path(__file__).with_name('data') / 'profile-presentation-source-reviews-v2.json'
 TOPICS = {
@@ -211,7 +211,8 @@ def build_reader(record, reviews=None):
         shared_topic_membership={k: sorted(v) for k, v in topic_groups.items()},
         synthesis_rule='Distinct sermon membership in existing inventoried topic summaries and approved local salvation findings; no pooling of minutes, new cutoff, intensity score, adoption or ministry recurrence.')
 
-    return _explain_existing_points(record, reader)
+    from pastor_transcript_extractor.profile_portrait import apply as apply_portrait
+    return apply_portrait(_explain_existing_points(record, reader))
 
 def _explain_existing_points(record, reader):
     """Render existing authored explanations, never interpret an unreviewed passage."""
@@ -476,7 +477,7 @@ def render(record):
         selection = selections.get(c['id'], {})
         examples = ''.join('<p>'+link(block['passage_id'], 'Selected full-block example · '+titles[block['video_id']])+' '+e(block['support_reason'])+'</p>' for block in selection.get('selected_blocks', []))
         examples += ''.join('<p class="muted">'+e(note)+'</p>' for note in selection.get('qualifications', []))
-        cards.append('<details class="claim" id="'+e(c['id'])+'"><summary>'+e(c['wording'])+'</summary><p>'+e(c['reason'])+'</p>'+examples+supporting(c['evidence_ids'])+
+        cards.append('<details class="claim" id="'+e(c['id'])+'"><summary>'+e(c['wording'])+'</summary><p>'+e(c['reason'])+'</p>'+('<p><strong>Interpretation status:</strong> '+e(c['interpretation_kind'])+'; reader review pending.</p><p>Based on: '+' · '.join(link(key,'Reviewed supporting description') for key in c['upstream_claim_ids'])+'</p>' if c.get('portrait_review') else '')+examples+supporting(c['evidence_ids'])+
             '<details class="technical"><summary>Technical details</summary><pre>'+e(json.dumps(c, ensure_ascii=False, indent=2))+'</pre></details></details>')
     reviewed = reviewed_local_readings(record)
     reviewed_cards = ''.join('<article><h3>'+e(item['title'])+'</h3><dl>'+''.join('<dt><strong>'+e(field['label'])+'</strong></dt><dd>'+e(field['reading'])+'</dd>' for field in item['fields'])+'</dl><p><strong>Unknown or withheld</strong></p><ul>'+''.join('<li>'+e(value)+'</li>' for value in item['unknowns'])+'</ul><p>'+link(item['passage_id'], 'Inspect the current supporting passage')+'</p></article>' for item in reviewed)
@@ -596,6 +597,9 @@ def markdown(record):
     lines += ['## Why PTE says this', '']
     for c in reader['claims']:
         lines += ['### '+c['wording'], '', c['reason'], '']
+        if c.get('portrait_review'):
+            lines += ['Interpretation status: '+c['interpretation_kind']+'; reader review pending.', '']
+            lines += ['[Reviewed supporting description](index.html#'+key+')' for key in c['upstream_claim_ids']] + ['']
         seen = set()
         for ref in c['evidence_ids']:
             o = obs[ref]
@@ -622,6 +626,6 @@ def markdown(record):
         title, cause, remedy = GAPS[gap['id']]
         lines += ['### '+title, '', cause, '', 'Next useful step: '+remedy, '']
     lines += ['<details><summary>Technical details</summary>', '',
-        'The [complete description record](description-v7.json) preserves every original observation, source hash, question/model/version, threshold, missing state, source-review receipt and claim link. The [review receipt](review-v7.json) records the scope and execution boundaries.', '',
+        'The [complete description record](description-v8.json) preserves every original observation, source hash, question/model/version, threshold, missing state, source-review receipt and claim link. The [review receipt](review-v8.json) records the scope and execution boundaries.', '',
         'Source-review descriptions are authored presentation inputs for individual passages, pending Brian’s acceptance. No raw probability, threshold, adopted position or frequency rule is changed.', '', '</details>', '']
     return '\n'.join(lines)

@@ -1,0 +1,149 @@
+{
+  "version": "pastor-profile-portrait-authored-v1",
+  "scope_note": "Preliminary portrait from three selected sermons. The detailed theological readings were selected for assurance-focused review; they may not represent the balance of his preaching.",
+  "sources": {
+    "reader-description-style-ab63f704f8d88f24": "a29b05d6947a98ee0039abb944dfdfbcdc4eda955e8b834c3e81f67ebe38bfb9",
+    "reader-description-style-831b1bbb79c1d8b0": "6a082bfc95980ce22cbb21aa5ff07b7b716d0354d740e2133d61f5ff086ec589",
+    "reader-description-style-063d7849aa8a544b": "ec2d8128cf92b1e9837e9194ebb3429b4f5b59b8a4ebb5594264422a0189b022",
+    "reader-description-style-a7e4efd9fa1ce5d6": "36bb7b501235b75c95a3696f5b8d305cddc1e525600dc6c9cd9a54e46896f6cc",
+    "reader-description-reviewed_binding-898332c679a3cf22": "25298675ec8114b65f29ba2aa1b96dd1c6986853bc9915281a8129238f818ea6",
+    "reader-description-reviewed_binding-240a94b6341ca99e": "133810de26eab930c53cefa4c133e9dc9005d1feb1209fee8d171967d3d76cf1",
+    "reader-description-reviewed_binding-646d7a005dc260b9": "0970d1814c468bdc80ed8bb91ea6f7afd55c5338aff6802932c834c2325699a7",
+    "reader-description-reviewed_binding-f30df42b0446a935": "5b60317da49992de2751f09eee04342416fd1f9439e7db422e63a344c1ee3af5",
+    "reader-description-reviewed_binding-3e073e8798e97f64": "de512953fd64618aa10ac216ef56507784b087b6a21e851c580dec0081ff1fc2",
+    "reader-description-reviewed_binding-4c0587e972480545": "2c7816fd9b961896ade5e08a037ae80d1a1e7ba55aff66cea9432f1dfaf35f62",
+    "reader-description-reviewed_binding-e3dd774e15b34cf1": "c25e30cfec76351b9a9767c803f63f2a7aa26cbaf9402db1adb3008cdc4a8b12",
+    "reader-description-reviewed_binding-40b062d2ddb71d1d": "6a922de1df42fe7ef6a7961bea4470627e39e1eb03a6201ebeedd039b94e16de",
+    "reader-description-reviewed_binding-55a234fe2224703d": "1bffb811f5ac156a7aa8cbf7b3fe3a4d8ef114a0021fd0c457499b919b5fa1e2",
+    "reader-description-reviewed_binding-2336468a403025c0": "ce52be028839d1f1d70ec498c34e834534b80ce9aa59cc86796281b0690fc898"
+  },
+  "entries": [
+    {
+      "id": "reader-portrait-identity",
+      "facet": "overall",
+      "kind": "preliminary_impression",
+      "text": "In these three sermons, the preacher comes across as someone who connects Christian teaching with a personal invitation to respond.",
+      "support_point_ids": [
+        "reader-description-style-ab63f704f8d88f24",
+        "reader-description-style-063d7849aa8a544b",
+        "reader-description-reviewed_binding-898332c679a3cf22",
+        "reader-description-reviewed_binding-40b062d2ddb71d1d"
+      ],
+      "rationale": "Reviewed explanations of biblical wording and belief sit alongside explicit listener invitations. This is a sample-level interpretation of the approaches present, not a claim that the examples form one connected argument.",
+      "limits": "Selected examples do not establish a usual sermon structure or stable pastoral identity.",
+      "alternative": "The available detailed theological readings were selected for assurance-related development and may overrepresent invitations.",
+      "review_status": "authored_interpretation_pending_reader_review"
+    },
+    {
+      "id": "reader-portrait-center",
+      "facet": "theological_center",
+      "kind": "preliminary_impression",
+      "text": "The reviewed passages suggest a theological center in Jesus’ mercy and saving work, joined to personal response and everyday dependence on him.",
+      "support_point_ids": [
+        "reader-description-reviewed_binding-898332c679a3cf22",
+        "reader-description-reviewed_binding-646d7a005dc260b9",
+        "reader-description-reviewed_binding-55a234fe2224703d",
+        "reader-description-style-a7e4efd9fa1ce5d6"
+      ],
+      "rationale": "The local readings explicitly describe endorsement of a mercy-versus-works account, Jesus’ saving desire, offered confidence language and dependence-related practices. They support a provisional interpretive thread across the reviewed material; topic attention alone is not used as belief evidence.",
+      "limits": "Center means an apparent organizing thread of the reviewed passages, not measured centrality or a complete account of affirmed doctrine. Saving desire and offered words do not establish a listener’s saving state.",
+      "alternative": "Assurance-focused selection could make mercy and confidence appear more central than they are across the complete sermons.",
+      "review_status": "authored_interpretation_pending_reader_review"
+    },
+    {
+      "id": "reader-portrait-approach",
+      "facet": "preaching_approach",
+      "kind": "supported_examples",
+      "text": "He develops ideas through biblical explanation, reasoning about belief, personal illustration and practical guidance: disputed wording in Revelation, a story about an earthquake, and everyday practices such as prayer and Bible reading.",
+      "support_point_ids": [
+        "reader-description-style-ab63f704f8d88f24",
+        "reader-description-style-063d7849aa8a544b",
+        "reader-description-style-831b1bbb79c1d8b0",
+        "reader-description-style-a7e4efd9fa1ce5d6"
+      ],
+      "rationale": "Each named method and example is already described in a source-reviewed style point. Combining them describes a repertoire present in the sample.",
+      "limits": "No dominant method, relative frequency, connected sequence or interpretive quality is established.",
+      "alternative": "These may be occasional examples rather than his characteristic balance of methods.",
+      "review_status": "authored_interpretation_pending_reader_review"
+    },
+    {
+      "id": "reader-portrait-strength",
+      "facet": "potential_strength",
+      "kind": "potential_strength",
+      "text": "A potential strength of this approach is giving theological ideas concrete points of contact in experience and daily practice.",
+      "support_point_ids": [
+        "reader-description-style-831b1bbb79c1d8b0",
+        "reader-description-style-a7e4efd9fa1ce5d6"
+      ],
+      "rationale": "The earthquake story supplies a concrete experience for a sermon image; the practice example connects dependence on Jesus with recognizable activities. The possible benefit is an interpretive assessment of that approach.",
+      "limits": "This is a potential benefit, not measured clarity, audience understanding, effectiveness or a rating of the preacher.",
+      "alternative": "Listeners may respond differently; the existing evidence contains no audience-outcome measure.",
+      "review_status": "authored_interpretation_pending_reader_review"
+    },
+    {
+      "id": "reader-portrait-posture",
+      "facet": "pastoral_posture",
+      "kind": "preliminary_impression",
+      "text": "His pastoral address in these passages is both reassuring and challenging: he invites confidence in forgiveness and speaks of Jesus’ love, while also confronting spiritual neutrality.",
+      "support_point_ids": [
+        "reader-description-reviewed_binding-55a234fe2224703d",
+        "reader-description-reviewed_binding-646d7a005dc260b9",
+        "reader-description-reviewed_binding-3e073e8798e97f64",
+        "reader-description-reviewed_binding-e3dd774e15b34cf1"
+      ],
+      "rationale": "Affirmatively offered confidence language and the local statement of Jesus’ love supply reassurance; the affirmed warning and criticism of neutrality supply challenge. Both are represented without assigning a characteristic balance or an assurance doctrine.",
+      "limits": "A stable relational temperament, listener experience and prevailing tone remain unknown. The invitations do not establish actual hearer uptake.",
+      "alternative": "These forms of address may be specific to the selected passages.",
+      "review_status": "authored_interpretation_pending_reader_review"
+    },
+    {
+      "id": "reader-portrait-emphasis",
+      "facet": "noticeable_emphasis",
+      "kind": "preliminary_impression",
+      "text": "A noticeable feature of this sample is that encouragement is accompanied by a call to respond rather than remain spiritually neutral.",
+      "support_point_ids": [
+        "reader-description-reviewed_binding-40b062d2ddb71d1d",
+        "reader-description-reviewed_binding-55a234fe2224703d",
+        "reader-description-reviewed_binding-3e073e8798e97f64",
+        "reader-description-reviewed_binding-e3dd774e15b34cf1"
+      ],
+      "rationale": "The invitation asks for a response, while the reviewed warning criticizes neutrality. Their presence supports a sample-level pairing, without inferring a common causal argument across sermons.",
+      "limits": "Noticeable describes the reviewed sample. It is not a comparative distinctiveness claim, frequency finding or ministry-wide tendency.",
+      "alternative": "The reviewed selection may emphasize this pairing more than the full sermons do.",
+      "review_status": "authored_interpretation_pending_reader_review"
+    },
+    {
+      "id": "reader-portrait-question",
+      "facet": "question_for_review",
+      "kind": "unresolved_question",
+      "text": "The main question for further listening is how these reassuring invitations and warnings fit together in his fuller understanding of salvation and discipleship.",
+      "support_point_ids": [
+        "reader-description-reviewed_binding-898332c679a3cf22",
+        "reader-description-reviewed_binding-240a94b6341ca99e",
+        "reader-description-reviewed_binding-55a234fe2224703d",
+        "reader-description-reviewed_binding-3e073e8798e97f64"
+      ],
+      "rationale": "The reviewed material contains both confidence-related language and warnings, while explicitly leaving several saving-state and salvation-mechanism conclusions unresolved. This identifies a question rather than diagnosing contradiction.",
+      "limits": "No inconsistency, harmful effect or deficient theology is established. The question can first be examined in the existing source material; no new collection or model call is implied.",
+      "alternative": "The fuller existing sermon context may explain their relationship adequately.",
+      "review_status": "authored_interpretation_pending_reader_review"
+    }
+  ],
+  "paragraphs": [
+    [
+      "reader-portrait-identity",
+      "reader-portrait-center"
+    ],
+    [
+      "reader-portrait-approach",
+      "reader-portrait-strength"
+    ],
+    [
+      "reader-portrait-posture",
+      "reader-portrait-emphasis"
+    ],
+    [
+      "reader-portrait-question"
+    ]
+  ]
+}

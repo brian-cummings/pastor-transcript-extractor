@@ -20,7 +20,7 @@ from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.sermon_topics import resolve_topic_analysis_artifact, resolve_topic_block_context
 from pastor_transcript_extractor.sermon_semantic_dimensions import SEMANTIC_ANALYSIS_QUESTION_VERSION, SEMANTIC_DIMENSIONS
 
-VERSION = 'pastor-profile-description-v7'
+VERSION = 'pastor-profile-description-v8'
 RULE_VERSION = 'cached-observation-wording-v1'
 FAMILIES = ('Preaching style', 'Theological emphasis', 'Theological orientation', 'Pastoral/rhetorical orientation')
 RULES = {
@@ -454,8 +454,10 @@ def markdown(record):
 
 def prepare(base_dir=None):
     record = load(base_dir)
-    from pastor_transcript_extractor import profile_presentation, profile_capability_review, profile_evidence_supply, profile_supporting_blocks, profile_explanatory_descriptions, profile_sample_patterns
+    from pastor_transcript_extractor import profile_presentation, profile_capability_review, profile_evidence_supply, profile_supporting_blocks, profile_explanatory_descriptions, profile_sample_patterns, profile_portrait
     manifest = seal(dict(version=VERSION, description=record, implementation_files={
+        str(Path(profile_portrait.__file__)): trace.digest(profile_portrait.__file__),
+        str(profile_portrait.PATH): trace.digest(profile_portrait.PATH),
         str(Path(profile_explanatory_descriptions.__file__)): trace.digest(profile_explanatory_descriptions.__file__),
         str(Path(profile_sample_patterns.__file__)): trace.digest(profile_sample_patterns.__file__),
         str(Path(profile_evidence_supply.__file__)): trace.digest(profile_evidence_supply.__file__),
@@ -473,6 +475,7 @@ def prepare(base_dir=None):
         description_fingerprint=record['content_fingerprint'], manifest_fingerprint=manifest['content_fingerprint'],
         claim_count=len(record['claims']), reader_claim_count=len(record['reader']['claims']), source_review_count=len(record['reader']['source_reviews']), observation_count=len(record['observations']), gap_count=len(record['gaps']),
         editorial_review=record['reader']['editorial_review'],
+        portrait_review=record['reader']['portrait'],
         explanatory_point_count=len(record['reader']['explanatory_descriptions']['points']),
         withheld_descriptions=record['reader']['explanatory_descriptions']['withheld'],
         coverage=record['coverage'], reader_acceptance='pending_concrete_wording_review',
@@ -482,9 +485,9 @@ def prepare(base_dir=None):
         check_command='pte analysis structure-readiness --segment-view --description --check-only --json',
         review_command='pte analysis structure-readiness --segment-view --description --json',
         held=['providers/models', 'broader collection', 'new semantic measurements', 'scoring/ranking/comparison', 'production activation', 'ministry stability', 'Ollama quotations']))
-    artifacts = {'review-v7.json': json.dumps(review, ensure_ascii=False, indent=2)+'\n',
-        'description-v7.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
-        'profile-v7.md': markdown(record), 'index.html': render(record),
+    artifacts = {'review-v8.json': json.dumps(review, ensure_ascii=False, indent=2)+'\n',
+        'description-v8.json': json.dumps(manifest, ensure_ascii=False, indent=2)+'\n',
+        'profile-v8.md': markdown(record), 'index.html': render(record),
         'next-capability-v2.json': json.dumps(record['capability_review'], ensure_ascii=False, indent=2)+'\n',
         'next-capability-v2.md': profile_capability_review.markdown(record['capability_review'])}
     for name, raw in artifacts.items():

@@ -230,6 +230,8 @@ def analysis_structure_readiness(
                     for state in ('selected', 'partial', 'unknown')},
                 explanatory_points=len(record['reader'].get('explanatory_descriptions', {}).get('points', [])),
                 withheld_descriptions=len(record['reader'].get('explanatory_descriptions', {}).get('withheld', [])),
+                portrait_interpretations=len(record['reader'].get('portrait', {}).get('entries', [])),
+                withheld_portrait_interpretations=len(record['reader'].get('portrait', {}).get('withheld', [])),
                 editorial_points=len(record['reader'].get('editorial_review', {}).get('applied_point_ids', [])),
                 withheld_editorial_points=len(record['reader'].get('editorial_review', {}).get('withheld', [])),
                 reader_acceptance='pending_concrete_wording_review',
