@@ -1,0 +1,136 @@
+{
+  "version": "profile-portability-130-authored-v1",
+  "profile_id": 130,
+  "video_ids": [
+    1037,
+    350,
+    4430
+  ],
+  "purpose": "Source-controlled manual presentation inputs for one cached portability case, not automatic discovery or new upstream semantics.",
+  "selection": "Profile 130 has the largest remaining eligible-block coverage in the existing twelve-source inventory after excluding 318; no selection on positive theology answers. Only its three already-inventoried recordings are used.",
+  "reviews": [
+    {
+      "evidence_id": "e-350-15-treatment-exegetical_exposition",
+      "video_id": 350,
+      "block_id": 15,
+      "dimension": "exegetical_exposition",
+      "source_sha256": "54ef8f0b93157f4c7dfa9b31e826c73f0fa03703c8b72f183de9102b988ac93a",
+      "target_sha256": "135f39890fdd8bb574983e981b813be9ac4e98c974c0d1372eb3bd44e7b320bf",
+      "start_seconds": 169.04,
+      "end_seconds": 384.8,
+      "description": "The passage compares the placement of the supper scene in the Gospels and uses John’s Passover timing to locate it near the cross. This describes an example of textual comparison; it does not validate the chronological claims.",
+      "descriptor": "Comparing Gospel accounts to locate a scene",
+      "reviewer": "Codex manual full-target source inspection, 2026-10-23; Brian acceptance pending",
+      "scope": "This selected passage only, within the existing treatment meaning. No new measurement, voice/adoption binding, prevalence or effectiveness judgment."
+    },
+    {
+      "evidence_id": "e-1037-21-treatment-doctrinal_argument",
+      "video_id": 1037,
+      "block_id": 21,
+      "dimension": "doctrinal_argument",
+      "source_sha256": "2e5809a34e0e0e29467f0f23518fcceed8ca3072520f791219b5023d12e8ba07",
+      "target_sha256": "0a423cfa4c5d777dbfdae6c0f20f814cf0fa629d617c3994cf7a92ea01005f9a",
+      "start_seconds": 462.08,
+      "end_seconds": 588.8,
+      "description": "The passage develops an account of the close of probation by contrasting settled character with a competing account of predestination. This identifies the reasoning method; the adopted proposition, polarity and qualifications have not been independently bound.",
+      "descriptor": "Explaining competing accounts of final destiny",
+      "reviewer": "Codex manual full-target source inspection, 2026-10-23; Brian acceptance pending",
+      "scope": "This selected passage only, within the existing treatment meaning. No new measurement, voice/adoption binding, prevalence or effectiveness judgment."
+    },
+    {
+      "evidence_id": "e-4430-58-treatment-narrative_illustration",
+      "video_id": 4430,
+      "block_id": 58,
+      "dimension": "narrative_illustration",
+      "source_sha256": "7dca9684a250a9368c97f54e78fdc0f99450d338bfac55e5b29f07eff1238060",
+      "target_sha256": "ce3a1975bdcb0208a3ed6d74bada1488a56251a31959785b946989f25fdfee08",
+      "start_seconds": 2880.0,
+      "end_seconds": 2940.0,
+      "description": "The passage recounts a potluck encounter in which a man is described as almost unrecognizable after a change. The anecdote makes an abstract change concrete through appearance and recognition; neither the event nor its spiritual explanation is independently verified.",
+      "descriptor": "Making a change visible through a remembered encounter",
+      "reviewer": "Codex manual full-target source inspection, 2026-10-23; Brian acceptance pending",
+      "scope": "This selected passage only, within the existing treatment meaning. No new measurement, voice/adoption binding, prevalence or effectiveness judgment."
+    },
+    {
+      "evidence_id": "e-4430-26-treatment-practical_application",
+      "video_id": 4430,
+      "block_id": 26,
+      "dimension": "practical_application",
+      "source_sha256": "7dca9684a250a9368c97f54e78fdc0f99450d338bfac55e5b29f07eff1238060",
+      "target_sha256": "ac4fa7200522c1202ec7b898df1c9f7c2ca26c82b4a2db2d6f51b3182b5fc03f",
+      "start_seconds": 960.0,
+      "end_seconds": 1020.0,
+      "description": "The passage moves from prayer and uninterrupted Bible study to speaking a message publicly. This describes an application example; the recipient, voiced speech and preacher adoption are not supplied as bound analytical fields.",
+      "descriptor": "Moving from private study to public communication",
+      "reviewer": "Codex manual full-target source inspection, 2026-10-23; Brian acceptance pending",
+      "scope": "This selected passage only, within the existing treatment meaning. No new measurement, voice/adoption binding, prevalence or effectiveness judgment."
+    }
+  ],
+  "portrait": {
+    "sources": {
+      "reader-description-style-e062ac9b27be5bdb": "3d4225103c9bdb5d95c33a5b5d0bde4724c31648c419db8f15d44780bef0608f",
+      "reader-description-style-3ee3a79b286ab801": "e13fd1e46cf24cb4b4b81ec407760e7385330fb795d2ccc4a4853e86987d3779",
+      "reader-description-style-cf670709ac5426ab": "b34569063c0c551f278d3d15ee0d0685ff4f53ab726b83571e21221083a0b89d",
+      "reader-description-style-96bfd8bdac49ff8c": "41c8cdcb4d756410d624083fdb90a75fc27efb9f555e310e6093a83fb672e2ec"
+    },
+    "entries": [
+      {
+        "id": "p130-approach",
+        "facet": "preaching_approach",
+        "kind": "authored_provisional_interpretation",
+        "text": "The selected examples suggest a preacher who develops explanations through textual comparison and contrasting accounts, then gives ideas a concrete setting through an anecdote and a practical application.",
+        "support_point_ids": [
+          "reader-description-style-e062ac9b27be5bdb",
+          "reader-description-style-3ee3a79b286ab801",
+          "reader-description-style-cf670709ac5426ab",
+          "reader-description-style-96bfd8bdac49ff8c"
+        ],
+        "rationale": "The reviewed examples separately show Gospel comparison, a contrasted account of final destiny, a remembered encounter and a move toward public communication. The connection is an authored account of this repertoire.",
+        "limits": "These are separately chosen examples across three recordings, not a connected sermon outline, dominant style or frequency estimate.",
+        "alternative": "Selecting high stored treatment candidates makes varied methods more visible than a representative sample might.",
+        "review_status": "Codex manually authored interpretation; Brian reader acceptance pending"
+      },
+      {
+        "id": "p130-strength",
+        "facet": "potential_strength",
+        "kind": "authored_provisional_interpretation",
+        "text": "A potential strength of this repertoire is that textual detail sits alongside concrete situations a reader can picture; whether this helps listeners understand or act remains unknown.",
+        "support_point_ids": [
+          "reader-description-style-e062ac9b27be5bdb",
+          "reader-description-style-cf670709ac5426ab",
+          "reader-description-style-96bfd8bdac49ff8c"
+        ],
+        "rationale": "The Gospel comparison offers textual detail; the encounter and application examples provide concrete situations. Their possible accessibility is an interpretive possibility, not an observed audience benefit.",
+        "limits": "The examples occur in separate passages. Audience comprehension, persuasion and response were not measured.",
+        "alternative": "These isolated examples may overstate how consistently detailed explanation and concrete illustration work together.",
+        "review_status": "Codex manually authored interpretation; Brian reader acceptance pending"
+      },
+      {
+        "id": "p130-question",
+        "facet": "question_for_review",
+        "kind": "authored_review_question",
+        "text": "A useful question is how well the conclusions drawn from the compared Gospel accounts and competing accounts of final destiny hold up when their assumptions and full qualifications are examined.",
+        "support_point_ids": [
+          "reader-description-style-e062ac9b27be5bdb",
+          "reader-description-style-3ee3a79b286ab801"
+        ],
+        "rationale": "Both reviewed examples move through interpretive reasoning. That makes the warrant for their conclusions a concrete subject for review, without asserting that either is mistaken.",
+        "limits": "This is a review question, not a detected doctrinal error or contradiction. Adopted positions and attached qualifications remain unbound.",
+        "alternative": "The complete surrounding argument may already answer the question; these selected blocks do not establish a deficiency.",
+        "review_status": "Codex manually authored interpretation; Brian reader acceptance pending"
+      }
+    ],
+    "paragraphs": [
+      [
+        "p130-approach"
+      ],
+      [
+        "p130-strength"
+      ],
+      [
+        "p130-question"
+      ]
+    ],
+    "scope_note": "Three recordings selected from an existing development inventory, not a representative ministry sample. Codex manually authored the style descriptions and this provisional interpretation; Brian acceptance is pending. Apparent adopted theological center and pastoral posture remain unknown: topic attention and local relationship observations cannot supply missing voice, adoption or attached qualifications."
+  }
+}

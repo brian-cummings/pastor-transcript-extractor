@@ -177,6 +177,7 @@ def _print_structure_readiness(report: object) -> None:
 
 @analysis_app.command("structure-readiness", help="Report structure analysis readiness.")
 def analysis_structure_readiness(
+    profile_id: int | None = typer.Option(None, "--profile-id", help="Prepared description case: 130 only. Omit for preserved profile 318."),
     description: bool = typer.Option(False, "--description", help="Add a readable, claim-linked descriptive profile to --segment-view; no inference."),
     segment_view: bool = typer.Option(False, "--segment-view", help="Render the reviewed cached segment sample as a read-only profile view; no models or database writes."),
     segment_inventory: bool = typer.Option(False, "--segment-inventory", help="Inventory at most 12 current cached topic sources and render a bounded segment-backed sample; no inference or database writes."),
@@ -195,6 +196,8 @@ def analysis_structure_readiness(
     as_json: bool = typer.Option(False, "--json"),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    if profile_id is not None and not (description and segment_view):
+        raise typer.BadParameter("--profile-id requires --segment-view --description")
     if description and not segment_view:
         raise typer.BadParameter("--description requires --segment-view")
     if segment_view:
@@ -203,9 +206,13 @@ def analysis_structure_readiness(
         from pastor_transcript_extractor import segment_profile_view as view
         if description:
             from pastor_transcript_extractor import profile_description as view
+        selected_kwargs = {}
+        if profile_id is not None:
+            from pastor_transcript_extractor import profile_portability as view
+            selected_kwargs = dict(profile_id=profile_id)
         try:
             if check_only and description:
-                result = view.load(base_dir)
+                result = view.load(base_dir, **selected_kwargs)
                 fingerprint = result["content_fingerprint"]
                 path = None
             elif check_only:
@@ -214,7 +221,7 @@ def analysis_structure_readiness(
                 fingerprint = result['content_fingerprint']
                 path = None
             else:
-                result, path = view.prepare(base_dir)
+                result, path = view.prepare(base_dir, **selected_kwargs)
                 fingerprint = result['description']['content_fingerprint'] if description else result['content_fingerprint']
         except (ValueError, OSError, KeyError, TypeError) as error:
             raise typer.BadParameter(str(error)) from error

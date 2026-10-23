@@ -96,11 +96,14 @@ def select_profile(rows):
     return min(groups,key=lambda pid:(-sum(r['eligible_blocks'] for r in groups[pid]),-len(groups[pid]),pid))
 
 
-def build(base_dir=None):
+def build(base_dir=None, *, profile_id=None, video_ids=None):
     paths=build_paths(base_dir);db=Database(paths.database,readonly=True)
+    if (profile_id is None) != (video_ids is None) or (video_ids is not None and not video_ids):
+        raise ValueError('A bounded selection requires both profile and recording IDs')
     with db.connect() as connection:
-        run_rows=[dict(r) for r in connection.execute("SELECT * FROM sermon_analysis_runs WHERE id IN (SELECT MAX(id) FROM sermon_analysis_runs WHERE analyzer_key=? AND analyzer_version=? GROUP BY video_id) ORDER BY id DESC LIMIT ?",
-            (topics_projection.TOPIC_SERMON_ANALYZER_KEY,topics_projection.TOPIC_SERMON_ANALYZER_VERSION,MAX_SOURCES))]
+        restriction = '' if video_ids is None else ' AND video_id IN ('+','.join('?' for _ in video_ids)+')'
+        run_rows=[dict(r) for r in connection.execute("SELECT * FROM sermon_analysis_runs WHERE id IN (SELECT MAX(id) FROM sermon_analysis_runs WHERE analyzer_key=? AND analyzer_version=?"+restriction+" GROUP BY video_id) ORDER BY id DESC LIMIT ?",
+            (topics_projection.TOPIC_SERMON_ANALYZER_KEY,topics_projection.TOPIC_SERMON_ANALYZER_VERSION,*(video_ids or ()),MAX_SOURCES))]
     rows=[];data={};files={}
     for row in run_rows:
         video=db.get_video_by_id(row['video_id']);gate=assess_topic_profile_projection(db,video)
@@ -125,7 +128,10 @@ def build(base_dir=None):
                 files[gate.source_path]=basic['source_sha256'];data[video.id]=(measurements,layers)
             except (ValueError,KeyError,TypeError) as error:basic['reasons'].append(str(error))
         rows.append(basic)
-    chosen=select_profile(rows);scope=resolve_profile_sermon_scope(db,chosen);profile=db.get_speaker_profile(chosen)
+    chosen=select_profile(rows) if profile_id is None else profile_id
+    if video_ids is not None and ({r['video_id'] for r in rows if r['status']=='compatible' and r['profile_id']==chosen} != set(video_ids)):
+        raise ValueError('Prepared recording set no longer has compatible eligible evidence for this profile')
+    scope=resolve_profile_sermon_scope(db,chosen);profile=db.get_speaker_profile(chosen)
     sermons=[]
     for row in rows:
         if row['status']!='compatible' or row['profile_id']!=chosen:continue
@@ -145,11 +151,11 @@ def build(base_dir=None):
         sermons.append(dict(**row,topic_examples=evidence,treatment=layers['treatment'],salvation=layers['salvation'],
             salvation_positive_observation_counts=dict(counts),eligible_block_ids=sorted(layers['eligible'])))
     report=seal(dict(version=VERSION,status='CACHED_SEGMENT_SLICE_INVENTORIED_NO_NEW_INFERENCE',
-        scope='At most the latest 12 persisted version-1 topic runs, one latest materialization per video. Not a corpus scan or new collection.',
+        scope=('At most the latest 12 persisted version-1 topic runs, one latest materialization per video. Not a corpus scan or new collection.' if video_ids is None else 'Only the prepared recording IDs from the existing bounded inventory; latest materialization per selected video. No expanded inventory.'),
         candidates=rows,selected_profile=dict(id=chosen,display_label=profile.display_label,lifecycle_state=profile.lifecycle_state,
             created_reason=profile.created_reason,membership_fingerprint=profile_membership_fingerprint(db,scope),
             effective_member_video_ids=sorted(v.id for v in scope.videos),
-            selection_rule='Most compatible eligible cached topic blocks in this bounded inventory, then sermon count, then lower profile ID; independent of positive answers.'),
+            selection_rule=('Most compatible eligible cached topic blocks in this bounded inventory, then sermon count, then lower profile ID; independent of positive answers.' if video_ids is None else 'Explicit prepared profile and recording IDs from the prior bounded inventory; no additional recordings or selection on positive answers.')),
         sermons=sermons,source_files=files,
         coverage=dict(cached_sources_considered=len(rows),compatible_sources=sum(r['status']=='compatible' for r in rows),
             stale_materializations_not_reused=sum(r.get('materialized_projection_status')=='stale_not_reused' for r in rows),
