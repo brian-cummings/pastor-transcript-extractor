@@ -95,7 +95,7 @@ class IdentityAutomationTests(unittest.TestCase):
         (directory / f"{suffix}.json").write_text(json.dumps(payload))
 
     def _claim(self, observation, name: str, key: str) -> None:
-        self.database.add_speaker_name_claim(
+        claim = self.database.add_speaker_name_claim(
             video_id=observation.video_id,
             observation_id=observation.id,
             display_name=name,
@@ -109,6 +109,14 @@ class IdentityAutomationTests(unittest.TestCase):
             claim_fingerprint=f"claim-{key}",
             extractor_version="test",
         )
+        owners = self.database.list_effective_profile_ids_for_observation(observation.id)
+        if owners:
+            self.database.add_profile_name_claim_event(
+                profile_id=owners[0], claim_id=claim.id, action="attach",
+                reviewer="name-reviewer", reason="Confirmed speaker identity",
+                event_fingerprint=f"name-review:{claim.id}",
+            )
+        return claim
 
     def test_selects_only_current_unprofiled_observations_without_current_result(self):
         ready = self._observation("ready")

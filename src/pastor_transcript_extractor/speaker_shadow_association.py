@@ -19,12 +19,13 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
     PairOutcome,
     SpanSpec,
 )
+from pastor_transcript_extractor.speaker_registry import normalize_person_name
 from pastor_transcript_extractor.storage import Database
 
 
-SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v8"
+SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v9"
 SHADOW_ASSOCIATION_FINGERPRINT_VERSION = (
-    "speaker_shadow_association_input_v7"
+    "speaker_shadow_association_input_v8"
 )
 SHADOW_ASSOCIATION_ADMISSION_VERSION = (
     "speaker_shadow_association_admission_v1"
@@ -56,6 +57,7 @@ class ProfileAssociationReadiness:
     automatic_profile_ready: bool
     shadow_blockers: tuple[str, ...]
     automatic_blockers: tuple[str, ...]
+    configured_normalized_names: tuple[str, ...] = ()
     review_ready: bool = False
     certified_exemplar_observation_ids: tuple[int, ...] = ()
 
@@ -142,7 +144,7 @@ def leave_one_out_profile_readiness(
                     observation_id, ()
                 )
                 if name.strip()
-            }
+            } | set(readiness.configured_normalized_names)
         )
     )
     recomputed_blockers = {
@@ -640,7 +642,7 @@ def assess_profile_association_readiness(
     for claim in database.list_speaker_name_claims():
         if (
             claim.observation_id is not None
-            and claim.explicit_speaker_attribution
+            and database.is_confirmed_speaker_name_claim(claim)
             and claim.normalized_name.strip()
         ):
             names_by_observation[claim.observation_id].add(
@@ -682,6 +684,13 @@ def assess_profile_association_readiness(
         tuple(sorted(pair))
         for pair in database.list_effective_observation_difference_pairs()
     }
+    configured_names_by_profile: dict[int, set[str]] = defaultdict(set)
+    for pastor in database.list_pastors():
+        bound_id = database.get_pastor_speaker_profile_id(pastor.id)
+        if bound_id is not None:
+            configured_names_by_profile[database.resolve_speaker_profile_id(bound_id)].add(
+                normalize_person_name(pastor.display_name)
+            )
     readiness: list[ProfileAssociationReadiness] = []
     for profile_id in sorted(canonical_ids):
         member_ids = tuple(sorted(members_by_profile[profile_id]))
@@ -705,7 +714,7 @@ def assess_profile_association_readiness(
                     normalized_name
                     for member_id in member_ids
                     for normalized_name in names_by_observation.get(member_id, ())
-                }
+                } | configured_names_by_profile.get(profile_id, set())
             )
         )
         shadow_blockers: list[str] = []
@@ -718,8 +727,7 @@ def assess_profile_association_readiness(
         if len(names) > 1:
             shadow_blockers.append("conflicting_explicit_attribution")
         if any(
-            review[0] != "attach"
-            or review[1] is None
+            review[1] is None
             or database.resolve_speaker_profile_id(review[1]) != profile_id
             for member_id in member_ids
             for claim_id in claim_ids_by_observation.get(member_id, ())
@@ -830,6 +838,7 @@ def assess_profile_association_readiness(
                 recording_count=len(video_ids),
                 source_count=len(source_ids),
                 normalized_names=names,
+                configured_normalized_names=tuple(sorted(configured_names_by_profile.get(profile_id, ()))),
                 shadow_ready=not shadow_blockers,
                 automatic_profile_ready=not automatic_blockers,
                 shadow_blockers=tuple(shadow_blockers),

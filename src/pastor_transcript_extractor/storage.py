@@ -752,9 +752,13 @@ class Database:
     def __init__(self, database_path: Path, *, readonly: bool = False) -> None:
         self.database_path = database_path
         self.readonly = readonly
+        self._transaction_connection: sqlite3.Connection | None = None
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
+        if self._transaction_connection is not None:
+            yield self._transaction_connection
+            return
         if self.readonly:
             uri = f"{self.database_path.expanduser().resolve().as_uri()}?mode=ro"
             connection = sqlite3.connect(uri, timeout=30.0, uri=True)
@@ -773,6 +777,19 @@ class Database:
                 connection.commit()
         finally:
             connection.close()
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Compose registry writes atomically using the existing storage methods."""
+        if self._transaction_connection is not None:
+            raise ValueError("Nested registry transactions are not supported")
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._transaction_connection = connection
+            try:
+                yield
+            finally:
+                self._transaction_connection = None
 
     def initialize(self) -> None:
         with self.connect() as connection:
@@ -5163,6 +5180,16 @@ class Database:
             str(row["action"]),
             int(profile_id) if profile_id is not None else None,
         )
+
+    def is_confirmed_speaker_name_claim(self, claim: SpeakerNameClaim) -> bool:
+        """Apply the latest review without changing immutable extraction evidence.
+
+        An extracted speaker credit is a proposal. Only an effective attachment
+        may constrain voice identity; a rejection removes name authority, never
+        voice membership. Historical attachments retain their recorded authority.
+        """
+        review = self.get_effective_name_claim_review(claim.id)
+        return bool(review and review[0] == "attach" and review[1] is not None)
 
     def list_effective_name_claim_ids_for_profile(
         self, profile_id: int

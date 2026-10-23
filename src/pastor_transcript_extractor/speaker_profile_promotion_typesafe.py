@@ -18,7 +18,7 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
 from pastor_transcript_extractor.storage import Database
 
 
-PROMOTION_EVIDENCE_VERSION = "profile_promotion_evidence_v1"
+PROMOTION_EVIDENCE_VERSION = "profile_promotion_evidence_v2"
 PROMOTION_QUESTION_VERSION = "profile-promotion-same-principal-speaker-noul-v1"
 DEFAULT_TYPESAFE_MODEL = "jev-1.13.0"
 MAX_METADATA_TEXT = 1_200
@@ -488,6 +488,8 @@ def _build_promotion_evidence_context(
                 "claim_kind": claim.claim_kind,
                 "channel": claim.channel,
                 "explicit_speaker_attribution": claim.explicit_speaker_attribution,
+                "confirmed_identity": database.is_confirmed_speaker_name_claim(claim),
+                "name_review": database.get_effective_name_claim_review(claim.id),
             }
         )
     relevant_observation_ids = {

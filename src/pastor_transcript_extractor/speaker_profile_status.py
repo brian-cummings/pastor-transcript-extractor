@@ -57,6 +57,7 @@ class ProfileStatus:
     automatic_blockers: tuple[str, ...]
     needs: tuple[StatusNeed, ...]
     next_need: str
+    proposed_names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,11 +188,15 @@ def build_profile_pipeline_status(
     explicit_names_by_observation: dict[int, set[str]] = defaultdict(set)
     explicit_display_names_by_observation: dict[int, set[str]] = defaultdict(set)
     explicit_claim_ids_by_observation: dict[int, set[int]] = defaultdict(set)
+    proposed_names_by_observation: dict[int, set[str]] = defaultdict(set)
     for claim in claims:
+        review = database.get_effective_name_claim_review(claim.id)
+        if claim.observation_id is not None and review is None:
+            proposed_names_by_observation[claim.observation_id].add(claim.display_name)
         normalized_name = claim.normalized_name.strip()
         if (
             claim.observation_id is not None
-            and claim.explicit_speaker_attribution
+            and database.is_confirmed_speaker_name_claim(claim)
             and normalized_name
         ):
             explicit_names_by_observation[claim.observation_id].add(normalized_name)
@@ -574,8 +579,7 @@ def build_profile_pipeline_status(
         if any(
             review is not None
             and (
-                review[0] != "attach"
-                or review[1] is None
+                review[1] is None
                 or database.resolve_speaker_profile_id(review[1]) != profile_id
             )
             for claim_id in member_claim_ids
@@ -789,6 +793,7 @@ def build_profile_pipeline_status(
                 recording_count=len(video_ids),
                 source_count=len(source_ids),
                 names=names,
+                proposed_names=tuple(sorted({name for member_id in member_ids for name in proposed_names_by_observation.get(member_id, ())})),
                 configured_identities=configured,
                 attributed_frontier_count=frontier_count,
                 state=state,

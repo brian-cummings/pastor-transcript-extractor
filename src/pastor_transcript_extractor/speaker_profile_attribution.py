@@ -489,6 +489,8 @@ def apply_reviewed_profile_attribution(
     reviewer: str,
     reason: str,
     packet_path: Path,
+    link_configured: bool = True,
+    review_event_key: str | None = None,
 ) -> ProfileAttributionResult:
     name = display_name.strip()
     normalized_name = normalize_person_name(name)
@@ -514,6 +516,7 @@ def apply_reviewed_profile_attribution(
         raise ValueError(f"Unknown speaker observation: {observation_id}")
     provenance: dict[str, Any] = {
         "version": PROFILE_ATTRIBUTION_REVIEW_VERSION,
+        "review_event_key": review_event_key,
         "profile_id": profile_id,
         "observation_id": observation_id,
         "observation_fingerprint": observation.input_fingerprint,
@@ -550,7 +553,7 @@ def apply_reviewed_profile_attribution(
     matching_pastors = [
         pastor
         for pastor in database.list_pastors()
-        if normalize_person_name(pastor.display_name) == normalized_name
+        if link_configured and normalize_person_name(pastor.display_name) == normalized_name
     ]
     link_status = "no_configured_pastor_match"
     linked_slug = None
@@ -592,13 +595,88 @@ def apply_reviewed_profile_attribution(
     )
 
 
+def review_profile_names(
+    database: Database,
+    *,
+    profile_id: int,
+    reviewer: str,
+    reason: str,
+    packet_path: Path,
+    replacement_name: str | None = None,
+    rejected_name: str | None = None,
+) -> dict[str, Any]:
+    """Clear/reject or replace names, preserving claims and voice membership."""
+    reviewer, reason = reviewer.strip(), reason.strip()
+    if not reviewer or not reason:
+        raise ValueError("reviewer and reason are required")
+    if replacement_name is not None and not normalize_person_name(replacement_name):
+        raise ValueError("replacement name must contain a name")
+    if rejected_name is not None and not normalize_person_name(rejected_name):
+        raise ValueError("rejected name must contain a name")
+    if replacement_name is not None and rejected_name is not None:
+        raise ValueError("Choose replacement or rejection, not both")
+    with database.transaction():
+        candidate = get_profile_attribution_candidate(database, profile_id)
+        members = set(database.list_effective_observation_ids_for_profile(profile_id))
+        claims = [c for c in database.list_speaker_name_claims() if c.observation_id in members]
+        configured_names = {
+            normalize_person_name(p.display_name)
+            for p in database.list_pastors()
+            if (bound := database.get_pastor_speaker_profile_id(p.id)) is not None
+            and database.resolve_speaker_profile_id(bound) == profile_id
+        }
+        changes_configured_name = (
+            replacement_name is not None and configured_names != {normalize_person_name(replacement_name)}
+        ) or (
+            replacement_name is None and (rejected_name is None or normalize_person_name(rejected_name) in configured_names)
+        )
+        if configured_names and changes_configured_name:
+            raise ValueError("Profile has a configured pastor identity; resolve that binding before clearing or changing its name")
+        selected = [
+            c for c in claims
+            if (rejected_name is None or c.normalized_name == normalize_person_name(rejected_name))
+            and database.get_effective_name_claim_review(c.id) != ("reject", profile_id)
+        ]
+        if rejected_name is not None and not selected:
+            raise ValueError("No active matching name claim belongs to this profile")
+        prior_reviews = [(c.id, database.get_effective_name_claim_review(c.id)) for c in claims]
+        before = sorted(_profile_explicit_names(database, members))
+        event_ids = [
+            record_name_claim_review(
+                database, claim_id=c.id, profile_id=profile_id, attach=False,
+                reviewer=reviewer, reason=reason,
+                review_event_key=_sha256({"kind": "profile_name_correction_v1", "claim": c.id,
+                    "prior_review": database.get_effective_name_claim_review(c.id),
+                    "profile": profile_id, "replacement": replacement_name,
+                    "reviewer": reviewer, "reason": reason}),
+            )
+            for c in selected
+        ]
+        result = None
+        if replacement_name is not None:
+            result = apply_reviewed_profile_attribution(
+                database, profile_id=profile_id, observation_id=candidate.evidence[0].observation_id,
+                display_name=replacement_name, reviewer=reviewer, reason=reason,
+                packet_path=packet_path, link_configured=False,
+                review_event_key=_sha256({"rejection_events": event_ids, "prior_reviews": prior_reviews, "name": replacement_name}),
+            )
+        return {"schema_version": 1, "kind": "profile_name_correction_v1",
+            "profile_id": profile_id, "reviewer": reviewer, "reason": reason,
+            "previous_confirmed_names": before,
+            "rejected_claim_ids": [c.id for c in selected], "rejection_event_ids": event_ids,
+            "replacement_claim_id": result.claim_id if result else None,
+            "confirmed_names": sorted(_profile_explicit_names(database, members)),
+            "member_observation_ids": sorted(members),
+            "voice_membership_changed": False, "profile_redirects_changed": False}
+
+
 def _profile_explicit_names(database: Database, member_ids: set[int] | list[int]) -> set[str]:
     members = set(member_ids)
     return {
         claim.normalized_name.strip()
         for claim in database.list_speaker_name_claims()
         if claim.observation_id in members
-        and claim.explicit_speaker_attribution
+        and database.is_confirmed_speaker_name_claim(claim)
         and claim.normalized_name.strip()
     }
 

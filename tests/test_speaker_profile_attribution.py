@@ -14,6 +14,7 @@ from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.speaker_profile_attribution import (
     apply_reviewed_profile_attribution,
+    review_profile_names,
     load_profile_attribution_clip_timestamps,
     load_profile_attribution_deferrals,
     list_proposed_profile_attribution_candidates,
@@ -113,6 +114,96 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
         self.assertIn("i.ytimg.com/vi/video-1/hqdefault.jpg", packet)
         self.assertIn("watch?v=video-1&amp;t=101s", packet)
         self.assertNotIn("<iframe", packet)
+
+    def _legacy_name(self, name="Summer Shorts"):
+        observation = self.observations[0]
+        return self.database.add_speaker_name_claim(
+            video_id=observation.video_id, observation_id=observation.id,
+            display_name=name, normalized_name=name.lower(),
+            claim_kind="explicit_speaker_attribution", channel="metadata",
+            explicit_speaker_attribution=True, correlation_group_id="legacy",
+            provenance_json='{"exact_excerpt":"Summer Shorts - 2 John"}',
+            artifact_path="legacy.json", claim_fingerprint=name,
+            extractor_version="speaker_evidence_v1",
+        )
+
+    def _correct_name(self, **kwargs):
+        return review_profile_names(
+            self.database, profile_id=self.profile.id, reviewer="Brian",
+            reason="Identified in backing video", packet_path=self.root / "packet.html", **kwargs,
+        )
+
+    def test_legacy_title_name_is_reviewable_and_correction_preserves_voice(self):
+        legacy = self._legacy_name()
+        self.assertEqual(1, len(list_unnamed_profile_attribution_candidates(self.database)))
+        before = self.database.list_effective_observation_ids_for_profile(self.profile.id)
+        result = self._correct_name(replacement_name="Byron Reynolds")
+        self.assertEqual(["byron reynolds"], result["confirmed_names"])
+        self.assertEqual(("reject", self.profile.id), self.database.get_effective_name_claim_review(legacy.id))
+        self.assertEqual(before, self.database.list_effective_observation_ids_for_profile(self.profile.id))
+        self.assertEqual("Summer Shorts", self.database.get_speaker_name_claim(legacy.id).display_name)
+        self.assertEqual((), list_unnamed_profile_attribution_candidates(self.database))
+
+    def test_clear_then_restore_name_uses_new_review_events(self):
+        self._correct_name(replacement_name="Byron Reynolds")
+        cleared = self._correct_name()
+        self.assertEqual([], cleared["confirmed_names"])
+        self.assertEqual(1, len(list_unnamed_profile_attribution_candidates(self.database)))
+        restored = self._correct_name(replacement_name="Byron Reynolds")
+        self.assertEqual(["byron reynolds"], restored["confirmed_names"])
+
+    def test_failed_replacement_rolls_back_rejections(self):
+        legacy = self._legacy_name()
+        with patch("pastor_transcript_extractor.speaker_profile_attribution.apply_reviewed_profile_attribution", side_effect=ValueError("failure")):
+            with self.assertRaisesRegex(ValueError, "failure"):
+                self._correct_name(replacement_name="Byron Reynolds")
+        self.assertIsNone(self.database.get_effective_name_claim_review(legacy.id))
+
+    def test_rejection_does_not_block_voice_readiness(self):
+        from pastor_transcript_extractor.speaker_shadow_association import assess_profile_association_readiness
+        from pastor_transcript_extractor.reviewed_speaker_evidence import load_reviewed_speaker_evidence
+        legacy = self._legacy_name()
+        self._correct_name(rejected_name="Summer Shorts")
+        evidence = load_reviewed_speaker_evidence(self.root / "reviews")
+        readiness = assess_profile_association_readiness(self.database, evidence)[0]
+        self.assertEqual((), readiness.normalized_names)
+        self.assertNotIn("conflicting_name_claim_review", readiness.shadow_blockers)
+        self.assertFalse(self.database.is_confirmed_speaker_name_claim(legacy))
+
+    def test_profile_status_labels_unreviewed_names_as_proposals(self):
+        from pastor_transcript_extractor.speaker_profile_status import build_profile_pipeline_status
+        from pastor_transcript_extractor.reviewed_speaker_evidence import load_reviewed_speaker_evidence
+        self._legacy_name()
+        evidence = load_reviewed_speaker_evidence(self.root / "reviews")
+        row = build_profile_pipeline_status(self.database, evidence).profiles[0]
+        self.assertEqual((), row.names)
+        self.assertEqual(("Summer Shorts",), row.proposed_names)
+        self._correct_name(replacement_name="Byron Reynolds")
+        row = build_profile_pipeline_status(self.database, evidence).profiles[0]
+        self.assertEqual(("Byron Reynolds",), row.names)
+        self.assertEqual((), row.proposed_names)
+
+    def test_configured_identity_requires_binding_resolution(self):
+        pastor = self.database.add_pastor("byron", "Byron Reynolds")
+        configured = ensure_configured_pastor_profile(self.database, pastor)
+        from pastor_transcript_extractor.speaker_registry import record_profile_redirect
+        record_profile_redirect(self.database, from_profile_id=configured.id, to_profile_id=self.profile.id,
+            reviewer="Brian", reason="Reviewed identity", review_event_key="configured-identity")
+        with self.assertRaisesRegex(ValueError, "configured pastor identity"):
+            self._correct_name(replacement_name="Someone Else")
+        self.assertEqual(self.profile.id, self.database.resolve_speaker_profile_id(configured.id))
+
+    def test_cli_inspects_then_replaces_without_opening_browser(self):
+        self._legacy_name()
+        runner = CliRunner()
+        args = ["identity", "review-profile-attribution", "--profile-id", str(self.profile.id),
+            "--reviewer", "Brian", "--base-dir", str(self.paths.root)]
+        inspected = runner.invoke(app, args + ["--inspect-names"])
+        self.assertEqual(0, inspected.exit_code, inspected.output)
+        self.assertIn("unconfirmed proposal", inspected.output)
+        changed = runner.invoke(app, args + ["--name", "Byron Reynolds", "--reason", "Verified backing video"])
+        self.assertEqual(0, changed.exit_code, changed.output)
+        self.assertEqual(1, len(list((self.paths.logs / "profile-attribution-reviews/corrections").glob("*.json"))))
 
     def test_persisted_identity_clip_controls_review_timestamp(self) -> None:
         cache_root = self.root / "cache"

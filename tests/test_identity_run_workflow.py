@@ -511,6 +511,31 @@ class IdentityRunWorkflowTests(unittest.TestCase):
         self.assertEqual("disabled", result.status)
         candidates.assert_not_called()
 
+    def test_typesafe_backend_does_not_depend_on_ollama_enablement(self):
+        provider = Mock()
+        run = Mock()
+        with patch.object(identity_run, "Database"), patch.object(identity_run, "build_llm_config") as config, patch.object(
+            identity_run, "profile_metadata_candidate_profile_ids", return_value=(255,),
+        ), patch.object(identity_run, "TypeSafeSdkNameAttributionProvider", return_value=provider) as factory, patch.object(
+            identity_run, "run_typesafe_profile_metadata_attribution", return_value=run,
+        ) as execute:
+            result = run_metadata_attribution_stage(Path("app.db"), output_root=Path("metadata"),
+                plan_only=False, database_video_id=None, backend="typesafe")
+        self.assertEqual("executed", result.status)
+        self.assertIs(run, result.run)
+        config.assert_not_called()
+        factory.assert_called_once_with(model="jev-1.13.0")
+        self.assertEqual(frozenset((255,)), execute.call_args.kwargs["profile_ids"])
+
+    def test_typesafe_plan_never_constructs_provider(self):
+        with patch.object(identity_run, "Database"), patch.object(
+            identity_run, "profile_metadata_candidate_profile_ids", return_value=(255,),
+        ), patch.object(identity_run, "TypeSafeSdkNameAttributionProvider") as factory:
+            result = run_metadata_attribution_stage(Path("app.db"), output_root=Path("metadata"),
+                plan_only=True, database_video_id=None, backend="typesafe")
+        self.assertEqual("plan_only", result.status)
+        factory.assert_not_called()
+
     def test_metadata_llm_failure_becomes_structured_outcome(self) -> None:
         database = SimpleNamespace()
         with patch.object(identity_run, "Database", return_value=database), patch.object(

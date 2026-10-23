@@ -137,6 +137,19 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             extractor_version="speaker_evidence_v1",
         )
 
+    def _confirm_current_names(self):
+        """Name approval is separate from same-voice review in these fixtures."""
+        for claim in self.database.list_speaker_name_claims():
+            if self.database.get_effective_name_claim_review(claim.id) is not None:
+                continue
+            owners = self.database.list_effective_profile_ids_for_observation(claim.observation_id)
+            if owners:
+                record_name_claim_review(
+                    self.database, claim_id=claim.id, profile_id=owners[0], attach=True,
+                    reviewer="name-reviewer", reason="Confirmed speaker in backing video",
+                    review_event_key=f"confirmed-name:{claim.id}",
+                )
+
     def _write_review(
         self,
         *,
@@ -534,7 +547,7 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             (self.evaluation_root / "fixtures" / "pair-ab.json").exists()
         )
 
-    def test_sync_attaches_consistent_name_and_links_configured_identity(
+    def test_sync_does_not_approve_unreviewed_names_or_link_configured_identity(
         self,
     ) -> None:
         pastor = self.database.add_pastor("andrew-korp", "Andrew Korp")
@@ -551,17 +564,17 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             self.observations["a"].id
         )[0]
         self.assertEqual(
-            [claim_a.id, claim_b.id],
+            [],
             self.database.list_effective_name_claim_ids_for_profile(
                 profile_id
             ),
         )
         self.assertEqual(
-            profile_id,
+            None,
             self.database.get_effective_profile_redirect(configured.id),
         )
-        self.assertEqual(2, first.name_claim_events_added)
-        self.assertEqual(1, first.profile_redirect_events_added)
+        self.assertEqual(0, first.name_claim_events_added)
+        self.assertEqual(0, first.profile_redirect_events_added)
         self.assertEqual(0, replay.name_claim_events_added)
         self.assertEqual(0, replay.profile_redirect_events_added)
         self.assertEqual((), replay.conflicts)
@@ -578,6 +591,8 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         self._write_fixture("pair-ab", "a", "b", "same_speaker")
         self._write_fixture("pair-cd", "c", "d", "same_speaker")
 
+        sync_reviewed_speaker_evidence(self.database, load_reviewed_speaker_evidence(self.evaluation_root))
+        self._confirm_current_names()
         result = sync_reviewed_speaker_evidence(
             self.database,
             load_reviewed_speaker_evidence(self.evaluation_root),
@@ -592,7 +607,7 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         }
         self.assertEqual(1, len(profile_ids))
         canonical_profile_id = next(iter(profile_ids))
-        self.assertEqual(4, result.name_claim_events_added)
+        self.assertEqual(2, result.name_claim_events_added)
         self.assertEqual(2, result.profile_redirect_events_added)
         self.assertEqual(
             canonical_profile_id,
@@ -631,6 +646,8 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         self._write_fixture("pair-ab", "a", "b", "same_speaker")
         self._write_fixture("pair-ef", "e", "f", "same_speaker")
 
+        sync_reviewed_speaker_evidence(self.database, load_reviewed_speaker_evidence(self.evaluation_root))
+        self._confirm_current_names()
         result = sync_reviewed_speaker_evidence(
             self.database,
             load_reviewed_speaker_evidence(self.evaluation_root),
@@ -647,7 +664,7 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         self.assertTrue(
             all(
                 self.database.get_effective_name_claim_review(claim.id)
-                is None
+                is not None
                 for claim in claims
             )
         )
@@ -717,6 +734,7 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             review_event_key="historical-claim-review",
         )
 
+        self._confirm_current_names()
         consolidated = consolidate_same_source_attributed_profiles(
             self.database
         )
@@ -1009,6 +1027,7 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         )
         self.assertNotEqual(first_profile_id, second_profile_id)
 
+        self._confirm_current_names()
         self._write_fixture("pair-be", "b", "e", "same_speaker")
         result = sync_reviewed_speaker_evidence(
             self.database,
@@ -1039,7 +1058,7 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
                 canonical_profile_id
             ),
         )
-        self.assertEqual(4, result.name_claim_events_added)
+        self.assertEqual(2, result.name_claim_events_added)
         self.assertEqual(2, result.profile_redirect_events_added)
         self.assertEqual((), result.conflicts)
 
@@ -1088,6 +1107,8 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             self.database,
             load_reviewed_speaker_evidence(self.evaluation_root),
         )
+        self._confirm_current_names()
+        sync_reviewed_speaker_evidence(self.database, load_reviewed_speaker_evidence(self.evaluation_root))
         linked_profile_id = self.database.resolve_speaker_profile_id(
             configured.id
         )
@@ -1134,6 +1155,8 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         self._write_fixture("pair-cd", "c", "d", "same_speaker")
         self._write_fixture("pair-bc", "b", "c", "different_speaker")
 
+        sync_reviewed_speaker_evidence(self.database, load_reviewed_speaker_evidence(self.evaluation_root))
+        self._confirm_current_names()
         result = sync_reviewed_speaker_evidence(
             self.database,
             load_reviewed_speaker_evidence(self.evaluation_root),
@@ -1172,6 +1195,8 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             self.database,
             load_reviewed_speaker_evidence(self.evaluation_root),
         )
+        self._confirm_current_names()
+        sync_reviewed_speaker_evidence(self.database, load_reviewed_speaker_evidence(self.evaluation_root))
         linked_profile_ids = {
             self.database.resolve_speaker_profile_id(profile.id)
             for profile in configured_profiles
@@ -1225,12 +1250,7 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         self.assertIsNone(
             self.database.get_effective_profile_redirect(configured.id)
         )
-        self.assertTrue(
-            any(
-                "conflicts with effective claim review" in conflict
-                for conflict in result.conflicts
-            )
-        )
+        self.assertEqual((), result.conflicts)
 
     def test_conflicting_qualifications_are_not_materialized(self) -> None:
         self._write_review(

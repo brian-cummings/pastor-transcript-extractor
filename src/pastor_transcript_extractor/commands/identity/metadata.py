@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 import webbrowser
 
@@ -30,6 +32,7 @@ from pastor_transcript_extractor.metadata_enrichment import (
 from pastor_transcript_extractor.models import Video
 from pastor_transcript_extractor.speaker_profile_attribution import (
     apply_reviewed_profile_attribution,
+    review_profile_names,
     get_profile_attribution_candidate,
     load_profile_attribution_clip_timestamps,
     load_profile_attribution_deferrals,
@@ -66,6 +69,11 @@ def review_profile_attribution_command(
         None,
         help="Exact canonical profile; default selects the largest unnamed profile.",
     ),
+    inspect_names: bool = typer.Option(False, "--inspect-names", help="Show immutable claims and current review status without writes."),
+    name: str | None = typer.Option(None, "--name", help="Replace this profile's names with a reviewed name; requires --reason."),
+    reject_name: str | None = typer.Option(None, "--reject-name", help="Reject all occurrences of this name in the profile; requires --reason."),
+    clear_name: bool = typer.Option(False, "--clear-name", help="Clear name claims while preserving voice membership; requires --reason."),
+    reason: str | None = typer.Option(None, "--reason", help="Evidence supporting an explicit name correction."),
     all_proposals: bool = typer.Option(
         False,
         "--all-proposals",
@@ -120,6 +128,48 @@ def review_profile_attribution_command(
             "Pass at most one of --profile-id, --all-proposals, or "
             "--all-anonymous-profiles, or --source-pastor-candidate."
         )
+    correction = name is not None or reject_name is not None or clear_name
+    if sum((name is not None, reject_name is not None, clear_name, inspect_names)) > 1:
+        raise typer.BadParameter("Choose one of --name, --reject-name, --clear-name, or --inspect-names")
+    if correction or inspect_names:
+        if profile_id is None:
+            raise typer.BadParameter("Name inspection/correction requires --profile-id")
+        if correction and (plan_only or not reason or not reason.strip()):
+            raise typer.BadParameter("Name correction requires --reason and cannot use --plan-only; use --inspect-names first")
+        paths = build_paths(base_dir)
+        if not paths.database.exists():
+            raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+        database = Database(paths.database, readonly=inspect_names)
+        try:
+            candidate = get_profile_attribution_candidate(database, profile_id)
+            if inspect_names:
+                members = set(database.list_effective_observation_ids_for_profile(profile_id))
+                console.print(f"Profile {profile_id}: members={candidate.member_count}")
+                for claim in database.list_speaker_name_claims():
+                    if claim.observation_id in members:
+                        review = database.get_effective_name_claim_review(claim.id)
+                        console.print(f"claim={claim.id} name={claim.display_name!r} channel={claim.channel} review={review or 'unconfirmed proposal'} provenance={claim.provenance_json}")
+                return
+            packet = paths.logs / "profile-attribution-reviews" / f"profile-{profile_id}.html"
+            receipt = review_profile_names(
+                database, profile_id=profile_id, reviewer=reviewer, reason=reason or "",
+                packet_path=packet, replacement_name=name, rejected_name=reject_name,
+            )
+            packet = write_profile_attribution_packet(candidate, packet)
+            receipt_root = paths.logs / "profile-attribution-reviews" / "corrections"
+            receipt_root.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+            receipt_path = receipt_root / f"profile-{profile_id}-{stamp}.json"
+            receipt_path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+            receipt_path.with_suffix(".md").write_text(
+                f"# Profile {profile_id} name correction\n\n"
+                f"Confirmed names: {', '.join(receipt['confirmed_names']) or 'unknown'}\n\n"
+                f"Reviewer: {reviewer}\n\nReason: {reason}\n\n"
+                "Voice membership and profile redirects were preserved.\n", encoding="utf-8")
+            console.print(f"Name correction recorded: {receipt_path}")
+            return
+        except (OSError, ValueError) as error:
+            raise typer.BadParameter(str(error)) from error
     batch_mode = all_proposals or all_anonymous_profiles
     paths = build_paths(base_dir, remember=not plan_only)
     cache_dir = cache_dir or paths.evaluation / "speaker-pairs/cache"

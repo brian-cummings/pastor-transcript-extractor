@@ -146,6 +146,8 @@ def identity_run_command(
             "checked-in policy is shadow-only."
         ),
     ),
+    metadata_backend: str = typer.Option("ollama", "--metadata-backend", help="Metadata name attribution backend: ollama or typesafe."),
+    metadata_model: str | None = typer.Option(None, "--metadata-model", help="Model for the selected metadata backend; defaults match analyze-profile-metadata."),
     review_prewarm_limit: int = typer.Option(
         24,
         "--review-prewarm-limit",
@@ -188,6 +190,8 @@ def identity_run_command(
         review_prewarm_limit=review_prewarm_limit,
         base_dir=base_dir,
         jobs=jobs,
+        metadata_backend=metadata_backend,
+        metadata_model=metadata_model,
         evaluate_profile_promotions=evaluate_profile_promotions,
         promotion_model=promotion_model,
         promotion_judgment_root=resolved_promotion_judgment_root,

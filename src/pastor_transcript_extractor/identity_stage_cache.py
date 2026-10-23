@@ -8,8 +8,8 @@ import sqlite3
 from typing import Any, Iterable, Mapping, Sequence
 
 
-IDENTITY_STAGE_CACHE_VERSION = "identity_stage_cache_v1"
-ASSOCIATION_INPUT_STATE_VERSION = "association_input_state_v1"
+IDENTITY_STAGE_CACHE_VERSION = "identity_stage_cache_v2"
+ASSOCIATION_INPUT_STATE_VERSION = "association_input_state_v2"
 
 # These tables contain the durable inputs used by association and discovery.
 # Deliberately include more state than either stage currently consumes: an

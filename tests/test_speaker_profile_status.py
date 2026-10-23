@@ -166,7 +166,7 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         *,
         correlation_group_id: str | None = None,
     ):
-        return self.database.add_speaker_name_claim(
+        claim = self.database.add_speaker_name_claim(
             video_id=observation.video_id,
             observation_id=observation.id,
             display_name=name,
@@ -182,6 +182,14 @@ class SpeakerProfileStatusTests(unittest.TestCase):
             claim_fingerprint=f"claim-{observation.id}",
             extractor_version="speaker_evidence_v1",
         )
+        owners = self.database.list_effective_profile_ids_for_observation(observation.id)
+        if owners:
+            self.database.add_profile_name_claim_event(
+                profile_id=owners[0], claim_id=claim.id, action="attach",
+                reviewer="name-reviewer", reason="Confirmed speaker identity",
+                event_fingerprint=f"name-review:{claim.id}",
+            )
+        return claim
 
     def test_report_explains_linked_profile_and_review_backlog(self) -> None:
         observation_a = self._observation("a")
@@ -259,10 +267,10 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertEqual(status.qualification_counts["unreviewed"], 1)
         self.assertEqual(status.canonical_profile_count, 1)
         self.assertEqual(status.profile_member_count, 2)
-        self.assertEqual(status.named_ungrouped_single_count, 1)
-        self.assertEqual(status.attributed_frontier_observation_count, 1)
+        self.assertEqual(status.named_ungrouped_single_count, 0)
+        self.assertEqual(status.attributed_frontier_observation_count, 0)
         self.assertEqual(status.unmatched_named_ungrouped_single_count, 0)
-        self.assertEqual(status.unnamed_ungrouped_single_count, 0)
+        self.assertEqual(status.unnamed_ungrouped_single_count, 1)
         self.assertEqual(status.attached_name_claim_count, 1)
         self.assertEqual(status.configured_identity_count, 1)
         self.assertEqual(
@@ -270,8 +278,7 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         )
         self.assertEqual(status.profiles[0].state, "linked")
         self.assertEqual(status.profiles[0].source_count, 2)
-        self.assertEqual(status.profiles[0].attributed_frontier_count, 1)
-        self.assertIn("1 attributed frontier", status.profiles[0].next_need)
+        self.assertEqual(status.profiles[0].attributed_frontier_count, 0)
         self.assertEqual(status.pending_qualification_count, 0)
         self.assertEqual(status.pending_same_component_count, 0)
         self.assertEqual(status.pending_difference_count, 0)
@@ -477,7 +484,7 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         )
         self.assertEqual(status.attribution_conflict_count, 0)
 
-    def test_named_backlog_separates_matching_frontiers_from_seeds(self) -> None:
+    def test_unconfirmed_names_do_not_create_attributed_frontiers(self) -> None:
         member = self._observation("member")
         matching = self._observation("matching")
         unmatched = self._observation("unmatched")
@@ -513,12 +520,10 @@ class SpeakerProfileStatusTests(unittest.TestCase):
             ReviewedSpeakerEvidence({}, {}, {}, {}, 0),
         )
 
-        self.assertEqual(status.named_ungrouped_single_count, 2)
-        self.assertEqual(status.attributed_frontier_observation_count, 1)
-        self.assertEqual(status.unmatched_named_ungrouped_single_count, 1)
-        messages = [action.message for action in status.actions]
-        self.assertTrue(any("match existing profiles" in item for item in messages))
-        self.assertTrue(any("do not match an existing" in item for item in messages))
+        self.assertEqual(status.named_ungrouped_single_count, 0)
+        self.assertEqual(status.attributed_frontier_observation_count, 0)
+        self.assertEqual(status.unmatched_named_ungrouped_single_count, 0)
+        self.assertEqual(2, status.unnamed_ungrouped_single_count)
 
     def test_named_backlog_excludes_stale_automatic_observation(self) -> None:
         member = self._observation("member")
@@ -560,7 +565,8 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertEqual(1, status.ungrouped_single_count)
         self.assertEqual(1, status.stale_or_ineligible_ungrouped_single_count)
         self.assertEqual(0, status.attributed_frontier_observation_count)
-        self.assertEqual(1, status.unmatched_named_ungrouped_single_count)
+        self.assertEqual(0, status.unmatched_named_ungrouped_single_count)
+        self.assertEqual(1, status.unnamed_ungrouped_single_count)
 
     def test_automatic_eligibility_only_checks_qualified_ungrouped_observations(
         self,

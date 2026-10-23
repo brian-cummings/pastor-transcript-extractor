@@ -666,7 +666,7 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
 
         self.assertEqual({}, load_profile_metadata_attributions(root))
 
-    def test_existing_explicit_claim_removes_profile_from_model_queue(self) -> None:
+    def test_unreviewed_explicit_claim_stays_in_model_queue(self) -> None:
         observation = self.observations[0]
         self.database.add_speaker_name_claim(
             video_id=observation.video_id,
@@ -684,7 +684,7 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            (),
+            (self.profile.id,),
             profile_metadata_candidate_profile_ids(self.database),
         )
 

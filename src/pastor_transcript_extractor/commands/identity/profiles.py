@@ -515,7 +515,7 @@ def profile_status_command(
     }
     for profile in status.profiles:
         identity = ", ".join(
-            profile.configured_identities or profile.names
+            profile.configured_identities or profile.names or tuple(f"{name} (unconfirmed)" for name in profile.proposed_names)
         ) or "unnamed"
         table.add_row(
             str(profile.profile_id),
@@ -605,7 +605,7 @@ def profile_status_command(
     if profile_assignment_counts:
         identity_by_profile = {
             profile.profile_id: ", ".join(
-                profile.configured_identities or profile.names
+                profile.configured_identities or profile.names or tuple(f"{name} (unconfirmed)" for name in profile.proposed_names)
             )
             or "unnamed"
             for profile in status.profiles

@@ -124,7 +124,7 @@ def select_superseded_profile_member_review(
     for claim in claims:
         if (
             claim.observation_id is not None
-            and claim.explicit_speaker_attribution
+            and database.is_confirmed_speaker_name_claim(claim)
             and claim.normalized_name.strip()
         ):
             claims_by_observation_id.setdefault(

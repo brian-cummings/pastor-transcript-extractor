@@ -1827,7 +1827,7 @@ def shadow_discover_profiles_command(
     for claim in database.list_speaker_name_claims():
         if (
             claim.observation_id is not None
-            and claim.explicit_speaker_attribution
+            and database.is_confirmed_speaker_name_claim(claim)
             and claim.normalized_name.strip()
         ):
             names_by_observation.setdefault(claim.observation_id, set()).add(
@@ -3115,6 +3115,8 @@ def run_identity_workflow_service(
     review_prewarm_limit: int = 24,
     base_dir: Path | None,
     jobs: int = 2,
+    metadata_backend: str = "ollama",
+    metadata_model: str | None = None,
     evaluate_profile_promotions: bool = False,
     promotion_model: str = DEFAULT_PROMOTION_TYPESAFE_MODEL,
     promotion_judgment_root: Path = Path(
@@ -3158,6 +3160,8 @@ def run_identity_workflow_service(
         review_prewarm_limit=review_prewarm_limit,
         base_dir=base_dir,
         jobs=jobs,
+        metadata_backend=metadata_backend,
+        metadata_model=metadata_model,
         evaluate_profile_promotions=evaluate_profile_promotions,
         promotion_model=promotion_model,
         promotion_judgment_root=promotion_judgment_root,
@@ -3670,9 +3674,12 @@ def run_identity_workflow_service(
     if discovery_decision.mode != "deferred" and not discovery_finalization.promotion_attempted:
         console.print("Discovery promotion: no completed report available.")
 
+    console.print(f"Profile metadata backend: {metadata_backend}; model={metadata_model or 'backend default'}")
     metadata_stage = run_metadata_attribution_stage(
         paths.database,
         output_root=paths.logs / "profile-metadata-attribution",
+        backend=metadata_backend,
+        model=metadata_model,
         plan_only=plan_only,
         database_video_id=database_video_id,
         progress_callback=(
@@ -3686,14 +3693,14 @@ def run_identity_workflow_service(
         console.print(
             "Profile metadata attribution: plan-only; "
             f"eligible={len(metadata_stage.candidate_profile_ids)}; "
-            "no Ollama calls or artifacts were created."
+            "no model calls or artifacts were created."
         )
     elif metadata_stage.status == "disabled":
         console.print(
             "Profile metadata attribution: skipped — local LLM is disabled."
         )
     elif metadata_stage.status == "empty":
-        console.print("Profile metadata attribution: eligible=0; no Ollama calls.")
+        console.print("Profile metadata attribution: eligible=0; no model calls.")
     elif metadata_stage.status == "failed":
         console.print(
             "Profile metadata attribution: skipped — "
@@ -3804,6 +3811,8 @@ def _invoke_identity_workflow_request(request: IdentityWorkflowRequest) -> None:
         review_prewarm_limit=request.review_prewarm_limit,
         base_dir=request.base_dir,
         jobs=request.jobs,
+        metadata_backend=request.metadata_backend,
+        metadata_model=request.metadata_model,
         evaluate_profile_promotions=request.evaluate_profile_promotions,
         promotion_model=request.promotion_model,
         promotion_judgment_root=request.promotion_judgment_root,
@@ -5843,7 +5852,7 @@ def review_next_speaker_pair(
                 claim.normalized_name
                 for claim in claims
                 if claim.observation_id == observation.id
-                and claim.explicit_speaker_attribution
+                and database.is_confirmed_speaker_name_claim(claim)
                 and claim.normalized_name.strip()
             ) | (frozenset((title_hint,)) if title_hint else frozenset()) | (
                 frozenset((configured_title_hint,))
@@ -5936,7 +5945,7 @@ def review_next_speaker_pair(
                                     )
                                 )
                                 if claim.observation_id == observation.id
-                                and claim.explicit_speaker_attribution
+                                and database.is_confirmed_speaker_name_claim(claim)
                                 and claim.normalized_name.strip()
                             ),
                             source_family_id=(

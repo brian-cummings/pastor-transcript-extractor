@@ -314,7 +314,7 @@ class SourceProfileConsolidationTests(unittest.TestCase):
         )
         for index, (_, observations) in enumerate(profiles):
             observation = observations[0]
-            self.database.add_speaker_name_claim(
+            claim = self.database.add_speaker_name_claim(
                 video_id=observation.video_id,
                 observation_id=observation.id,
                 display_name=("Alex Example", "Jordan Example")[index],
@@ -328,6 +328,10 @@ class SourceProfileConsolidationTests(unittest.TestCase):
                 claim_fingerprint=f"claim-{index}",
                 extractor_version="speaker_evidence_v1",
             )
+            self.database.add_profile_name_claim_event(
+                profile_id=profiles[index][0].id, claim_id=claim.id, action="attach",
+                reviewer="name-reviewer", reason="Confirmed identity", event_fingerprint=f"name:{index}",
+            )
         conflicts: list[str] = []
 
         canonical_id = apply_source_profile_consolidation(
@@ -340,7 +344,7 @@ class SourceProfileConsolidationTests(unittest.TestCase):
         )
 
         self.assertIsNone(canonical_id)
-        self.assertIn("conflicting explicit attributions", conflicts[0])
+        self.assertIn("no longer anonymous", conflicts[0])
         self.assertEqual(
             {profile.id for profile, _ in profiles},
             {

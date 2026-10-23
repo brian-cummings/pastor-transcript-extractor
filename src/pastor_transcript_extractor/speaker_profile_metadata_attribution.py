@@ -336,7 +336,7 @@ def profile_metadata_candidate_profile_ids(
     for claim in claims:
         if (
             claim.observation_id is not None
-            and claim.explicit_speaker_attribution
+            and database.is_confirmed_speaker_name_claim(claim)
             and claim.normalized_name.strip()
         ):
             explicit_names_by_observation.setdefault(

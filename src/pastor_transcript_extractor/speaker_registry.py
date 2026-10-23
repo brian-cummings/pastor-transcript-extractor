@@ -322,7 +322,7 @@ def persist_neutral_speaker_evidence(
 
     persisted_claims: list[SpeakerNameClaim] = []
     for claim in claim_payloads:
-        observation_id = observation.id if observation is not None and claim["explicit_speaker_attribution"] else None
+        observation_id = observation.id if observation is not None else None
         claim_fingerprint = _sha256(
             {
                 "extractor_version": extractor_version,

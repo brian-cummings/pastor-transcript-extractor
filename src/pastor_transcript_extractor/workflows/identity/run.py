@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
@@ -38,6 +38,11 @@ from pastor_transcript_extractor.speaker_profile_metadata_attribution import (
     profile_metadata_candidate_profile_ids,
     run_profile_metadata_attribution,
 )
+from pastor_transcript_extractor.speaker_profile_metadata_attribution_typesafe import (
+    DEFAULT_TYPESAFE_MODEL,
+    TypeSafeSdkNameAttributionProvider,
+    run_typesafe_profile_metadata_attribution,
+)
 from pastor_transcript_extractor.storage import Database
 
 
@@ -58,6 +63,8 @@ class IdentityWorkflowRequest:
     base_dir: Path | None
     jobs: int
     evaluate_profile_promotions: bool = True
+    metadata_backend: str = "ollama"
+    metadata_model: str | None = None
     promotion_model: str = "jev-1.13.0"
     promotion_judgment_root: Path = Path(
         "evaluation/speaker-profile-discovery/promotion-judgments"
@@ -213,6 +220,8 @@ def validate_identity_workflow_request(
         raise ValueError("contaminated profile cost cannot be negative")
     if request.review_prewarm_limit < 0:
         raise ValueError("review prewarm limit cannot be negative")
+    if request.metadata_backend not in {"ollama", "typesafe"}:
+        raise ValueError("metadata backend must be ollama or typesafe")
     if request.jobs < 1:
         raise ValueError("identity jobs must be at least one")
 
@@ -597,16 +606,20 @@ def run_metadata_attribution_stage(
     output_root: Path,
     plan_only: bool,
     database_video_id: int | None,
+    backend: str = "ollama",
+    model: str | None = None,
     progress_callback: Callable[[int, int, int, str], None] | None = None,
 ) -> MetadataAttributionStageResult:
-    """Plan or run optional local-LLM profile metadata attribution."""
+    """Plan or run grounded attribution using an explicitly selected backend."""
+    if backend not in {"ollama", "typesafe"}:
+        raise ValueError("metadata backend must be ollama or typesafe")
     database = Database(database_path, readonly=True)
     if plan_only:
         candidates = tuple(profile_metadata_candidate_profile_ids(database))
         return MetadataAttributionStageResult("plan_only", candidates)
 
-    config = build_llm_config()
-    if not config.enabled:
+    config = build_llm_config() if backend == "ollama" else None
+    if config is not None and not config.enabled:
         return MetadataAttributionStageResult("disabled", ())
 
     scoped_profile_ids = None
@@ -631,16 +644,21 @@ def run_metadata_attribution_stage(
     if not candidates:
         return MetadataAttributionStageResult("empty", ())
     try:
-        client = OllamaClient(config)
-        run = run_profile_metadata_attribution(
-            database,
-            output_root,
-            client,
-            model_digest=client.model_digest(),
-            profile_ids=frozenset(candidates),
-            progress_callback=progress_callback,
-        )
-    except (LocalLlmError, OSError, ValueError) as error:
+        if backend == "typesafe":
+            provider = TypeSafeSdkNameAttributionProvider(model=model or DEFAULT_TYPESAFE_MODEL)
+            run = run_typesafe_profile_metadata_attribution(
+                database, output_root, provider, profile_ids=frozenset(candidates),
+                progress_callback=progress_callback,
+            )
+        else:
+            if model:
+                config = replace(config, model=model)
+            client = OllamaClient(config)
+            run = run_profile_metadata_attribution(
+                database, output_root, client, model_digest=client.model_digest(),
+                profile_ids=frozenset(candidates), progress_callback=progress_callback,
+            )
+    except (LocalLlmError, OSError, ValueError, RuntimeError) as error:
         return MetadataAttributionStageResult(
             "failed",
             candidates,

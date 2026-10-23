@@ -381,7 +381,7 @@ def plan_machine_assignments(
                 observation.video_id
             )
             if claim.observation_id == observation_id
-            and claim.explicit_speaker_attribution
+            and database.is_confirmed_speaker_name_claim(claim)
             and claim.normalized_name.strip()
         }
         profile_names = set(profile_readiness.normalized_names)

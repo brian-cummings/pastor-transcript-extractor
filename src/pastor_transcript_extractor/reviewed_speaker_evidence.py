@@ -553,7 +553,7 @@ def sync_reviewed_speaker_evidence(
                 )
                 if (
                     claim.observation_id == observation.id
-                    and claim.explicit_speaker_attribution
+                    and database.is_confirmed_speaker_name_claim(claim)
                     and claim.normalized_name.strip()
                 )
             )
@@ -893,7 +893,7 @@ def merge_reviewed_source_profile_cohort(
     for claim in database.list_speaker_name_claims():
         if (
             claim.observation_id is not None
-            and claim.explicit_speaker_attribution
+            and database.is_confirmed_speaker_name_claim(claim)
             and claim.normalized_name.strip()
         ):
             claims_by_observation.setdefault(claim.observation_id, set()).add(
@@ -997,7 +997,7 @@ def consolidate_same_source_attributed_profiles(
     for claim in claims:
         if (
             claim.observation_id is not None
-            and claim.explicit_speaker_attribution
+            and database.is_confirmed_speaker_name_claim(claim)
             and claim.normalized_name.strip()
         ):
             claims_by_observation.setdefault(claim.observation_id, []).append(
@@ -1207,7 +1207,7 @@ def _restore_automatically_detached_lineage_members(
                         member.video_id
                     )
                     if claim.observation_id == member_id
-                    and claim.explicit_speaker_attribution
+                    and database.is_confirmed_speaker_name_claim(claim)
                     and claim.normalized_name.strip()
                 )
             if len(lineage_names) > 1:
@@ -1249,7 +1249,7 @@ def _restore_automatically_detached_lineage_members(
                 observation.video_id
             )
             if claim.observation_id == observation_id
-            and claim.explicit_speaker_attribution
+            and database.is_confirmed_speaker_name_claim(claim)
             and claim.normalized_name.strip()
         }
         profile_names: set[str] = set()
@@ -1263,7 +1263,7 @@ def _restore_automatically_detached_lineage_members(
                     member.video_id
                 )
                 if claim.observation_id == member_id
-                and claim.explicit_speaker_attribution
+                and database.is_confirmed_speaker_name_claim(claim)
                 and claim.normalized_name.strip()
             )
         if len(observation_names | profile_names) > 1:

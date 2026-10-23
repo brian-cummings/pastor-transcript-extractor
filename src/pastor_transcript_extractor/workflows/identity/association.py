@@ -212,7 +212,7 @@ def load_association_corpus_inventory(
     for claim in database.list_speaker_name_claims():
         if (
             claim.observation_id is not None
-            and claim.explicit_speaker_attribution
+            and database.is_confirmed_speaker_name_claim(claim)
             and claim.normalized_name.strip()
         ):
             names.setdefault(claim.observation_id, set()).add(
