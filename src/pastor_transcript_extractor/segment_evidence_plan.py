@@ -6,19 +6,36 @@ OLD_SELECTION_INPUT='19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceab
 
 
 def verify():
-    plan=trace.read(HERE/'plan-v29.json',True)
-    if (plan['version']!='pastor-profile-product-and-implementation-status-v29'
+    plan=trace.read(HERE/'plan-v30.json',True)
+    if (plan['version']!='pastor-profile-product-and-implementation-status-v30'
             or plan['analytical_families']!=['preaching_style','theological_emphasis','theological_orientation','pastoral_rhetorical_orientation']
             or any(plan[k] for k in ('model_probability_is_pastor_score','benchmark_percentages_authorized','single_pastor_score_proposed','draft_is_measurement_ground_truth'))
             or plan['high_labels_require_explicit_rules'] is not True
-            or plan['status']!='PROVIDER_FREE_V8_PORTRAIT_GENERATED_REVIEWED_READER_ACCEPTANCE_PENDING' or plan['exact_span_extraction_required_upstream'] is not False
-            or plan['pipeline_order']!=['existing_segment_observations','supported_evidence_accumulation','bounded_profile_review','strongest_supporting_segment','optional_Ollama_editorial_synthesis','optional_Ollama_illustrative_quote']
+            or plan['status']!='V8_DELIVERED_IMPLEMENTATION_GOAL_COMPLETE_PORTABILITY_PROPOSED' or plan['exact_span_extraction_required_upstream'] is not False
+            or plan['pipeline_order']!=['existing_segment_observations','supported_evidence_accumulation','bounded_profile_review','reviewed_portrait_interpretation','strongest_supporting_segment','optional_Ollama_illustrative_quote']
             or plan['quote_context']!=['preceding_segment','center_segment','following_segment']
             or plan['quote_anchor']!='substantive_content_in_center'
             or plan['topic_presence_implies_position'] is not False
             or plan['quotes_change_measurements'] is not False
             or any(plan[k] for k in ('provider_execution','new_collection','new_projection_scoring','quote_implementation'))):
         raise ValueError('Current segment/quotation planning scope differs')
+    goal=plan['implementation_goal']
+    if (goal['status']!='complete' or not goal['implementation_scope_complete']
+            or any(goal[k] for k in ('formal_reader_acceptance','general_generator_validated','new_goal_created'))):
+        raise ValueError('Implementation goal closure differs')
+    portability=plan['portability_proposal']
+    if (portability['status']!='PROPOSED_NOT_IMPLEMENTED' or portability['selected_profile_id'] is not None
+            or portability['max_additional_profiles']!=1
+            or any(portability[k] for k in ('execution_authorized','implemented','executed','new_goal_created',
+                'provider_requests','metadata_reads','database_writes','new_measurements','collection',
+                'production_admission','benchmark_comparison','confidence_calibrated','ministry_stability',
+                'quote_execution','full_pack_miss_proves_constituent_absence','profile_318_wording_transplant',
+                'source_frame_reinterpretation'))
+            or not all(portability[k] for k in ('cached_evidence_only','reuse_existing_cli_and_loader',
+                'requires_real_cli_input_before_handoff','manual_interpretation_disclosure',
+                'unknowns_do_not_block_supported_output','original_profile_318_reproducible',
+                'v8_is_reader_quality_reference_not_semantic_ground_truth'))):
+        raise ValueError('Proposed portability scope differs')
     reuse=plan['profile_reuse_increment']
     if (reuse['status']!='DELIVERED_BOUNDED_ARTIFACT_VERIFIED'
             or reuse['main_path']!=['R1','R3','R4']
@@ -123,6 +140,16 @@ def verify():
     for row in trace.read(manifest,True)['archives']:
         if trace.digest(trace.ROOT/row['archive_path'])!=row['original_sha256'] or row['archive_sha256']!=row['original_sha256']:
             raise ValueError('Historical planning document differs')
+    cleanup=plan['documentation_cleanup']
+    if not cleanup['preserve_exact_snapshots'] or cleanup['delete_evidence']:
+        raise ValueError('Documentation preservation scope differs')
+    for row in cleanup['archives']:
+        if (trace.digest(trace.ROOT/row['archive_path'])!=row['original_sha256']
+                or row['archive_sha256']!=row['original_sha256']):
+            raise ValueError('Pre-portability documentation snapshot differs')
+    for name,expected in cleanup['active_docs'].items():
+        if trace.digest(trace.ROOT/name)!=expected:
+            raise ValueError('Active profile documentation differs')
     return plan,path
 
 

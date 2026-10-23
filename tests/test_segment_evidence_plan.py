@@ -7,7 +7,7 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('PROVIDER_FREE_V8_PORTRAIT_GENERATED_REVIEWED_READER_ACCEPTANCE_PENDING',plan['status'])
+        self.assertEqual('V8_DELIVERED_IMPLEMENTATION_GOAL_COMPLETE_PORTABILITY_PROPOSED',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['historical_capability_decision']['pilot_execution'])
@@ -118,6 +118,33 @@ class SegmentPlanTests(unittest.TestCase):
             changed=deepcopy(plan);changed['portrait_increment'][field]=value
             with self.subTest(field=field),patch.object(p.trace,'read',return_value=changed):
                 with self.assertRaisesRegex(ValueError,'portrait interpretation'):
+                    p.verify()
+
+    def test_portability_is_one_proposed_cached_case_not_implicit_execution_or_validation(self):
+        from copy import deepcopy
+        plan,_=p.verify()
+        self.assertEqual('complete',plan['implementation_goal']['status'])
+        self.assertEqual(5,len(plan['documentation_cleanup']['archives']))
+        for field,value in (('execution_authorized',True),('implemented',True),('provider_requests',1),
+                ('max_additional_profiles',2),('cached_evidence_only',False),
+                ('manual_interpretation_disclosure',False),('profile_318_wording_transplant',True)):
+            changed=deepcopy(plan);changed['portability_proposal'][field]=value
+            with self.subTest(field=field),patch.object(p.trace,'read',return_value=changed):
+                with self.assertRaisesRegex(ValueError,'portability scope'):
+                    p.verify()
+
+    def test_cleanup_snapshots_and_active_document_hashes_are_checked(self):
+        from copy import deepcopy
+        plan,_=p.verify()
+        for field in ('archive','active'):
+            changed=deepcopy(plan)
+            if field=='archive':changed['documentation_cleanup']['archives'][0]['original_sha256']='changed'
+            else:changed['documentation_cleanup']['active_docs']['docs/PASTOR_PROFILE_DESCRIPTION.md']='changed'
+            original=p.trace.read
+            def read(path,sealed=False):
+                return changed if path.name=='plan-v30.json' else original(path,sealed)
+            with self.subTest(field=field),patch.object(p.trace,'read',side_effect=read):
+                with self.assertRaisesRegex(ValueError,'documentation'):
                     p.verify()
 
     def test_closed_run_rejected_before_provider_or_frozen_input(self):
