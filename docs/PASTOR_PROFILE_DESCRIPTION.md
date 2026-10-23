@@ -23,10 +23,10 @@ prepares the inputs and interpretation. No provider, cache refill, new collectio
 or corpus evaluation is part of this workflow.
 
 The generation command returns `index.html` under the configured application base.
-V7 companions are `profile-v7.md`, `description-v7.json`, `review-v7.json` and
+V8 companions are `profile-v8.md`, `description-v8.json`, `review-v8.json` and
 `next-capability-v2.md/json`. The latter is the current consequential-gap review,
-not another request to run the completed assurance pilot. V7 outputs live under
-`evaluation/pastor-profile-description-v7/`; earlier versions, including V6, remain preserved.
+not another request to run the completed assurance pilot. V8 outputs live under
+`evaluation/pastor-profile-description-v8/`; earlier versions, including V7, remain preserved.
 Check-only and generation return the same description fingerprint. The output
 directory additionally identifies the implementation/renderer manifest.
 
@@ -187,3 +187,31 @@ accounts; complete original readings and technical distinctions remain below.
 Saved seals, hashes, evidence equality and links pass. The separate
 `wording-review-v1.md/json` beside V7 records the checks and manual review.
 Human acceptance remains pending. No model or database calls occurred.
+
+## V8: reviewed opening portrait
+
+The existing CLI now generates/checks V8. Its opening explicitly interprets the
+reviewed material through seven authored warrants: overall impression, apparent
+theological center, preaching approach, potential strength, pastoral posture,
+noticeable emphasis and a question for further review. Each interpretation has
+original supporting point IDs and exact input digests, a rationale, limits and an
+alternative explanation. Those fields appear in the existing evidence disclosure;
+the recording accounts and full technical distinctions remain underneath.
+
+Theological-center and posture language is provisional. The ten theological
+readings were selected for assurance-focused development, so they cannot establish
+the balance of complete sermons or ministry-wide centrality. Potential benefit
+is not measured effectiveness; the concern is a question, not diagnosed inconsistency.
+These qualifications are explicit without repeating technical details in every
+opening sentence. No benchmark, stable trait or calibrated confidence is supplied.
+
+`profile_portrait.py` consumes only existing exact reviewed points. A changed or
+missing point withholds dependent interpretations, preserving narrower supported
+content. It never recreates upstream adoption/voice or promotes a topic to belief.
+The original 53 example sets remain; interpretations use the linked point ledger
+rather than becoming independently measured example-selection targets.
+
+Generation and review are complete with zero provider calls and database writes.
+The separate `portrait-review-v1.md/json` beside V8 records evidence/warrant review.
+Concrete reader acceptance is pending. No new collection or model work is needed
+for this delivery.

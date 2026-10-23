@@ -7,11 +7,11 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('PROVIDER_FREE_V7_POLISH_GENERATED_VERIFIED_READER_REVIEW_PENDING',plan['status'])
+        self.assertEqual('PROVIDER_FREE_V8_PORTRAIT_GENERATED_REVIEWED_READER_ACCEPTANCE_PENDING',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['historical_capability_decision']['pilot_execution'])
-        self.assertEqual('pastor-profile-description-v7',plan['current_delivery'])
+        self.assertEqual('pastor-profile-description-v8',plan['current_delivery'])
         self.assertEqual(['R1','R3','R4'],plan['profile_reuse_increment']['main_path'])
         self.assertTrue(plan['verification']['feature_increment_executed'])
         self.assertEqual(10,plan['bounded_delivery']['reviewed_local_proposals'])
@@ -70,7 +70,7 @@ class SegmentPlanTests(unittest.TestCase):
         plan,_=p.verify()
         self.assertEqual(['D1','D2','D3','D4'],plan['description_increment']['sequence'])
         self.assertEqual('BOUNDED_RUN_VERIFIED_WORDING_REVIEW_PENDING',plan['description_increment']['status'])
-        self.assertEqual('V7_pending_concrete_wording_review',plan['verification']['human_acceptance'])
+        self.assertEqual('V8_pending_concrete_portrait_review',plan['verification']['human_acceptance'])
         for field,value in (('provider_execution',True),
                 ('promote_reviewed_proposals_to_production',True),
                 ('example_is_measurement_ground_truth',True),
@@ -107,6 +107,17 @@ class SegmentPlanTests(unittest.TestCase):
             changed=deepcopy(plan);changed['direct_editorial_revision'][field]=value
             with self.subTest(field=field),patch.object(p.trace,'read',return_value=changed):
                 with self.assertRaisesRegex(ValueError,'Direct editorial'):
+                    p.verify()
+
+    def test_portrait_does_not_turn_interpretation_into_measurement_or_stability(self):
+        from copy import deepcopy
+        plan,_=p.verify()
+        for field,value in (('semantic_admission',True),('ministry_stability',True),
+                ('source_frame_reinterpretation',True),('assurance_selection_bias_visible',False),
+                ('requires_warrant_limits_and_alternative',False)):
+            changed=deepcopy(plan);changed['portrait_increment'][field]=value
+            with self.subTest(field=field),patch.object(p.trace,'read',return_value=changed):
+                with self.assertRaisesRegex(ValueError,'portrait interpretation'):
                     p.verify()
 
     def test_closed_run_rejected_before_provider_or_frozen_input(self):

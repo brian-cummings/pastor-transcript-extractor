@@ -1,6 +1,6 @@
 # Evidence and pastor-profile work: current status
 
-**Current status: approved prose polish delivered as V7, generated and verified; ready for concrete reader review.** The [product plan](../PASTOR_PROFILE_PRODUCT_PLAN.md) and [implementation plan](../PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) define the current work. [AGENTS.md](../../AGENTS.md#reuse-and-responsibility-in-the-evidence-pipeline) records the reuse and insertion-point philosophy.
+**Current status: approved interpretive portrait delivered as V8, generated and reviewed; ready for concrete reader review.** The [product plan](../PASTOR_PROFILE_PRODUCT_PLAN.md) and [implementation plan](../PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) define the current work. [AGENTS.md](../../AGENTS.md#reuse-and-responsibility-in-the-evidence-pipeline) records the reuse and insertion-point philosophy.
 
 **Delivered V4; Brian’s bounded generation and Codex’s artifact checks passed:** R1 integrates compatible existing observations into the current claim ledger and runnable profile; R3 aggregates supported recording-level evidence into scoped sample patterns; R4 selects supporting blocks for established points. R2 is a conditional upstream branch for a specifically demonstrated missing semantic distinction. R5 illustrative quotes remains held. No new general extraction, model switch, global inventory or provider experiment is the active next step. See the implementation plan for exact deliverables and exit criteria.
 
@@ -48,10 +48,12 @@ The tail-end quote must contain substantive content from the strongest CENTER mi
 | Source-unit Repair V1 | Retain source-processing support and bounded development result; no production-readiness claim. |
 | Original G1/G2/G3/V4/A1/consumer decisions | Retain original scopes. G1 passage feasibility PASS/closed differs from G1 discovery HOLD. V4 raw FAIL/containment HOLD and bounded A1 PASS stand. No automatic authority for a new segment-level theological claim. |
 
-Frozen source, reference, receipt, acceptance and hash-pinned proposal files are preserved. `STATUS.md` sidecars and [the current registry](pastor-profile-implementation-plan-v1/plan-v28.json) supersede their active recommendations, not their historical evidence. Do not follow an old AUTHORIZED command as a new execution instruction. No cache/model deletion or broad refactor occurred.
+Frozen source, reference, receipt, acceptance and hash-pinned proposal files are preserved. `STATUS.md` sidecars and [the current registry](pastor-profile-implementation-plan-v1/plan-v29.json) supersede their active recommendations, not their historical evidence. Do not follow an old AUTHORIZED command as a new execution instruction. No cache/model deletion or broad refactor occurred.
 
 V6 reuses all fourteen reviewed descriptions through exact-input-pinned authored paraphrases, grouped by source sermon. The evidence, frames and unknowns remain unchanged. Generate with `pte analysis structure-readiness --segment-view --description --json`. No further synthesis experiment is active.
 
 V6 saved-artifact review recommends consolidating overlapping local accounts, shortening table descriptors and moving internal terminology below the main narrative. The Markdown/JSON wording review is saved beside the V6 profile. No further code or model variant was started in this run/review slice.
 
 V7 completes the approved V6 polish: merged accounts retain all fourteen original point links, the at-a-glance table is concise, and source/semantic qualifications remain. Saved evidence and links pass; human acceptance is pending. No new model work is active.
+
+V8 adds seven reviewed cross-point interpretations with warrants, limits, alternative explanations and direct evidence links. The current profile now answers what kind of preacher the sample suggests, with assurance-selection bias explicit. Existing evidence and 53 example sets remain unchanged. No model calls or new measurements occurred.

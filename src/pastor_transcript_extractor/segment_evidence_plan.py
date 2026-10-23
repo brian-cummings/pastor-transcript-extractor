@@ -6,12 +6,12 @@ OLD_SELECTION_INPUT='19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceab
 
 
 def verify():
-    plan=trace.read(HERE/'plan-v28.json',True)
-    if (plan['version']!='pastor-profile-product-and-implementation-status-v28'
+    plan=trace.read(HERE/'plan-v29.json',True)
+    if (plan['version']!='pastor-profile-product-and-implementation-status-v29'
             or plan['analytical_families']!=['preaching_style','theological_emphasis','theological_orientation','pastoral_rhetorical_orientation']
             or any(plan[k] for k in ('model_probability_is_pastor_score','benchmark_percentages_authorized','single_pastor_score_proposed','draft_is_measurement_ground_truth'))
             or plan['high_labels_require_explicit_rules'] is not True
-            or plan['status']!='PROVIDER_FREE_V7_POLISH_GENERATED_VERIFIED_READER_REVIEW_PENDING' or plan['exact_span_extraction_required_upstream'] is not False
+            or plan['status']!='PROVIDER_FREE_V8_PORTRAIT_GENERATED_REVIEWED_READER_ACCEPTANCE_PENDING' or plan['exact_span_extraction_required_upstream'] is not False
             or plan['pipeline_order']!=['existing_segment_observations','supported_evidence_accumulation','bounded_profile_review','strongest_supporting_segment','optional_Ollama_editorial_synthesis','optional_Ollama_illustrative_quote']
             or plan['quote_context']!=['preceding_segment','center_segment','following_segment']
             or plan['quote_anchor']!='substantive_content_in_center'
@@ -55,6 +55,18 @@ def verify():
                 'all_original_point_links_preserved'))
             or trace.digest(trace.ROOT/editorial['authored_file'])!=editorial['authored_sha256']):
         raise ValueError('Direct editorial revision scope differs')
+    portrait=plan['portrait_increment']
+    if (portrait['version']!='pastor-profile-description-v8'
+            or portrait['status']!='GENERATED_REVIEWED_READER_ACCEPTANCE_PENDING'
+            or any(portrait[k] for k in ('reader_acceptance','semantic_admission','provider_requests',
+                'metadata_reads','database_writes','new_measurements','production_activation',
+                'benchmark_comparison','ministry_stability','confidence_calibrated','quote_execution',
+                'full_transcript_reprocessing','source_frame_reinterpretation'))
+            or not all(portrait[k] for k in ('requires_exact_complete_support','requires_warrant_limits_and_alternative',
+                'withholds_changed_support','counterevidence_and_source_links_preserved','assurance_selection_bias_visible',
+                'existing_examples_reused_not_reselected','dataset_generation','saved_artifact_review_complete'))
+            or trace.digest(trace.ROOT/portrait['authored_file'])!=portrait['authored_sha256']):
+        raise ValueError('Reviewed portrait interpretation scope differs')
     synthesis=plan['editorial_synthesis']
     if (synthesis['status']!='V2_EXECUTED_SEMANTICALLY_REJECTED_KEEP_V5'
             or synthesis['version']!='pastor-profile-synthesis-v2'
