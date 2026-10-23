@@ -3142,7 +3142,7 @@ def run_identity_workflow_service(
     coordinator = coordinator or coordinate_identity_command
     archiver = archiver or _archive_normalized_after_identity
     current_reports_loader = current_reports_loader or latest_association_reports
-    backfiller = backfiller or identity_backfill
+    backfiller = backfiller or _identity_workflow_commands.identity_backfill
     reviewed_evidence_renderer = (
         reviewed_evidence_renderer or _print_reviewed_evidence_summary
     )

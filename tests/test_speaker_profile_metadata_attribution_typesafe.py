@@ -321,6 +321,47 @@ class TypeSafeAttributionIntegrationTests(unittest.TestCase):
         self.assertEqual(0, replay.model_calls)
         self.assertGreaterEqual(replay.cache_hits, 1)
 
+    def _reject_name(self, name):
+        observation = self.database.list_speaker_observations()[0]
+        claim = self.database.add_speaker_name_claim(
+            video_id=observation.video_id, observation_id=observation.id,
+            display_name=name, normalized_name=name.lower(), claim_kind="explicit_speaker_attribution",
+            channel="metadata", explicit_speaker_attribution=True, correlation_group_id="rejected-name",
+            provenance_json="{}", artifact_path="legacy.json", claim_fingerprint=name,
+            extractor_version="speaker_evidence_v1",
+        )
+        self.database.add_profile_name_claim_event(
+            profile_id=self.database.list_speaker_profiles()[0].id, claim_id=claim.id, action="reject",
+            reviewer="Brian", reason="Wrong attribution", event_fingerprint="reject:" + name,
+        )
+
+    def test_rejected_name_cannot_reappear_from_cached_proposal(self):
+        provider = FakeProvider()
+        output = self.root / "attribution"
+        first = run_typesafe_profile_metadata_attribution(self.database, output, provider)
+        self.assertEqual(1, first.proposed)
+        self._reject_name("Curt DeWitt")
+        replay = run_typesafe_profile_metadata_attribution(self.database, output, provider)
+        self.assertEqual(0, replay.proposed)
+        self.assertEqual(0, replay.model_calls)
+        self.assertEqual(1, provider.calls)
+        from pastor_transcript_extractor.speaker_profile_attribution import list_proposed_profile_attribution_candidates
+        from pastor_transcript_extractor.speaker_profile_metadata_attribution import load_profile_metadata_attributions
+        self.assertEqual((), list_proposed_profile_attribution_candidates(self.database,
+            metadata_attributions=load_profile_metadata_attributions(output)))
+
+    def test_changed_review_policy_reuses_compatible_constituent_judgments(self):
+        provider = FakeProvider()
+        output = self.root / "attribution"
+        first = run_typesafe_profile_metadata_attribution(self.database, output, provider)
+        self._reject_name("Summer Shorts")
+        replay = run_typesafe_profile_metadata_attribution(self.database, output, provider)
+        self.assertEqual(1, replay.proposed)
+        self.assertNotEqual(first.results[0].input_fingerprint, replay.results[0].input_fingerprint)
+        self.assertEqual(0, replay.model_calls)
+        self.assertEqual(1, provider.calls)
+        self.assertGreaterEqual(replay.cache_hits, 2)
+
     def test_unavailable_response_fails_closed_profile_78_shape(self) -> None:
         provider = FakeProvider(fail=True)
         run = run_typesafe_profile_metadata_attribution(

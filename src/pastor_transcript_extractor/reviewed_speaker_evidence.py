@@ -786,6 +786,26 @@ def _merge_profiles(
         )
         for profile_id in ordered_profile_ids
     }
+    member_ids = {member_id for ids in members_by_profile.values() for member_id in ids}
+    reviewed_names = {
+        claim.normalized_name.strip()
+        for claim in database.list_speaker_name_claims()
+        if claim.observation_id in member_ids
+        and database.is_confirmed_speaker_name_claim(claim)
+        and claim.normalized_name.strip()
+    }
+    reviewed_names.update(
+        normalize_person_name(pastor.display_name)
+        for pastor in database.list_pastors()
+        if (bound_id := database.get_pastor_speaker_profile_id(pastor.id)) is not None
+        and database.resolve_speaker_profile_id(bound_id) in linked_profile_ids
+    )
+    if len(reviewed_names) > 1:
+        conflicts.append(
+            "reviewed profile merge is blocked by conflicting reviewed identities: "
+            + ", ".join(sorted(reviewed_names))
+        )
+        return None
     different_pairs = set(database.list_effective_observation_difference_pairs())
     member_owner = {
         member_id: profile_id

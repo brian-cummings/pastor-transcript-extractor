@@ -1618,6 +1618,48 @@ and the pastor is not already represented by a profile member on that source.
 The source pastor is shown as a review suggestion, not speaker evidence; the
 reviewer must still confirm the identity from the backing clips.
 
+Inspect or correct a profile name directly with the same review command:
+
+```bash
+pte identity review-profile-attribution --profile-id 255 --reviewer Brian --inspect-names
+pte identity review-profile-attribution --profile-id 255 --reviewer Brian --reject-name "Summer Shorts" --reason "Series title, not the speaker name"
+pte identity review-profile-attribution --profile-id PROFILE_ID --reviewer Brian --clear-name --reason "Existing name is unsupported"
+pte identity review-profile-attribution --profile-id PROFILE_ID --reviewer Brian --name "Verified Person" --reason "Identified in backing video"
+pte identity review-profile-attribution --name-quality-packet --reviewer Brian
+```
+
+Inspection makes no writes. Corrections append review events atomically and save
+Markdown/JSON receipts under the application logs. They preserve voice membership
+and profile redirects. Clearing a configured pastor identity requires resolving
+its binding first; rejecting a separate erroneous name does not change that binding.
+The bounded quality packet contains source examples, positive controls, backing
+video links, proposed handling, and the exact single-profile validation command.
+It performs no model calls or registry mutations and is saved under the configured
+application evaluation directory.
+
+Extracted names remain unconfirmed proposals until attached through name review.
+Neither capitalization nor a title separator establishes a speaker credit.
+Same-voice review does not approve a name. Rejected claims do not veto acoustic
+matches or block profile readiness; active reviewed conflicts and configured
+identities retain their safeguards. Historical attachments remain effective until
+explicitly superseded. The profile table labels unreviewed claims as unconfirmed.
+
+The consolidated workflow exposes the same backend choice as metadata analysis:
+
+```bash
+pte identity run --all --metadata-backend typesafe --metadata-model jev-1.13.0 --plan-only
+```
+
+Both commands retain the `ollama` default. Selecting TypeSafe bypasses local
+Ollama enablement. The versioned TypeSafe question distinguishes speaker credits,
+other people, non-person text, and ambiguity; two distinct supporting recordings
+and human confirmation remain necessary for a profile name. Question changes
+require new compatible judgments; historical artifacts are preserved. Name rejection
+also suppresses cached proposal defaults and future metadata proposals for that
+profile. Unchanged occurrence judgments remain reusable when only review or
+aggregation state changes. The promotion judgment receives reviewed name authority
+separately and excludes rejected claims.
+
 Rerun only metadata consolidation—without acoustic association or discovery—with:
 
 ```bash

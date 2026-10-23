@@ -13,11 +13,12 @@ from pastor_transcript_extractor.speaker_registry import normalize_person_name
 from pastor_transcript_extractor.storage import Database
 
 
-PROFILE_METADATA_ATTRIBUTION_VERSION = "profile_metadata_attribution_v4"
-PROFILE_METADATA_PROMPT_VERSION = "profile_metadata_name_consolidation_v3"
+PROFILE_METADATA_ATTRIBUTION_VERSION = "profile_metadata_attribution_v5"
+PROFILE_METADATA_PROMPT_VERSION = "profile_metadata_name_consolidation_v4"
 _SUPPORTED_ATTRIBUTION_VERSIONS = {
     "profile_metadata_attribution_v2",
     "profile_metadata_attribution_v3",
+    "profile_metadata_attribution_v4",
     PROFILE_METADATA_ATTRIBUTION_VERSION,
     "profile_metadata_attribution_typesafe_v1",
     "profile_metadata_attribution_typesafe_v2",
@@ -94,6 +95,7 @@ class ProfileMetadataInput:
     membership_fingerprint: str
     fields: tuple[ProfileMetadataField, ...]
     input_fingerprint: str
+    rejected_normalized_names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,10 +199,13 @@ def profile_metadata_prompt(candidate: ProfileMetadataInput) -> str:
         for field in candidate.fields
     ]
     return (
-        "Determine whether metadata from recordings already grouped into one "
+        "Names in rejected_normalized_names were rejected in current human review; "
+        "do not propose them again. "
+        + json.dumps({"rejected_normalized_names": candidate.rejected_normalized_names})
+        + "\nDetermine whether metadata from recordings already grouped into one "
         "acoustic speaker profile consistently credits one sermon speaker. "
-        "Do not decide whether the recordings contain the same voice; that has "
-        "already been established elsewhere. Channel names, church names, sermon "
+        "Do not decide whether the recordings contain the same voice. Their grouping "
+        "is supplied context and is not validated by this task. Channel names, church names, sermon "
         "subjects, quoted people, memorial honorees, musicians, and people merely "
         "thanked are not speaker credits. Prefer explicit forms such as 'sermon "
         "by NAME', 'with Pastor NAME', a sermon title followed by '| NAME', or "
@@ -303,6 +308,7 @@ def build_profile_metadata_inputs(
                 "observation_fingerprints": member_fingerprints,
             }
         )
+        rejected_names = tuple(sorted(database.list_rejected_speaker_names_for_observations(member_ids)))
         input_fingerprint = _sha256(
             {
                 "version": PROFILE_METADATA_ATTRIBUTION_VERSION,
@@ -310,6 +316,7 @@ def build_profile_metadata_inputs(
                 "profile_id": profile.id,
                 "membership_fingerprint": membership_fingerprint,
                 "metadata": metadata_fingerprints,
+                "rejected_normalized_names": rejected_names,
                 "fields": [asdict(field) for field in fields],
                 "model": model,
                 "model_digest": model_digest,
@@ -321,6 +328,7 @@ def build_profile_metadata_inputs(
                 membership_fingerprint,
                 tuple(fields),
                 input_fingerprint,
+                rejected_names,
             )
         )
     return tuple(candidates)
@@ -586,6 +594,8 @@ def _validate_response(
             }
         )
     normalized_name = normalize_person_name(proposed_name)
+    if decision == "propose_name" and normalized_name in candidate.rejected_normalized_names:
+        raise ValueError("proposed name was rejected in current profile review")
     normalized_conflicts = {
         normalize_person_name(name): name.strip()
         for name in raw_conflicts

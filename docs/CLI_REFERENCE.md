@@ -1539,7 +1539,7 @@ pte identity profile-status [OPTIONS]
 
 ### `pte identity review-profile-attribution`
 
-Present an unnamed profile's backing videos and record its reviewed name.
+Review backing videos, inspect name claims, or record an explicit name correction.
 
 #### Usage
 
@@ -1553,6 +1553,12 @@ pte identity review-profile-attribution [OPTIONS]
 | --- | --- | --- | --- |
 | `--reviewer TEXT` | Stable human reviewer identifier.  [required] | yes | — |
 | `--profile-id INTEGER` | Exact canonical profile; default selects the largest unnamed profile. | no | — |
+| `--name-quality-packet` | Prepare the bounded naming review as Markdown/JSON and backing video packets; no model calls or registry writes. | no | False |
+| `--inspect-names` | Show immutable claims and current review status without writes. | no | False |
+| `--name TEXT` | Replace this profile's names with a reviewed name; requires --reason. | no | — |
+| `--reject-name TEXT` | Reject all occurrences of this name in the profile; requires --reason. | no | — |
+| `--clear-name` | Clear name claims while preserving voice membership; requires --reason. | no | False |
+| `--reason TEXT` | Evidence supporting an explicit name correction. | no | — |
 | `--all-proposals` | Review every current non-deferred metadata name proposal. | no | False |
 | `--all-anonymous-profiles` | Review every current non-deferred, reviewable anonymous profile. | no | False |
 | `--source-pastor-candidate` | Review the largest unnamed single-source profile whose configured source pastor is not yet represented on that source. | no | False |
@@ -1849,6 +1855,8 @@ pte identity run [OPTIONS] [YOUTUBE_VIDEO_ID]
 | `--promotion-contaminated-profile-cost FLOAT RANGE` | Utility cost of a contaminated provisional profile.  [default: 3.0; x>=0.0] | no | 3.0 |
 | `--apply-machine-canary` | Activate only eligible reversible machine assignments without also applying profile confirmations or promotions. Requires --all. | no | False |
 | `--machine-assignment-policy PATH` | Use a versioned machine-assignment policy artifact. The default checked-in policy is shadow-only. | no | — |
+| `--metadata-backend TEXT` | Metadata name attribution backend: ollama or typesafe.  [default: ollama] | no | ollama |
+| `--metadata-model TEXT` | Model for the selected metadata backend; defaults match analyze-profile-metadata. | no | — |
 | `--review-prewarm-limit INTEGER RANGE` | Precompute exact clips for this many current actionable review observations during an --all run; use 0 to disable.  [default: 24; x>=0] | no | 24 |
 | `--jobs INTEGER RANGE` | Concurrent acoustic comparison jobs; registry mutations and artifact aggregation remain serialized.  [default: 2; x>=1] | no | 2 |
 | `--base-dir PATH` | Override app data directory. | no | — |

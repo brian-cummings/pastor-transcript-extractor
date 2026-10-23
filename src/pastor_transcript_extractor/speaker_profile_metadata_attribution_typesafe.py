@@ -26,7 +26,7 @@ from pastor_transcript_extractor.storage import Database
 
 TYPESAFE_ATTRIBUTION_VERSION = "profile_metadata_attribution_typesafe_v3"
 TYPESAFE_QUESTION_VERSION = "profile-metadata-role-choice-v3"
-TYPESAFE_POLICY_VERSION = "profile-metadata-grounded-policy-v1"
+TYPESAFE_POLICY_VERSION = "profile-metadata-grounded-policy-v2"
 DEFAULT_TYPESAFE_MODEL = "jev-1.13.0"
 DEFAULT_CONFIDENCE_THRESHOLD = 0.70
 DEFAULT_SPEAKER_PROBABILITY_THRESHOLD = 0.70
@@ -187,6 +187,8 @@ def extract_profile_name_candidates(
             field.text,
             include_bare=field.field_path == "raw_metadata.description",
         ):
+            if span.normalized_name in candidate.rejected_normalized_names:
+                continue
             if not _valid_person_name(
                 span.normalized_name,
                 raw_name=span.exact_text,
@@ -240,9 +242,8 @@ def _cache_identity(
         "model_digest": provider.model_digest,
         "question_version": TYPESAFE_QUESTION_VERSION,
         "question": role_question("candidate_occurrence"),
-        "policy_version": TYPESAFE_POLICY_VERSION,
-        "membership_fingerprint": profile.membership_fingerprint,
-        "metadata_input_fingerprint": profile.input_fingerprint,
+        # A role judgment depends on this exact occurrence, question and model,
+        # not the profile grouping or aggregation/review policy.
         "candidate_state": occurrence.state_payload(),
     }
 
@@ -483,8 +484,10 @@ def run_typesafe_profile_metadata_attribution(
                     "model_digest": provider.model_digest,
                     "membership_fingerprint": item.membership_fingerprint,
                     "metadata_state": [asdict(field) for field in item.fields],
+                    "rejected_normalized_names": item.rejected_normalized_names,
                 }
             ),
+            item.rejected_normalized_names,
         )
         for item in base_inputs
     )
@@ -562,6 +565,7 @@ def run_typesafe_profile_metadata_attribution(
             "model": provider.model,
             "model_digest": provider.model_digest,
             "candidate_occurrences": [item.state_payload() for item in occurrences],
+            "rejected_normalized_names": candidate.rejected_normalized_names,
             "judgments": {key: asdict(value) for key, value in judgments.items()},
             "policy": {
                 "confidence_threshold": confidence_threshold,

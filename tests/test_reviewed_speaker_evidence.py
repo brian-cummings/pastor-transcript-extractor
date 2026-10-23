@@ -1224,6 +1224,26 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             },
         )
 
+    def test_voice_bridge_waits_for_conflicting_reviewed_name_correction(self):
+        self._write_fixture("pair-ab", "a", "b", "same_speaker")
+        self._write_fixture("pair-cd", "c", "d", "same_speaker")
+        sync_reviewed_speaker_evidence(self.database, load_reviewed_speaker_evidence(self.evaluation_root))
+        first_claim = self._add_explicit_claim("a", "alice example")
+        second_claim = self._add_explicit_claim("c", "bob example")
+        self._confirm_current_names()
+        self._write_fixture("pair-bc", "b", "c", "same_speaker")
+        result = sync_reviewed_speaker_evidence(self.database, load_reviewed_speaker_evidence(self.evaluation_root))
+        self.assertTrue(any("conflicting reviewed identities" in conflict for conflict in result.conflicts))
+        owner_a = self.database.list_effective_profile_ids_for_observation(self.observations["a"].id)[0]
+        owner_c = self.database.list_effective_profile_ids_for_observation(self.observations["c"].id)[0]
+        self.assertNotEqual(owner_a, owner_c)
+        record_name_claim_review(self.database, claim_id=second_claim.id, profile_id=owner_c,
+            attach=False, reviewer="Brian", reason="Incorrect speaker label", review_event_key="correct-reviewed-name")
+        result = sync_reviewed_speaker_evidence(self.database, load_reviewed_speaker_evidence(self.evaluation_root))
+        self.assertEqual((), result.conflicts)
+        self.assertEqual(self.database.resolve_speaker_profile_id(owner_a), self.database.resolve_speaker_profile_id(owner_c))
+        self.assertEqual("Bob Example", self.database.get_speaker_name_claim(second_claim.id).display_name)
+
     def test_manual_claim_review_blocks_automatic_reconciliation(self) -> None:
         pastor = self.database.add_pastor("andrew-korp", "Andrew Korp")
         configured = ensure_configured_pastor_profile(self.database, pastor)

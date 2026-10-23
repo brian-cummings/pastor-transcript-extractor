@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import hashlib
 import html
@@ -99,7 +99,7 @@ def list_unnamed_profile_attribution_candidates(
                     evidence=evidence,
                     membership_fingerprint=membership_fingerprint,
                     metadata_attribution=(
-                        metadata_attributions.get(membership_fingerprint)
+                        _current_metadata_proposal(database, member_ids, metadata_attributions.get(membership_fingerprint))
                         if metadata_attributions is not None
                         else None
                     ),
@@ -240,7 +240,7 @@ def get_profile_attribution_candidate(
         evidence=evidence,
         membership_fingerprint=membership_fingerprint,
         metadata_attribution=(
-            metadata_attributions.get(membership_fingerprint)
+            _current_metadata_proposal(database, member_ids, metadata_attributions.get(membership_fingerprint))
             if metadata_attributions is not None
             else None
         ),
@@ -418,6 +418,11 @@ def write_profile_attribution_packet(
             "https://i.ytimg.com/vi/"
             f"{evidence.youtube_video_id}/hqdefault.jpg"
         )
+        clip_label = (
+            "Watch at an identity-selected speech clip"
+            if evidence.timestamp_source != "observation_start_compatibility"
+            else "Watch from the recorded observation start"
+        )
         cards.append(
             "<section><h2>Evidence video "
             f"{index}: {html.escape(evidence.title)}</h2>"
@@ -425,7 +430,7 @@ def write_profile_attribution_packet(
             'target="_blank" rel="noopener">'
             f'<img src="{html.escape(thumbnail)}" '
             f'alt="Open {html.escape(evidence.title)} on YouTube">'
-            '<span>Watch at an identity-selected speech clip</span></a>'
+            f'<span>{clip_label}</span></a>'
             f'<p><a href="{html.escape(timestamp_url)}" target="_blank" '
             'rel="noopener">Open identity clip timestamp</a>'
             f" · observation {evidence.observation_id}</p></section>"
@@ -469,7 +474,7 @@ background:#c00;color:#fff;padding:.8rem 1.1rem;border-radius:.5rem;font-weight:
 </style></head><body>""" + (
         f"<h1>Name speaker profile {candidate.profile_id}</h1>"
         f"<p>{candidate.member_count} member recordings. Each link opens at a "
-        "persisted speech-qualified identity clip. Use the terminal prompt to "
+        "saved identity clip or, when unavailable, the recorded observation start. Use the terminal prompt to "
         "choose the evidence video and enter the speaker name.</p>"
         + source_pastor_summary
         + metadata_summary
@@ -478,6 +483,145 @@ background:#c00;color:#fff;padding:.8rem 1.1rem;border-radius:.5rem;font-weight:
     )
     path.write_text(document, encoding="utf-8")
     return path
+
+
+def write_name_quality_review_packet(database: Database, root: Path) -> Path:
+    """Prepare a fixed, bounded review from saved claims; never classify or mutate."""
+    from pastor_transcript_extractor.identity_attribution import (
+        extract_grounded_attributions, extract_person_name_spans,
+    )
+    import shlex
+
+    root = root.expanduser().resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    packet_root = root / f"name-quality-review-{stamp}-profiles"
+    examples = (
+        ("Summer Shorts", "Summer Shorts - 2 John", "not_a_person", False),
+        ("Full Service", "Full Service - 11:15 am", "not_a_person", False),
+        ("Faith Journey", "Faith Journey - Byron Reynolds", "not_a_person", False),
+        ("Prison Break", "Prison Break - May 30, 2026", "not_a_person", False),
+        ("Vonda Cook", "Vonda Cook - Celebration of Life [July 13, 2026]", "other_person", False),
+        ("Andrew Korp", "Message by Pastor Andrew Korp", "sermon_speaker", True),
+        ("Lillie Hill", 'Sis Lillie Hill - "Oh How I love Thy Law!"', "sermon_speaker", True),
+    )
+    claims = database.list_speaker_name_claims()
+    cases = []
+    profile_packets = {}
+    for name, control_title, expected_role, explicit in examples:
+        matching = [c for c in claims if c.normalized_name == normalize_person_name(name)]
+        # Prefer an affected profile, then the newest saved occurrence.
+        matching.sort(key=lambda c: (bool(c.observation_id and database.list_effective_profile_ids_for_observation(c.observation_id)), c.id), reverse=True)
+        sampled = matching[:1] if not explicit else []
+        try:
+            provenance = json.loads(sampled[0].provenance_json) if sampled else {}
+        except (TypeError, ValueError):
+            provenance = {}
+        source_excerpt = provenance.get("exact_excerpt") if isinstance(provenance, dict) else None
+        has_source_excerpt = isinstance(source_excerpt, str) and bool(source_excerpt.strip())
+        title = source_excerpt if has_source_excerpt else control_title
+        attribution = extract_grounded_attributions(
+            metadata_payload={"video": {"title": title}}, proposed_payload={}, target_name=None,
+            metadata_artifact_id=0, metadata_content_sha256=_sha256(title),
+        )
+        relevant = [item for item in attribution.observations if item["normalized_person_name"] == normalize_person_name(name)]
+        producer_pass = bool(relevant) and all(item["explicit_speaker_attribution"] == explicit for item in relevant)
+        owners = sorted({database.resolve_speaker_profile_id(profile_id)
+            for claim in sampled if claim.observation_id is not None
+            for profile_id in database.list_effective_profile_ids_for_observation(claim.observation_id)})
+        for profile_id in owners:
+            if profile_id in profile_packets:
+                continue
+            try:
+                candidate = get_profile_attribution_candidate(database, profile_id)
+                packet = write_profile_attribution_packet(candidate, packet_root / f"profile-{profile_id}.html")
+                profile_packets[profile_id] = str(packet)
+            except ValueError:
+                profile_packets[profile_id] = "Profile requires separate configured-identity review"
+        cases.append({"candidate": name, "title": title,
+            "source_kind": "saved_claim_excerpt" if has_source_excerpt else "constructed_positive_control" if explicit else "constructed_regression_case",
+            "expected_role": expected_role, "expected_explicit_credit": explicit,
+            "producer_check": "PASS" if producer_pass else "FAIL",
+            "candidate_spans": [asdict(span) for span in extract_person_name_spans(title)],
+            "saved_claim_count": len(matching), "sampled_claim_ids": [c.id for c in sampled],
+            "current_review": database.get_effective_name_claim_review(sampled[0].id) if sampled else None,
+            "affected_sample_profile_ids": owners,
+            "proposed_handling": "Retain as a grounded speaker-credit control" if explicit else
+                "Reject this name attribution after review; preserve voice membership and leave the actual speaker unknown",
+        })
+    base_dir = shlex.quote(str(database.database_path.parent))
+    validate = f"pte identity analyze-profile-metadata --profile-id 255 --backend typesafe --details --base-dir {base_dir}"
+    inspect = f"pte identity review-profile-attribution --profile-id 255 --reviewer Brian --inspect-names --base-dir {base_dir}"
+    reject = f"pte identity review-profile-attribution --profile-id 255 --reviewer Brian --reject-name 'Summer Shorts' --reason 'Series title, not the speaker name' --base-dir {base_dir}"
+    coverage_title = "Faith Journey – Byron Reynolds"
+    coverage_spans = [asdict(span) for span in extract_person_name_spans(coverage_title)]
+    coverage_pass = {span["exact_text"] for span in coverage_spans} == {"Faith Journey", "Byron Reynolds"}
+    proposed_rejections = [
+        {"profile_id": profile_id, "name": case["candidate"], "command":
+            f"pte identity review-profile-attribution --profile-id {profile_id} --reviewer Brian "
+            f"--reject-name {shlex.quote(case['candidate'])} --reason 'Title or honoree, not the speaker name' --base-dir {base_dir}"}
+        for case in cases if not case["expected_explicit_credit"]
+        for profile_id in case["affected_sample_profile_ids"]
+    ]
+    name_gaps = []
+    for profile_id in profile_packets:
+        members = database.list_effective_observation_ids_for_profile(profile_id)
+        confirmed = _profile_explicit_names(database, members)
+        configured = {
+            pastor.display_name for pastor in database.list_pastors()
+            if (bound_id := database.get_pastor_speaker_profile_id(pastor.id)) is not None
+            and database.resolve_speaker_profile_id(bound_id) == profile_id
+        }
+        if not confirmed and not configured:
+            name_gaps.append({"profile_id": profile_id,
+                "blocked_statement": f"The actual person's name for profile {profile_id}",
+                "inspected_reuse_paths": "Saved member claims, effective name reviews, and configured identity bindings; unconfirmed title text cannot supply a reviewed identity",
+                "missing_information": "A reviewed speaker credit or identification from backing videos",
+                "responsible_insertion_point": "Existing profile-attribution review",
+                "smallest_change": "Reject the erroneous label; keep the name unknown until a supported name is reviewed",
+                "acceptance_check": "No rejected name authority or voice-readiness blocker; voice membership preserved",
+                "authorization_boundary": "Human name approval is separate from metadata proposals and voice matching"})
+    report = {"schema_version": 1, "artifact_kind": "identity_name_quality_review_v1",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": "READY_FOR_BOUNDED_DATASET_VALIDATION",
+        "producer_checks": "PASS" if coverage_pass and all(c["producer_check"] == "PASS" for c in cases) else "FAIL",
+        "dataset_model_validation": "NOT_RUN", "registry_mutations": 0, "model_calls": 0,
+        "cases": cases, "profile_packets": profile_packets,
+        "candidate_coverage_control": {"title": coverage_title, "spans": coverage_spans, "check": "PASS" if coverage_pass else "FAIL"},
+        "proposed_rejections_after_review": proposed_rejections,
+        "remaining_name_gaps": name_gaps,
+        "reuse_review": {"saved_claims": "Inspected exact source excerpts and effective review events; historical claims were not rewritten",
+            "model_judgments": "No old answer is reinterpreted under the changed role question; the existing backend runner reuses only matching cache identities",
+            "voice_membership": "Retained; name quality does not establish voice sameness"},
+        "remaining_gap": {"blocked_statement": "The actual person's name for profile 255",
+            "missing_information": "A reviewed speaker credit or identification from its backing videos",
+            "responsible_insertion_point": "Existing profile-attribution review",
+            "smallest_change": "Reject the series-title attribution, then confirm a supported name when available",
+            "acceptance_check": "Rejection clears name authority without changing members or creating a voice conflict",
+            "authorization_boundary": "Prepared commands only; Brian reviews and executes name corrections and dataset validation"},
+        "commands": {"inspect_profile_255": inspect, "proposed_rejection_after_review": reject,
+            "bounded_dataset_validation": validate},
+        "validation_limit": "One selected profile; cached judgments reused. New TypeSafe calls, if needed, validate metadata roles only and cannot authorize naming or merging. A one-recording profile remains insufficient for a two-recording name proposal."}
+    destination = root / f"name-quality-review-{stamp}.json"
+    destination.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    lines = ["# Identity name quality review", "", f"Status: {report['status']}", "",
+        f"Producer checks: {report['producer_checks']}. Dataset model validation: NOT RUN. Registry mutations: 0.", "",
+        "| Candidate | Expected role | Producer | Sample profiles |", "| --- | --- | --- | --- |"]
+    lines.extend(f"| {case['candidate']} | {case['expected_role']} | {case['producer_check']} | {', '.join(map(str, case['affected_sample_profile_ids'])) or 'none'} |" for case in cases)
+    lines.extend(["", "## Proposed handling", "",
+        "Reject the sampled non-person and memorial-honoree attributions after reviewing their exact source excerpts in the JSON report. Keep the voice memberships. Do not infer replacement names from a source pastor or an acoustic match.", "",
+        "Faith Journey – Byron Reynolds must expose both candidate spans; the bare trailing byline remains a proposal requiring role evidence and human confirmation.", "",
+        "Historical review decisions remain effective until explicitly superseded. Existing model results remain historical; changed question semantics require a matching new judgment.", "",
+        "## Remaining gap", "", report["remaining_gap"]["blocked_statement"] + ": " + report["remaining_gap"]["missing_information"] + ".", "",
+        "## Prepared commands", "", "Inspect:", "```sh", inspect, "```", "", "Proposed rejection after review:", "```sh", reject, "```", "",
+        "Bounded dataset validation (Brian runs):", "```sh", validate, "```", "", report["validation_limit"], "",
+        "## Backing profile packets", ""])
+    lines.extend(f"- Profile {profile_id}: {packet}" for profile_id, packet in profile_packets.items())
+    lines.extend(["", "## Additional prepared rejections", ""])
+    for item in proposed_rejections:
+        lines.extend([f"Profile {item['profile_id']}: {item['name']} (after review)", "```sh", item["command"], "```", ""])
+    destination.with_suffix(".md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return destination
 
 
 def apply_reviewed_profile_attribution(
@@ -668,6 +812,14 @@ def review_profile_names(
             "confirmed_names": sorted(_profile_explicit_names(database, members)),
             "member_observation_ids": sorted(members),
             "voice_membership_changed": False, "profile_redirects_changed": False}
+
+
+def _current_metadata_proposal(
+    database: Database, member_ids: list[int], result: ProfileMetadataAttribution | None,
+) -> ProfileMetadataAttribution | None:
+    if result is not None and result.proposed_name and normalize_person_name(result.proposed_name) in database.list_rejected_speaker_names_for_observations(member_ids):
+        return None
+    return result
 
 
 def _profile_explicit_names(database: Database, member_ids: set[int] | list[int]) -> set[str]:

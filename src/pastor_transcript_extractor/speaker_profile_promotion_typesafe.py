@@ -19,7 +19,7 @@ from pastor_transcript_extractor.storage import Database
 
 
 PROMOTION_EVIDENCE_VERSION = "profile_promotion_evidence_v2"
-PROMOTION_QUESTION_VERSION = "profile-promotion-same-principal-speaker-noul-v1"
+PROMOTION_QUESTION_VERSION = "profile-promotion-same-principal-speaker-noul-v2"
 DEFAULT_TYPESAFE_MODEL = "jev-1.13.0"
 MAX_METADATA_TEXT = 1_200
 MAX_TRANSCRIPT_EXCERPTS = 3
@@ -46,6 +46,8 @@ def promotion_question() -> dict[str, Any]:
                     "assumed yes or no."
                 ),
                 "Same-source membership alone is not identity proof.",
+                "Unconfirmed name candidates do not establish identity or a different speaker. "
+                "A naming disagreement without confirmed identity evidence must not independently veto acoustic evidence.",
                 (
                     "Sermon topic, theology, rhetoric, and speaking style are not "
                     "identity evidence."
@@ -479,7 +481,8 @@ def _build_promotion_evidence_context(
     }
     claims_by_observation: dict[int, list[dict[str, Any]]] = {}
     for claim in database.list_speaker_name_claims():
-        if claim.observation_id is None:
+        review = database.get_effective_name_claim_review(claim.id)
+        if claim.observation_id is None or (review is not None and review[0] == "reject"):
             continue
         claims_by_observation.setdefault(int(claim.observation_id), []).append(
             {
@@ -487,7 +490,8 @@ def _build_promotion_evidence_context(
                 "normalized_name": claim.normalized_name,
                 "claim_kind": claim.claim_kind,
                 "channel": claim.channel,
-                "explicit_speaker_attribution": claim.explicit_speaker_attribution,
+                "extracted_speaker_credit": claim.explicit_speaker_attribution,
+                "explicit_speaker_attribution": database.is_confirmed_speaker_name_claim(claim),
                 "confirmed_identity": database.is_confirmed_speaker_name_claim(claim),
                 "name_review": database.get_effective_name_claim_review(claim.id),
             }

@@ -979,6 +979,7 @@ def evaluate_shadow_association(
     jobs: int = 1,
     executor: Executor | None = None,
 ) -> dict[str, Any]:
+    """Compare voices; supplied name sets contain only effective reviewed identities."""
     if minimum_same_exemplars < 2:
         raise ValueError("a shadow match requires at least two same exemplars")
     if not candidate_audio_sha256:

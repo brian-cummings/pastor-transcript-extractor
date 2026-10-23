@@ -15,6 +15,7 @@ from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.speaker_profile_attribution import (
     apply_reviewed_profile_attribution,
     review_profile_names,
+    write_name_quality_review_packet,
     load_profile_attribution_clip_timestamps,
     load_profile_attribution_deferrals,
     list_proposed_profile_attribution_candidates,
@@ -192,6 +193,59 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "configured pastor identity"):
             self._correct_name(replacement_name="Someone Else")
         self.assertEqual(self.profile.id, self.database.resolve_speaker_profile_id(configured.id))
+
+    def test_rejected_metadata_default_is_removed_from_review_queue(self):
+        self._legacy_name()
+        candidate = list_unnamed_profile_attribution_candidates(self.database)[0]
+        proposal = ProfileMetadataAttribution(
+            profile_id=self.profile.id, membership_fingerprint=candidate.membership_fingerprint,
+            input_fingerprint="old-input", decision="propose_name", routing="human_confirmation_available",
+            proposed_name="Summer Shorts", normalized_name="summer shorts", reason_codes=(),
+            evidence=(), conflicting_names=(), supporting_recording_count=2,
+            artifact_path=self.root / "old-proposal.json", cache_hit=True,
+        )
+        self._correct_name(rejected_name="Summer Shorts")
+        self.assertEqual((), list_proposed_profile_attribution_candidates(self.database,
+            metadata_attributions={candidate.membership_fingerprint: proposal}))
+        candidate = list_unnamed_profile_attribution_candidates(self.database,
+            metadata_attributions={candidate.membership_fingerprint: proposal})[0]
+        self.assertIsNone(candidate.metadata_attribution)
+
+    def test_name_quality_packet_is_bounded_and_does_not_mutate_registry(self):
+        legacy = self._legacy_name()
+        with self.database.connect() as connection:
+            before = connection.execute("SELECT COUNT(*) FROM profile_name_claim_events").fetchone()[0]
+        path = write_name_quality_review_packet(Database(self.paths.database, readonly=True), self.paths.evaluation / "identity-name-quality")
+        report = json.loads(path.read_text())
+        self.assertEqual("PASS", report["producer_checks"])
+        self.assertEqual("NOT_RUN", report["dataset_model_validation"])
+        self.assertEqual(7, len(report["cases"]))
+        self.assertEqual(0, report["model_calls"])
+        self.assertTrue(path.with_suffix(".md").exists())
+        self.assertIsNone(self.database.get_effective_name_claim_review(legacy.id))
+        with self.database.connect() as connection:
+            self.assertEqual(before, connection.execute("SELECT COUNT(*) FROM profile_name_claim_events").fetchone()[0])
+        faith = next(case for case in report["cases"] if case["candidate"] == "Faith Journey")
+        self.assertIn("Byron Reynolds", [span["exact_text"] for span in faith["candidate_spans"]])
+
+    def test_packet_regeneration_preserves_previous_reports_and_backing_packets(self):
+        self._legacy_name()
+        root = self.paths.evaluation / "identity-name-quality"
+        first = write_name_quality_review_packet(self.database, root)
+        first_bytes = first.read_bytes()
+        old_packets = json.loads(first_bytes)["profile_packets"]
+        second = write_name_quality_review_packet(self.database, root)
+        new_packets = json.loads(second.read_text())["profile_packets"]
+        self.assertNotEqual(first, second)
+        self.assertEqual(first_bytes, first.read_bytes())
+        self.assertNotEqual(old_packets, new_packets)
+        self.assertTrue(all(Path(path).exists() for path in old_packets.values()))
+
+    def test_name_quality_packet_has_existing_cli_entry_point(self):
+        result = CliRunner().invoke(app, ["identity", "review-profile-attribution", "--name-quality-packet",
+            "--reviewer", "Brian", "--base-dir", str(self.paths.root)])
+        self.assertEqual(0, result.exit_code, result.output)
+        self.assertIn("JSON evidence:", result.output)
 
     def test_cli_inspects_then_replaces_without_opening_browser(self):
         self._legacy_name()

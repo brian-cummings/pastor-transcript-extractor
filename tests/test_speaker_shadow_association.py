@@ -28,6 +28,7 @@ from pastor_transcript_extractor.speaker_registry import (
     create_anonymous_profile,
     record_observation_difference,
     record_profile_redirect,
+    record_name_claim_review,
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
     ProfileAssociationReadiness,
@@ -499,6 +500,43 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
                 "automatic_profile_ready"
             ]
         )
+
+    def test_name_authority_controls_real_inventory_and_acoustic_matching(self):
+        from pastor_transcript_extractor.workflows.identity.association import load_association_corpus_inventory
+        exemplars = [self._observation(key) for key in ("a", "b", "c")]
+        candidate = self._observation("candidate-naming")
+        profile = self._profile(exemplars)
+        claims = []
+        for observation, name in zip([*exemplars, candidate], ["Summer Shorts", "Faith Journey", "Full Service", "Alex Example"]):
+            claims.append(self.database.add_speaker_name_claim(
+                video_id=observation.video_id, observation_id=observation.id,
+                display_name=name, normalized_name=name.lower(), claim_kind="explicit_speaker_attribution",
+                channel="metadata", explicit_speaker_attribution=True, correlation_group_id=name,
+                provenance_json="{}", artifact_path="legacy.json", claim_fingerprint=name,
+                extractor_version="speaker_evidence_v1",
+            ))
+        evidence = self._evidence((("a", "b"), ("b", "c"), ("a", "c")))
+
+        def evaluate():
+            inventory = load_association_corpus_inventory(self.database)
+            readiness = next(r for r in assess_profile_association_readiness(self.database, evidence) if r.profile_id == profile.id)
+            self.assertNotIn("conflicting_explicit_attribution", readiness.shadow_blockers)
+            return evaluate_shadow_association(
+                candidate=candidate, candidate_audio_path=Path("candidate.wav"), candidate_audio_sha256="candidate-audio",
+                candidate_normalized_names=inventory.candidate_names_by_observation.get(candidate.id, ()),
+                profiles=((readiness, tuple(ShadowExemplar(profile.id, o, Path(f"{o.id}.wav"), f"audio-{o.id}") for o in exemplars)),),
+                compare=lambda *_args: {"outcome": "same_speaker"}, policy_spec=self._policy_spec(), model_fingerprint="model",
+            )
+
+        self.assertEqual("proposed_match", evaluate()["outcome"])
+        other = create_anonymous_profile(self.database, reviewer="Brian", reason="Separate identity", review_event_key="other-identity")
+        for claim, owner in ((claims[0], profile.id), (claims[-1], other.id)):
+            record_name_claim_review(self.database, claim_id=claim.id, profile_id=owner, attach=True,
+                reviewer="Brian", reason="Confirmed identity", review_event_key=f"confirmed:{claim.id}")
+        self.assertEqual("conflicting_attribution", evaluate()["outcome"])
+        record_name_claim_review(self.database, claim_id=claims[-1].id, profile_id=other.id, attach=False,
+            reviewer="Brian", reason="Wrong name", review_event_key="reject-candidate-name")
+        self.assertEqual("proposed_match", evaluate()["outcome"])
 
     def test_parallel_comparisons_preserve_exemplar_order(self) -> None:
         candidate = self._observation("parallel-candidate")

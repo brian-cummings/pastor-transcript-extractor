@@ -5181,6 +5181,21 @@ class Database:
             int(profile_id) if profile_id is not None else None,
         )
 
+    def list_rejected_speaker_names_for_observations(self, observation_ids: Sequence[int]) -> set[str]:
+        if not observation_ids:
+            return set()
+        placeholders = ",".join("?" for _ in observation_ids)
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""SELECT DISTINCT claim.normalized_name FROM speaker_name_claims claim
+                JOIN profile_name_claim_events event ON event.claim_id = claim.id
+                WHERE claim.observation_id IN ({placeholders}) AND event.action = 'reject'
+                AND event.id = (SELECT MAX(latest.id) FROM profile_name_claim_events latest
+                                WHERE latest.claim_id = claim.id)""",
+                tuple(observation_ids),
+            ).fetchall()
+        return {str(row["normalized_name"]) for row in rows}
+
     def is_confirmed_speaker_name_claim(self, claim: SpeakerNameClaim) -> bool:
         """Apply the latest review without changing immutable extraction evidence.
 

@@ -41,6 +41,7 @@ from pastor_transcript_extractor.speaker_profile_attribution import (
     list_unnamed_profile_attribution_candidates,
     record_profile_attribution_deferral,
     write_profile_attribution_packet,
+    write_name_quality_review_packet,
 )
 from pastor_transcript_extractor.speaker_profile_metadata_attribution import (
     ProfileMetadataAttributionRun,
@@ -61,7 +62,7 @@ console = Console()
 
 @identity_app.command(
     "review-profile-attribution",
-    help="Present an unnamed profile's backing videos and record its reviewed name.",
+    help="Review backing videos, inspect name claims, or record an explicit name correction.",
 )
 def review_profile_attribution_command(
     reviewer: str = typer.Option(..., help="Stable human reviewer identifier."),
@@ -69,6 +70,7 @@ def review_profile_attribution_command(
         None,
         help="Exact canonical profile; default selects the largest unnamed profile.",
     ),
+    name_quality_packet: bool = typer.Option(False, "--name-quality-packet", help="Prepare the bounded naming review as Markdown/JSON and backing video packets; no model calls or registry writes."),
     inspect_names: bool = typer.Option(False, "--inspect-names", help="Show immutable claims and current review status without writes."),
     name: str | None = typer.Option(None, "--name", help="Replace this profile's names with a reviewed name; requires --reason."),
     reject_name: str | None = typer.Option(None, "--reject-name", help="Reject all occurrences of this name in the profile; requires --reason."),
@@ -116,6 +118,18 @@ def review_profile_attribution_command(
         help="Override app data directory.",
     ),
 ) -> None:
+    if name_quality_packet:
+        if any((profile_id is not None, all_proposals, all_anonymous_profiles, source_pastor_candidate,
+                inspect_names, name is not None, reject_name is not None, clear_name, plan_only)):
+            raise typer.BadParameter("--name-quality-packet is a standalone read-only review selection")
+        paths = build_paths(base_dir)
+        if not paths.database.exists():
+            raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+        report = write_name_quality_review_packet(Database(paths.database, readonly=True),
+            paths.evaluation / "identity-name-quality")
+        console.print(f"Prepared name quality review: {report.with_suffix('.md')}")
+        console.print(f"JSON evidence: {report}")
+        return
     if sum(
         (
             profile_id is not None,
@@ -150,15 +164,13 @@ def review_profile_attribution_command(
                         review = database.get_effective_name_claim_review(claim.id)
                         console.print(f"claim={claim.id} name={claim.display_name!r} channel={claim.channel} review={review or 'unconfirmed proposal'} provenance={claim.provenance_json}")
                 return
-            packet = paths.logs / "profile-attribution-reviews" / f"profile-{profile_id}.html"
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+            receipt_root = paths.logs / "profile-attribution-reviews" / "corrections"
+            packet = write_profile_attribution_packet(candidate, receipt_root / f"profile-{profile_id}-{stamp}.html")
             receipt = review_profile_names(
                 database, profile_id=profile_id, reviewer=reviewer, reason=reason or "",
                 packet_path=packet, replacement_name=name, rejected_name=reject_name,
             )
-            packet = write_profile_attribution_packet(candidate, packet)
-            receipt_root = paths.logs / "profile-attribution-reviews" / "corrections"
-            receipt_root.mkdir(parents=True, exist_ok=True)
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
             receipt_path = receipt_root / f"profile-{profile_id}-{stamp}.json"
             receipt_path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
             receipt_path.with_suffix(".md").write_text(
