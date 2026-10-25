@@ -2850,6 +2850,7 @@ pte analysis salvation-v5-threshold-review [OPTIONS]
 | --- | --- | --- | --- |
 | `--input PATH` | Reviewed v5 calibration packet.  [default: evaluation/sermon-topics/salvation-v5-calibration-v1.json] | no | evaluation/sermon-topics/salvation-v5-calibration-v1.json |
 | `--output PATH` | Fingerprint-bound JSON packet path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-v5-threshold-review-v1.json] | no | evaluation/sermon-topics/salvation-v5-threshold-review-v1.json |
+| `--base-dir PATH` | Application data directory for review artifacts. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
 ### `pte analysis salvation-v6-repentance-calibration`
@@ -2999,6 +3000,7 @@ pte analysis salvation-observation-threshold-review [OPTIONS]
 | `--input PATH` | Reviewed salvation relationship packet; repeat for each packet.  [default: evaluation/sermon-topics/salvation-relationships-review-v2.json, evaluation/sermon-topics/salvation-relationships-review-v3.json] | no | evaluation/sermon-topics/salvation-relationships-review-v2.json, evaluation/sermon-topics/salvation-relationships-review-v3.json |
 | `--candidate-threshold FLOAT RANGE` | Proposed probability boundary for affirmative leaf observations.  [default: 0.7; 0.01<=x<=0.99] | no | 0.7 |
 | `--output PATH` | Fingerprint-bound JSON packet path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-observation-threshold-review-v1.json] | no | evaluation/sermon-topics/salvation-observation-threshold-review-v1.json |
+| `--base-dir PATH` | Application data directory for review artifacts. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
 ### `pte analysis salvation-observation-boundaries-review`
@@ -3017,6 +3019,7 @@ pte analysis salvation-observation-boundaries-review [OPTIONS]
 | --- | --- | --- | --- |
 | `--input PATH` | Reviewed salvation relationship packet; repeat for each packet.  [default: evaluation/sermon-topics/salvation-relationships-review-v2.json, evaluation/sermon-topics/salvation-relationships-review-v3.json] | no | evaluation/sermon-topics/salvation-relationships-review-v2.json, evaluation/sermon-topics/salvation-relationships-review-v3.json |
 | `--output PATH` | Fingerprint-bound JSON packet path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-observation-boundaries-review-v1.json] | no | evaluation/sermon-topics/salvation-observation-boundaries-review-v1.json |
+| `--base-dir PATH` | Application data directory for review artifacts. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
 ### `pte analysis salvation-collected-observations-review`
@@ -3193,6 +3196,7 @@ pte analysis salvation-analytical-backfill-plan [OPTIONS]
 | --- | --- | --- | --- |
 | `--audit PATH` | Reviewed provider-free candidate-discovery audit.  [default: evaluation/sermon-topics/salvation-candidate-discovery-audit-v1.json] | no | evaluation/sermon-topics/salvation-candidate-discovery-audit-v1.json |
 | `--output PATH` | Fingerprint-bound JSON backfill plan; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-analytical-backfill-plan-v1.json] | no | evaluation/sermon-topics/salvation-analytical-backfill-plan-v1.json |
+| `--base-dir PATH` | Application data directory for review artifacts. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
 ### `pte analysis salvation-conversion-recalibration`
@@ -3295,6 +3299,7 @@ pte analysis evaluate-topic-behavior [OPTIONS]
 | `--output PATH` | Result JSON path; Markdown is written beside it. | no | — |
 | `--timeout-seconds FLOAT RANGE` | Provider timeout for an uncached request.  [default: 45.0; x>=1.0] | no | 45.0 |
 | `--validate-only` | Validate frozen coverage without calling TypeSafe or writing results. | no | False |
+| `--base-dir PATH` | Application data directory for results and cache. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
 ### `pte analysis listener-directives-review`
@@ -3312,6 +3317,7 @@ pte analysis listener-directives-review [OPTIONS]
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
 | `--output PATH` | [default: evaluation/sermon-topics/listener-directive-stage-gate-v3.json] | no | evaluation/sermon-topics/listener-directive-stage-gate-v3.json |
+| `--base-dir PATH` | Application data directory for review artifacts. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
 ### `pte analysis public-life-treatment-review`
@@ -3329,6 +3335,7 @@ pte analysis public-life-treatment-review [OPTIONS]
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
 | `--output PATH` | [default: evaluation/sermon-topics/public-life-treatment-stage-gate-v2.json] | no | evaluation/sermon-topics/public-life-treatment-stage-gate-v2.json |
+| `--base-dir PATH` | Application data directory for review artifacts. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
 ### `pte analysis public-life-routing-review`
@@ -3346,6 +3353,7 @@ pte analysis public-life-routing-review [OPTIONS]
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
 | `--output PATH` | [default: evaluation/sermon-topics/public-life-routing-comparison-v2.json] | no | evaluation/sermon-topics/public-life-routing-comparison-v2.json |
+| `--base-dir PATH` | Application data directory for review artifacts. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
 ### `pte analysis source-material-review`
@@ -3384,6 +3392,7 @@ pte analysis source-material-stage-gate [OPTIONS]
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
 | `--output PATH` | [default: evaluation/sermon-topics/source-material-stage-gate-v1.json] | no | evaluation/sermon-topics/source-material-stage-gate-v1.json |
+| `--base-dir PATH` | Application data directory for review artifacts. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
 ### `pte analysis g1-feasibility-review`
