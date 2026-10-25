@@ -4,9 +4,12 @@ import json
 import typer
 from ..apps import analysis_app
 from ... import learning_demo
+from ... import learning_demo_model_fit as model_fit
 
 app=typer.Typer(help='Prepare V3 offline; paid execution requires a separate exact-input decision.')
 analysis_app.add_typer(app,name='learning-demo')
+fit_app=typer.Typer(help='Prepare and inspect a six-window, local-only source-reading model-fit trial.')
+app.add_typer(fit_app,name='model-fit')
 
 
 def emit(value,as_json):
@@ -64,4 +67,39 @@ def model_info(model:str|None=typer.Option(None,'--model'),
         emit(dict(status='INSTALLED_MODEL_CHECKED',runtime=runtime,
             selection='--model overrides PTE_LLM_MODEL; frozen inputs retain their selection',
             metadata_requests=1,model_calls=0,generation_calls=0,paid_calls=0),as_json)
+    except (ValueError,OSError,KeyError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@fit_app.command('prepare')
+def fit_prepare(prior_input:Path=typer.Option(...,'--from-input'),
+                base_dir:Path|None=typer.Option(None,'--base-dir'),
+                model:str=typer.Option('qwen3.5:9b','--model'),
+                check_only:bool=typer.Option(False,'--check-only'),
+                as_json:bool=typer.Option(False,'--json')):
+    try:
+        packet,out=model_fit.prepare(prior_input,base_dir,model=model,check_only=check_only)
+        emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',
+            input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],
+            selection=packet['selection'],budget=packet['budget'],model_calls=0,paid_calls=0),as_json)
+    except (ValueError,OSError,KeyError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@fit_app.command('run')
+def fit_run(input_path:Path=typer.Option(...,'--input'),base_dir:Path|None=typer.Option(None,'--base-dir'),
+            approve_input:str|None=typer.Option(None,'--approve-input'),
+            experimental:bool=typer.Option(False,'--experimental'),
+            max_usd:str=typer.Option('0','--max-usd'),check_only:bool=typer.Option(False,'--check-only'),
+            as_json:bool=typer.Option(False,'--json')):
+    try:
+        result=model_fit.run(input_path,base_dir,approve_input=approve_input,experimental=experimental,
+            max_usd=max_usd,check_only=check_only,progress=lambda message:typer.echo(message,err=True))
+        emit(result,as_json)
+        if result['status']=='FAIL(component)': raise typer.Exit(1)
+    except (ValueError,OSError,KeyError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@fit_app.command('report')
+def fit_report(run_dir:Path=typer.Option(...,'--run-dir'),base_dir:Path|None=typer.Option(None,'--base-dir'),
+               as_json:bool=typer.Option(False,'--json')):
+    try: emit(model_fit.report(run_dir,base_dir),as_json)
     except (ValueError,OSError,KeyError) as error: raise typer.BadParameter(str(error)) from error

@@ -212,3 +212,39 @@ pte analysis learning-demo prepare --base-dir /Users/briancummings/Documents/Pas
 This command validates selection and the frozen source geometry, not Qwen judgment
 quality. It does not authorize or execute another experiment. A bounded real model-fit
 run and its prior-attempt accounting remain a separate execution preparation.
+
+## Bounded Qwen source-reading trial
+
+`pte analysis learning-demo model-fit prepare --from-input <eddf82b9…/input.json>
+--model qwen3.5:9b --base-dir <application-base> --json` freezes the approved six-request
+trial under `<base>/evaluation/learning-demo-model-fit/<fingerprint>`. Cases are selected
+before examining model results: theology on the first recording, application on the
+second and the frozen independent control on the third, for each profile in the
+original declared recording order. Profiles are interleaved. This yields six recordings,
+three windows per profile and two independent controls. The selected source messages,
+schema, prompt and 8192 output cap are byte-for-byte the corrected Gemma contract;
+the model/runtime changes to Qwen and thinking is explicitly disabled.
+
+`model-fit run --input <frozen-input> --experimental --approve-input <fingerprint>
+--max-usd 0 --json` permits only six local source-reading attempts through the shared
+executor. No verifier credential is needed: no paid phase, alignment, narrative,
+fingerprint comparison, ranking or production admission is executed. The 15 prior
+local attempts remain counted, for at most 21 cumulative attempts and zero paid calls.
+The same immutable wire responses, receipts and uncertain-attempt/no-retry guard apply.
+Progress is printed on stderr, and stdout contains a compact result with the full
+results path. One immutable claim on the prior stopped run binds this approval to one
+new input; preparing a different input cannot reuse the decision after execution.
+
+Contract-fit PASS requires all six completed, schema-consistent, nonempty readings
+and every proposed claim passing the unchanged literal binding compiler. A malformed
+or unbound claim gives component FAIL; empty readings are INCONCLUSIVE. Saturation is
+reported explicitly. Even a contract-fit PASS leaves the overall semantic outcome
+INCONCLUSIVE until independent verification/source review. Observations retain empty
+verification judgments and remain experimental, unverified and not admitted.
+
+`model-fit report --run-dir <trial-directory> --base-dir <application-base> --json`
+saves a JSON/Markdown report. It includes per-window completion, schema and literal
+yield and a saved Gemma baseline where one exists. Unattempted baseline cases remain
+UNATTEMPTED, never zero-yield observations. Baselines are offline report inputs and
+never enter the Qwen requests. There is no automatic prompt/model variant, repair,
+retry or advancement to the full workflow after this trial.
