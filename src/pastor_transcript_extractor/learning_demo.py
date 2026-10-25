@@ -300,11 +300,35 @@ def _entries(fingerprints,observations,hypotheses):
     for fp in fingerprints:
         for key,row in fp['claim_frames'].items():
             if row['state'] not in ([1,0],[0,1]): continue
-            entries[key]=dict(scope_video_ids=sorted({r['video_id'] for state in ('A','D') for r in row[state]}),
+            entries[str(fp['profile_id'])+':'+key]=dict(scope_video_ids=sorted({r['video_id'] for state in ('A','D') for r in row[state]}),
                 meaning=row['meaning'],state=row['state'],premise_ids=row['evidence_ids'])
     for row in hypotheses:
         entries[row['id']]=dict(scope_video_ids=row['scope_video_ids'],hypothesis=row)
     return entries
+
+
+def alias_model_state(state):
+    # Opaque identities have no semantic meaning. Reversible aliases reduce repeated
+    # hexadecimal tokens without dropping literal evidence or qualified fields.
+    import re
+    identities=set()
+    def collect(value,field=''):
+        if isinstance(value,dict):
+            for k,v in value.items():
+                if re.fullmatch(r'(?:[0-9]+:)?[0-9a-f]{64}',k): identities.add(k)
+                collect(v,k)
+        elif isinstance(value,list):
+            for v in value: collect(v,field)
+        elif isinstance(value,str) and field not in ('text','reading','proposition','conclusion'):
+            if re.fullmatch(r'(?:[0-9]+:)?[0-9a-f]{64}',value): identities.add(value)
+    collect(state)
+    aliases={key:'e'+str(i) for i,key in enumerate(sorted(identities))}
+    def encode(value,field=''):
+        if isinstance(value,dict): return {aliases.get(k,k):encode(v,k) for k,v in value.items()}
+        if isinstance(value,list): return [encode(v,field) for v in value]
+        if isinstance(value,str) and field not in ('text','reading','proposition','conclusion'): return aliases.get(value,value)
+        return value
+    return encode(state),{v:k for k,v in aliases.items()}
 
 
 def _comparison_entry(value,scope):
@@ -481,8 +505,13 @@ def execute_pipeline(packet,store,transport,*,encoding):
             for path,value in comparisons.items():
                 local['comparison:'+path]=_comparison_entry(value,scope)
         state=dict(entries=local,scope_video_ids=scope,kind='pair' if number==2 else 'profile')
-        request=contract.generation_request('narratives_and_pair_report',state,dict(entries_digest=digest(local)))
+        wire_state,aliases=alias_model_state(state)
+        wire_state['identity_policy']='Opaque local aliases; cite supplied entry keys exactly. Literal evidence/qualifications are unchanged.'
+        request=contract.generation_request('narratives_and_pair_report',wire_state,dict(entries_digest=digest(local),aliases_digest=digest(aliases)))
+        store.write_immutable('aliases/'+request.fingerprint+'.json',aliases)
         proposal=contract.generated_output(request.phase,send(request))
+        for clause in proposal['clauses']:
+            clause['entry_ids']=[aliases.get(key,key) for key in clause['entry_ids']]
         if len({r['id'] for r in proposal['clauses']})!=len(proposal['clauses']): raise ValueError('Duplicate clause IDs')
         verify=contract.verification_request('downstream_verification',dict(entries=dependency_entries(local,{key for clause in proposal['clauses'] for key in clause['entry_ids']}),items=proposal['clauses']),
             proposal['clauses'],dict(generation_request=request.fingerprint))

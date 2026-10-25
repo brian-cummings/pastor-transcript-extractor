@@ -165,3 +165,18 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual([b['block_id'] for b in window.blocks],[2,3])
             bad=dict(case,target_block_ids=[0,2,3])
             with self.assertRaisesRegex(ValueError,'adjacent'): demo.source_window(bad,analysis,{0,2,3,4})
+
+    def test_narrative_identity_aliases_are_reversible_and_preserve_literal_semantics(self):
+        from copy import deepcopy
+        identity='a'*64
+        state=dict(entries={identity:dict(premise_ids=[identity],text=identity,
+            conditions=['if trust'],voice='reported',polarity='denied',scope_video_ids=[1])})
+        before=deepcopy(state)
+        encoded,aliases=demo.alias_model_state(state)
+        self.assertEqual(state,before)
+        alias=next(iter(encoded['entries']))
+        self.assertEqual(aliases[alias],identity)
+        self.assertEqual(encoded['entries'][alias]['premise_ids'],[alias])
+        self.assertEqual(encoded['entries'][alias]['text'],identity)
+        self.assertEqual(encoded['entries'][alias]['conditions'],['if trust'])
+        self.assertEqual(encoded['entries'][alias]['voice'],'reported')
