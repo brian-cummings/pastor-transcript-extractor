@@ -272,3 +272,19 @@ def persisted_scripture(database, run, prepared):
         analyzer_key=run.analyzer_key, analyzer_version=run.analyzer_version,
         evidence=evidence, measurements=measurements,
         limit='Saved citation occurrences and text alignments on identified-sermon segments only. They are not cross-book reasoning, exposition frequency, adopted interpretation, or mapped eligible topic-block support.')
+
+
+def read_sample(sample, base_dir=None):
+    """Bounded, read-only source and constituent adapter; no authored profile input."""
+    from . import segment_cache_inventory
+    inventory = segment_cache_inventory.build(base_dir, profile_id=sample.profile_id,
+                                              video_ids=sample.video_ids)
+    if inventory['selected_profile']['membership_fingerprint'] != sample.membership_fingerprint:
+        raise ValueError('Sample membership changed')
+    sources = {}
+    for sermon in inventory['sermons']:
+        path = Path(sermon['source_path'])
+        if trace.digest(path) != sermon['source_sha256']:
+            raise ValueError('Sample source changed')
+        sources[sermon['video_id']] = trace.read(path)
+    return inventory, sources, inspect(inventory, sources)
