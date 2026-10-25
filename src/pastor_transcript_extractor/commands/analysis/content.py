@@ -20,6 +20,7 @@ from pastor_transcript_extractor.commands.analysis.common import (
     get_database,
 )
 from pastor_transcript_extractor.commands.apps import analysis_app
+from pastor_transcript_extractor.evaluation_storage import review_artifact_option
 from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.inference_defaults import DEFAULT_TYPESAFE_MODEL
 from pastor_transcript_extractor.population_analysis import (
@@ -1240,6 +1241,7 @@ def analysis_topic_stability_readiness(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -1273,6 +1275,8 @@ def analysis_evaluate_topic_stability(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -1315,6 +1319,8 @@ def analysis_salvation_routing_review(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -1373,6 +1379,8 @@ def analysis_salvation_relationships_review(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -1438,6 +1446,8 @@ def analysis_salvation_obedience_calibration(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -1504,6 +1514,8 @@ def analysis_salvation_semantic_calibration(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -1570,6 +1582,8 @@ def analysis_salvation_final_calibration(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -1645,6 +1659,10 @@ def analysis_salvation_v5_calibration(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    boundary_review_path = review_artifact_option(boundary_review_path, base_dir=base_dir, for_write=False)
+    collection_review_path = review_artifact_option(collection_review_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -1699,7 +1717,10 @@ def analysis_salvation_v5_threshold_review(
         "--output",
         help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
     ),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for review artifacts."),
 ) -> None:
+    input_path = review_artifact_option(input_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     try:
         calibration = load_salvation_v5_calibration(input_path)
         packet = build_salvation_v5_threshold_review(calibration)
@@ -1767,6 +1788,11 @@ def analysis_salvation_v6_repentance_calibration(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    final_check_path = review_artifact_option(final_check_path, base_dir=base_dir, for_write=False)
+    v5_calibration_path = review_artifact_option(v5_calibration_path, base_dir=base_dir, for_write=False)
+    collection_review_path = review_artifact_option(collection_review_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -1842,6 +1868,9 @@ def analysis_salvation_v7_repentance_calibration(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    v6_calibration_path = review_artifact_option(v6_calibration_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -1913,6 +1942,9 @@ def analysis_salvation_v8_conversion_calibration(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    conversion_review_path = review_artifact_option(conversion_review_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -1984,6 +2016,9 @@ def analysis_salvation_final_boundary_calibration(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    collection_review_path = review_artifact_option(collection_review_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -2045,6 +2080,9 @@ def analysis_salvation_condition_boundary_review(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    final_boundary_path = review_artifact_option(final_boundary_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -2097,6 +2135,9 @@ def analysis_salvation_consequence_boundary_review(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    collection_review_path = review_artifact_option(collection_review_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -2148,7 +2189,9 @@ def analysis_salvation_observation_threshold_review(
         "--output",
         help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
     ),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for review artifacts."),
 ) -> None:
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     try:
         packet = build_salvation_observation_threshold_review(
             input_paths,
@@ -2188,7 +2231,9 @@ def analysis_salvation_observation_boundaries_review(
         "--output",
         help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
     ),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for review artifacts."),
 ) -> None:
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     try:
         packet = build_salvation_observation_boundaries_review(input_paths)
         json_path, markdown_path, reused = (
@@ -2230,6 +2275,8 @@ def analysis_salvation_collected_observations_review(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -2294,6 +2341,9 @@ def analysis_salvation_profile_repeatability(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    review_path = review_artifact_option(review_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -2341,6 +2391,8 @@ def analysis_salvation_repeatability_expansion_plan(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -2385,6 +2437,10 @@ def analysis_salvation_exact_cohort_proposal(
         None, "--base-dir", help="Application data directory containing app.db."
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    inventory_path = review_artifact_option(inventory_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
+    integrity_review_path = review_artifact_option(integrity_review_path, base_dir=base_dir, for_write=False)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
         inventory = load_salvation_repeatability_expansion_plan(inventory_path)
@@ -2432,6 +2488,9 @@ def analysis_salvation_nine_leaf_convergence(
         help="Application-data directory containing app.db.",
     ),
 ) -> None:
+    proposal_path = review_artifact_option(proposal_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
+    cache_path = review_artifact_option(cache_path, base_dir=base_dir, for_write=True)
     try:
         proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
         database = Database(build_paths(base_dir).database, readonly=True)
@@ -2468,6 +2527,9 @@ def analysis_salvation_pastor_uncertainty(
     ),
     base_dir: Path | None = typer.Option(None, "--base-dir", help="Application-data directory containing app.db."),
 ) -> None:
+    proposal_path = review_artifact_option(proposal_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
+    cache_path = review_artifact_option(cache_path, base_dir=base_dir, for_write=True)
     try:
         proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
         database = Database(build_paths(base_dir).database, readonly=True)
@@ -2504,6 +2566,8 @@ def analysis_salvation_broader_rollout_inventory(
         help="Application-data directory containing app.db.",
     ),
 ) -> None:
+    decision_path = review_artifact_option(decision_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     try:
         decision = json.loads(decision_path.read_text(encoding="utf-8"))
         database = Database(build_paths(base_dir).database, readonly=True)
@@ -2556,6 +2620,9 @@ def analysis_salvation_candidate_discovery_audit(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    inventory_path = review_artifact_option(inventory_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -2601,7 +2668,10 @@ def analysis_salvation_analytical_backfill_plan(
         "--output",
         help="Fingerprint-bound JSON backfill plan; Markdown is written beside it.",
     ),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for review artifacts."),
 ) -> None:
+    audit_path = review_artifact_option(audit_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     try:
         audit = load_salvation_candidate_discovery_audit(audit_path)
         report = build_salvation_analytical_backfill_plan(audit)
@@ -2648,6 +2718,9 @@ def analysis_salvation_conversion_recalibration(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    prior_review_path = review_artifact_option(prior_review_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -2709,6 +2782,9 @@ def analysis_salvation_final_collection_check(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    prior_review_path = review_artifact_option(prior_review_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -2769,6 +2845,9 @@ def analysis_salvation_collection_recalibration(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    prior_review_path = review_artifact_option(prior_review_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -2828,6 +2907,9 @@ def analysis_salvation_boundary_recalibration(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
+    cohort_path = review_artifact_option(cohort_path, base_dir=base_dir, for_write=False)
+    prior_review_path = review_artifact_option(prior_review_path, base_dir=base_dir, for_write=False)
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
@@ -2882,7 +2964,7 @@ def analysis_evaluate_topic_behavior(
     cache_dir: Path | None = typer.Option(
         None,
         "--cache-dir",
-        help="Content-addressed answer cache; defaults beside the fixture.",
+        help="Content-addressed answer cache; defaults under application evaluation data.",
     ),
     output_path: Path | None = typer.Option(
         None,
@@ -2900,6 +2982,7 @@ def analysis_evaluate_topic_behavior(
         "--validate-only",
         help="Validate frozen coverage without calling TypeSafe or writing results.",
     ),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for results and cache."),
 ) -> None:
     try:
         fixture = load_topic_behavior_fixture(fixture_path)
@@ -2918,7 +3001,12 @@ def analysis_evaluate_topic_behavior(
         return
 
     fixture_path = Path(fixture["fixture_path"])
-    resolved_cache_dir = cache_dir or fixture_path.parent / "cache"
+    paths = build_paths(base_dir)
+    resolved_cache_dir = (review_artifact_option(cache_dir, base_dir=base_dir, for_write=True)
+                          if cache_dir is not None else paths.evaluation / "sermon-topics/cache")
+    resolved_output = (review_artifact_option(output_path, base_dir=base_dir, for_write=True)
+                       if output_path is not None else paths.evaluation / "sermon-topics" /
+                       default_topic_behavior_output_path(fixture_path, model).name)
     client = _LazyTopicBehaviorClient(
         model=model,
         timeout_seconds=timeout_seconds,
@@ -2931,7 +3019,7 @@ def analysis_evaluate_topic_behavior(
             client=client,
         )
         json_path, markdown_path, reused = write_topic_behavior_report(
-            output_path or default_topic_behavior_output_path(fixture_path, model),
+            resolved_output,
             report,
         )
     except ValueError as error:
@@ -2961,12 +3049,14 @@ def analysis_evaluate_topic_behavior(
 )
 def analysis_listener_directives_review(
     output_path: Path = typer.Option(Path("evaluation/sermon-topics/listener-directive-stage-gate-v3.json"), "--output"),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for review artifacts."),
 ) -> None:
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     from pastor_transcript_extractor.sermon_listener_directive_review import (
-        build_listener_completion, write_listener_completion,
+        build_listener_completion, write_listener_completion, COMPLETED_REVIEW_INPUT,
     )
     try:
-        decision = build_listener_completion()
+        decision = build_listener_completion(review_artifact_option(COMPLETED_REVIEW_INPUT, base_dir=base_dir))
         json_path, markdown_path, reused = write_listener_completion(output_path, decision)
     except (ValueError, OSError) as error:
         raise typer.BadParameter(str(error)) from error
@@ -2980,10 +3070,12 @@ def analysis_listener_directives_review(
 )
 def analysis_public_life_treatment_review(
     output_path: Path = typer.Option(Path("evaluation/sermon-topics/public-life-treatment-stage-gate-v2.json"), "--output"),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for review artifacts."),
 ) -> None:
-    from pastor_transcript_extractor.sermon_public_life_review import build_public_completion, write_public_policy_report
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
+    from pastor_transcript_extractor.sermon_public_life_review import build_public_completion, write_public_policy_report, PUBLIC_V2_OUTPUT
     try:
-        report = build_public_completion()
+        report = build_public_completion(review_artifact_option(PUBLIC_V2_OUTPUT, base_dir=base_dir))
         json_path, markdown_path, reused = write_public_policy_report(output_path, report)
     except (ValueError, OSError) as error:
         raise typer.BadParameter(str(error)) from error
@@ -2997,10 +3089,12 @@ def analysis_public_life_treatment_review(
 )
 def analysis_public_life_routing_review(
     output_path: Path = typer.Option(Path("evaluation/sermon-topics/public-life-routing-comparison-v2.json"), "--output"),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for review artifacts."),
 ) -> None:
-    from pastor_transcript_extractor.sermon_public_life_review import build_public_routing_comparison, write_public_policy_report
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
+    from pastor_transcript_extractor.sermon_public_life_review import build_public_routing_comparison, write_public_policy_report, PUBLIC_V2_OUTPUT
     try:
-        report = build_public_routing_comparison()
+        report = build_public_routing_comparison(review_artifact_option(PUBLIC_V2_OUTPUT, base_dir=base_dir))
         json_path, markdown_path, reused = write_public_policy_report(output_path, report)
     except (ValueError, OSError) as error:
         raise typer.BadParameter(str(error)) from error
@@ -3019,6 +3113,7 @@ def analysis_source_material_review(
     timeout_seconds: float = typer.Option(45.0, "--timeout-seconds", min=1.0),
     prepare_only: bool = typer.Option(False, "--prepare-only", help="Write proposed cases without provider inference."),
 ) -> None:
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
     from pastor_transcript_extractor.sermon_leaf_packs import SOURCE_MATERIAL
     from pastor_transcript_extractor.sermon_listener_directive_review import evaluate_review, write_review
     from pastor_transcript_extractor.sermon_source_material_review import prepare_source_review
@@ -3047,11 +3142,13 @@ def analysis_source_material_review(
 )
 def analysis_source_material_stage_gate(
     output_path: Path = typer.Option(Path("evaluation/sermon-topics/source-material-stage-gate-v1.json"), "--output"),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for review artifacts."),
 ) -> None:
-    from pastor_transcript_extractor.sermon_source_material_review import build_source_completion, write_source_completion
+    output_path = review_artifact_option(output_path, base_dir=base_dir, for_write=True)
+    from pastor_transcript_extractor.sermon_source_material_review import build_source_completion, write_source_completion, DEFAULT_SOURCE_REVIEW_OUTPUT
 
     try:
-        report = build_source_completion()
+        report = build_source_completion(review_artifact_option(DEFAULT_SOURCE_REVIEW_OUTPUT, base_dir=base_dir))
         json_path, markdown_path, reused = write_source_completion(output_path, report)
     except (ValueError, OSError) as error:
         raise typer.BadParameter(str(error)) from error

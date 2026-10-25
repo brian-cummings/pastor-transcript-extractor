@@ -2,9 +2,11 @@
 
 Current product direction: [readable pastor profile, dimensions and linked evidence](docs/PASTOR_PROFILE_PRODUCT_PLAN.md). Engineering roadmap: [current implementation plan](docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md). Segment evidence comes first; illustrative quotations remain last. The exact-span nomination detour is closed; use the [current status registry](docs/review-proposals/README.md) rather than historical execution instructions.
 
-Generated evaluation artifacts now default to `<base-dir>/evaluation/`; reviewed
-fixtures, policies, evidence, and documentation remain in the repository's
-`evaluation/` directory. See
+Generated evaluation artifacts and full source-backed review evidence belong under
+`<base-dir>/evaluation/`; authored fixtures, contracts, policies and implementation
+documentation remain in the repository. Use `pte migrate-evaluation-storage
+--audit-repository --untrack --verify` for a dry run before relocating and untracking
+private artifacts. See
 [`docs/EVALUATION_STORAGE_MIGRATION.md`](docs/EVALUATION_STORAGE_MIGRATION.md) for the
 path inventory, compatibility behavior, dry-run, apply, and recovery commands.
 Generated-storage retention is managed separately with the dry-run-first

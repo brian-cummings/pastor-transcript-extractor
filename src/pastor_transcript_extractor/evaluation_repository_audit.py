@@ -17,6 +17,7 @@ SIGNALS = {
     "named_person_cue": re.compile(r"\b(?:Brother|Sister|Pastor|Dr\.)\s+[A-Z][a-z]+"),
     "source_text_field": re.compile(r'"(?:target_text|leading_context|trailing_context|source_context|transcript|excerpt)"\s*:'),
     "source_identifier": re.compile(r'"(?:youtube_video_id|classification_path)"\s*:|https?://(?:www\.)?(?:youtube\.com|youtu\.be)/'),
+    "identity_field": re.compile(r'"(?:display_name|canonical_name|pastor_name|speaker_name|pastor_slug)"\s*:'),
 }
 
 

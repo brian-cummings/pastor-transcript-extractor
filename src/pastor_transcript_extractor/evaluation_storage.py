@@ -261,3 +261,27 @@ def runtime_option(
     if candidate.resolve(strict=False) == legacy.resolve(strict=False):
         return evaluation_root / relative
     return candidate.resolve(strict=False)
+
+
+def review_artifact_option(
+    value: Path,
+    *,
+    base_dir: Path | None = None,
+    for_write: bool = False,
+    repo_root: Path | None = None,
+) -> Path:
+    """Route legacy review CLI defaults while retaining explicit custom paths.
+
+    Reads may use an existing unmigrated packet; writes always use application
+    data. This boundary does not alter packet contents or provenance checks.
+    """
+    from pastor_transcript_extractor.config import build_paths
+
+    repository = (repo_root or Path(__file__).resolve().parents[2]).resolve()
+    relative = generated_relative_path(value, repo_root=repository)
+    if relative is None:
+        return value.expanduser().resolve()
+    paths = build_paths(base_dir)
+    if for_write:
+        return paths.evaluation / relative
+    return resolve_artifact_path(value, paths=paths, repo_root=repository)

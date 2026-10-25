@@ -327,6 +327,25 @@ class SermonTopicEvaluationTests(unittest.TestCase):
         self.assertIn("provider_requests=0", result.output)
         self.assertTrue(output_written)
 
+    def test_cli_defaults_replay_under_selected_application_data(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve() / "app"
+            cache = base / "evaluation/sermon-topics/cache"
+            evaluate_topic_behavior_fixture(
+                self.fixture, cache_dir=cache, model="jev-1.13.0",
+                client=FixtureAnswerClient(self.fixture),
+            )
+            fixture_bytes = self.fixture_path.read_bytes()
+            with patch("pastor_transcript_extractor.commands.analysis.content.TypeSafeSdkAdapter",
+                       side_effect=AssertionError("default cache replay must not construct provider")):
+                result = CliRunner().invoke(app, ["analysis", "evaluate-topic-behavior",
+                                                  "--fixture", str(self.fixture_path), "--base-dir", str(base)])
+            self.assertEqual(0, result.exit_code, result.output)
+            self.assertIn("provider_requests=0", result.output)
+            outputs = list((base / "evaluation/sermon-topics").glob("*.results.json"))
+            self.assertEqual(1, len(outputs))
+            self.assertEqual(fixture_bytes, self.fixture_path.read_bytes())
+
 
 if __name__ == "__main__":
     unittest.main()

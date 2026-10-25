@@ -142,7 +142,9 @@ pte migrate-evaluation-storage [OPTIONS]
 | `--apply / --dry-run` | Apply the migration; dry-run is the default.  [default: dry-run] | no | False |
 | `--base-dir PATH` | Override app data directory. | no | — |
 | `--repo-root PATH` | Repository containing legacy evaluation artifacts.  [default: /Users/briancummings/code/pastor-transcript-extractor] | no | /Users/briancummings/code/pastor-transcript-extractor |
-| `--verify` | Verify destination sizes after every move and report remaining legacy files. | no | False |
+| `--verify` | Verify destination sizes and SHA-256 after every move and report remaining legacy files. | no | False |
+| `--audit-repository` | Also inventory tracked disclosure candidates; no inference or history changes. | no | False |
+| `--untrack` | With --apply, remove verified migrated paths from the Git index; never rewrite history. | no | False |
 | `--manifest PATH` | Manifest destination; defaults beneath the configured evaluation root. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
@@ -3289,7 +3291,7 @@ pte analysis evaluate-topic-behavior [OPTIONS]
 | --- | --- | --- | --- |
 | `--fixture PATH` | Frozen synthetic topic fixture JSON.  [default: evaluation/sermon-topics/behavior-contract-v1.json] | no | evaluation/sermon-topics/behavior-contract-v1.json |
 | `--model TEXT` | Pinned TypeSafe model id.  [default: jev-1.13.0] | no | jev-1.13.0 |
-| `--cache-dir PATH` | Content-addressed answer cache; defaults beside the fixture. | no | — |
+| `--cache-dir PATH` | Content-addressed answer cache; defaults under application evaluation data. | no | — |
 | `--output PATH` | Result JSON path; Markdown is written beside it. | no | — |
 | `--timeout-seconds FLOAT RANGE` | Provider timeout for an uncached request.  [default: 45.0; x>=1.0] | no | 45.0 |
 | `--validate-only` | Validate frozen coverage without calling TypeSafe or writing results. | no | False |

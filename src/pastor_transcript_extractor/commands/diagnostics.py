@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 import time
@@ -19,6 +20,8 @@ from pastor_transcript_extractor.evaluation_migration import (
     migrate_database_paths,
     plan_migration,
     write_manifest,
+    tracked_migration_paths,
+    untrack_migrated_paths,
 )
 from pastor_transcript_extractor.fixture_validation import validate_fixture_directory
 from pastor_transcript_extractor.interaction_diagnostics import (
@@ -95,6 +98,9 @@ def migrate_evaluation_storage(
     audit_repository: bool = typer.Option(
         False, "--audit-repository", help="Also inventory tracked disclosure candidates; no inference or history changes.",
     ),
+    untrack: bool = typer.Option(
+        False, "--untrack", help="With --apply, remove verified migrated paths from the Git index; never rewrite history.",
+    ),
     manifest: Path | None = typer.Option(
         None,
         "--manifest",
@@ -119,6 +125,10 @@ def migrate_evaluation_storage(
         evaluation_root=paths.evaluation,
         database_path=paths.database,
     )
+    try:
+        tracked = tracked_migration_paths(plan) if untrack else ()
+    except MigrationError as error:
+        raise typer.BadParameter(str(error)) from error
     write_manifest(plan, manifest_path)
     categories = sorted({entry.category for entry in plan.entries})
     console.print(
@@ -132,6 +142,9 @@ def migrate_evaluation_storage(
     console.print(f"Manifest: {manifest_path}")
     console.print("Private review evidence retains ignored local compatibility links; "
                   "Git index and history are unchanged.")
+    if untrack:
+        console.print(f"Selected tracked migration paths: {len(tracked)}; "
+                      "index removal runs only after successful --apply.")
     for conflict in plan.conflicts:
         console.print(f"CONFLICT: {conflict}")
     for rejected in plan.symlink_rejections:
@@ -153,19 +166,25 @@ def migrate_evaluation_storage(
             f"move={entry.source}"
         )
 
+    result = None
     try:
         result = apply_migration(plan, verify=verify, progress=show_progress)
         database_changes = 0
         if not result.failures and plan.database_changes:
             database_changes = migrate_database_paths(paths.database, plan.database_changes)
+        if not result.failures and untrack:
+            untrack_migrated_paths(plan, tracked)
+            result = replace(result, untracked_paths=tracked)
     except MigrationError as error:
+        write_manifest(plan, manifest_path, result=result)
         raise typer.BadParameter(str(error)) from error
     console.print(
         "Migration complete: "
         f"moved_files={result.moved_files} moved_bytes={result.moved_bytes} "
         f"already_migrated={result.already_migrated} failures={len(result.failures)} "
         f"database_changes={database_changes} "
-        f"remaining_legacy_files={result.remaining_legacy_files}."
+        f"remaining_legacy_files={result.remaining_legacy_files} "
+        f"untracked_files={len(result.untracked_paths)}."
     )
     for failure in result.failures:
         console.print(f"FAILURE: {failure}")

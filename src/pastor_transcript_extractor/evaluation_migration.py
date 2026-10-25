@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+import subprocess
 import tempfile
 import time
 from typing import Callable, Iterable
@@ -93,6 +94,7 @@ class MigrationResult:
     already_migrated: int
     failures: tuple[str, ...]
     remaining_legacy_files: int
+    untracked_paths: tuple[str, ...] = ()
 
 
 def _sha256(path: Path) -> str:
@@ -269,7 +271,7 @@ def plan_migration(
             continue
         byte_size = source.stat().st_size
         status = "planned"
-        if destination.exists():
+        if destination.exists() or destination.is_symlink():
             if destination.is_symlink() or not destination.is_file():
                 status = "conflict"
             elif _same_file(source, destination):
@@ -314,6 +316,34 @@ def write_manifest(plan: MigrationPlan, path: Path, *, result: MigrationResult |
     if result is not None:
         lines += ["", "## Apply result", "", "```json", json.dumps(asdict(result), indent=2), "```"]
     path.with_suffix(".md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def tracked_migration_paths(plan: MigrationPlan) -> tuple[str, ...]:
+    """Select exact tracked paths, refusing to overwrite selected staged work."""
+    root = Path(plan.repo_root)
+    tracked = subprocess.run(["git", "-C", str(root), "ls-files", "-z"],
+                             check=True, capture_output=True).stdout.decode().split("\0")
+    selected = {Path(entry.source).relative_to(root).as_posix() for entry in plan.entries}
+    names = tuple(sorted(selected.intersection(tracked)))
+    if names:
+        check = subprocess.run(["git", "-C", str(root), "diff", "--cached", "--quiet", "HEAD", "--", *names])
+        if check.returncode:
+            raise MigrationError("selected migration files have staged changes; preserve or commit those before --untrack")
+    return names
+
+
+def untrack_migrated_paths(plan: MigrationPlan, names: tuple[str, ...]) -> None:
+    """Remove only verified migrated objects from the index; keep local links."""
+    for entry in plan.entries:
+        if Path(entry.source).relative_to(plan.repo_root).as_posix() not in names:
+            continue
+        if not Path(entry.destination).is_file() or (entry.sha256 and _sha256(Path(entry.destination)) != entry.sha256):
+            raise MigrationError("cannot untrack an unverified or changed destination")
+    # Recheck staging after the moves, before touching the index.
+    if names and tracked_migration_paths(plan) != names:
+        raise MigrationError("tracked migration selection changed before index removal")
+    if names:
+        subprocess.run(["git", "-C", plan.repo_root, "rm", "--cached", "--quiet", "--", *names], check=True)
 
 
 def migrate_database_paths(
@@ -445,8 +475,10 @@ def apply_migration(
                 else:
                     raise MigrationError("previously identical destination changed after planning")
                 continue
-            if entry.status != "planned" or not source.exists():
+            if entry.status != "planned":
                 continue
+            if not source.exists():
+                raise MigrationError("source disappeared after planning")
             if destination.exists():
                 if _same_file(source, destination):
                     source.unlink()

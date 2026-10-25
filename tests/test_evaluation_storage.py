@@ -7,6 +7,7 @@ import sqlite3
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
@@ -17,6 +18,8 @@ from pastor_transcript_extractor.evaluation_migration import (
     backup_database,
     migrate_database_paths,
     plan_migration,
+    tracked_migration_paths,
+    untrack_migrated_paths,
 )
 from pastor_transcript_extractor.evaluation_storage import (
     build_evaluation_paths,
@@ -26,6 +29,7 @@ from pastor_transcript_extractor.evaluation_storage import (
     runtime_option,
     PRIVATE_EVIDENCE_PATTERNS,
     PRIVATE_EVIDENCE_EXCEPTIONS,
+    review_artifact_option,
 )
 from pastor_transcript_extractor.cli import app
 
@@ -50,6 +54,18 @@ REVIEW_ARTIFACTS = (
 
 
 class EvaluationPathTests(unittest.TestCase):
+    def test_new_review_writes_and_custom_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            repo, base = root / "repo", root / "app"
+            legacy = repo / REVIEW_ARTIFACTS[0]
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text("{}")
+            for_write = review_artifact_option(legacy, base_dir=base, for_write=True, repo_root=repo)
+            self.assertEqual(base / "evaluation/review-packets" / REVIEW_ARTIFACTS[0], for_write)
+            self.assertEqual(legacy, review_artifact_option(legacy, base_dir=base, repo_root=repo))
+            explicit = root / "custom/report.json"
+            self.assertEqual(explicit, review_artifact_option(explicit, base_dir=base, for_write=True, repo_root=repo))
     def test_private_policy_and_ignore_rules_stay_in_sync(self) -> None:
         repository = Path(__file__).resolve().parents[1]
         lines = set((repository / ".gitignore").read_text().splitlines())
@@ -132,6 +148,66 @@ class EvaluationPathTests(unittest.TestCase):
 
 
 class EvaluationMigrationTests(unittest.TestCase):
+    def test_untrack_keeps_immutable_data_and_ignored_links_and_preserves_staging(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            _, repo, app = self._roots(temporary)
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            (repo / ".gitignore").write_text("/" + REVIEW_ARTIFACTS[0] + "\n")
+            source = repo / REVIEW_ARTIFACTS[0]
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"immutable")
+            subprocess.run(["git", "-C", str(repo), "add", "-f", "."], check=True)
+            subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                            "commit", "-qm", "fixture"], check=True)
+            plan = plan_migration(repo_root=repo, evaluation_root=app / "evaluation")
+            names = tracked_migration_paths(plan)
+            source.write_bytes(b"staged work")
+            subprocess.run(["git", "-C", str(repo), "add", "-f", str(source)], check=True)
+            with self.assertRaises(MigrationError):
+                tracked_migration_paths(plan)
+            subprocess.run(["git", "-C", str(repo), "reset", "-q", "HEAD", "--", str(source)], check=True)
+            source.write_bytes(b"immutable")
+            self.assertFalse(app.exists())
+            self.assertEqual((), apply_migration(plan, verify=True).failures)
+            untrack_migrated_paths(plan, names)
+            self.assertTrue(source.is_symlink())
+            self.assertEqual(b"immutable", source.read_bytes())
+            self.assertEqual("", subprocess.check_output(["git", "-C", str(repo), "ls-files", "--", names[0]], text=True))
+            self.assertEqual(names[0] + "\n", subprocess.check_output(["git", "-C", str(repo), "check-ignore", names[0]], text=True))
+            self.assertEqual(b"immutable", subprocess.check_output(["git", "-C", str(repo), "show", "HEAD:" + names[0]]))
+
+    def test_review_cli_uses_selected_base_directory_without_evaluation(self) -> None:
+        from pastor_transcript_extractor.commands.analysis import content
+        from pastor_transcript_extractor import sermon_listener_directive_review as listener
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary).resolve() / "app"
+            expected = base / "evaluation/sermon-topics/listener-directive-stage-gate-v3.json"
+            raw_review = base / "evaluation/sermon-topics/listener-directives-review-v3.json"
+            raw_review.parent.mkdir(parents=True)
+            raw_review.write_text("{}")
+            with patch.object(listener, "build_listener_completion", return_value={}) as build, \
+                    patch.object(listener, "write_listener_completion", return_value=(expected, expected.with_suffix('.md'), False)) as write:
+                result = CliRunner().invoke(app, ["analysis", "listener-directives-review", "--base-dir", str(base)])
+            self.assertEqual(0, result.exit_code, result.output)
+            build.assert_called_once_with(raw_review)
+            write.assert_called_once_with(expected, {})
+
+            decision = base / "decision.json"
+            decision.write_text("{}")
+            report = {"counts": {"nine_leaf_ready": 0, "content_gate_eligible": 0},
+                      "work_estimate": {"missing_routed_block_count": 0}, "provider_requests": 0,
+                      "input_fingerprint": "unchanged"}
+            output = base / "evaluation/sermon-topics/salvation-broader-rollout-inventory-v1.json"
+            with patch.object(content, "Database") as database, \
+                    patch.object(content, "reusable_inventory", return_value=report) as reuse, \
+                    patch.object(content, "evaluate_rollout_inventory", side_effect=AssertionError("no evaluation")), \
+                    patch.object(content, "write_rollout_inventory", return_value=(output, output.with_suffix('.md'), True)) as write:
+                result = CliRunner().invoke(app, ["analysis", "salvation-broader-rollout-inventory",
+                                                 "--base-dir", str(base), "--decision", str(decision)])
+            self.assertEqual(0, result.exit_code, result.output)
+            self.assertEqual(output, reuse.call_args.args[0])
+            write.assert_called_once_with(output, report)
+
     def test_review_packets_keep_bytes_legacy_reads_and_future_writes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             _, repo, app = self._roots(temporary)
