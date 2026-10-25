@@ -322,3 +322,46 @@ class SavedDiagnosticsTests(unittest.TestCase):
             self.assertEqual(sum(report['first_binding_error_counts'].values()),2)
             old=deepcopy(packet);old['contracts']['schemas']={}
             self.assertEqual(demo.source_contract_diagnostics(old,store)['status'],'UNAVAILABLE')
+
+
+class SelectedModelIntegrationTests(unittest.TestCase):
+    def test_selected_model_reaches_every_local_phase_without_changing_verifier(self):
+        runtime=dict(model='qwen3.5:9b',base_url='http://127.0.0.1:11434',num_ctx=131072,
+                     input_cap=122880,thinking_supported=True,thinking=False)
+        packet=synthetic_packet();packet['generation_runtime']=runtime
+        for row in packet['source_requests']:
+            old=demo.RequestSpec(**row['request'])
+            state=json.loads(old.body['messages'][1]['content'])
+            row['request']=asdict(c.generation_request('source_reading',state,old.source_identity,runtime_identity=runtime))
+        provider=FakeProvider()
+        with TemporaryDirectory() as directory:
+            store=ReceiptStore(Path(directory));result=demo.execute_pipeline(packet,store,provider,encoding=SyntheticEncoding())
+            local=[request for request in provider.calls if request.phase not in ('source_verification','downstream_verification')]
+            paid=[request for request in provider.calls if request.phase in ('source_verification','downstream_verification')]
+            self.assertEqual(len(local),33);self.assertEqual(len(paid),33)
+            self.assertEqual({r.body['model'] for r in local},{'qwen3.5:9b'})
+            self.assertTrue(all(r.runtime_identity==runtime and r.body['think'] is False for r in local))
+            self.assertEqual({r.body['model'] for r in paid},{'jev-1.13.0'})
+            self.assertEqual({r['model'] for r in result['observations']},{'qwen3.5:9b'})
+            self.assertEqual(len(result['omission_views']),6)
+            self.assertEqual(demo.execute_pipeline(packet,store,provider,encoding=SyntheticEncoding()),result)
+            self.assertEqual(len(provider.calls),66)
+            decision=demo.require_execution({**packet,'budget':{}},packet['input_fingerprint'],True,'.10',True)
+            self.assertEqual(decision['model'],'qwen3.5:9b')
+
+    def test_frozen_selection_wins_over_changed_environment_on_input_validation(self):
+        import os
+        runtime=dict(model='qwen3.5:9b',base_url='http://127.0.0.1:11434',num_ctx=131072,
+                     input_cap=122880,thinking_supported=True,thinking=False)
+        request=c.generation_request('source_reading',{}, {},runtime_identity=runtime)
+        with TemporaryDirectory() as directory:
+            root=Path(directory).resolve();proposal=root/'proposal.json';proposal.write_text('{}')
+            packet=dict(code_identity={},proposal=dict(path=str(proposal),sha256=demo.file_hash(proposal)),
+                source_refs=[],samples=[],generation_runtime=runtime,
+                source_requests=[dict(request=asdict(request),fingerprint=request.fingerprint,token_account=request.preflight())])
+            packet['input_fingerprint']=digest(packet)
+            out=root/packet['input_fingerprint'];out.mkdir();input_path=out/'input.json';input_path.write_text(json.dumps(packet))
+            with patch.object(demo,'_run_directory',lambda base,key:root/key),                patch.object(demo,'code_identity',return_value={}),                patch.object(demo,'ollama_runtime_identity',return_value=runtime) as inspect,                patch.dict(os.environ,{'PTE_LLM_MODEL':'gemma3:4b'}):
+                checked,_=demo.verify_input(input_path,root)
+                self.assertEqual(checked['generation_runtime']['model'],'qwen3.5:9b')
+                inspect.assert_called_once_with(model='qwen3.5:9b')

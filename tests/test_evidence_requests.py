@@ -241,6 +241,11 @@ class ModelSelectionTests(unittest.TestCase):
         raw=dict(model='qwen3.5:9b',done=True,done_reason='stop',prompt_eval_count=1,eval_count=1,
                  message=dict(content='{}',thinking='unexpected'))
         with self.assertRaisesRegex(ValueError,'thinking'):decode_response(request,WireResponse(200,json.dumps(raw)))
+        from pastor_transcript_extractor.evidence_requests import validate_response
+        limited=generation_request('source_reading',{}, {},runtime_identity={**self.runtime(),'num_ctx':65536,'input_cap':57344})
+        limited.preflight()
+        with self.assertRaisesRegex(ValueError,'outside reservation'):
+            validate_response(limited,dict(model='qwen3.5:9b',complete=True,usage=dict(input_tokens=60000,output_tokens=1)))
 
     def test_installed_selection_override_hash_identity_and_safe_names(self):
         import hashlib,json,os

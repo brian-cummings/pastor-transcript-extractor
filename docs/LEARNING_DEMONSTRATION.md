@@ -28,7 +28,7 @@ inference or attempt files. Preparation inspects model files; it does not load,
 pull or run a model.
 Paid `run` requires the separate explicit `--experimental --approve-input <exact
 fingerprint> --max-usd 0.10 --confirm-verifier-price` decision and `TYPESAFE_API_KEY`.
-Generation uses only local Ollama `gemma3:4b`; no OpenAI account/key is required.
+Generation uses a selected installed local Ollama model; the default remains `gemma3:4b`. No OpenAI account/key is required.
 At most 33 local generation attempts and 33 paid Jev attempts are allowed.
 The verifier reservation is $0.090832896 at the inherited $0.042/million input-token
 rate, with a $0.10 total paid ceiling ($0.07 source / $0.03 downstream). Local
@@ -167,3 +167,48 @@ are explicitly unavailable, never reinterpreted. Reports can count valid local u
 present in a rejected raw HTTP response without admitting its content or changing
 original receipts. `run` prints source-window and request-phase progress on stderr;
 `--json` stdout remains machine-readable. Neither diagnostic feature retries requests.
+
+
+## Installed local model selection
+
+`pte analysis learning-demo prepare --model qwen3.5:9b ...` selects an installed
+Ollama model for all generation phases. Explicit `--model` takes precedence over
+`PTE_LLM_MODEL`; without either, the existing `gemma3:4b` default remains. This
+uses the existing Ollama transport and the same schemas/prompts, binding compiler,
+fingerprints and comparisons. It does not select or change the Jev verifier.
+
+Inspect selection without loading a model or generating output:
+
+```sh
+pte analysis learning-demo model-info --model qwen3.5:9b --json
+```
+
+`model-info` and preparation hash installed manifests and every referenced blob and
+read `/api/show` metadata on the configured loopback endpoint. They never pull models
+or call `/api/chat`. Model references support installed `name[:tag]` and
+`namespace/name[:tag]`; omitted tags resolve explicitly to `latest`. Missing models,
+unsafe references and remote endpoints fail without downloads or substitution.
+
+The frozen manifest pins model tag, manifest/blob hashes, architecture, quantization,
+capabilities and native context. Context remains bounded by the smaller of that
+model's native limit and the existing 131072 ceiling. The byte-bound reservation and
+8192/4096 output limits remain; a model with insufficient context fails fit checks
+rather than truncating inputs. Thinking output is explicitly disabled for models that
+advertise thinking support, and that request policy is frozen (using the official [chat API thinking control](https://docs.ollama.com/api/chat)). No model-specific prompt
+variants or per-model semantic thresholds are introduced.
+
+Hot swapping means choosing another installed model for a **new preparation**; a
+frozen run retains its model even if `PTE_LLM_MODEL` later changes. Request and receipt
+identities include the model/runtime, so answers cannot migrate between models. Actual
+response model identity must match the pin. Switching does not retry a halted run or
+reset any authorization/accounting rules; prior execution records remain immutable.
+
+Provider-free preparation check for the installed Qwen model:
+
+```sh
+pte analysis learning-demo prepare --base-dir /Users/briancummings/Documents/PastorSearchData --proposal /Users/briancummings/Documents/PastorSearchData/evaluation/learning-work-package-v1/proposal-v3/proposal-v3.json --model qwen3.5:9b --check-only --json
+```
+
+This command validates selection and the frozen source geometry, not Qwen judgment
+quality. It does not authorize or execute another experiment. A bounded real model-fit
+run and its prior-attempt accounting remain a separate execution preparation.

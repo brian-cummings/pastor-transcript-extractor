@@ -283,6 +283,7 @@ def execute(spec, ledger, store, transport, *, encoding=None):
 def validate_response(spec,response):
     provider,_,_,i,o,_,_=PHASES[spec.phase]
     model=request_model(spec)
+    if provider=='Ollama': i=min(i,spec.runtime_identity.get('input_cap',i))
     if response['model']!=model: raise ValueError('Resolved model differs')
     if response.get('complete') is not True: raise ValueError('Incomplete/refused response; no repair/retry')
     usage=response['usage']

@@ -73,3 +73,19 @@ class LearningCliTests(unittest.TestCase):
         self.assertEqual(result.exit_code,0,result.output)
         self.assertEqual(json.loads(result.stdout)['status'],'PREPARED_NO_EXECUTION')
         self.assertIn('Source window 1/24',result.stderr)
+
+
+    def test_explicit_model_selection_and_metadata_only_cli(self):
+        from pathlib import Path
+        runner=CliRunner();packet=dict(input_fingerprint='fixture',coverage={},budget={})
+        with patch('pastor_transcript_extractor.learning_demo.prepare',return_value=(packet,Path('/tmp/fixture'))) as prepare:
+            result=runner.invoke(app,['analysis','learning-demo','prepare','--proposal','/tmp/proposal.json',
+                '--model','qwen3.5:9b','--check-only','--json'])
+            self.assertEqual(result.exit_code,0,result.output)
+            self.assertEqual(prepare.call_args.kwargs['model'],'qwen3.5:9b')
+        with patch('pastor_transcript_extractor.learning_demo.ollama_runtime_identity',return_value=dict(model='qwen3.5:9b')) as inspect:
+            result=runner.invoke(app,['analysis','learning-demo','model-info','--model','qwen3.5:9b','--json'])
+            self.assertEqual(result.exit_code,0,result.output)
+            inspect.assert_called_once_with(model='qwen3.5:9b')
+            self.assertIn('"generation_calls": 0',result.stdout)
+            self.assertIn('"paid_calls": 0',result.stdout)

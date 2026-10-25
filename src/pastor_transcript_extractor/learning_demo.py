@@ -17,7 +17,7 @@ from .pastor_evidence import (EvidenceArtifactStore, EvidencePolicy, EvidenceVie
     SourceWindow, compile_machine_binding, digest)
 from .binding_evidence import context_digest, text_digest
 from .evidence_requests import (BudgetLedger, PHASES, ReceiptStore, RequestSpec, execute,
-    ollama_transport, typesafe_transport, reservation, V3_PHASES, ollama_runtime_identity)
+    ollama_transport, typesafe_transport, reservation, V3_PHASES, ollama_runtime_identity, request_model)
 from . import learning_demo_contracts as contract
 from .pastor_fingerprint import ROOTS, build_fingerprint, topic_measurements
 from .pastor_similarity import compare_fingerprints, ComparisonSpec
@@ -174,7 +174,7 @@ def cumulative_account(store,packet):
     return account
 
 
-def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokenizer_identity=None,restart_from=None,contract_round_from=None):
+def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokenizer_identity=None,restart_from=None,contract_round_from=None,model=None):
     if restart_from is not None and contract_round_from is not None:
         raise ValueError('Choose only one approved round lineage')
     from . import segment_cache_inventory
@@ -190,7 +190,8 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
         if file_hash(proposal_path.parent/name)!=expected: raise ValueError('Proposal companion changed: '+name)
     for key in ('source_audit','prior_v2'):
         if file_hash(proposal[key]['path'])!=proposal[key]['sha256']: raise ValueError('Proposal lineage changed')
-    expected_phases=[dict(phase=k,provider=v[0],model=v[1],maximum_attempts=v[2],
+    runtime=ollama_runtime_identity(model=model)
+    expected_phases=[dict(phase=k,provider=v[0],model=runtime['model'] if v[0]=='Ollama' else v[1],maximum_attempts=v[2],
         input_reservation_per_attempt=v[3],output_cap_per_attempt=v[4],
         input_usd_per_million=v[5],output_usd_per_million=v[6],
         list_price_reservation_usd=str(reservation(k)*v[2])) for k,v in PHASES.items()]
@@ -200,7 +201,6 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
         for k,v in V3_PHASES.items()]
     for actual,expected in zip(proposal['provider_proposal']['phases'],original_phases,strict=True):
         if any(str(actual[k])!=str(v) for k,v in expected.items()): raise ValueError('V3 request/model/budget contract differs')
-    runtime=ollama_runtime_identity()
     encoding=None
     tokenizer_identity=dict(method=runtime['token_accounting'],exact_token_count_known=False,
         context_length=runtime['num_ctx'],input_cap=runtime['input_cap'],limitation=runtime['limitation'])
@@ -233,8 +233,7 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
                 state['source_identity']={k:v for k,v in asdict(window).items() if k!='blocks'}
                 request=contract.generation_request('source_reading',state,
                     dict(source_sha256=window.source_sha256,target_digest=digest(texts),
-                         coordinate_policy='unicode-block-reversible-v1',builder=window.builder_identity))
-                request=replace(request,runtime_identity=runtime)
+                         coordinate_policy='unicode-block-reversible-v1',builder=window.builder_identity),runtime_identity=runtime)
                 account=request.preflight(encoding)
                 requests.append(dict(case_id=case['case_id'],request=asdict(request),fingerprint=request.fingerprint,token_account=account))
                 windows.append(asdict(window))
@@ -253,8 +252,8 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
     packet=dict(schema_version=VERSION,proposal=dict(path=str(proposal_path),sha256=file_hash(proposal_path)),
         code_identity=code_identity(),samples=samples,windows=windows,source_refs=source_refs,
         measurements=measurements,reusable_constituents=reuse,source_requests=requests,
-        generation_runtime=runtime,provider_revision=dict(version='ollama-gemma3-4b-jev-v1',
-            authorization='User explicitly approved gemma3:4b Ollama generation with Jev verification; preparation only',
+        generation_runtime=runtime,provider_revision=dict(version='ollama-selected-model-jev-v2',
+            authorization='User approved installed local Ollama model selection; this preparation does not authorize a new execution',
             original_provider_phases=original_phases,
             delta='33 local Ollama attempts replace 33 OpenAI attempts; Jev remains 33 maximum paid attempts; paid ceiling reduced to $0.10; output caps and semantic thresholds retained; local context/input accounting revised; current schemas and prompts separately versioned'),
         tokenizer=tokenizer_identity,contracts=dict(version=contract.VERSION,schemas=contract.SCHEMAS,
@@ -274,7 +273,7 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
         human_limits=proposal['human_limits'],operations=dict(provider_calls=0,model_calls=0,database_writes=0,
             actual_comparisons=0,production_admission_changed=False),execution_authorized=False,
         prerequisites=['Separate Brian M5 decision bound to this input fingerprint',
-            'Installed pinned gemma3:4b model and local Ollama service available; memory/time capacity for explicitly sized request contexts (up to 131072 tokens) is untested without inference',
+            f'Installed pinned {runtime["model"]} model and local Ollama service available; memory/time capacity for explicitly sized request contexts (up to {runtime["num_ctx"]} tokens) is untested without inference',
             'TYPESAFE_API_KEY and Jev account access; confirm verifier input price $0.042 per million tokens within $0.10 total cap',
             'All dynamically expanded batches pass frozen per-question/request preflight; otherwise stop'])
     if restart_from is not None:
@@ -314,6 +313,7 @@ def render_preparation(packet,out):
         'Existing V8/P1 and Scripture commands remain separate. New `pte analysis learning-demo prepare`, `run` and `report` adapt shared services.\n\n'+\
         'M5 is separately authorized. Run input must match the immutable fingerprint and code/source hashes; no runtime repair or routine approval.\n\n'+\
         '\n'.join('- '+s for s in packet['prerequisites'])+'\n'
+    text+=f'\nSelected model: `{packet["generation_runtime"]["model"]}`; manifest `{packet["generation_runtime"]["manifest_sha256"]}`. Thinking disabled; explicit frozen selection governs this run, independent of later PTE_LLM_MODEL changes.\n'
     base=out.parents[2]
     preflight=f'pte analysis learning-demo run --base-dir {base} --input {out / "input.json"} --check-only --json'
     execution=f'pte analysis learning-demo run --base-dir {base} --input {out / "input.json"} --experimental --approve-input {packet["input_fingerprint"]} --max-usd 0.10 --confirm-verifier-price --json'
@@ -356,7 +356,7 @@ def verify_input(input_path,base_dir=None):
         marker=Path(packet['contract_round']['prior_input']).parent/'execution/contract-round-authorization.json'
         if marker.exists() and json.loads(marker.read_text())!={'contract_round_input_fingerprint':packet['input_fingerprint']}:
             raise ValueError('Contract round already assigned to a different input')
-    runtime=ollama_runtime_identity()
+    runtime=ollama_runtime_identity(model=packet['generation_runtime']['model'])
     if runtime!=packet['generation_runtime']: raise ValueError('Frozen local Ollama model/runtime differs')
     encoding=None
     for raw in packet['source_requests']:
@@ -485,7 +485,7 @@ def usage_account(store):
             try: raw=json.loads(wire['text']) if wire['status_code']==200 else {}
             except (ValueError,TypeError): raw={}
             if not isinstance(raw,dict): raw={}
-            if raw.get('model')==PHASES[attempt['phase']][1]:
+            if raw.get('model')==request_model(RequestSpec(**receipt['request'])):
                 usage=dict(input_tokens=raw.get('prompt_eval_count'),output_tokens=raw.get('eval_count'))
         if type(usage.get('input_tokens')) is not int or type(usage.get('output_tokens')) is not int:
             unknown+=1;continue
@@ -508,8 +508,8 @@ def execute_pipeline(packet,store,transport,*,encoding,progress=None):
     windows={w['id']:SourceWindow(**{**w,'blocks':tuple(w['blocks']),
         'excluded_neighbors':tuple(w['excluded_neighbors'])}) for w in packet['windows']}
     def generation_request(phase,state,source_identity):
-        return replace(contract.generation_request(phase,state,source_identity),
-                       runtime_identity=packet.get('generation_runtime',{}))
+        return contract.generation_request(phase,state,source_identity,
+            runtime_identity=packet.get('generation_runtime',{}))
     def send(request):
         if progress: progress(f'{request.phase}: started')
         response=execute(request,ledger,store,transport,encoding=encoding)
@@ -697,7 +697,7 @@ def require_execution(packet,approve_input,experimental,max_usd,confirm_proposal
     if Decimal(str(max_usd))!=Decimal('.10') or confirm_proposal_prices is not True:
         raise ValueError('Confirm unchanged proposal prices and exact $0.10 verifier ceiling before M5')
     return dict(schema_version='learning-demo-execution-decision-v1',input_fingerprint=approve_input,
-        decision='explicit_cli_M5_execution',experimental=True,max_attempts=packet.get('budget',{}).get('maximum_attempts',66),max_paid_attempts=33,max_local_attempts=packet.get('budget',{}).get('maximum_local_attempts',33),max_usd='.10',generation_provider='Ollama',model='gemma3:4b',
+        decision='explicit_cli_M5_execution',experimental=True,max_attempts=packet.get('budget',{}).get('maximum_attempts',66),max_paid_attempts=33,max_local_attempts=packet.get('budget',{}).get('maximum_local_attempts',33),max_usd='.10',generation_provider='Ollama',model=packet.get('generation_runtime',{}).get('model',PHASES['source_reading'][1]),
         proposal_prices_confirmed=True,retries=0,production_admission=False)
 
 

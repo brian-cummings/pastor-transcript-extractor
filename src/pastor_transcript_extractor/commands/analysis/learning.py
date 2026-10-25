@@ -16,12 +16,13 @@ def emit(value,as_json):
 @app.command('prepare')
 def prepare(proposal:Path=typer.Option(...,'--proposal'),
             base_dir:Path|None=typer.Option(None,'--base-dir'),
+            model:str|None=typer.Option(None,'--model',help='Installed Ollama model; defaults to PTE_LLM_MODEL, then gemma3:4b.'),
             restart_from:Path|None=typer.Option(None,'--restart-from'),
             contract_round_from:Path|None=typer.Option(None,'--contract-round-from'),
             check_only:bool=typer.Option(False,'--check-only'),
             as_json:bool=typer.Option(False,'--json')):
     try:
-        packet,out=learning_demo.prepare(proposal,base_dir,check_only=check_only,restart_from=restart_from,contract_round_from=contract_round_from)
+        packet,out=learning_demo.prepare(proposal,base_dir,check_only=check_only,restart_from=restart_from,contract_round_from=contract_round_from,model=model)
         emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',
             input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],
             coverage=packet['coverage'],budget=packet['budget'],provider_calls=0),as_json)
@@ -51,4 +52,16 @@ def report(run_dir:Path=typer.Option(...,'--run-dir'),audit:Path|None=typer.Opti
            as_json:bool=typer.Option(False,'--json')):
     try:
         emit(learning_demo.report(run_dir,audit=json.loads(audit.read_text()) if audit else None,base_dir=base_dir),as_json)
+    except (ValueError,OSError,KeyError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@app.command('model-info')
+def model_info(model:str|None=typer.Option(None,'--model'),
+               as_json:bool=typer.Option(False,'--json')):
+    """Inspect and hash an installed local model without loading it or running inference."""
+    try:
+        runtime=learning_demo.ollama_runtime_identity(model=model)
+        emit(dict(status='INSTALLED_MODEL_CHECKED',runtime=runtime,
+            selection='--model overrides PTE_LLM_MODEL; frozen inputs retain their selection',
+            metadata_requests=1,model_calls=0,generation_calls=0,paid_calls=0),as_json)
     except (ValueError,OSError,KeyError) as error: raise typer.BadParameter(str(error)) from error
