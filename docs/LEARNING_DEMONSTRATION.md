@@ -1,6 +1,6 @@
-# Bounded automatic fingerprint preparation
+# Bounded automatic fingerprint preparation — Ollama revision
 
-`pte analysis learning-demo` is the V3 adapter over `pastor_evidence`,
+`pte analysis learning-demo` is the user-approved Ollama revision of the V3 adapter over `pastor_evidence`,
 `pastor_fingerprint`, `pastor_similarity` and `evidence_requests`. It preserves the
 existing profile 318/V8, profile 130/P1 and exploratory Scripture benchmark commands.
 The new fingerprint panel seam does not rank profiles or alter Scripture geometry.
@@ -17,13 +17,22 @@ actual saved neighboring blocks, score-independent controls, compatible constitu
 cache identities, and the 24 serialized source-reading requests. It freezes schemas,
 prompts, model pins, topic measurements, source references, code identity, token
 accounting, downstream batch construction rules and all phase reservations under
-`<base>/evaluation/learning-demo-v3/<input-fingerprint>/input.json`.
+`<base>/evaluation/learning-demo-v3-ollama/<input-fingerprint>/input.json`.
+The original V3 packet and its prior OpenAI preparation remain immutable historical
+inputs. The new manifest records the explicit provider/budget/context delta.
 
 `preparation.md` beside that file contains exact preflight, M5 and reporting commands.
 `run --check-only` checks frozen implementation, membership/source/run lineage,
-request identity and tokenizer accounting, without providers or attempt files.
+request identity, installed model hashes and conservative input bounds, without
+inference or attempt files. Preparation inspects model files; it does not load,
+pull or run a model.
 Paid `run` requires the separate explicit `--experimental --approve-input <exact
-fingerprint> --max-usd 2.00 --confirm-proposal-prices` decision and both credentials.
+fingerprint> --max-usd 0.10 --confirm-verifier-price` decision and `TYPESAFE_API_KEY`.
+Generation uses only local Ollama `gemma3:4b`; no OpenAI account/key is required.
+At most 33 local generation attempts and 33 paid Jev attempts are allowed.
+The verifier reservation is $0.090832896 at the inherited $0.042/million input-token
+rate, with a $0.10 total paid ceiling ($0.07 source / $0.03 downstream). Local
+hardware/electricity costs are outside this API accounting.
 Do not execute that command as part of M1–M4. Current account access is unverified by
 provider-free preparation. Price changes require a revised decision, never a larger
 ceiling or replacement model.
@@ -32,10 +41,23 @@ All attempts reserve worst-case phase cost before sending; receipts are immutabl
 cache reuse is exact, retries/fallbacks are zero, and uncertain spend stops the entire
 run. All dynamically generated batches undergo request and per-question fit checks.
 Input/output overflow stops explicitly; it never strips qualifications or adds batches.
-The local OpenAI tokenizer reuses the pinned installed runtime and encoding cache,
-without importing the closed source-probe controller. TypeSafe uses a conservative
+Ollama uses UTF-8 serialized-byte upper bounds plus 4,096 framing tokens rather
+than incorrectly applying an OpenAI tokenizer to Gemma. Each request explicitly
+allocates enough context for its input upper bound and output cap, rounded up to
+1,024 tokens, at most 131,072. The per-request input upper bound must not exceed
+122,880; output caps remain 8,192 for reading and 4,096 downstream. These are
+conservative bounds, not exact Gemma token counts. Local memory/latency at these
+context sizes and semantic quality remain untested until separately authorized
+execution. No source text or qualifications are truncated. TypeSafe uses a conservative
 UTF-8 byte upper bound plus framing at the default 32k-question/64k-request limits,
 reserving 65,536 charged input tokens. No long-context opt-in is used.
+
+The installed Ollama manifest, weight/config/template/parameter blobs, local
+loopback endpoint, native JSON-schema format and deterministic decoding options
+are frozen. Changed tags/blobs, remote/cloud endpoints, missing local models,
+incomplete responses and output overflow stop without retries, model downloads
+or provider fallback. See the official [chat API](https://docs.ollama.com/api/chat)
+and [structured-output contract](https://docs.ollama.com/capabilities/structured-outputs).
 
 Automatic observations use the existing literal compiler under a machine-origin
 contract. Literal checks and verifier probabilities do not establish human review or
