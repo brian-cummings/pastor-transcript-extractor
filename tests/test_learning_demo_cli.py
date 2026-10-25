@@ -47,3 +47,16 @@ class LearningCliTests(unittest.TestCase):
                 self.assertEqual(result['status'],'INCONCLUSIVE')
                 self.assertEqual(local.call_count,1);self.assertEqual(verifier.call_count,1)
                 self.assertNotIn('OPENAI_API_KEY',os.environ)
+
+
+    def test_contract_round_preparation_cli_is_provider_free(self):
+        from pathlib import Path
+        runner=CliRunner()
+        packet=dict(input_fingerprint='synthetic',coverage={},budget={})
+        with patch('pastor_transcript_extractor.learning_demo.prepare',return_value=(packet,Path('/tmp/synthetic'))) as prepare:
+            result=runner.invoke(app,['analysis','learning-demo','prepare','--proposal','/tmp/proposal.json',
+                '--contract-round-from','/tmp/prior.json','--check-only','--json'])
+            self.assertEqual(result.exit_code,0,result.output)
+            self.assertEqual(prepare.call_args.kwargs['contract_round_from'],Path('/tmp/prior.json'))
+            self.assertTrue(prepare.call_args.kwargs['check_only'])
+            self.assertIn('"provider_calls": 0',result.output)

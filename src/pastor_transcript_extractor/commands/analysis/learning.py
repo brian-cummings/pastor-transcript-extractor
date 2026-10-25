@@ -17,10 +17,11 @@ def emit(value,as_json):
 def prepare(proposal:Path=typer.Option(...,'--proposal'),
             base_dir:Path|None=typer.Option(None,'--base-dir'),
             restart_from:Path|None=typer.Option(None,'--restart-from'),
+            contract_round_from:Path|None=typer.Option(None,'--contract-round-from'),
             check_only:bool=typer.Option(False,'--check-only'),
             as_json:bool=typer.Option(False,'--json')):
     try:
-        packet,out=learning_demo.prepare(proposal,base_dir,check_only=check_only,restart_from=restart_from)
+        packet,out=learning_demo.prepare(proposal,base_dir,check_only=check_only,restart_from=restart_from,contract_round_from=contract_round_from)
         emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',
             input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],
             coverage=packet['coverage'],budget=packet['budget'],provider_calls=0),as_json)

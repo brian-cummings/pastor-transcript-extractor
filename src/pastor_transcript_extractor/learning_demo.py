@@ -118,16 +118,65 @@ def restart_lineage(prior_input,base_dir):
         authorization='Brian explicitly approved one technical restart after response-decoding fix; cumulative maximum 67 attempts, 34 local, 33 paid, $0.10; no further retries')
 
 
+CONTRACT_ROUND_FROM='393cbb321c0a3ec3b4b4337872c2da80d1ace9e58c8da2bd836c3bf46e1844d3'
+
+
+def contract_round_lineage(prior_input,base_dir):
+    """One explicitly approved contract revision after the preserved Gemma failure."""
+    root=_run_directory(base_dir,CONTRACT_ROUND_FROM).resolve()
+    prior_input=Path(prior_input).resolve()
+    if prior_input!=root/'input.json': raise ValueError('Contract round must follow the preserved incomplete Gemma run')
+    prior=json.loads(prior_input.read_text())
+    if (prior['input_fingerprint']!=CONTRACT_ROUND_FROM
+        or digest({k:v for k,v in prior.items() if k!='input_fingerprint'})!=CONTRACT_ROUND_FROM):
+        raise ValueError('Prior contract round identity differs')
+    original=restart_lineage(prior['restart']['prior_input'],base_dir)
+    if original!=prior['restart']: raise ValueError('Original failed attempt lineage differs')
+    original_marker=Path(original['prior_input']).parent/'execution/restart-authorization.json'
+    if json.loads(original_marker.read_text())!={'restart_input_fingerprint':CONTRACT_ROUND_FROM}:
+        raise ValueError('Prior restart claim differs')
+    execution=root/'execution';attempts=ReceiptStore(execution).attempts()
+    if len(attempts)!=1 or attempts[0]['phase']!='source_reading' or Decimal(attempts[0]['reserved_usd'])!=0:
+        raise ValueError('Contract round requires exactly one additional local attempt and no paid attempts')
+    key=attempts[0]['request_fingerprint']
+    receipts=list((execution/'receipts').glob('*.json'))
+    if len(receipts)!=1 or receipts[0].stem!=key: raise ValueError('Incomplete response receipt inventory differs')
+    receipt=json.loads(receipts[0].read_text())
+    wire_path=execution/'wire-responses'/(key+'.json');wire=json.loads(wire_path.read_text())
+    if (receipt.get('halt')!='Incomplete Ollama response (done=False, done_reason=None); no repair/retry'
+        or receipt.get('wire_response_digest')!=digest(wire) or wire['status_code']!=200
+        or json.loads(wire['text']).get('done') is not False):
+        raise ValueError('Preserved incomplete-response evidence differs')
+    # Prior execution files, including its failure/response, are pinned rather than rewritten.
+    files=[prior_input,original_marker,*sorted(path for path in execution.rglob('*.json')
+                                              if path.name!='contract-round-authorization.json')]
+    return dict(prior_input=str(prior_input),prior_input_fingerprint=CONTRACT_ROUND_FROM,
+        preserved_files={**original['preserved_files'],**{str(path):file_hash(path) for path in files}},
+        prior_attempts=2,prior_local_attempts=2,prior_paid_attempts=0,prior_reserved_usd='0',
+        prior_unknown_usage_attempts=2,
+        authorization='Brian approved model-independent prompt/schema corrections and one further Gemma round; two prior local attempts remain counted, 66 current slots, $0.10 paid ceiling; no model change or further retries')
+
+
+def _round_lineage(packet):
+    return packet.get('contract_round') or packet.get('restart')
+
+
 def cumulative_account(store,packet):
     account=usage_account(store)
-    if packet.get('restart'):
-        account.update(prior_attempts=1,cumulative_attempts=account['attempts']+1,
-            cumulative_local_attempts=account['local_attempts']+1,cumulative_paid_attempts=account['paid_attempts'],
-            cumulative_reserved_usd=account['reserved_usd'],cumulative_unknown_usage_attempts=account['unknown_usage_attempts']+1)
+    lineage=_round_lineage(packet)
+    if lineage:
+        account.update(prior_attempts=lineage['prior_attempts'],
+            cumulative_attempts=account['attempts']+lineage['prior_attempts'],
+            cumulative_local_attempts=account['local_attempts']+lineage['prior_local_attempts'],
+            cumulative_paid_attempts=account['paid_attempts']+lineage['prior_paid_attempts'],
+            cumulative_reserved_usd=str(Decimal(account['reserved_usd'])+Decimal(lineage['prior_reserved_usd'])),
+            cumulative_unknown_usage_attempts=account['unknown_usage_attempts']+lineage['prior_local_attempts'])
     return account
 
 
-def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokenizer_identity=None,restart_from=None):
+def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokenizer_identity=None,restart_from=None,contract_round_from=None):
+    if restart_from is not None and contract_round_from is not None:
+        raise ValueError('Choose only one approved round lineage')
     from . import segment_cache_inventory
     from .profile_evidence_supply import read_sample
     from .sermon_topics import resolve_topic_analysis_artifact
@@ -207,7 +256,7 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
         generation_runtime=runtime,provider_revision=dict(version='ollama-gemma3-4b-jev-v1',
             authorization='User explicitly approved gemma3:4b Ollama generation with Jev verification; preparation only',
             original_provider_phases=original_phases,
-            delta='33 local Ollama attempts replace 33 OpenAI attempts; Jev remains 33 maximum paid attempts; paid ceiling reduced to $0.10; output caps, schemas and semantic thresholds retained; local context/input accounting revised'),
+            delta='33 local Ollama attempts replace 33 OpenAI attempts; Jev remains 33 maximum paid attempts; paid ceiling reduced to $0.10; output caps and semantic thresholds retained; local context/input accounting revised; current schemas and prompts separately versioned'),
         tokenizer=tokenizer_identity,contracts=dict(version=contract.VERSION,schemas=contract.SCHEMAS,
             prompts=contract.PROMPTS,required_checks=contract.CHECK_MEANINGS),
         downstream_batch_plan=dict(source_verification='one per window, <=12 claims, ten independent checks each',
@@ -236,6 +285,20 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
         packet['budget'].update(maximum_attempts=67,maximum_local_attempts=34,
             maximum_current_run_attempts=66,maximum_current_run_local_attempts=33,prior_local_attempts=1,
             technical_restarts=1)
+    if contract_round_from is not None:
+        packet['contract_round']=contract_round_lineage(contract_round_from,base_dir)
+        prior=json.loads(Path(contract_round_from).read_text())
+        for key in ('windows','generation_runtime','samples','source_refs','measurements','coverage','acceptance','verification_bias','human_limits'):
+            if digest(packet[key])!=digest(prior[key]): raise ValueError('Contract round changed frozen '+key)
+        packet['budget'].update(maximum_attempts=68,maximum_local_attempts=35,
+            maximum_current_run_attempts=66,maximum_current_run_local_attempts=33,prior_local_attempts=2,
+            approved_contract_rounds=1)
+        packet['contract_revision']=dict(version=contract.VERSION,
+            changes=['Existing semantic enums enforced in schema; explicit per-field instructions',
+                     'Bounded interpreted prose, unbounded verbatim source passages; no truncation',
+                     'Unique verbatim Unicode span location in code; ambiguous/missing evidence remains unbound'],
+            preserved='Same model, sources, 24 windows, six controls, thresholds, phase slots and paid ceiling; no model adapter',
+            evaluation='Complete output and literal/schema yield precede semantic accuracy; stub PASS is not model fit')
     packet['input_fingerprint']=digest(packet)
     out=_run_directory(base_dir,packet['input_fingerprint'])
     if not check_only:
@@ -257,6 +320,8 @@ def render_preparation(packet,out):
     reporting=f'pte analysis learning-demo report --base-dir {base} --run-dir {out} --json'
     if packet.get('restart'):
         text+='\nApproved technical restart: one preserved failed local attempt plus at most 66 new attempts = 67 cumulative (34 local, 33 paid). Paid ceiling remains $0.10. Original records remain immutable. No further retry.\n'
+    if packet.get('contract_round'):
+        text+='\nApproved contract round: two preserved failed local attempts plus at most 66 current attempts = 68 cumulative (35 local, 33 paid). Same Gemma model and $0.10 paid ceiling. Enforced enums, bounded prose, deterministic unique literal-span location. No further automatic retries.\n'
     text+='\nProvider-free preflight:\n\n```sh\n'+preflight+'\n```\n\nSeparately authorized M5 only (not executed):\n\n```sh\n'+execution+'\n```\n\nReport:\n\n```sh\n'+reporting+'\n```\n'
     path=out/'preparation.md'
     if path.exists() and path.read_text()!=text: raise ValueError('Immutable preparation report changed')
@@ -285,6 +350,12 @@ def verify_input(input_path,base_dir=None):
         marker=Path(packet['restart']['prior_input']).parent/'execution/restart-authorization.json'
         if marker.exists() and json.loads(marker.read_text())!={'restart_input_fingerprint':packet['input_fingerprint']}:
             raise ValueError('Technical restart already assigned to a different input')
+    if packet.get('contract_round'):
+        if contract_round_lineage(packet['contract_round']['prior_input'],base_dir)!=packet['contract_round']:
+            raise ValueError('Preserved contract-round lineage changed')
+        marker=Path(packet['contract_round']['prior_input']).parent/'execution/contract-round-authorization.json'
+        if marker.exists() and json.loads(marker.read_text())!={'contract_round_input_fingerprint':packet['input_fingerprint']}:
+            raise ValueError('Contract round already assigned to a different input')
     runtime=ollama_runtime_identity()
     if runtime!=packet['generation_runtime']: raise ValueError('Frozen local Ollama model/runtime differs')
     encoding=None
@@ -627,6 +698,9 @@ def run(input_path,base_dir=None,*,approve_input=None,experimental=False,max_usd
     if packet.get('restart'):
         EvidenceArtifactStore(Path(packet['restart']['prior_input']).parent/'execution').write_immutable(
             'restart-authorization.json',dict(restart_input_fingerprint=packet['input_fingerprint']))
+    if packet.get('contract_round'):
+        EvidenceArtifactStore(Path(packet['contract_round']['prior_input']).parent/'execution').write_immutable(
+            'contract-round-authorization.json',dict(contract_round_input_fingerprint=packet['input_fingerprint']))
     store=ReceiptStore(Path(input_path).parent/'execution')
     store.write_immutable('authorization.json',decision)
     def transport(spec):

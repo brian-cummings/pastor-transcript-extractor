@@ -145,3 +145,14 @@ node references, adoption evidence and conditions. Original model output remains
 receipts and raw readings; the observation's producer identifies the locator version.
 Semantic verification and production admission safeguards are unchanged. Prompt and
 schema changes invalidate prior requests; historical responses are never reinterpreted.
+
+
+`prepare --contract-round-from <393cbb32…/input.json>` freezes the separately approved
+contract revision round. This is distinct from the earlier unchanged-request technical
+restart. It pins both historical inputs and execution records, including the preserved
+incomplete HTTP body, and checks unchanged sources, model, windows and acceptance
+criteria. Maximum current-run attempts remain 66 (33 local, 33 paid), with 68 cumulative
+attempts including the two failed local calls (35 local, 33 paid). The $0.10 total paid
+ceiling and phase reservations remain unchanged. An immutable marker on the prior
+execution binds this approval to one replacement input when Brian executes its command.
+A later model adapter or model change requires the results and a separate decision.

@@ -248,3 +248,47 @@ class HardenedContractTests(unittest.TestCase):
         self.assertEqual(c.READ_SCHEMA['properties']['claims']['maxItems'],12)
         self.assertEqual(c.BINDING['properties']['development_relations']['maxItems'],6)
         self.assertNotIn('preacher/quoted_or_reported',c.READ_PROMPT)
+
+
+class ContractRoundTests(unittest.TestCase):
+    def test_two_preserved_attempts_count_without_expanding_current_run(self):
+        packet=synthetic_packet();packet['contract_round']=dict(prior_attempts=2,prior_local_attempts=2,
+            prior_paid_attempts=0,prior_reserved_usd='0')
+        provider=FakeProvider()
+        with TemporaryDirectory() as directory:
+            store=ReceiptStore(Path(directory))
+            result=demo.execute_pipeline(packet,store,provider,encoding=SyntheticEncoding())
+            self.assertEqual(len(provider.calls),66)
+            self.assertEqual(result['accounting']['cumulative_attempts'],68)
+            self.assertEqual(result['accounting']['cumulative_local_attempts'],35)
+            self.assertEqual(result['accounting']['cumulative_paid_attempts'],33)
+            self.assertEqual(result['accounting']['cumulative_unknown_usage_attempts'],2)
+            self.assertTrue(all(row['producer']['literal_locator']=='unique-verbatim-unicode-v1'
+                                for row in result['observations']))
+            again=demo.execute_pipeline(packet,store,provider,encoding=SyntheticEncoding())
+            self.assertEqual(result,again);self.assertEqual(len(provider.calls),66)
+
+    def test_absent_literal_is_withheld_without_repair_or_verification_as_evidence(self):
+        provider=FakeProvider();first=[True];verified=[]
+        def send(request):
+            response=provider(request)
+            if request.phase=='source_reading' and first[0]:
+                response['output']['claims'][0]['proposition']['span']['text']='not in synthetic source'
+                first[0]=False
+            if request.phase=='source_verification':verified.append(request.body['state']['items'])
+            return response
+        with TemporaryDirectory() as directory:
+            result=demo.execute_pipeline(synthetic_packet(),ReceiptStore(Path(directory)),send,encoding=SyntheticEncoding())
+            self.assertEqual(len(result['raw_observations']),47)
+            self.assertEqual(len(verified[0]),1)
+            self.assertEqual(result['raw_readings'][0]['output']['claims'][0]['proposition']['span']['text'],
+                             'not in synthetic source')
+            self.assertEqual(result['status'],'FAIL(component)')
+            self.assertTrue(any(row['component']=='literal_binding' and 'absent' in row['reason']
+                                for row in result['failures']))
+            self.assertEqual(result['accounting']['runtime_repairs'],0)
+
+    def test_round_cannot_follow_a_different_failed_run(self):
+        with TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError,'preserved incomplete'):
+                demo.contract_round_lineage(Path(directory)/'other.json',Path(directory))
