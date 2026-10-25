@@ -131,12 +131,22 @@ def verify(input_path,base_dir):
         raise ValueError('Model-fit input must be in the configured application directory')
     if packet['code_identity']!=code_identity(): raise ValueError('Implementation changed after freeze')
     # Reconstruct the exact provider-free recipe, including all historical/source hashes.
-    expected,_=prepare(packet['history']['prior_input'],base_dir,model=packet['generation_runtime']['model'],check_only=True)
+    if 'runtime_repeat' in packet:
+        from .learning_demo_runtime_repeat import prepare as repeat_prepare
+        expected,_=repeat_prepare(packet['runtime_repeat']['prior_input'],base_dir,model=packet['generation_runtime']['model'],check_only=True)
+    else:
+        expected,_=prepare(packet['history']['prior_input'],base_dir,model=packet['generation_runtime']['model'],check_only=True)
     if expected!=packet: raise ValueError('Model-fit frozen sources, requests, model or limits differ')
-    marker=Path(packet['history']['prior_input']).parent/'execution/model-fit-authorization.json'
+    marker=authorization_marker(packet)
     if marker.exists() and json.loads(marker.read_text())!={'input_fingerprint':packet['input_fingerprint']}:
         raise ValueError('Approved model-fit trial already assigned to another input')
     return packet
+
+
+def authorization_marker(packet):
+    if 'runtime_repeat' in packet:
+        return Path(packet['runtime_repeat']['prior_input']).parent/'execution/runtime-repeat-authorization.json'
+    return Path(packet['history']['prior_input']).parent/'execution/model-fit-authorization.json'
 
 
 def run_recipe(packet,store,transport,progress=None):
@@ -180,8 +190,11 @@ def run_recipe(packet,store,transport,progress=None):
     nonempty=all(row['literal_bound_claims']>0 for row in diagnostics['windows'])
     fit='FAIL(component)' if halt or failures else ('PASS' if len(readings)==6 and nonempty else 'INCONCLUSIVE')
     account=demo.usage_account(store)
-    account.update(prior_attempts=15,cumulative_attempts=15+account['attempts'],
-                   cumulative_local_attempts=15+account['local_attempts'],cumulative_paid_attempts=account['paid_attempts'])
+    prior=packet.get('budget',{}).get('prior_attempts',15)
+    account.update(prior_attempts=prior,cumulative_attempts=prior+account['attempts'],
+                   cumulative_local_attempts=prior+account['local_attempts'],cumulative_paid_attempts=account['paid_attempts'])
+    if 'runtime_repeat' in packet:
+        account.update(prior_source_attempts=21,prior_synthetic_attempts=4)
     comparison=[dict(window_id=row['case_id'],baseline=packet['baseline'].get(row['case_id'],dict(status='UNATTEMPTED')),
         selected=next((r for r in diagnostics['windows'] if r['window_id']==row['case_id']),dict(status='UNATTEMPTED')))
         for row in packet['source_requests']]
@@ -192,6 +205,10 @@ def run_recipe(packet,store,transport,progress=None):
         raw_readings=readings,observations=observations,failures=failures,
         saturation_windows=[r['window_id'] for r in diagnostics['windows'] if r.get('status')=='saturated'],
         production_admission=False,next_step='Review saved contract-fit and source evidence; no automatic retries or full-workflow advancement')
+    if 'runtime_repeat' in packet:
+        result['runtime_comparison']=dict(server_version=packet['generation_runtime']['server_version'],
+            prior_input=packet['runtime_repeat']['prior_input'],
+            prior_diagnostics=packet['runtime_repeat']['prior_diagnostics'],selected_diagnostics=diagnostics)
     store.write_immutable('results.json',result)
     return result
 
@@ -202,12 +219,18 @@ def run(input_path,base_dir=None,*,approve_input=None,experimental=False,max_usd
     if check_only: return dict(status='PREPARED_NO_EXECUTION',input_fingerprint=packet['input_fingerprint'],budget=packet['budget'],model_calls=0)
     if approve_input!=packet['input_fingerprint'] or not experimental or str(max_usd)!='0':
         raise ValueError('Use --experimental --approve-input exact fingerprint --max-usd 0')
-    marker=EvidenceArtifactStore(Path(packet['history']['prior_input']).parent/'execution')
-    marker.write_immutable('model-fit-authorization.json',dict(input_fingerprint=packet['input_fingerprint']))
+    marker=authorization_marker(packet)
+    EvidenceArtifactStore(marker.parent).write_immutable(marker.name,dict(input_fingerprint=packet['input_fingerprint']))
     store=ReceiptStore(Path(input_path).parent/'execution')
     store.write_immutable('authorization.json',dict(input_fingerprint=approve_input,maximum_attempts=6,
         paid_attempts=0,max_usd='0',model=packet['generation_runtime']['model'],production_admission=False))
-    result=run_recipe(packet,store,ollama_transport,progress)
+    def transport(request):
+        if 'runtime_repeat' in packet:
+            from .ollama_conformance import server_version
+            if server_version(request.runtime_identity['base_url'])!=request.runtime_identity['server_version']:
+                raise ValueError('Ollama server changed after freeze; no retry/substitution')
+        return ollama_transport(request)
+    result=run_recipe(packet,store,transport,progress)
     return dict(status=result['status'],contract_fit=result['contract_fit'],input_fingerprint=packet['input_fingerprint'],
         model=packet['generation_runtime']['model'],accounting=result['accounting'],halt=result['halt'],
         completed_windows=result['diagnostics']['complete_responses'],

@@ -95,10 +95,15 @@ def runtime_check(base_dir:Path|None=typer.Option(None,'--base-dir'),
 def fit_prepare(prior_input:Path=typer.Option(...,'--from-input'),
                 base_dir:Path|None=typer.Option(None,'--base-dir'),
                 model:str=typer.Option('qwen3.5:9b','--model'),
+                runtime_repeat:bool=typer.Option(False,'--runtime-repeat',help='Prepare the authorized same-six-window repeat after the saved runtime conformance PASS.'),
                 check_only:bool=typer.Option(False,'--check-only'),
                 as_json:bool=typer.Option(False,'--json')):
     try:
-        packet,out=model_fit.prepare(prior_input,base_dir,model=model,check_only=check_only)
+        if runtime_repeat:
+            from ...learning_demo_runtime_repeat import prepare as repeat_prepare
+            packet,out=repeat_prepare(prior_input,base_dir,model=model,check_only=check_only)
+        else:
+            packet,out=model_fit.prepare(prior_input,base_dir,model=model,check_only=check_only)
         emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',
             input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],
             selection=packet['selection'],budget=packet['budget'],model_calls=0,paid_calls=0),as_json)

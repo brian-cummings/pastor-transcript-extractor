@@ -72,3 +72,29 @@ checks, with exact wire receipts and no extra attempts. If it fails, recommend a
 verified upstream runtime fix or narrowly scoped serving-path correction before
 proposing another separately authorized source trial. Do not silently enable
 thinking, change models, upgrade Ollama, relax validation or retry the source run.
+
+## Authorized source repeat after the runtime repair
+
+Brian's two-probe check on Ollama 0.40.11 passed, including the conflicting
+instruction, after the same check failed on 0.31.1. He separately authorized one
+repeat of the same six source windows. Prepare it through:
+
+```sh
+pte analysis learning-demo model-fit prepare --base-dir /Users/briancummings/Documents/PastorSearchData --from-input /Users/briancummings/Documents/PastorSearchData/evaluation/learning-demo-model-fit/392a9b6f0bb8ffc129a38a562fc8feb13469a80d4fc47ba1d1b85f1473ff9d78/input.json --runtime-repeat --json
+```
+
+This narrowly scoped preparation requires the exact saved before/after checks,
+the completed six-response Qwen schema failure and the same installed model as
+the passing check. Every source request body must match the original Qwen trial,
+including prompts, schemas, output limit and disabled thinking. Server version
+is added to request provenance/cache identity and checked before each send.
+Preparation freezes all prior attempt/receipt/wire evidence; an immutable marker
+on the prior Qwen run assigns the one repeat to its exact new input at execution.
+
+Maximum six new local requests, zero paid requests; accounting retains 21 source
+attempts plus four synthetic attempts, cumulative maximum 31. No automatic retry,
+repair, verification calls, downstream comparisons or production admission.
+`preparation.md` contains the exact execution command. Brian executes it. The
+result compares saved prior Qwen contract diagnostics with the new diagnostics;
+no prior answers or conformance results are sent to the model. A contract-fit
+PASS still leaves semantic accuracy INCONCLUSIVE.
