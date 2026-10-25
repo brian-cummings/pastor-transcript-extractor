@@ -90,7 +90,10 @@ def migrate_evaluation_storage(
     verify: bool = typer.Option(
         False,
         "--verify",
-        help="Verify destination sizes after every move and report remaining legacy files.",
+        help="Verify destination sizes and SHA-256 after every move and report remaining legacy files.",
+    ),
+    audit_repository: bool = typer.Option(
+        False, "--audit-repository", help="Also inventory tracked disclosure candidates; no inference or history changes.",
     ),
     manifest: Path | None = typer.Option(
         None,
@@ -100,6 +103,17 @@ def migrate_evaluation_storage(
 ) -> None:
     paths = build_paths(base_dir)
     manifest_path = manifest or paths.evaluation / "migration-manifest.json"
+    if manifest_path.expanduser().resolve().is_relative_to(repo_root.expanduser().resolve()):
+        raise typer.BadParameter("Migration reports must be outside the repository.")
+    if audit_repository:
+        from pastor_transcript_extractor.evaluation_repository_audit import (
+            audit_repository as inspect_repository, write_repository_audit,
+        )
+        report = inspect_repository(repo_root)
+        audit_path = paths.evaluation / "repository-storage-audit.json"
+        write_repository_audit(report, audit_path)
+        console.print(f"Repository audit: migrate_files={report['migrate_files']} "
+                      f"retained_review_candidates={report['retained_review_candidates']}; {audit_path}")
     plan = plan_migration(
         repo_root=repo_root,
         evaluation_root=paths.evaluation,
@@ -116,6 +130,8 @@ def migrate_evaluation_storage(
     )
     console.print(f"Categories: {', '.join(categories) if categories else 'none'}")
     console.print(f"Manifest: {manifest_path}")
+    console.print("Private review evidence retains ignored local compatibility links; "
+                  "Git index and history are unchanged.")
     for conflict in plan.conflicts:
         console.print(f"CONFLICT: {conflict}")
     for rejected in plan.symlink_rejections:
@@ -153,6 +169,7 @@ def migrate_evaluation_storage(
     )
     for failure in result.failures:
         console.print(f"FAILURE: {failure}")
+    write_manifest(plan, manifest_path, result=result)
     if result.failures:
         raise typer.Exit(code=1)
 

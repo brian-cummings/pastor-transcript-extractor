@@ -34,3 +34,44 @@ evaluation/*/cache-v*/
 # Raw V2 supply receipts are reproducible run cache; retain the charged ledger
 # and Markdown/JSON review/decision artifacts separately.
 evaluation/evidence-supply-readiness-v2/receipts/
+
+# Private source-backed review artifacts (evaluation_storage.PRIVATE_EVIDENCE_PATTERNS).
+/evaluation/sermon-topics/*.json
+/evaluation/sermon-topics/*.md
+/evaluation/sermon-topics/source-material-probe-cache/**
+/evaluation/g*-*/cache-v*/**
+/evaluation/g*-*/feasibility-v*.results.*
+/evaluation/evidence-supply-readiness-v*/**
+/evaluation/observed-profile-consumer-v*/**
+/docs/review-proposals/*/sources/**
+/docs/review-proposals/*/input-*.json
+/docs/review-proposals/*/input-*.md
+/docs/review-proposals/*/references-*.json
+/docs/review-proposals/*/census-*.json
+/docs/review-proposals/*/source-audit-*.json
+/docs/review-proposals/*/source-audit-*.md
+/docs/review-proposals/*/source-review-*.json
+/docs/review-proposals/*/source-oracle-*.json
+/docs/review-proposals/*/source-validation-*.json
+/docs/review-proposals/*/audit-v*.json
+/docs/review-proposals/*/audit-v*.md
+/docs/review-proposals/*/development-source-audit-*.json
+/docs/review-proposals/*/DEVELOPMENT-SOURCE-AUDIT.md
+/docs/review-proposals/*/SOURCE_REVIEW.md
+/docs/review-proposals/*/SOURCE-ORACLE-REVIEW.md
+/docs/review-proposals/*/context-exhibits-*.json
+/docs/review-proposals/evidence-supply-readiness-v*/cases.md
+/docs/review-proposals/evidence-supply-readiness-v*/CASES.md
+/docs/review-proposals/evidence-supply-readiness-v1/REVIEW.md
+/docs/review-proposals/evidence-supply-collector-v3/design-v3.json
+/docs/review-proposals/evidence-supply-collector-v3/GEOMETRY_REVIEW.md
+/docs/review-proposals/profile-evidence-v1/packet-v1.json
+/docs/review-proposals/profile-evidence-v1/CASES.md
+/docs/review-proposals/pastor-contracts-v1/registry-v1.json
+/docs/review-proposals/pastor-contracts-v1/REGISTRY.md
+/docs/review-proposals/g1-binding-v1/cases-v1.json
+/docs/review-proposals/g1-binding-v1/CASES.md
+/docs/review-proposals/g2-g3-v1/cases-v1.json
+/docs/review-proposals/g2-g3-v1/CASES.md
+/docs/analytical-review/*.json
+!/evaluation/sermon-topics/behavior-contract-v1.json
