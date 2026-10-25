@@ -5,6 +5,7 @@ import typer
 from ..apps import analysis_app
 from ... import learning_demo
 from ... import learning_demo_model_fit as model_fit
+from ... import ollama_conformance
 
 app=typer.Typer(help='Prepare V3 offline; paid execution requires a separate exact-input decision.')
 analysis_app.add_typer(app,name='learning-demo')
@@ -68,6 +69,26 @@ def model_info(model:str|None=typer.Option(None,'--model'),
             selection='--model overrides PTE_LLM_MODEL; frozen inputs retain their selection',
             metadata_requests=1,model_calls=0,generation_calls=0,paid_calls=0),as_json)
     except (ValueError,OSError,KeyError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@app.command('runtime-check')
+def runtime_check(base_dir:Path|None=typer.Option(None,'--base-dir'),
+                  model:str=typer.Option('qwen3.5:9b','--model'),
+                  input_path:Path|None=typer.Option(None,'--input'),
+                  execute:bool=typer.Option(False,'--execute',help='Execute the frozen two-request synthetic check; no source data or paid calls.'),
+                  as_json:bool=typer.Option(False,'--json')):
+    """Prepare or execute a synthetic Ollama schema enforcement check."""
+    from httpx import HTTPError
+    try:
+        if execute:
+            if input_path is None: raise ValueError('--execute requires a frozen --input')
+            result=ollama_conformance.run(input_path,base_dir,progress=lambda message:typer.echo(message,err=True))
+        else:
+            if input_path is not None: raise ValueError('--input requires --execute')
+            result=ollama_conformance.prepare(base_dir,model=model)
+        emit(result,as_json)
+        if result['status']=='FAIL(component)': raise typer.Exit(1)
+    except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
 
 
 @fit_app.command('prepare')

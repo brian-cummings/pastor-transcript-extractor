@@ -1,5 +1,9 @@
 # Bounded automatic fingerprint preparation — Ollama revision
 
+For a synthetic check of the installed serving runtime's schema enforcement, see
+[Ollama schema conformance](OLLAMA_SCHEMA_CONFORMANCE.md). This is separate from
+the closed source model-fit trial and does not authorize another source run.
+
 `pte analysis learning-demo` is the user-approved Ollama revision of the V3 adapter over `pastor_evidence`,
 `pastor_fingerprint`, `pastor_similarity` and `evidence_requests`. It preserves the
 existing profile 318/V8, profile 130/P1 and exploratory Scripture benchmark commands.
