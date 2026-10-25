@@ -60,3 +60,50 @@ class EvidenceTests(unittest.TestCase):
             if field=='source_refs': mutated[field][0]['target_sha256']='stale-context'
             else: mutated[field]='foreign'
             with self.assertRaisesRegex(ValueError,'identity changed'): ObservationEnvelope(mutated)
+
+
+class LiteralQuotationTests(unittest.TestCase):
+    def test_unicode_and_cross_block_offsets_are_exact_and_input_immutable(self):
+        from pastor_transcript_extractor.pastor_evidence import locate_literal_spans
+        texts=dict(target_text='α😀 says:\nIf we trust, we remain. Unless we turn away.')
+        quote=dict(source_field='target_text',text='α😀 says:\nIf we trust, we remain.')
+        original=deepcopy(quote);located=locate_literal_spans(quote,texts)
+        self.assertEqual(quote,original)
+        self.assertEqual(located['start'],0)
+        self.assertEqual(located['end'],len(quote['text']))
+        self.assertEqual(texts['target_text'][located['start']:located['end']],quote['text'])
+        shifted=locate_literal_spans(quote,dict(target_text='prefix '+texts['target_text']))
+        self.assertEqual(shifted['start'],7)
+        self.assertEqual(shifted['end']-located['end'],7)
+
+    def test_ambiguous_overlapping_missing_normalized_and_empty_quotes_fail_closed(self):
+        from pastor_transcript_extractor.pastor_evidence import locate_literal_spans
+        for text,quote in [('echo echo','echo'),('aaa','aa'),('α β','α  β'),('é','é'),('text','')]:
+            with self.subTest(text=text,quote=quote),self.assertRaises(ValueError):
+                locate_literal_spans(dict(source_field='target_text',text=quote),dict(target_text=text))
+        with self.assertRaises(ValueError):
+            locate_literal_spans(dict(source_field='leading_context',text='text'),dict(target_text='text'))
+
+    def test_complete_binding_retains_conditions_qualifications_and_voice(self):
+        from pastor_transcript_extractor.pastor_evidence import locate_literal_spans
+        text='Perhaps we remain, if we trust, unless we turn away.'
+        _,row,_=fixture(text)
+        def span(quote): return dict(source_field='target_text',text=quote)
+        def quote_only(value):
+            if isinstance(value,list): return [quote_only(v) for v in value]
+            if not isinstance(value,dict): return value
+            return {k:quote_only(v) for k,v in value.items() if not ('source_field' in value and k in ('start','end'))}
+        row=quote_only(row)
+        row['conditions']=[dict(kind='condition',span=span('if we trust'),rationale='Attached condition.'),
+                           dict(kind='exception',span=span('unless we turn away'),rationale='Attached exception.')]
+        row['epistemic_status'].update(value='expressed_uncertainty',evidence=[span('Perhaps')])
+        block=dict(block_id=0,target_text=text,start_seconds=0,end_seconds=60,segment_indexes=[0])
+        window=SourceWindow('synthetic',1,2,'source',0,(block,),'control')
+        before=deepcopy(row)
+        envelope=compile_machine_binding(window,row,model='test',prompt_digest='p',raw_response_ref='r',locate_quotes=True)
+        self.assertEqual(row,before)
+        self.assertEqual(envelope['binding']['conditions'],locate_literal_spans(row['conditions'],dict(target_text=text)))
+        self.assertEqual(envelope['binding']['voice']['kind'],row['voice']['kind'])
+        self.assertEqual(envelope['binding']['epistemic_status']['value'],'expressed_uncertainty')
+        self.assertEqual(envelope['producer']['literal_locator'],'unique-verbatim-unicode-v1')
+        self.assertEqual(envelope['production_admission'],'not_admitted')

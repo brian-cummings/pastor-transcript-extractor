@@ -125,3 +125,23 @@ with the original phase limits and $0.10 paid ceiling. Reports expose prior and
 cumulative accounting. Execution immutably claims the exception for one new input;
 a second input cannot reuse it. This exception provides no automatic retry or model
 fallback. Brian runs the prepared command; preparation performs no inference.
+
+## Model-independent source contract revision
+
+The approved follow-up keeps Gemma 3 4B, the same 24 windows and 66-slot recipe,
+with no model adapter or additional extraction calls. Reading enums are enforced in
+JSON Schema using the existing binding vocabulary. Explanatory fields have 512-character
+limits; proposition/scope/qualification and downstream substantive prose have
+1024-character limits. The validator rejects overflow; it never shortens returned
+content. Source quotations have no prose-length cap. Complete qualifications must
+remain visible; a source reader reports saturation rather than silently dropping them.
+
+The model returns each span as `{source_field: "target_text", text: "verbatim passage"}`.
+The producer locates the exact passage only if it occurs once, including Unicode,
+whitespace and punctuation. Repeated or absent text remains an explicit literal-binding
+failure; there is no fuzzy matching, first-match selection or manually supplied offset.
+The same unchanged theological binding compiler then checks the canonical coordinates,
+node references, adoption evidence and conditions. Original model output remains in
+receipts and raw readings; the observation's producer identifies the locator version.
+Semantic verification and production admission safeguards are unchanged. Prompt and
+schema changes invalidate prior requests; historical responses are never reinterpreted.

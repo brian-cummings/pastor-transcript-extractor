@@ -442,7 +442,7 @@ def execute_pipeline(packet,store,transport,*,encoding):
         proposed=[]
         for claim in reading['claims']:
             try:
-                envelope=compile_machine_binding(window,claim,model=request.body['model'],
+                envelope=compile_machine_binding(window,claim,model=request.body['model'],locate_quotes=True,
                     prompt_digest=digest(dict(system=request.body['messages'][0]['content'],schema=request.body['format'])),raw_response_ref='receipts/'+request.fingerprint+'.json')
                 proposed.append(envelope)
             except (ValueError,KeyError,TypeError) as error:

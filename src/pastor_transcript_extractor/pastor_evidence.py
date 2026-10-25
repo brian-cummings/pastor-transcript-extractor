@@ -119,10 +119,29 @@ class EvidenceView:
         return accepted, excluded
 
 
+LITERAL_LOCATOR_VERSION='unique-verbatim-unicode-v1'
+
+
+def locate_literal_spans(value,texts):
+    """Locate exact, unique quotations; never normalize, guess, or repair evidence."""
+    if isinstance(value,list): return [locate_literal_spans(item,texts) for item in value]
+    if not isinstance(value,dict): return value
+    if set(value)=={'source_field','text'}:
+        field,quote=value['source_field'],value['text']
+        if field!='target_text' or not isinstance(quote,str) or not quote:
+            raise ValueError('Invalid literal quotation field or empty text')
+        text=texts[field];start=text.find(quote)
+        if start<0: raise ValueError('Literal quotation absent; unresolved, no repair')
+        if text.find(quote,start+1)>=0: raise ValueError('Literal quotation ambiguous; unresolved, no first-match selection')
+        return dict(source_field=field,text=quote,start=start,end=start+len(quote))
+    return {key:locate_literal_spans(item,texts) for key,item in value.items()}
+
+
 def compile_machine_binding(window, proposal, *, model, prompt_digest, raw_response_ref,
-                            field_judgments=None):
+                            field_judgments=None,locate_quotes=False):
     texts, mapping = window.target()
     provenance = dict(target_sha256=text_digest(texts['target_text']), texts_sha256=context_digest(texts))
+    if locate_quotes: proposal=locate_literal_spans(proposal,texts)
     row = bind(texts, proposal, provenance)
     # V1's author-only stamps are not true of this new contract. Never expose them.
     row.update(version='machine-theological-binding-v1', authorship='machine_generated',
@@ -138,7 +157,7 @@ def compile_machine_binding(window, proposal, *, model, prompt_digest, raw_respo
         **coordinate) for coordinate in coordinates]
     envelope = dict(id=digest(dict(source=source_refs, binding=row)), contract_version=VERSION,
         namespace=EXPERIMENTAL, source_refs=source_refs, producer=dict(compiler=COMPILER_VERSION,
-        adapter=VERSION), model=model, prompt_digest=prompt_digest, raw_response_ref=raw_response_ref,
+        adapter=VERSION, literal_locator=LITERAL_LOCATOR_VERSION if locate_quotes else 'supplied_coordinates'), model=model, prompt_digest=prompt_digest, raw_response_ref=raw_response_ref,
         field_judgments=deepcopy(field_judgments or {}), origin='machine_generated',
         experimental_eligibility='pending_verification', production_admission='not_admitted',
         uncertainty=dict(expressed=row['epistemic_status'], model='diagnostic_not_calibrated',

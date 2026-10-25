@@ -54,7 +54,11 @@ class FakeProvider:
                     row['binding_id']=str(i);row['proposition'].update(span=span,reading=phrase)
                     row['evidence_nodes'][0]['span']=span
                     rows.append(row)
-                output=dict(status='proposed',claims=rows)
+                def quotations(value):
+                    if isinstance(value,list): return [quotations(v) for v in value]
+                    if not isinstance(value,dict): return value
+                    return {k:quotations(v) for k,v in value.items() if not ('source_field' in value and k in ('start','end'))}
+                output=dict(status='proposed',claims=quotations(rows))
             elif phase=='alignment_and_interpretation':
                 assignments=[]
                 for item in state['items']:
@@ -220,3 +224,27 @@ class TechnicalRestartTests(unittest.TestCase):
         self.assertEqual(decision['max_attempts'],67)
         self.assertEqual(decision['max_paid_attempts'],33)
         self.assertEqual(decision['max_usd'],'.10')
+
+
+class HardenedContractTests(unittest.TestCase):
+    def test_enums_reject_joined_choices_and_prose_limits_never_truncate(self):
+        from copy import deepcopy
+        row=deepcopy(FakeProvider()(c.generation_request('source_reading',
+            dict(texts=dict(target_text='God creates the world. People respond with trust.')),{}))['output'])
+        c.validate_shape(row,c.READ_SCHEMA)
+        row['claims'][0]['voice']['kind']='preacher/quoted_or_reported/unresolved'
+        with self.assertRaisesRegex(ValueError,'enum'):c.validate_shape(row,c.READ_SCHEMA)
+        row['claims'][0]['voice']['kind']='preacher'
+        row['claims'][0]['scope']['reading']='x'*1025
+        with self.assertRaisesRegex(ValueError,'length'):c.validate_shape(row,c.READ_SCHEMA)
+        self.assertEqual(len(row['claims'][0]['scope']['reading']),1025)
+        self.assertEqual(c.validate_shape(dict(source_field='target_text',text='x'*3000),c.SPAN)['text'],'x'*3000)
+        with self.assertRaises(ValueError):c.validate_shape(dict(source_field='target_text',text=''),c.SPAN)
+
+    def test_wire_schema_has_no_offsets_and_enforces_existing_meanings(self):
+        self.assertEqual(set(c.SPAN['properties']),{'source_field','text'})
+        self.assertEqual(set(c.BINDING['properties']['adoption']['properties']['status']['enum']),
+                         {'own_assertion','adopted','reported_not_adopted','rejected','undetermined'})
+        self.assertEqual(c.READ_SCHEMA['properties']['claims']['maxItems'],12)
+        self.assertEqual(c.BINDING['properties']['development_relations']['maxItems'],6)
+        self.assertNotIn('preacher/quoted_or_reported',c.READ_PROMPT)
