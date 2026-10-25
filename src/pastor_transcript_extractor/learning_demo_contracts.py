@@ -103,15 +103,19 @@ def generated_output(phase,response):
     return validate_shape(value,SCHEMAS[phase])
 
 
-def generation_request(phase,state,source_identity):
-    _,model,_,_,output,_,_=PHASES[phase]
+def generation_request(phase,state,source_identity,*,runtime_identity=None):
+    provider,model,_,_,output,_,_=PHASES[phase]
+    if provider!='Ollama': raise ValueError('Generation requires a local Ollama phase')
+    runtime=runtime_identity or {}
+    model=runtime.get('model',model)
     from .evidence_requests import OLLAMA_CONTEXT, ollama_context_for
     body=dict(model=model,messages=[dict(role='system',content=PROMPTS[phase]+'\nOutput schema: '+wire(SCHEMAS[phase])),
         dict(role='user',content=wire(state))],format=SCHEMAS[phase],
         options=dict(num_ctx=OLLAMA_CONTEXT,num_predict=output,temperature=0,seed=0,top_k=1,top_p=1),
         stream=False,keep_alive='5m')
-    body['options']['num_ctx']=ollama_context_for(body)
-    return RequestSpec(phase,body,source_identity)
+    if runtime.get('thinking_supported'): body['think']=False
+    body['options']['num_ctx']=ollama_context_for(body,min(OLLAMA_CONTEXT,runtime.get('num_ctx',OLLAMA_CONTEXT)))
+    return RequestSpec(phase,body,source_identity,runtime_identity=runtime)
 
 
 def verification_request(phase,state,items,source_identity,*,source=False):

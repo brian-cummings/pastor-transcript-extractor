@@ -7,6 +7,7 @@ import fcntl
 import json
 import hashlib
 import os
+import re
 from pathlib import Path
 
 from .pastor_evidence import EvidenceArtifactStore, digest
@@ -45,15 +46,45 @@ def _stream_hash(path):
     return sha.hexdigest()
 
 
-def ollama_runtime_identity():
-    # Inspect already-installed files only: no generation, loading, pull or download.
+def ollama_model_name(value):
+    """Resolve an explicit local tag without remote registry lookup or downloads."""
+    if not isinstance(value,str) or not re.fullmatch(
+        r'[a-z0-9][a-z0-9._-]*(?:/[a-z0-9][a-z0-9._-]*)?(?::[A-Za-z0-9][A-Za-z0-9._-]*)?',value):
+        raise ValueError('Use an installed Ollama name[:tag] or namespace/name[:tag]')
+    return value if ':' in value else value+':latest'
+
+
+def ollama_model_metadata(base_url,model):
+    """Metadata only: /api/show neither loads nor generates with a model."""
+    import httpx
+    with httpx.Client(timeout=15,follow_redirects=False,trust_env=False,
+                      transport=httpx.HTTPTransport(retries=0)) as client:
+        response=client.post(local_ollama_url(base_url)+'/api/show',json={'model':model})
+    if response.status_code!=200: raise ValueError(f'Ollama model metadata HTTP {response.status_code}; no pull/fallback')
+    raw=strict_json(response.text)
+    architecture=raw['model_info']['general.architecture']
+    context=raw['model_info'][architecture+'.context_length']
+    capabilities=raw['capabilities']
+    if type(context) is not int or context<8192 or 'completion' not in capabilities:
+        raise ValueError('Selected model lacks supported completion/context metadata')
+    return dict(architecture=architecture,native_context=context,capabilities=sorted(capabilities),
+                quantization=raw['details']['quantization_level'])
+
+
+def ollama_runtime_identity(model=None):
+    # Read installed files and local metadata only: no generation, loading or pull.
     from .config import build_llm_config
-    config=build_llm_config()
-    if config.model!=OLLAMA_MODEL:
-        raise ValueError('Approved generation model is gemma3:4b; configured model differs; no substitution')
+    config=build_llm_config();model=ollama_model_name(config.model if model is None else model)
+    base_url=local_ollama_url(config.base_url)
     root=Path(os.environ.get('OLLAMA_MODELS',str(Path.home()/'.ollama/models'))).expanduser().resolve()
-    manifest_path=root/'manifests/registry.ollama.ai/library/gemma3/4b'
-    raw=manifest_path.read_bytes();manifest=strict_json(raw.decode())
+    name,tag=model.rsplit(':',1)
+    if '/' in name: namespace,name=name.split('/')
+    else: namespace='library'
+    manifest_path=(root/'manifests/registry.ollama.ai'/namespace/name/tag).resolve()
+    if not manifest_path.is_relative_to(root): raise ValueError('Model manifest escapes installed model directory')
+    try: raw=manifest_path.read_bytes()
+    except FileNotFoundError as error: raise ValueError(f'Selected Ollama model is not installed: {model}; no pull/fallback') from error
+    manifest=strict_json(raw.decode())
     blobs=[]
     for entry in [manifest['config'],*manifest['layers']]:
         identity=entry['digest']
@@ -63,24 +94,35 @@ def ollama_runtime_identity():
         if path.stat().st_size!=entry['size'] or _stream_hash(path)!=identity[7:]:
             raise ValueError('Installed Ollama model blob differs; no download or substitution')
         blobs.append(dict(path=str(path),sha256=identity[7:],size=entry['size'],media_type=entry['mediaType']))
-    return dict(model=OLLAMA_MODEL,base_url=local_ollama_url(config.base_url),
+    metadata=ollama_model_metadata(base_url,model)
+    if manifest_path.read_bytes()!=raw: raise ValueError('Ollama tag changed during model inspection')
+    context=min(OLLAMA_CONTEXT,metadata['native_context'])
+    return dict(model=model,base_url=base_url,metadata=metadata,
         manifest_path=str(manifest_path),manifest_sha256=hashlib.sha256(raw).hexdigest(),
-        blobs=blobs,num_ctx=OLLAMA_CONTEXT,input_cap=OLLAMA_INPUT_CAP,
+        blobs=blobs,num_ctx=context,input_cap=min(OLLAMA_INPUT_CAP,context-8192),
+        thinking_supported='thinking' in metadata['capabilities'],thinking=False,
         token_accounting='utf8_byte_upper_bound_plus_4096_template_and_schema_framing',
-        context_policy='round_up_required_input_plus_output_to_1024_max_131072',
-        limitation='Conservative upper bound, not a Gemma tokenizer count. No context truncation permitted.')
+        context_policy='round_up_required_input_plus_output_to_1024_max_native_or_131072',
+        limitation='Conservative upper bound, not a model tokenizer count. No context truncation permitted.')
+
+
+def request_model(spec):
+    """The request's frozen selection, independent of mutable process defaults."""
+    provider,default,*_=PHASES[spec.phase]
+    if provider!='Ollama': return default
+    return ollama_model_name(spec.runtime_identity.get('model',default))
 
 
 def wire(value):
     return json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False)
 
 
-def ollama_context_for(body):
+def ollama_context_for(body,context_limit=OLLAMA_CONTEXT):
     # Conservative deterministic reservation; allocate only the context this body
     # needs, rounded to 1024, never silently relying on Ollama's 4096 default.
     normalized={**body,'options':{**body['options'],'num_ctx':OLLAMA_CONTEXT}}
     needed=len(wire(normalized).encode())+4096+body['options']['num_predict']
-    return min(OLLAMA_CONTEXT,max(4096,((needed+1023)//1024)*1024))
+    return min(context_limit,max(4096,((needed+1023)//1024)*1024))
 
 
 def reservation(phase, phases=PHASES):
@@ -94,22 +136,29 @@ class RequestSpec:
     body: dict
     source_identity: dict
     namespace: str = 'learning-demo-v3'
-    version: str = 'evidence-request-ollama-v1'
+    version: str = 'evidence-request-model-selection-v2'
     runtime_identity: dict = field(default_factory=dict)
 
     @property
     def fingerprint(self): return digest(asdict(self))
 
     def preflight(self, encoding=None):
-        provider,model,_,input_cap,output_cap,_,_=PHASES[self.phase]
+        provider,_,_,input_cap,output_cap,_,_=PHASES[self.phase]
+        model=request_model(self)
         if self.body.get('model') != model:
             raise ValueError('Pinned model differs; no fallback')
         serialized=wire(self.body)
         if provider=='Ollama':
             options=self.body.get('options',{})
-            if (options!={'num_ctx':ollama_context_for(self.body),'num_predict':output_cap,'temperature':0,'seed':0,'top_k':1,'top_p':1}
+            runtime=self.runtime_identity
+            context_limit=min(OLLAMA_CONTEXT,runtime.get('num_ctx',OLLAMA_CONTEXT))
+            input_cap=min(input_cap,runtime.get('input_cap',input_cap))
+            fields={'model','messages','format','options','stream','keep_alive'}
+            if runtime.get('thinking_supported'): fields.add('think')
+            if (options!={'num_ctx':ollama_context_for(self.body,context_limit),'num_predict':output_cap,'temperature':0,'seed':0,'top_k':1,'top_p':1}
                 or self.body.get('stream') is not False or not isinstance(self.body.get('format'),dict)
-                or set(self.body)!={'model','messages','format','options','stream','keep_alive'}):
+                or set(self.body)!=fields or ('think' in fields and self.body.get('think') is not False)
+                or runtime.get('thinking',False) is not False):
                 raise ValueError('Ollama decoding/context/output limits differ')
             if self.runtime_identity:
                 if self.runtime_identity['model']!=model: raise ValueError('Runtime model identity differs')
@@ -182,6 +231,8 @@ def decode_response(spec, response):
             raise ValueError(f"Incomplete Ollama response (done={raw.get('done')!r}, done_reason={raw.get('done_reason')!r}); no repair/retry")
         for name in ('prompt_eval_count','eval_count'):
             if name not in raw: raise ValueError(f'Completed Ollama response missing {name}; no retry')
+        if spec.runtime_identity.get('thinking_supported') and raw.get('message',{}).get('thinking'):
+            raise ValueError('Provider emitted thinking despite frozen disabled policy; no retry')
         return dict(model=raw['model'],usage=dict(input_tokens=raw['prompt_eval_count'],output_tokens=raw['eval_count']),
             complete=True,output=raw['message']['content'],raw=raw)
     return dict(model=raw['model'],usage=raw['usage'],complete=True,output=raw['answers'],raw=raw)
@@ -230,7 +281,8 @@ def execute(spec, ledger, store, transport, *, encoding=None):
 
 
 def validate_response(spec,response):
-    provider,model,_,i,o,_,_=PHASES[spec.phase]
+    provider,_,_,i,o,_,_=PHASES[spec.phase]
+    model=request_model(spec)
     if response['model']!=model: raise ValueError('Resolved model differs')
     if response.get('complete') is not True: raise ValueError('Incomplete/refused response; no repair/retry')
     usage=response['usage']
@@ -253,7 +305,9 @@ def _post(endpoint,key,body):
 def ollama_transport(spec):
     import httpx
     runtime=spec.runtime_identity
-    if runtime.get('model')!=OLLAMA_MODEL: raise ValueError('Frozen Ollama runtime identity required')
+    if not runtime or runtime.get('model')!=spec.body.get('model'):
+        raise ValueError('Frozen Ollama runtime identity required')
+    spec.preflight()
     if _stream_hash(Path(runtime['manifest_path']))!=runtime['manifest_sha256']:
         raise ValueError('Ollama tag changed after freeze; no substitution')
     endpoint=local_ollama_url(runtime['base_url'])+'/api/chat'

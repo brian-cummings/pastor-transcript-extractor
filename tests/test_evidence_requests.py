@@ -153,14 +153,15 @@ class RequestTests(unittest.TestCase):
             manifest.parent.mkdir(parents=True)
             manifest.write_text(json.dumps(dict(config=dict(mediaType='fixture',digest='sha256:'+sha,size=len(data)),layers=[])))
             env=dict(OLLAMA_MODELS=str(root),PTE_LLM_MODEL='gemma3:4b',PTE_LLM_BASE_URL='http://127.0.0.1:11434')
-            with patch.dict(os.environ,env):
+            metadata=dict(architecture='gemma3',native_context=131072,capabilities=['completion'],quantization='fixture')
+            with patch.dict(os.environ,env),patch('pastor_transcript_extractor.evidence_requests.ollama_model_metadata',return_value=metadata):
                 identity=ollama_runtime_identity()
                 self.assertEqual(identity['model'],'gemma3:4b')
                 self.assertEqual(identity['blobs'][0]['sha256'],sha)
                 blob.write_bytes(b'x'*len(data))
                 with self.assertRaisesRegex(ValueError,'blob differs'):ollama_runtime_identity()
                 with patch.dict(os.environ,dict(PTE_LLM_MODEL='gemma3:12b')):
-                    with self.assertRaisesRegex(ValueError,'no substitution'):ollama_runtime_identity()
+                    with self.assertRaisesRegex(ValueError,'not installed'):ollama_runtime_identity()
 
     def test_local_preflight_ignores_openai_tokenizer_and_rejects_context_drift(self):
         from pastor_transcript_extractor.evidence_requests import ollama_context_for
@@ -195,3 +196,90 @@ class IncompleteUsageTests(unittest.TestCase):
             self.assertEqual(result['paid_attempts'],0)
             with self.assertRaisesRegex(ValueError,'Prior receipt halted'):
                 execute(request,BudgetLedger(),store,lambda spec:self.fail('must not retry'))
+
+
+class ModelSelectionTests(unittest.TestCase):
+    def runtime(self,model='qwen3.5:9b',**updates):
+        return dict(model=model,base_url='http://127.0.0.1:11434',num_ctx=131072,input_cap=122880,
+                    thinking_supported=True,thinking=False,**updates)
+
+    def test_selection_is_frozen_in_requests_and_receipts_not_process_defaults(self):
+        import os
+        from unittest.mock import patch
+        from pastor_transcript_extractor.evidence_requests import validate_response
+        runtime=self.runtime()
+        qwen=generation_request('source_reading',{'text':'synthetic'},{},runtime_identity=runtime)
+        gemma=generation_request('source_reading',{'text':'synthetic'},{})
+        self.assertEqual(qwen.body['model'],'qwen3.5:9b');self.assertIs(qwen.body['think'],False)
+        self.assertNotEqual(qwen.fingerprint,gemma.fingerprint)
+        self.assertEqual(qwen.body['format'],gemma.body['format'])
+        self.assertEqual(qwen.body['messages'],gemma.body['messages'])
+        calls=[]
+        def send(spec):
+            calls.append(spec)
+            return dict(model=spec.body['model'],usage=dict(input_tokens=10,output_tokens=10),complete=True,output={})
+        with TemporaryDirectory() as directory,patch.dict(os.environ,{'PTE_LLM_MODEL':'some-other:tag'}):
+            store=ReceiptStore(Path(directory));ledger=BudgetLedger()
+            result=execute(qwen,ledger,store,send);execute(gemma,ledger,store,send)
+            self.assertEqual(execute(qwen,ledger,store,send),result)
+            self.assertEqual(len(calls),2)
+            with self.assertRaisesRegex(ValueError,'Resolved model'):
+                validate_response(qwen,{**result,'model':'gemma3:4b'})
+        altered=replace(qwen,body={**qwen.body,'model':'gemma3:4b'})
+        with self.assertRaisesRegex(ValueError,'Pinned model'):altered.preflight()
+        altered=replace(qwen,body={**qwen.body,'think':True})
+        with self.assertRaisesRegex(ValueError,'limits differ'):altered.preflight()
+
+    def test_native_context_limit_and_no_thinking_fallback(self):
+        from pastor_transcript_extractor.evidence_requests import decode_response,WireResponse
+        import json
+        runtime={**self.runtime(),'num_ctx':16384,'input_cap':8192}
+        request=generation_request('source_reading',{'text':'x'*9000},{},runtime_identity=runtime)
+        self.assertLessEqual(request.body['options']['num_ctx'],16384)
+        with self.assertRaisesRegex(ValueError,'fit failure'):request.preflight()
+        request=generation_request('source_reading',{}, {},runtime_identity=self.runtime())
+        raw=dict(model='qwen3.5:9b',done=True,done_reason='stop',prompt_eval_count=1,eval_count=1,
+                 message=dict(content='{}',thinking='unexpected'))
+        with self.assertRaisesRegex(ValueError,'thinking'):decode_response(request,WireResponse(200,json.dumps(raw)))
+
+    def test_installed_selection_override_hash_identity_and_safe_names(self):
+        import hashlib,json,os
+        from unittest.mock import patch
+        from pastor_transcript_extractor.evidence_requests import ollama_runtime_identity,ollama_model_name
+        with TemporaryDirectory() as directory:
+            root=Path(directory);(root/'blobs').mkdir()
+            content=b'fixture only';sha=hashlib.sha256(content).hexdigest()
+            (root/'blobs'/('sha256-'+sha)).write_bytes(content)
+            manifest=root/'manifests/registry.ollama.ai/library/qwen3.5/9b';manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps(dict(config=dict(digest='sha256:'+sha,size=len(content),mediaType='fixture'),layers=[])))
+            metadata=dict(architecture='qwen35',native_context=262144,capabilities=['completion','thinking'],quantization='Q4_K_M')
+            with patch.dict(os.environ,dict(OLLAMA_MODELS=str(root),PTE_LLM_MODEL='not-installed:tag')),                patch('pastor_transcript_extractor.evidence_requests.ollama_model_metadata',return_value=metadata) as show:
+                selected=ollama_runtime_identity(model='qwen3.5:9b')
+                self.assertEqual(selected['model'],'qwen3.5:9b');self.assertTrue(selected['thinking_supported'])
+                self.assertEqual(selected['num_ctx'],131072);self.assertEqual(selected['input_cap'],122880)
+                self.assertEqual(selected['manifest_sha256'],hashlib.sha256(manifest.read_bytes()).hexdigest())
+                self.assertEqual(show.call_count,1)
+                with self.assertRaisesRegex(ValueError,'not installed'):ollama_runtime_identity()
+                self.assertEqual(show.call_count,1)
+        self.assertEqual(ollama_model_name('qwen3.5'),'qwen3.5:latest')
+        self.assertEqual(ollama_model_name('team/model:Q4'),'team/model:Q4')
+        for value in ('../model:tag','/tmp/model','qwen:../../file','https://host/model','model:','model name'):
+            with self.subTest(value=value),self.assertRaises(ValueError):ollama_model_name(value)
+
+    def test_metadata_uses_only_local_show_endpoint_without_generation(self):
+        import json
+        from unittest.mock import patch
+        from pastor_transcript_extractor.evidence_requests import ollama_model_metadata
+        with patch('httpx.Client') as factory:
+            client=factory.return_value.__enter__.return_value
+            client.post.return_value.status_code=200
+            client.post.return_value.text=json.dumps(dict(capabilities=['completion','thinking'],
+                model_info={'general.architecture':'qwen35','qwen35.context_length':262144},
+                details={'quantization_level':'Q4_K_M'}))
+            info=ollama_model_metadata('http://127.0.0.1:11434','qwen3.5:9b')
+            self.assertEqual(info['native_context'],262144)
+            self.assertEqual(client.post.call_args.args[0],'http://127.0.0.1:11434/api/show')
+            self.assertEqual(client.post.call_args.kwargs['json'],{'model':'qwen3.5:9b'})
+            self.assertFalse(factory.call_args.kwargs['trust_env'])
+            client.post.return_value.status_code=404
+            with self.assertRaisesRegex(ValueError,'no pull'):ollama_model_metadata('http://127.0.0.1:11434','absent:tag')
