@@ -21,7 +21,7 @@ PHASES = {
 
 
 def wire(value):
-    return json.dumps(value,ensure_ascii=False,separators=(',',':'),allow_nan=False)
+    return json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False)
 
 
 def reservation(phase):
@@ -52,7 +52,7 @@ class RequestSpec:
                 raise ValueError('Decoding/output limits differ')
             count=len(encoding.encode(serialized,disallowed_special=()))
             reserved=count+4096
-            if reserved>input_cap: raise ValueError('Input token fit failure; no truncation or additional batches')
+            if reserved>input_cap: raise ValueError(f'Input token fit failure: {reserved}>{input_cap} in {self.phase}; no truncation or additional batches')
             return dict(method='serialized_o200k_plus_4096_framing',serialized_tokens=count,
                         reserved_input=reserved,cap=input_cap,output_cap=output_cap)
         # Conservative byte upper bound; no tokenizer/API call and no long-context opt-in.

@@ -962,3 +962,17 @@ def compare_profile_to_panel(
         created=created,
         result=json.loads(run.result_json),
     )
+
+
+def compare_fingerprint_views(candidate_sample, candidate_evidence, reference_inputs, spec, *, measurements=()):
+    """Typed-view seam, deliberately separate from exploratory Scripture vectors.
+
+    reference_inputs contain SampleSpec/EvidenceView inputs, never curated theology.
+    This returns pair-specific coverage and cannot activate population ranking.
+    """
+    from .pastor_fingerprint import build_fingerprint
+    from .pastor_similarity import compare_panel
+    candidate = build_fingerprint(candidate_sample,candidate_evidence,measurements=measurements)
+    references = [build_fingerprint(sample,evidence,measurements=values)
+                  for sample,evidence,values in reference_inputs]
+    return compare_panel(candidate,references,spec)

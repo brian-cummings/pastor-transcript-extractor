@@ -629,3 +629,25 @@ def markdown(record):
         'The [complete description record](description-v8.json) preserves every original observation, source hash, question/model/version, threshold, missing state, source-review receipt and claim link. The [review receipt](review-v8.json) records the scope and execution boundaries.', '',
         'Source-review descriptions are authored presentation inputs for individual passages, pending Brian’s acceptance. No raw probability, threshold, adopted position or frequency rule is changed.', '', '</details>', '']
     return '\n'.join(lines)
+
+
+def generated_narrative(proposal, entries, field_checks, *, omitted_video_id=None):
+    """Keep first output and remove failed clauses once; never rewrite source facts."""
+    from copy import deepcopy
+    first = deepcopy(proposal)
+    final, removed = [], []
+    for clause in first['clauses']:
+        reasons=[]
+        refs=set(clause['entry_ids'])
+        if not refs or not refs <= set(entries): reasons.append('missing_structured_entries')
+        videos={v for key in refs & set(entries) for v in entries[key]['scope_video_ids']}
+        if set(clause['scope_video_ids']) != videos or omitted_video_id in videos:
+            reasons.append('scope_or_omitted_dependency')
+        checks=field_checks.get(clause['id'],{})
+        if set(checks)!={'meaning','scope','warrant'} or any(
+            not v.get('resolved') or not .9<=v.get('probability',-1)<=1 for v in checks.values()):
+            reasons.append('unwarranted_clause')
+        if reasons: removed.append(dict(clause=clause,reasons=reasons))
+        else: final.append(clause)
+    return dict(contract_version='generated-narrative-v1',first=first,final=dict(clauses=final),
+                removed=removed,manual_repairs=0,regenerations=0)

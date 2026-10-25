@@ -198,3 +198,32 @@ def build(record, reader):
             result['withheld'].append(dict(kind=kind, identity=identity, evidence_id=eid,
                                             reason=str(error), status='withheld_incompatible_review'))
     return result
+
+
+def generated_hypotheses(proposals, entries, field_checks, *, omitted_video_id=None):
+    """Versioned automatic consumer; no authored per-pastor bridge or source repair."""
+    from .pastor_evidence import digest
+    accepted, withheld = [], []
+    for proposal in proposals:
+        item = dict(proposal)
+        premises = set(item['premise_ids'])
+        reasons = []
+        if len(premises) < 2 or not premises <= set(entries):
+            reasons.append('needs_two_supported_premises')
+        videos = {ref['video_id'] for key in premises & set(entries)
+                  for ref in entries[key]['source_refs']}
+        if set(item['scope_video_ids']) != videos or omitted_video_id in videos:
+            reasons.append('scope_or_omitted_premise')
+        if not item['alternatives'] or not item['defeaters'] or not item['inference_type']:
+            reasons.append('missing_inference_limits')
+        if not set(item['counterevidence_ids']) <= set(entries):
+            reasons.append('unresolved_counterevidence')
+        checks = field_checks.get(item['id'], {})
+        if set(checks) != {'meaning','scope','warrant'} or any(
+                not v.get('resolved') or not .9 <= v.get('probability', -1) <= 1 for v in checks.values()):
+            reasons.append('unverified_inference')
+        item.update(contract_version='generated-hypothesis-v1', field_judgments=checks,
+                    dependency_fingerprint=digest({k:entries[k] for k in sorted(premises & set(entries))}))
+        if reasons: withheld.append(dict(proposal=item,reasons=reasons))
+        else: accepted.append(item)
+    return dict(accepted=accepted,withheld=withheld)

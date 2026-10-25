@@ -126,12 +126,15 @@ def build_fingerprint(sample, evidence_view, dimension_policy=DIMENSION_POLICY, 
         assignments[path] = dict(position=sorted(k for k,r in frames.items()
             if any(p==path or p.startswith(path+'/') for p in r['paths'])),
             **{op:sorted(r['id'] for r in features.values() if r['operator']==op
-                and any(p==path or p.startswith(path+'/') for p in r['paths']))
+                and any(p==path or p.startswith(path+'/') for p in r['paths'])
+                and (op!='emphasis' or r['estimand']=='normalized_expected_prominence'))
                 for op in ('emphasis','relation','form')})
     result = dict(schema_version=VERSION, profile_id=sample.profile_id, sample_spec=asdict(sample),
         membership_fingerprint=sample.membership_fingerprint, input_run_ids=list(sample.input_run_ids),
         evidence_policy=asdict(evidence_view.policy), dimension_policy=dimension_policy,
-        claim_frames=frames, features={op:{r['id']:r for r in features.values() if r['operator']==op}
+        claim_frames=frames, evidence_observations=list(evidence_view.observations),
+        evidence_relations=[dict(observation_id=r['id'],relations=r['binding']['development_relations'],
+            address_acts=r['binding']['address_acts']) for r in evidence_view.observations], features={op:{r['id']:r for r in features.values() if r['operator']==op}
             for op in ('emphasis','relation','form')}, dimension_views=assignments,
         source_coverage=dict(video_ids=list(sample.video_ids), observed_occurrences=aggregate_occurrences(
             [ref for row in evidence_view.observations for ref in row['source_refs']])),
