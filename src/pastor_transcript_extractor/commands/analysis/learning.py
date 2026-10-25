@@ -30,8 +30,8 @@ def prepare(proposal:Path=typer.Option(...,'--proposal'),
 def run(input_path:Path=typer.Option(...,'--input'),base_dir:Path|None=typer.Option(None,'--base-dir'),
         approve_input:str|None=typer.Option(None,'--approve-input'),
         experimental:bool=typer.Option(False,'--experimental'),
-        max_usd:str=typer.Option('2.00','--max-usd'),
-        confirm_proposal_prices:bool=typer.Option(False,'--confirm-proposal-prices'),
+        max_usd:str=typer.Option('0.10','--max-usd'),
+        confirm_proposal_prices:bool=typer.Option(False,'--confirm-verifier-price','--confirm-proposal-prices'),
         check_only:bool=typer.Option(False,'--check-only'),
         as_json:bool=typer.Option(False,'--json')):
     try:

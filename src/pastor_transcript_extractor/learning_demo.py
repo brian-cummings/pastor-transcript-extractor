@@ -11,21 +11,20 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import sys
 
 from .config import build_paths
 from .pastor_evidence import (EvidenceArtifactStore, EvidencePolicy, EvidenceView, SampleSpec,
     SourceWindow, compile_machine_binding, digest)
 from .binding_evidence import context_digest, text_digest
 from .evidence_requests import (BudgetLedger, PHASES, ReceiptStore, RequestSpec, execute,
-    openai_transport, typesafe_transport, reservation)
+    ollama_transport, typesafe_transport, reservation, V3_PHASES, ollama_runtime_identity)
 from . import learning_demo_contracts as contract
 from .pastor_fingerprint import ROOTS, build_fingerprint, topic_measurements
 from .pastor_similarity import compare_fingerprints, ComparisonSpec
 from .profile_explanatory_descriptions import generated_hypotheses
 from .profile_presentation import generated_narrative
 
-VERSION='learning-demo-v3-preparation-v1'
+VERSION='learning-demo-v3-ollama-preparation-v1'
 SCOPE={318:(3973,281,4589),130:(1037,350,4430)}
 WIDER_TOPICS=('human_nature_identity','relationships_family_interpersonal','suffering_adversity_death',
     'ethics_moral_conduct','compassion_generosity_service','vocation_stewardship_daily_life',
@@ -33,31 +32,6 @@ WIDER_TOPICS=('human_nature_identity','relationships_family_interpersonal','suff
 
 
 def file_hash(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()
-
-
-def local_tokenizer(base_dir):
-    """Reuse only the pinned installed tokenizer files, never the closed run controller."""
-    base=build_paths(base_dir).evaluation/'context-extraction-probe-v1'
-    lock_path=Path(__file__).parents[2]/'docs/review-proposals/context-extraction-probe-v1/runtime-lock-v1.json'
-    lock=json.loads(lock_path.read_text())
-    for name, expected in lock['files'].items():
-        if file_hash(base/name)!=expected: raise ValueError('Pinned local tokenizer/cache differs: '+name)
-    if sys.version.split()[0]!=lock['python']: raise ValueError('Pinned tokenizer Python differs')
-    sys.dont_write_bytecode=True
-    runtime=str(base/'runtime')
-    if runtime not in sys.path: sys.path.insert(0,runtime)
-    old_cache=os.environ.get('TIKTOKEN_CACHE_DIR')
-    os.environ['TIKTOKEN_CACHE_DIR']=str(base/'tokenizer-cache')
-    try:
-        import tiktoken
-        if tiktoken.__version__!='0.12.0' or not Path(tiktoken.__file__).is_relative_to(base/'runtime'):
-            raise ValueError('Foreign tokenizer')
-        encoding=tiktoken.get_encoding('o200k_base')
-    finally:
-        if old_cache is None: os.environ.pop('TIKTOKEN_CACHE_DIR',None)
-        else: os.environ['TIKTOKEN_CACHE_DIR']=old_cache
-    return encoding,dict(lock_path=str(lock_path),lock_sha256=file_hash(lock_path),
-                         runtime_root=str(base),encoding='o200k_base',version='0.12.0')
 
 
 def independent_control(video_id,eligible_ids):
@@ -114,7 +88,7 @@ def code_identity():
 
 
 def _run_directory(base_dir,fingerprint):
-    root=build_paths(base_dir).evaluation/'learning-demo-v3'
+    root=build_paths(base_dir).evaluation/'learning-demo-v3-ollama'
     repository=Path(__file__).parents[2].resolve()
     if root.resolve().is_relative_to(repository): raise ValueError('Generated artifacts must be outside repository')
     return root/fingerprint
@@ -138,9 +112,16 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
         input_reservation_per_attempt=v[3],output_cap_per_attempt=v[4],
         input_usd_per_million=v[5],output_usd_per_million=v[6],
         list_price_reservation_usd=str(reservation(k)*v[2])) for k,v in PHASES.items()]
-    for actual,expected in zip(proposal['provider_proposal']['phases'],expected_phases,strict=True):
+    original_phases=[dict(phase=k,provider=v[0],model=v[1],maximum_attempts=v[2],
+        input_reservation_per_attempt=v[3],output_cap_per_attempt=v[4],input_usd_per_million=v[5],
+        output_usd_per_million=v[6],list_price_reservation_usd=str(reservation(k,V3_PHASES)*v[2]))
+        for k,v in V3_PHASES.items()]
+    for actual,expected in zip(proposal['provider_proposal']['phases'],original_phases,strict=True):
         if any(str(actual[k])!=str(v) for k,v in expected.items()): raise ValueError('V3 request/model/budget contract differs')
-    if encoding is None: encoding,tokenizer_identity=local_tokenizer(base_dir)
+    runtime=ollama_runtime_identity()
+    encoding=None
+    tokenizer_identity=dict(method=runtime['token_accounting'],exact_token_count_known=False,
+        context_length=runtime['num_ctx'],input_cap=runtime['input_cap'],limitation=runtime['limitation'])
     samples=[]; windows=[]; measurements=[]; reuse=[]; source_refs=[]; requests=[]
     cases=proposal['source_panel']['cases']
     if len(cases)!=24 or len({c['case_id'] for c in cases})!=24 or Counter(c['stratum'] for c in cases)!=dict(detector_selected=18,independent_control=6):
@@ -171,6 +152,7 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
                 request=contract.generation_request('source_reading',state,
                     dict(source_sha256=window.source_sha256,target_digest=digest(texts),
                          coordinate_policy='unicode-block-reversible-v1',builder=window.builder_identity))
+                request=replace(request,runtime_identity=runtime)
                 account=request.preflight(encoding)
                 requests.append(dict(case_id=case['case_id'],request=asdict(request),fingerprint=request.fingerprint,token_account=account))
                 windows.append(asdict(window))
@@ -189,6 +171,10 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
     packet=dict(schema_version=VERSION,proposal=dict(path=str(proposal_path),sha256=file_hash(proposal_path)),
         code_identity=code_identity(),samples=samples,windows=windows,source_refs=source_refs,
         measurements=measurements,reusable_constituents=reuse,source_requests=requests,
+        generation_runtime=runtime,provider_revision=dict(version='ollama-gemma3-4b-jev-v1',
+            authorization='User explicitly approved gemma3:4b Ollama generation with Jev verification; preparation only',
+            original_provider_phases=original_phases,
+            delta='33 local Ollama attempts replace 33 OpenAI attempts; Jev remains 33 maximum paid attempts; paid ceiling reduced to $0.10; output caps, schemas and semantic thresholds retained; local context/input accounting revised'),
         tokenizer=tokenizer_identity,contracts=dict(version=contract.VERSION,schemas=contract.SCHEMAS,
             prompts=contract.PROMPTS,required_checks=contract.CHECK_MEANINGS),
         downstream_batch_plan=dict(source_verification='one per window, <=12 claims, ten independent checks each',
@@ -196,8 +182,8 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
             narratives_and_pair_report='one per profile and one pair report, <=12 clauses each',
             downstream_verification='six alignment/hypothesis batches and three narrative batches',
             overflow='stop with explicit fit failure, no truncation, repair or new batches'),
-        budget=dict(phases=expected_phases,maximum_attempts=66,total_ceiling_usd='2.00',source_ceiling_usd='1.50',
-            downstream_ceiling_usd='.50',reserved_usd=str(sum(reservation(k)*v[2] for k,v in PHASES.items())),
+        budget=dict(phases=expected_phases,maximum_attempts=66,maximum_local_attempts=33,maximum_paid_attempts=33,
+            total_ceiling_usd='.10',source_ceiling_usd='.07',downstream_ceiling_usd='.03',openai_calls=0,local_generation_api_usd='0',reserved_usd=str(sum(reservation(k)*v[2] for k,v in PHASES.items())),
             retries=0,fallbacks=0,prices_as_of=proposal['provider_proposal']['prices_checked_on']),
         coverage=dict(windows=24,strata=dict(Counter(w['stratum'] for w in windows)),unique_blocks=len(counts),
             duplicated_blocks=[dict(video_id=v,block_id=b,windows=n) for (v,b),n in sorted(counts.items()) if n>1],
@@ -206,8 +192,8 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
         human_limits=proposal['human_limits'],operations=dict(provider_calls=0,model_calls=0,database_writes=0,
             actual_comparisons=0,production_admission_changed=False),execution_authorized=False,
         prerequisites=['Separate Brian M5 decision bound to this input fingerprint',
-            'Current account/model access and dated price attestation within frozen caps',
-            'Both credentials present; provider-free preflight cannot establish account access',
+            'Installed pinned gemma3:4b model and local Ollama service available; memory/time capacity for explicitly sized request contexts (up to 131072 tokens) is untested without inference',
+            'TYPESAFE_API_KEY and Jev account access; confirm verifier input price $0.042 per million tokens within $0.10 total cap',
             'All dynamically expanded batches pass frozen per-question/request preflight; otherwise stop'])
     packet['input_fingerprint']=digest(packet)
     out=_run_directory(base_dir,packet['input_fingerprint'])
@@ -218,15 +204,15 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
 
 
 def render_preparation(packet,out):
-    text='# V3 provider-free preparation\n\n'+f"Input: `{packet['input_fingerprint']}`.\n\n"+\
+    text='# V3 Ollama provider-free preparation\n\n'+f"Input: `{packet['input_fingerprint']}`.\n\n"+\
         '24 frozen windows; 18 detector-selected and six independent controls. No model/provider calls, actual comparisons or production admission.\n\n'+\
-        'Budget: 66 maximum paid attempts; $1.657552896 reserved at proposal prices; $2 ceiling. Prices/access remain execution prerequisites.\n\n'+\
+        'Budget: 33 local Ollama attempts + 33 maximum paid Jev attempts; $0.090832896 verifier reservation; $0.10 paid ceiling. No OpenAI calls or API key. Local electricity/hardware costs are not API charges. Prices/access remain execution prerequisites.\n\n'+\
         'Existing V8/P1 and Scripture commands remain separate. New `pte analysis learning-demo prepare`, `run` and `report` adapt shared services.\n\n'+\
         'M5 is separately authorized. Run input must match the immutable fingerprint and code/source hashes; no runtime repair or routine approval.\n\n'+\
         '\n'.join('- '+s for s in packet['prerequisites'])+'\n'
     base=out.parents[2]
     preflight=f'pte analysis learning-demo run --base-dir {base} --input {out / "input.json"} --check-only --json'
-    execution=f'pte analysis learning-demo run --base-dir {base} --input {out / "input.json"} --experimental --approve-input {packet["input_fingerprint"]} --max-usd 2.00 --confirm-proposal-prices --json'
+    execution=f'pte analysis learning-demo run --base-dir {base} --input {out / "input.json"} --experimental --approve-input {packet["input_fingerprint"]} --max-usd 0.10 --confirm-verifier-price --json'
     reporting=f'pte analysis learning-demo report --base-dir {base} --run-dir {out} --json'
     text+='\nProvider-free preflight:\n\n```sh\n'+preflight+'\n```\n\nSeparately authorized M5 only (not executed):\n\n```sh\n'+execution+'\n```\n\nReport:\n\n```sh\n'+reporting+'\n```\n'
     path=out/'preparation.md'
@@ -250,10 +236,12 @@ def verify_input(input_path,base_dir=None):
         inventory,_,_=read_sample(sample,base_dir)
         if tuple(s['run_id'] for s in inventory['sermons'])!=sample.input_run_ids:
             raise ValueError('Frozen run lineage changed')
-    encoding,identity=local_tokenizer(base_dir)
-    if identity!=packet['tokenizer']: raise ValueError('Tokenizer identity changed')
+    runtime=ollama_runtime_identity()
+    if runtime!=packet['generation_runtime']: raise ValueError('Frozen local Ollama model/runtime differs')
+    encoding=None
     for raw in packet['source_requests']:
         request=RequestSpec(**raw['request'])
+        if request.runtime_identity!=runtime: raise ValueError('Request runtime identity changed')
         if request.fingerprint!=raw['fingerprint'] or request.preflight(encoding)!=raw['token_account']:
             raise ValueError('Serialized source request changed')
     return packet,encoding
@@ -373,7 +361,8 @@ def usage_account(store):
         i,o=usage['input_tokens'],usage['output_tokens'];known_input+=i;known_output+=o
         phase=PHASES[attempt['phase']]
         known_cost+=(Decimal(i)*Decimal(phase[5])+Decimal(o)*Decimal(phase[6]))/Decimal(1000000)
-    return dict(attempts=len(attempts),reserved_usd=str(sum((Decimal(a['reserved_usd']) for a in attempts),Decimal(0))),
+    return dict(attempts=len(attempts),local_attempts=sum(PHASES[a['phase']][0]=='Ollama' for a in attempts),
+        paid_attempts=sum(PHASES[a['phase']][0]=='TypeSafe' for a in attempts),openai_calls=0,reserved_usd=str(sum((Decimal(a['reserved_usd']) for a in attempts),Decimal(0))),
         known_input_tokens=known_input,known_output_tokens=known_output,known_list_price_usage_usd=str(known_cost),
         unknown_usage_attempts=unknown,runtime_repairs=0,runtime_approvals=0,reference_inputs=0)
 
@@ -387,6 +376,9 @@ def execute_pipeline(packet,store,transport,*,encoding):
     ledger=BudgetLedger();observations=[];raw_observations=[];reading_outputs=[];failures=[]
     windows={w['id']:SourceWindow(**{**w,'blocks':tuple(w['blocks']),
         'excluded_neighbors':tuple(w['excluded_neighbors'])}) for w in packet['windows']}
+    def generation_request(phase,state,source_identity):
+        return replace(contract.generation_request(phase,state,source_identity),
+                       runtime_identity=packet.get('generation_runtime',{}))
     def send(request):
         return execute(request,ledger,store,transport,encoding=encoding)
     for serialized in packet['source_requests']:
@@ -402,7 +394,7 @@ def execute_pipeline(packet,store,transport,*,encoding):
         for claim in reading['claims']:
             try:
                 envelope=compile_machine_binding(window,claim,model=request.body['model'],
-                    prompt_digest=digest(contract.READ_PROMPT),raw_response_ref='receipts/'+request.fingerprint+'.json')
+                    prompt_digest=digest(dict(system=request.body['messages'][0]['content'],schema=request.body['format'])),raw_response_ref='receipts/'+request.fingerprint+'.json')
                 proposed.append(envelope)
             except (ValueError,KeyError,TypeError) as error:
                 failures.append(dict(component='literal_binding',window_id=window.id,
@@ -436,7 +428,7 @@ def execute_pipeline(packet,store,transport,*,encoding):
         state=dict(items=[dict(id=r['id'],binding=r['binding'],supported=r['id'] in supported) for r in target_rows],
             sources=[_source_state(w) for w in windows.values() if w.video_id==vid],
             qualified_claim_index=list(source_index.values()),dimension_roots=list(ROOTS))
-        request=contract.generation_request('alignment_and_interpretation',state,
+        request=generation_request('alignment_and_interpretation',state,
             dict(recording=vid,source_readings=digest(source_index),dimension_policy='hierarchy-unique-feature-v1'))
         wire_generated=contract.generated_output(request.phase,send(request))
         generated=json.loads(json.dumps(wire_generated))
@@ -514,7 +506,7 @@ def execute_pipeline(packet,store,transport,*,encoding):
         state=dict(entries=local,scope_video_ids=scope,kind='pair' if number==2 else 'profile')
         wire_state,aliases=alias_model_state(state)
         wire_state['identity_policy']='Opaque local aliases; cite supplied entry keys exactly. Literal evidence/qualifications are unchanged.'
-        request=contract.generation_request('narratives_and_pair_report',wire_state,dict(entries_digest=digest(local),aliases_digest=digest(aliases)))
+        request=generation_request('narratives_and_pair_report',wire_state,dict(entries_digest=digest(local),aliases_digest=digest(aliases)))
         store.write_immutable('aliases/'+request.fingerprint+'.json',aliases)
         proposal=contract.generated_output(request.phase,send(request))
         for clause in proposal['clauses']:
@@ -566,14 +558,14 @@ def execute_pipeline(packet,store,transport,*,encoding):
 def require_execution(packet,approve_input,experimental,max_usd,confirm_proposal_prices):
     if approve_input!=packet['input_fingerprint'] or experimental is not True:
         raise ValueError('Separate M5 decision requires --experimental and --approve-input exact fingerprint')
-    if Decimal(str(max_usd))!=Decimal('2.00') or confirm_proposal_prices is not True:
-        raise ValueError('Confirm unchanged proposal prices and exact $2 ceiling before M5')
+    if Decimal(str(max_usd))!=Decimal('.10') or confirm_proposal_prices is not True:
+        raise ValueError('Confirm unchanged proposal prices and exact $0.10 verifier ceiling before M5')
     return dict(schema_version='learning-demo-execution-decision-v1',input_fingerprint=approve_input,
-        decision='explicit_cli_M5_execution',experimental=True,max_attempts=66,max_usd='2.00',
+        decision='explicit_cli_M5_execution',experimental=True,max_attempts=66,max_paid_attempts=33,max_local_attempts=33,max_usd='.10',generation_provider='Ollama',model='gemma3:4b',
         proposal_prices_confirmed=True,retries=0,production_admission=False)
 
 
-def run(input_path,base_dir=None,*,approve_input=None,experimental=False,max_usd='2.00',
+def run(input_path,base_dir=None,*,approve_input=None,experimental=False,max_usd='.10',
         confirm_proposal_prices=False,check_only=False):
     # No transport, credential checks or attempt files during provider-free preflight.
     packet,encoding=verify_input(input_path,base_dir)
@@ -581,12 +573,12 @@ def run(input_path,base_dir=None,*,approve_input=None,experimental=False,max_usd
         return dict(status='PREPARED_NO_EXECUTION',input_fingerprint=packet['input_fingerprint'],
                     provider_calls=0,budget=packet['budget'],prerequisites=packet['prerequisites'])
     decision=require_execution(packet,approve_input,experimental,max_usd,confirm_proposal_prices)
-    if not all(os.environ.get(name) for name in ('OPENAI_API_KEY','TYPESAFE_API_KEY')):
-        raise ValueError('Both provider credentials required; no attempts started')
+    if not os.environ.get('TYPESAFE_API_KEY'):
+        raise ValueError('TYPESAFE_API_KEY required for Jev verification; Ollama needs no API key; no attempts started')
     store=ReceiptStore(Path(input_path).parent/'execution')
     store.write_immutable('authorization.json',decision)
     def transport(spec):
-        return (openai_transport if PHASES[spec.phase][0]=='OpenAI' else typesafe_transport)(spec)
+        return (ollama_transport if PHASES[spec.phase][0]=='Ollama' else typesafe_transport)(spec)
     try:
         return execute_pipeline(packet,store,transport,encoding=encoding)
     except (ValueError,OSError,KeyError,TypeError) as error:

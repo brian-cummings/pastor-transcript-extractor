@@ -4,7 +4,7 @@ from .pastor_fingerprint import ROOTS, QUALIFIED_FIELDS
 from .evidence_requests import PHASES, RequestSpec, wire
 from .context_extraction_validation import strict_json
 
-VERSION='learning-demo-contracts-v1'
+VERSION='learning-demo-contracts-ollama-v1'
 S=dict(type='string')
 B=dict(type='boolean')
 I=dict(type='integer')
@@ -86,11 +86,12 @@ def generated_output(phase,response):
 
 def generation_request(phase,state,source_identity):
     _,model,_,_,output,_,_=PHASES[phase]
-    body=dict(model=model,messages=[dict(role='system',content=PROMPTS[phase]),
-        dict(role='user',content=wire(state))],response_format=dict(type='json_schema',
-        json_schema=dict(name=phase+'_v1',strict=True,schema=SCHEMAS[phase])),
-        reasoning_effort='none',temperature=0,top_p=1,n=1,max_completion_tokens=output,
-        stream=False,store=False,service_tier='default')
+    from .evidence_requests import OLLAMA_CONTEXT, ollama_context_for
+    body=dict(model=model,messages=[dict(role='system',content=PROMPTS[phase]+'\nOutput schema: '+wire(SCHEMAS[phase])),
+        dict(role='user',content=wire(state))],format=SCHEMAS[phase],
+        options=dict(num_ctx=OLLAMA_CONTEXT,num_predict=output,temperature=0,seed=0,top_k=1,top_p=1),
+        stream=False,keep_alive='5m')
+    body['options']['num_ctx']=ollama_context_for(body)
     return RequestSpec(phase,body,source_identity)
 
 

@@ -43,14 +43,14 @@ class RequestTests(unittest.TestCase):
         attempts=[dict(phase=phase,reserved_usd=str(reservation(phase))) for phase in PHASES
                   for _ in range(PHASES[phase][2])]
         from decimal import Decimal
-        self.assertEqual(sum(Decimal(r['reserved_usd']) for r in attempts),Decimal('1.657552896'))
+        self.assertEqual(sum(Decimal(r['reserved_usd']) for r in attempts),Decimal('0.090832896'))
         with self.assertRaises(ValueError): BudgetLedger().check(attempts,'source_reading')
-        with self.assertRaises(ValueError): BudgetLedger(max_usd='.01').check([],'source_reading')
-        with self.assertRaises(ValueError): BudgetLedger(source_max_usd='.01').check([],'source_reading')
+        with self.assertRaises(ValueError): BudgetLedger(max_usd='.001').check([],'source_verification')
+        with self.assertRaises(ValueError): BudgetLedger(source_max_usd='.001').check([],'source_verification')
         with self.assertRaises(ValueError): BudgetLedger(max_attempts=67).check([],'source_reading')
 
     def test_overflow_and_model_fallback_rejected_before_send(self):
-        request=generation_request('source_reading',{'text':'x'*50000},{})
+        request=generation_request('source_reading',{'text':'x'*200000},{})
         with self.assertRaisesRegex(ValueError,'fit failure'): request.preflight(Encoding())
         bad=replace(self.request,body={**self.request.body,'model':'other'})
         with self.assertRaisesRegex(ValueError,'Pinned model'): bad.preflight(Encoding())
@@ -72,3 +72,68 @@ class RequestTests(unittest.TestCase):
         self.assertTrue(all(v['resolved'] for v in judgments(response,request)['a'].values()))
         del response['output']['a:voice']
         with self.assertRaises(ValueError): judgments(response,request)
+
+    def test_native_ollama_transport_local_only_and_no_cloud_fallback(self):
+        import hashlib,json
+        from unittest.mock import patch
+        from pastor_transcript_extractor.evidence_requests import ollama_transport,local_ollama_url,validate_response
+        with TemporaryDirectory() as directory:
+            manifest=Path(directory)/'manifest';manifest.write_text('installed-model-identity')
+            request=replace(self.request,runtime_identity=dict(model='gemma3:4b',base_url='http://127.0.0.1:11434',
+                manifest_path=str(manifest),manifest_sha256=hashlib.sha256(manifest.read_bytes()).hexdigest()))
+            raw=dict(model='gemma3:4b',done=True,done_reason='stop',prompt_eval_count=200,eval_count=30,
+                     message=dict(content='{"status":"none","claims":[]}'))
+            with patch('httpx.Client') as factory:
+                client=factory.return_value.__enter__.return_value
+                client.post.return_value.status_code=200;client.post.return_value.text=json.dumps(raw)
+                response=ollama_transport(request)
+                self.assertTrue(response['complete']);validate_response(request,response)
+                args=client.post.call_args
+                self.assertEqual(args.args[0],'http://127.0.0.1:11434/api/chat')
+                self.assertNotIn('headers',args.kwargs)
+                self.assertEqual(args.kwargs['json']['model'],'gemma3:4b')
+                self.assertFalse(factory.call_args.kwargs['trust_env'])
+                self.assertFalse(factory.call_args.kwargs['follow_redirects'])
+                raw['done_reason']='length';client.post.return_value.text=json.dumps(raw)
+                incomplete=ollama_transport(request)
+                with self.assertRaisesRegex(ValueError,'Incomplete'):validate_response(request,incomplete)
+            manifest.write_text('changed-model-identity')
+            with patch('httpx.Client') as factory:
+                with self.assertRaisesRegex(ValueError,'tag changed'):ollama_transport(request)
+                factory.assert_not_called()
+        for url in ('https://ollama.com','http://api.openai.com','http://localhost:11434/proxy','http://key@localhost:11434'):
+            with self.assertRaisesRegex(ValueError,'local loopback'):local_ollama_url(url)
+
+    def test_installed_ollama_identity_requires_exact_blob_hash_and_model(self):
+        import hashlib,json,os
+        from unittest.mock import patch
+        from pastor_transcript_extractor.evidence_requests import ollama_runtime_identity
+        with TemporaryDirectory() as directory:
+            root=Path(directory);(root/'blobs').mkdir()
+            data=b'fixture weights, not an actual model';sha=hashlib.sha256(data).hexdigest()
+            blob=root/'blobs'/('sha256-'+sha);blob.write_bytes(data)
+            manifest=root/'manifests/registry.ollama.ai/library/gemma3/4b'
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps(dict(config=dict(mediaType='fixture',digest='sha256:'+sha,size=len(data)),layers=[])))
+            env=dict(OLLAMA_MODELS=str(root),PTE_LLM_MODEL='gemma3:4b',PTE_LLM_BASE_URL='http://127.0.0.1:11434')
+            with patch.dict(os.environ,env):
+                identity=ollama_runtime_identity()
+                self.assertEqual(identity['model'],'gemma3:4b')
+                self.assertEqual(identity['blobs'][0]['sha256'],sha)
+                blob.write_bytes(b'x'*len(data))
+                with self.assertRaisesRegex(ValueError,'blob differs'):ollama_runtime_identity()
+                with patch.dict(os.environ,dict(PTE_LLM_MODEL='gemma3:12b')):
+                    with self.assertRaisesRegex(ValueError,'no substitution'):ollama_runtime_identity()
+
+    def test_local_preflight_ignores_openai_tokenizer_and_rejects_context_drift(self):
+        from pastor_transcript_extractor.evidence_requests import ollama_context_for
+        account=self.request.preflight()
+        self.assertFalse(account['exact_token_count_known'])
+        self.assertEqual(account['num_ctx'],ollama_context_for(self.request.body))
+        self.assertGreaterEqual(account['num_ctx'],account['reserved_input']+account['output_cap'])
+        for field,value in [('num_ctx',4096),('num_predict',1),('temperature',1)]:
+            body={**self.request.body,'options':{**self.request.body['options'],field:value}}
+            with self.assertRaisesRegex(ValueError,'limits differ'):replace(self.request,body=body).preflight()
+        self.assertEqual(reservation('source_reading'),0)
+        self.assertEqual(reservation('alignment_and_interpretation'),0)
+        self.assertEqual(reservation('narratives_and_pair_report'),0)

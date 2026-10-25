@@ -1,17 +1,18 @@
 """One injectable, no-retry request executor with durable pre-send reservations."""
 from __future__ import annotations
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from contextlib import contextmanager
 import fcntl
 import json
+import hashlib
 import os
 from pathlib import Path
 
 from .pastor_evidence import EvidenceArtifactStore, digest
 from .context_extraction_validation import strict_json
 
-PHASES = {
+V3_PHASES = {
     'source_reading': ('OpenAI','gpt-5.4-mini-2026-03-17',24,16384,8192,'.75','4.50'),
     'source_verification': ('TypeSafe','jev-1.13.0',24,65536,0,'.042','0'),
     'alignment_and_interpretation': ('OpenAI','gpt-5.4-mini-2026-03-17',6,32768,4096,'.75','4.50'),
@@ -20,12 +21,70 @@ PHASES = {
 }
 
 
+OLLAMA_MODEL = 'gemma3:4b'
+OLLAMA_CONTEXT = 131072
+OLLAMA_INPUT_CAP = 122880
+# User-approved provider revision. The original V3 proposal remains immutable.
+PHASES = {key: (('Ollama', OLLAMA_MODEL, value[2], OLLAMA_INPUT_CAP, value[4], '0', '0')
+                if value[0]=='OpenAI' else value) for key,value in V3_PHASES.items()}
+
+
+def local_ollama_url(value):
+    from urllib.parse import urlsplit
+    parsed=urlsplit(value)
+    if (parsed.scheme!='http' or parsed.hostname not in ('127.0.0.1','localhost','::1')
+        or parsed.username or parsed.password or parsed.path not in ('','/') or parsed.query or parsed.fragment):
+        raise ValueError('Ollama generation requires a local loopback HTTP endpoint; no cloud/fallback')
+    return value.rstrip('/')
+
+
+def _stream_hash(path):
+    sha=hashlib.sha256()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda:stream.read(8*1024*1024),b''): sha.update(chunk)
+    return sha.hexdigest()
+
+
+def ollama_runtime_identity():
+    # Inspect already-installed files only: no generation, loading, pull or download.
+    from .config import build_llm_config
+    config=build_llm_config()
+    if config.model!=OLLAMA_MODEL:
+        raise ValueError('Approved generation model is gemma3:4b; configured model differs; no substitution')
+    root=Path(os.environ.get('OLLAMA_MODELS',str(Path.home()/'.ollama/models'))).expanduser().resolve()
+    manifest_path=root/'manifests/registry.ollama.ai/library/gemma3/4b'
+    raw=manifest_path.read_bytes();manifest=strict_json(raw.decode())
+    blobs=[]
+    for entry in [manifest['config'],*manifest['layers']]:
+        identity=entry['digest']
+        if not identity.startswith('sha256:') or len(identity)!=71 or any(c not in '0123456789abcdef' for c in identity[7:]):
+            raise ValueError('Invalid installed model blob identity')
+        path=root/'blobs'/identity.replace(':','-')
+        if path.stat().st_size!=entry['size'] or _stream_hash(path)!=identity[7:]:
+            raise ValueError('Installed Ollama model blob differs; no download or substitution')
+        blobs.append(dict(path=str(path),sha256=identity[7:],size=entry['size'],media_type=entry['mediaType']))
+    return dict(model=OLLAMA_MODEL,base_url=local_ollama_url(config.base_url),
+        manifest_path=str(manifest_path),manifest_sha256=hashlib.sha256(raw).hexdigest(),
+        blobs=blobs,num_ctx=OLLAMA_CONTEXT,input_cap=OLLAMA_INPUT_CAP,
+        token_accounting='utf8_byte_upper_bound_plus_4096_template_and_schema_framing',
+        context_policy='round_up_required_input_plus_output_to_1024_max_131072',
+        limitation='Conservative upper bound, not a Gemma tokenizer count. No context truncation permitted.')
+
+
 def wire(value):
     return json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False)
 
 
-def reservation(phase):
-    _,_,_,i,o,ip,op=PHASES[phase]
+def ollama_context_for(body):
+    # Conservative deterministic reservation; allocate only the context this body
+    # needs, rounded to 1024, never silently relying on Ollama's 4096 default.
+    normalized={**body,'options':{**body['options'],'num_ctx':OLLAMA_CONTEXT}}
+    needed=len(wire(normalized).encode())+4096+body['options']['num_predict']
+    return min(OLLAMA_CONTEXT,max(4096,((needed+1023)//1024)*1024))
+
+
+def reservation(phase, phases=PHASES):
+    _,_,_,i,o,ip,op=phases[phase]
     return (Decimal(i)*Decimal(ip)+Decimal(o)*Decimal(op))/Decimal(1000000)
 
 
@@ -35,7 +94,8 @@ class RequestSpec:
     body: dict
     source_identity: dict
     namespace: str = 'learning-demo-v3'
-    version: str = 'evidence-request-v1'
+    version: str = 'evidence-request-ollama-v1'
+    runtime_identity: dict = field(default_factory=dict)
 
     @property
     def fingerprint(self): return digest(asdict(self))
@@ -45,16 +105,21 @@ class RequestSpec:
         if self.body.get('model') != model:
             raise ValueError('Pinned model differs; no fallback')
         serialized=wire(self.body)
-        if provider=='OpenAI':
-            if encoding is None: raise ValueError('Pinned local OpenAI tokenizer required')
-            if (self.body.get('max_completion_tokens')!=output_cap or self.body.get('n')!=1
-                or self.body.get('stream') is not False or self.body.get('reasoning_effort')!='none'):
-                raise ValueError('Decoding/output limits differ')
-            count=len(encoding.encode(serialized,disallowed_special=()))
-            reserved=count+4096
-            if reserved>input_cap: raise ValueError(f'Input token fit failure: {reserved}>{input_cap} in {self.phase}; no truncation or additional batches')
-            return dict(method='serialized_o200k_plus_4096_framing',serialized_tokens=count,
-                        reserved_input=reserved,cap=input_cap,output_cap=output_cap)
+        if provider=='Ollama':
+            options=self.body.get('options',{})
+            if (options!={'num_ctx':ollama_context_for(self.body),'num_predict':output_cap,'temperature':0,'seed':0,'top_k':1,'top_p':1}
+                or self.body.get('stream') is not False or not isinstance(self.body.get('format'),dict)
+                or set(self.body)!={'model','messages','format','options','stream','keep_alive'}):
+                raise ValueError('Ollama decoding/context/output limits differ')
+            if self.runtime_identity:
+                if self.runtime_identity['model']!=model: raise ValueError('Runtime model identity differs')
+                local_ollama_url(self.runtime_identity['base_url'])
+            reserved=len(serialized.encode())+4096
+            if reserved>input_cap or reserved+output_cap>options['num_ctx']:
+                raise ValueError(f'Input token fit failure: byte upper bound {reserved}>{input_cap} in {self.phase}; no truncation or additional batches')
+            return dict(method='utf8_byte_upper_bound_plus_4096_template_and_schema_framing',
+                request_upper_bound=reserved,reserved_input=reserved,cap=input_cap,
+                output_cap=output_cap,num_ctx=options['num_ctx'],exact_token_count_known=False)
         # Conservative byte upper bound; no tokenizer/API call and no long-context opt-in.
         state=wire(self.body['state']).encode()
         sizes={key:len(state)+len(wire(q).encode())+1024 for key,q in self.body['questions'].items()}
@@ -68,12 +133,12 @@ class RequestSpec:
 @dataclass(frozen=True)
 class BudgetLedger:
     max_attempts: int = 66
-    max_usd: str = '2.00'
-    source_max_usd: str = '1.50'
-    downstream_max_usd: str = '.50'
+    max_usd: str = '.10'
+    source_max_usd: str = '.07'
+    downstream_max_usd: str = '.03'
 
     def check(self, attempts, phase):
-        if self.max_attempts>66 or Decimal(self.max_usd)>2:
+        if self.max_attempts>66 or Decimal(self.max_usd)>Decimal('.10'):
             raise ValueError('Cannot expand frozen budget')
         if len(attempts)>=self.max_attempts or sum(r['phase']==phase for r in attempts)>=PHASES[phase][2]:
             raise ValueError('Attempt budget exhausted')
@@ -81,7 +146,7 @@ class BudgetLedger:
         group='source' if phase.startswith('source_') else 'downstream'
         subtotal=sum((Decimal(r['reserved_usd']) for r in attempts
             if ('source' if r['phase'].startswith('source_') else 'downstream')==group),Decimal(0))+reservation(phase)
-        cap=min(Decimal(self.source_max_usd),Decimal('1.50')) if group=='source' else min(Decimal(self.downstream_max_usd),Decimal('.50'))
+        cap=min(Decimal(self.source_max_usd),Decimal('.07')) if group=='source' else min(Decimal(self.downstream_max_usd),Decimal('.03'))
         if total>Decimal(self.max_usd) or subtotal>cap: raise ValueError('Dollar reservation ceiling exceeded')
 
 
@@ -142,7 +207,7 @@ def validate_response(spec,response):
         raise ValueError('Provider input usage outside reservation')
     if type(usage['output_tokens']) is not int or usage['output_tokens']<0:
         raise ValueError('Invalid provider output usage')
-    if provider=='OpenAI' and usage['output_tokens']>o: raise ValueError('Provider output outside cap')
+    if provider=='Ollama' and usage['output_tokens']>o: raise ValueError('Provider output outside cap')
     if response.get('complete') is not True: raise ValueError('Incomplete/refused response; no repair/retry')
 
 
@@ -156,12 +221,21 @@ def _post(endpoint,key,body):
     return strict_json(response.text)
 
 
-def openai_transport(spec):
-    raw=_post('https://api.openai.com/v1/chat/completions',os.environ.get('OPENAI_API_KEY'),spec.body)
-    choices=raw['choices']; usage=raw['usage']
-    complete=len(choices)==1 and choices[0]['finish_reason']=='stop' and not choices[0]['message'].get('refusal')
-    return dict(model=raw['model'],usage=dict(input_tokens=usage['prompt_tokens'],output_tokens=usage['completion_tokens']),
-        complete=bool(complete),output=choices[0]['message'].get('content') if choices else None,raw=raw)
+def ollama_transport(spec):
+    import httpx
+    runtime=spec.runtime_identity
+    if runtime.get('model')!=OLLAMA_MODEL: raise ValueError('Frozen Ollama runtime identity required')
+    if _stream_hash(Path(runtime['manifest_path']))!=runtime['manifest_sha256']:
+        raise ValueError('Ollama tag changed after freeze; no substitution')
+    endpoint=local_ollama_url(runtime['base_url'])+'/api/chat'
+    # Local only, no API key, proxy, redirects, auto-pull, retry or OpenAI fallback.
+    with httpx.Client(timeout=600,follow_redirects=False,trust_env=False,
+                      transport=httpx.HTTPTransport(retries=0)) as client:
+        response=client.post(endpoint,json=spec.body)
+    if response.status_code!=200: raise ValueError(f'Ollama HTTP {response.status_code}; no retry')
+    raw=strict_json(response.text)
+    return dict(model=raw['model'],usage=dict(input_tokens=raw['prompt_eval_count'],output_tokens=raw['eval_count']),
+        complete=raw.get('done') is True and raw.get('done_reason')=='stop',output=raw['message']['content'],raw=raw)
 
 
 def typesafe_transport(spec):

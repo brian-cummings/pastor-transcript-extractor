@@ -83,7 +83,10 @@ class IntegrationTests(unittest.TestCase):
             result=demo.execute_pipeline(packet,store,provider,encoding=SyntheticEncoding())
             self.assertEqual(len(provider.calls),66)
             self.assertEqual(result['accounting']['attempts'],66)
-            self.assertLess(float(result['accounting']['reserved_usd']),2)
+            self.assertLess(float(result['accounting']['reserved_usd']),.10)
+            self.assertEqual(result['accounting']['local_attempts'],33)
+            self.assertEqual(result['accounting']['paid_attempts'],33)
+            self.assertEqual(result['accounting']['openai_calls'],0)
             self.assertEqual(result['accounting']['runtime_repairs'],0)
             self.assertEqual(result['raw_observations'][0]['field_judgments'],{})
             self.assertEqual(result['raw_observations'][0]['experimental_eligibility'],'pending_verification')
@@ -147,9 +150,9 @@ class IntegrationTests(unittest.TestCase):
         required=('grounding','semantic_fidelity','discovery','verification_yield','alignment','theological_content',
               'interpretation','narrative','usefulness','sample_dependence','effort','budget','mathematics','verification_bias')
         self.assertEqual(demo.decide_outcome([dict(component=k,passed=True,adequate_evidence=True) for k in required],audit_complete=True)['status'],'PASS')
-        for args in [('wrong',True,'2.00',True),('exact',False,'2.00',True),('exact',True,'3.00',True),('exact',True,'2.00',False)]:
+        for args in [('wrong',True,'.10',True),('exact',False,'.10',True),('exact',True,'2.00',True),('exact',True,'.10',False)]:
             with self.assertRaises(ValueError): demo.require_execution({'input_fingerprint':'exact'},*args)
-        self.assertEqual(demo.require_execution({'input_fingerprint':'exact'},'exact',True,'2.00',True)['max_attempts'],66)
+        self.assertEqual(demo.require_execution({'input_fingerprint':'exact'},'exact',True,'.10',True)['max_attempts'],66)
 
     def test_literal_neighbor_gaps_not_skipped(self):
         from pastor_transcript_extractor.sermon_topics import resolve_topic_block_context
