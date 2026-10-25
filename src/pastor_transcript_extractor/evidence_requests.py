@@ -164,6 +164,29 @@ class ReceiptStore(EvidenceArtifactStore):
         return [strict_json(p.read_text()) for p in sorted(self.root.glob('attempts/*.json'))]
 
 
+@dataclass(frozen=True)
+class WireResponse:
+    """HTTP result without credentials, persisted before provider decoding."""
+    status_code: int
+    text: str
+
+
+def decode_response(spec, response):
+    provider=PHASES[spec.phase][0]
+    if response.status_code!=200:
+        raise ValueError(f'{provider} HTTP {response.status_code}; no retry')
+    raw=strict_json(response.text)
+    if not isinstance(raw,dict): raise ValueError('Provider response must be an object')
+    if provider=='Ollama':
+        if raw.get('done') is not True or raw.get('done_reason')!='stop':
+            raise ValueError(f"Incomplete Ollama response (done={raw.get('done')!r}, done_reason={raw.get('done_reason')!r}); no repair/retry")
+        for name in ('prompt_eval_count','eval_count'):
+            if name not in raw: raise ValueError(f'Completed Ollama response missing {name}; no retry')
+        return dict(model=raw['model'],usage=dict(input_tokens=raw['prompt_eval_count'],output_tokens=raw['eval_count']),
+            complete=True,output=raw['message']['content'],raw=raw)
+    return dict(model=raw['model'],usage=raw['usage'],complete=True,output=raw['answers'],raw=raw)
+
+
 def execute(spec, ledger, store, transport, *, encoding=None):
     """Transport is supplied explicitly. A lost response consumes its reservation forever."""
     account=spec.preflight(encoding)
@@ -191,10 +214,17 @@ def execute(spec, ledger, store, transport, *, encoding=None):
         # Any exception leaves durable uncertain-spend reservation; caller cannot retry.
         response=transport(spec)
         halt=None
-        try: validate_response(spec,response)
+        wire_response=None
+        if isinstance(response,WireResponse):
+            wire_response=asdict(response)
+            store.write_immutable('wire-responses/'+key+'.json',wire_response)
+            response=None
+        try:
+            if wire_response is not None: response=decode_response(spec,WireResponse(**wire_response))
+            validate_response(spec,response)
         except (ValueError,KeyError,TypeError) as error: halt=str(error)
         store.write_immutable('receipts/'+key+'.json',dict(request=asdict(spec),token_account=account,
-            response=response,response_digest=digest(response),halt=halt))
+            response=response,response_digest=digest(response),wire_response_digest=(digest(wire_response) if wire_response is not None else None),halt=halt))
         if halt: raise ValueError(halt)
         return response
 
@@ -202,13 +232,13 @@ def execute(spec, ledger, store, transport, *, encoding=None):
 def validate_response(spec,response):
     provider,model,_,i,o,_,_=PHASES[spec.phase]
     if response['model']!=model: raise ValueError('Resolved model differs')
+    if response.get('complete') is not True: raise ValueError('Incomplete/refused response; no repair/retry')
     usage=response['usage']
     if type(usage['input_tokens']) is not int or not 0<=usage['input_tokens']<=i:
         raise ValueError('Provider input usage outside reservation')
     if type(usage['output_tokens']) is not int or usage['output_tokens']<0:
         raise ValueError('Invalid provider output usage')
     if provider=='Ollama' and usage['output_tokens']>o: raise ValueError('Provider output outside cap')
-    if response.get('complete') is not True: raise ValueError('Incomplete/refused response; no repair/retry')
 
 
 def _post(endpoint,key,body):
@@ -217,8 +247,7 @@ def _post(endpoint,key,body):
     with httpx.Client(timeout=120,follow_redirects=False,trust_env=False,
                       transport=httpx.HTTPTransport(retries=0)) as client:
         response=client.post(endpoint,headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},json=body)
-    if response.status_code!=200: raise ValueError(f'Provider HTTP {response.status_code}; no retry')
-    return strict_json(response.text)
+    return WireResponse(response.status_code,response.text)
 
 
 def ollama_transport(spec):
@@ -232,12 +261,8 @@ def ollama_transport(spec):
     with httpx.Client(timeout=600,follow_redirects=False,trust_env=False,
                       transport=httpx.HTTPTransport(retries=0)) as client:
         response=client.post(endpoint,json=spec.body)
-    if response.status_code!=200: raise ValueError(f'Ollama HTTP {response.status_code}; no retry')
-    raw=strict_json(response.text)
-    return dict(model=raw['model'],usage=dict(input_tokens=raw['prompt_eval_count'],output_tokens=raw['eval_count']),
-        complete=raw.get('done') is True and raw.get('done_reason')=='stop',output=raw['message']['content'],raw=raw)
+    return WireResponse(response.status_code,response.text)
 
 
 def typesafe_transport(spec):
-    raw=_post('https://api.typesafe.ai/v1/systemone',os.environ.get('TYPESAFE_API_KEY'),spec.body)
-    return dict(model=raw['model'],usage=raw['usage'],complete=True,output=raw['answers'],raw=raw)
+    return _post('https://api.typesafe.ai/v1/systemone',os.environ.get('TYPESAFE_API_KEY'),spec.body)

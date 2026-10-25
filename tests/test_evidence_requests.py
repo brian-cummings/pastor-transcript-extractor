@@ -76,7 +76,7 @@ class RequestTests(unittest.TestCase):
     def test_native_ollama_transport_local_only_and_no_cloud_fallback(self):
         import hashlib,json
         from unittest.mock import patch
-        from pastor_transcript_extractor.evidence_requests import ollama_transport,local_ollama_url,validate_response
+        from pastor_transcript_extractor.evidence_requests import ollama_transport,local_ollama_url,validate_response,decode_response
         with TemporaryDirectory() as directory:
             manifest=Path(directory)/'manifest';manifest.write_text('installed-model-identity')
             request=replace(self.request,runtime_identity=dict(model='gemma3:4b',base_url='http://127.0.0.1:11434',
@@ -86,7 +86,7 @@ class RequestTests(unittest.TestCase):
             with patch('httpx.Client') as factory:
                 client=factory.return_value.__enter__.return_value
                 client.post.return_value.status_code=200;client.post.return_value.text=json.dumps(raw)
-                response=ollama_transport(request)
+                response=decode_response(request,ollama_transport(request))
                 self.assertTrue(response['complete']);validate_response(request,response)
                 args=client.post.call_args
                 self.assertEqual(args.args[0],'http://127.0.0.1:11434/api/chat')
@@ -95,14 +95,51 @@ class RequestTests(unittest.TestCase):
                 self.assertFalse(factory.call_args.kwargs['trust_env'])
                 self.assertFalse(factory.call_args.kwargs['follow_redirects'])
                 raw['done_reason']='length';client.post.return_value.text=json.dumps(raw)
-                incomplete=ollama_transport(request)
-                with self.assertRaisesRegex(ValueError,'Incomplete'):validate_response(request,incomplete)
+                with self.assertRaisesRegex(ValueError,'Incomplete'):decode_response(request,ollama_transport(request))
             manifest.write_text('changed-model-identity')
             with patch('httpx.Client') as factory:
                 with self.assertRaisesRegex(ValueError,'tag changed'):ollama_transport(request)
                 factory.assert_not_called()
         for url in ('https://ollama.com','http://api.openai.com','http://localhost:11434/proxy','http://key@localhost:11434'):
             with self.assertRaisesRegex(ValueError,'local loopback'):local_ollama_url(url)
+
+    def test_wire_failures_preserved_and_never_retried(self):
+        import json
+        from pastor_transcript_extractor.evidence_requests import WireResponse
+        valid=dict(model='gemma3:4b',done=True,done_reason='stop',prompt_eval_count=20,
+                   eval_count=10,message=dict(content='{}'))
+        cases=[(200,json.dumps(dict(done=True,done_reason=reason)),'Incomplete')
+               for reason in ('load','length','cancel',None)]
+        cases += [(200,json.dumps({k:v for k,v in valid.items() if k!=field}),field)
+                  for field in ('prompt_eval_count','eval_count')]
+        cases += [(200,'',''),(200,'{invalid',''),(200,'[]','object'),(503,'unavailable','HTTP 503')]
+        for status,body,reason in cases:
+            with self.subTest(status=status,body=body),TemporaryDirectory() as directory:
+                store=ReceiptStore(Path(directory));calls=[]
+                def send(spec): calls.append(spec);return WireResponse(status,body)
+                with self.assertRaisesRegex(ValueError,reason):execute(self.request,BudgetLedger(),store,send)
+                key=self.request.fingerprint
+                saved=json.loads((store.root/'wire-responses'/f'{key}.json').read_text())
+                self.assertEqual(saved,dict(status_code=status,text=body))
+                receipt=json.loads((store.root/'receipts'/f'{key}.json').read_text())
+                self.assertTrue(receipt['halt']);self.assertTrue(receipt['wire_response_digest'])
+                with self.assertRaisesRegex(ValueError,'Prior receipt halted'):
+                    execute(self.request,BudgetLedger(),store,send)
+                self.assertEqual(len(calls),1)
+                from pastor_transcript_extractor.learning_demo import usage_account
+                self.assertEqual(usage_account(store)['unknown_usage_attempts'],1)
+
+    def test_paid_wire_usage_remains_required(self):
+        import json
+        from pastor_transcript_extractor.evidence_requests import WireResponse
+        request=verification_request('source_verification',{},[{'id':'a'}],{},source=True)
+        with TemporaryDirectory() as directory:
+            store=ReceiptStore(Path(directory))
+            with self.assertRaises(ValueError):
+                execute(request,BudgetLedger(),store,lambda spec:WireResponse(200,json.dumps(
+                    dict(model=spec.body['model'],answers={}))))
+            self.assertEqual(len(store.attempts()),1)
+            self.assertTrue(list((store.root/'receipts').glob('*.json')))
 
     def test_installed_ollama_identity_requires_exact_blob_hash_and_model(self):
         import hashlib,json,os

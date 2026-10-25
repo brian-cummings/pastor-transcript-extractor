@@ -355,7 +355,7 @@ def usage_account(store):
     for attempt in attempts:
         path=store.root/'receipts'/(attempt['request_fingerprint']+'.json')
         if not path.exists(): unknown+=1;continue
-        receipt=json.loads(path.read_text()); usage=receipt['response'].get('usage',{})
+        receipt=json.loads(path.read_text()); usage=(receipt['response'] or {}).get('usage',{})
         if type(usage.get('input_tokens')) is not int or type(usage.get('output_tokens')) is not int:
             unknown+=1;continue
         i,o=usage['input_tokens'],usage['output_tokens'];known_input+=i;known_output+=o

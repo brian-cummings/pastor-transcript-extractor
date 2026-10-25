@@ -99,3 +99,18 @@ PYTHONPATH=tests python -m unittest test_pastor_evidence test_pastor_fingerprint
 No corpus classification, dataset comparison, reclassification, cohort collection,
 closed-experiment execution, production materialization or admission change belongs
 to this preparation slice.
+
+HTTP status and response text are saved immutably under `execution/wire-responses`
+before decoding either provider's response. Incomplete Ollama responses are rejected
+before reading optional usage fields. Missing usage on an otherwise completed response
+also halts; usage is never fabricated. Malformed JSON and HTTP errors produce halted
+receipts, and `report` retains unknown-usage accounting. Network failures without a
+response retain the existing uncertain-attempt stop.
+
+The first authorized Ollama execution (`52aad7b4…`) stopped after one local attempt
+with missing `prompt_eval_count`. That version lost the response before writing a
+receipt. Its attempt and stop artifacts must remain immutable; this fix cannot recover
+the output or make that run resumable. Changed implementation hashes also invalidate
+the old preparation for execution. A technical restart requires a separately approved
+preparation and explicit accounting for the prior local attempt; do not delete the
+attempt, refreeze and rerun to bypass the no-retry decision.
