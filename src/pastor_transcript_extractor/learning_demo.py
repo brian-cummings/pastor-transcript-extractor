@@ -384,7 +384,7 @@ def execute_pipeline(packet,store,transport,*,encoding):
     This function contains no human references, fixed fingerprints or pastor warrants.
     Production uses the same evidence/fingerprint/comparison kernels under its policy.
     """
-    ledger=BudgetLedger();observations=[];reading_outputs=[];failures=[]
+    ledger=BudgetLedger();observations=[];raw_observations=[];reading_outputs=[];failures=[]
     windows={w['id']:SourceWindow(**{**w,'blocks':tuple(w['blocks']),
         'excluded_neighbors':tuple(w['excluded_neighbors'])}) for w in packet['windows']}
     def send(request):
@@ -410,6 +410,7 @@ def execute_pipeline(packet,store,transport,*,encoding):
         if len({r['id'] for r in proposed})!=len(proposed):
             failures.append(dict(component='reading_schema',window_id=window.id,reason='duplicate_claim_ids'))
             proposed=list({r['id']:r for r in proposed}.values())
+        raw_observations.extend(json.loads(json.dumps(proposed)))
         state=dict(source=_source_state(window),items=[dict(id=r['id'],binding=r['binding']) for r in proposed])
         verify=contract.verification_request('source_verification',state,proposed,
             dict(source_request=request.fingerprint),source=True)
@@ -420,7 +421,6 @@ def execute_pipeline(packet,store,transport,*,encoding):
             row['experimental_eligibility']='supported' if ok else 'withheld'
             row['withheld_reason']=reason
             observations.append(row)
-    raw_observations=json.loads(json.dumps(observations))
     supported={r['id']:r for r in observations if EvidencePolicy().permits(r)[0]}
     assignment_outputs=[];hypotheses=[];hypothesis_checks={}; relation_measurements=[]
     source_index={r['id']:dict(id=r['id'],proposition=r['binding']['proposition']['reading'],
@@ -438,7 +438,14 @@ def execute_pipeline(packet,store,transport,*,encoding):
             qualified_claim_index=list(source_index.values()),dimension_roots=list(ROOTS))
         request=contract.generation_request('alignment_and_interpretation',state,
             dict(recording=vid,source_readings=digest(source_index),dimension_policy='hierarchy-unique-feature-v1'))
-        generated=contract.generated_output(request.phase,send(request))
+        wire_generated=contract.generated_output(request.phase,send(request))
+        generated=json.loads(json.dumps(wire_generated))
+        # Local generated IDs are namespaced deterministically at their producer,
+        # preserving raw receipts; no semantic field is repaired or re-generated.
+        for family in ('hypotheses','relation_assessments'):
+            if len({r['id'] for r in generated[family]})!=len(generated[family]):
+                raise ValueError('Duplicate producer-local IDs')
+            for row in generated[family]: row['id']=digest(dict(request=request.fingerprint,kind=family,local_id=row['id']))
         assignments=generated['assignments']
         target_ids={r['id'] for r in target_rows}
         if len({r['observation_id'] for r in assignments})!=len(assignments) or {r['observation_id'] for r in assignments}!=target_ids:
@@ -452,7 +459,7 @@ def execute_pipeline(packet,store,transport,*,encoding):
         verify=contract.verification_request('downstream_verification',verify_state,proposals,
             dict(generation_request=request.fingerprint))
         findings=contract.judgments(send(verify),verify) if verify else {}
-        assignment_outputs.append(dict(video_id=vid,first=generated,field_judgments=findings))
+        assignment_outputs.append(dict(video_id=vid,first=wire_generated,normalized_ids=generated,field_judgments=findings))
         for assignment in assignments:
             row=next(r for r in target_rows if r['id']==assignment['observation_id'])
             checks=findings.get(row['id'],{})

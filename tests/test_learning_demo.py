@@ -85,6 +85,8 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(result['accounting']['attempts'],66)
             self.assertLess(float(result['accounting']['reserved_usd']),2)
             self.assertEqual(result['accounting']['runtime_repairs'],0)
+            self.assertEqual(result['raw_observations'][0]['field_judgments'],{})
+            self.assertEqual(result['raw_observations'][0]['experimental_eligibility'],'pending_verification')
             self.assertEqual(len(result['omission_views']),6)
             self.assertEqual(len(result['fingerprints']),2)
             self.assertEqual(result['comparisons']['theology']['position_metrics']['agreement'],1)
