@@ -60,3 +60,16 @@ class LearningCliTests(unittest.TestCase):
             self.assertEqual(prepare.call_args.kwargs['contract_round_from'],Path('/tmp/prior.json'))
             self.assertTrue(prepare.call_args.kwargs['check_only'])
             self.assertIn('"provider_calls": 0',result.output)
+
+
+    def test_progress_uses_stderr_without_corrupting_json(self):
+        import json
+        runner=CliRunner()
+        def run(*args,**kwargs):
+            kwargs['progress']('Source window 1/24: synthetic')
+            return dict(status='PREPARED_NO_EXECUTION')
+        with patch('pastor_transcript_extractor.learning_demo.run',side_effect=run):
+            result=runner.invoke(app,['analysis','learning-demo','run','--input','/tmp/input.json','--check-only','--json'])
+        self.assertEqual(result.exit_code,0,result.output)
+        self.assertEqual(json.loads(result.stdout)['status'],'PREPARED_NO_EXECUTION')
+        self.assertIn('Source window 1/24',result.stderr)

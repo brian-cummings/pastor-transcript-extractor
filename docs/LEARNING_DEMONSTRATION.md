@@ -156,3 +156,14 @@ attempts including the two failed local calls (35 local, 33 paid). The $0.10 tot
 ceiling and phase reservations remain unchanged. An immutable marker on the prior
 execution binds this approval to one replacement input when Brian executes its command.
 A later model adapter or model change requires the results and a separate decision.
+
+
+After the contract revision run, `report` also replays the frozen schema/literal
+checks from saved receipts for a stopped run and saves JSON/Markdown under its
+`reports` directory. This counts completed/shape-valid responses, proposed claims,
+literal-bound claims and the first binding failure per claim; it is not a complete
+semantic error inventory. Historical schemas that differ from the installed contract
+are explicitly unavailable, never reinterpreted. Reports can count valid local usage
+present in a rejected raw HTTP response without admitting its content or changing
+original receipts. `run` prints source-window and request-phase progress on stderr;
+`--json` stdout remains machine-readable. Neither diagnostic feature retries requests.

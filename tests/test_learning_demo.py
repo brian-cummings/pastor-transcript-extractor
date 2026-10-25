@@ -292,3 +292,33 @@ class ContractRoundTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             with self.assertRaisesRegex(ValueError,'preserved incomplete'):
                 demo.contract_round_lineage(Path(directory)/'other.json',Path(directory))
+
+
+class SavedDiagnosticsTests(unittest.TestCase):
+    def test_first_failed_binding_is_reported_without_provider_or_admission(self):
+        from dataclasses import replace
+        from copy import deepcopy
+        packet=synthetic_packet();provider=FakeProvider();messages=[]
+        packet['contracts']=dict(schemas=c.SCHEMAS)
+        for row in packet['source_requests']:
+            request=demo.RequestSpec(**row['request']);row['fingerprint']=request.fingerprint
+        def send(request):
+            response=provider(request)
+            if request.phase=='source_reading':
+                for claim in response['output']['claims']:
+                    claim['proposition']['span']['text']='Absent synthetic quotation'
+            return response
+        # Stop after one valid receipt; diagnostics must consume only saved results.
+        with TemporaryDirectory() as directory:
+            store=ReceiptStore(Path(directory));request=demo.RequestSpec(**packet['source_requests'][0]['request'])
+            demo.execute(request,demo.BudgetLedger(),store,send)
+            before=len(provider.calls)
+            report=demo.source_contract_diagnostics(packet,store)
+            self.assertEqual(len(provider.calls),before)
+            self.assertEqual(report['attempted_windows'],1)
+            self.assertEqual(report['schema_valid_responses'],1)
+            self.assertEqual(report['proposed_claims'],2)
+            self.assertEqual(report['literal_bound_claims'],0)
+            self.assertEqual(sum(report['first_binding_error_counts'].values()),2)
+            old=deepcopy(packet);old['contracts']['schemas']={}
+            self.assertEqual(demo.source_contract_diagnostics(old,store)['status'],'UNAVAILABLE')

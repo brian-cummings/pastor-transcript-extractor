@@ -174,3 +174,24 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(reservation('source_reading'),0)
         self.assertEqual(reservation('alignment_and_interpretation'),0)
         self.assertEqual(reservation('narratives_and_pair_report'),0)
+
+
+class IncompleteUsageTests(unittest.TestCase):
+    def test_length_stop_usage_is_measured_without_accepting_response(self):
+        import json
+        from pastor_transcript_extractor.evidence_requests import WireResponse
+        from pastor_transcript_extractor.learning_demo import usage_account
+        request=generation_request('source_reading',{'target_text':'synthetic'},{})
+        raw=dict(model='gemma3:4b',done=True,done_reason='length',prompt_eval_count=42,eval_count=8192,
+                 message=dict(content='{unfinished'))
+        with TemporaryDirectory() as directory:
+            store=ReceiptStore(Path(directory))
+            with self.assertRaisesRegex(ValueError,'Incomplete'):
+                execute(request,BudgetLedger(),store,lambda spec:WireResponse(200,json.dumps(raw)))
+            result=usage_account(store)
+            self.assertEqual(result['known_input_tokens'],42)
+            self.assertEqual(result['known_output_tokens'],8192)
+            self.assertEqual(result['unknown_usage_attempts'],0)
+            self.assertEqual(result['paid_attempts'],0)
+            with self.assertRaisesRegex(ValueError,'Prior receipt halted'):
+                execute(request,BudgetLedger(),store,lambda spec:self.fail('must not retry'))

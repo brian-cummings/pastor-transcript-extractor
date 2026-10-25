@@ -38,7 +38,8 @@ def run(input_path:Path=typer.Option(...,'--input'),base_dir:Path|None=typer.Opt
         as_json:bool=typer.Option(False,'--json')):
     try:
         result=learning_demo.run(input_path,base_dir,approve_input=approve_input,experimental=experimental,
-            max_usd=max_usd,confirm_proposal_prices=confirm_proposal_prices,check_only=check_only)
+            max_usd=max_usd,confirm_proposal_prices=confirm_proposal_prices,check_only=check_only,
+            progress=lambda message:typer.echo(message,err=True))
         emit(result,as_json)
         if result['status']=='FAIL(component)': raise typer.Exit(1)
     except (ValueError,OSError,KeyError) as error: raise typer.BadParameter(str(error)) from error

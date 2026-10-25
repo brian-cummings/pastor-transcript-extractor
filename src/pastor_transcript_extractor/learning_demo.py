@@ -476,6 +476,17 @@ def usage_account(store):
         path=store.root/'receipts'/(attempt['request_fingerprint']+'.json')
         if not path.exists(): unknown+=1;continue
         receipt=json.loads(path.read_text()); usage=(receipt['response'] or {}).get('usage',{})
+        # A rejected local output can still carry genuine measured usage. Do not
+        # confuse unknown output validity with unknown token counts or invent zeros.
+        raw_path=store.root/'wire-responses'/(attempt['request_fingerprint']+'.json')
+        if not usage and PHASES[attempt['phase']][0]=='Ollama' and raw_path.exists():
+            wire=json.loads(raw_path.read_text())
+            if digest(wire)!=receipt.get('wire_response_digest'): raise ValueError('Corrupt raw usage evidence')
+            try: raw=json.loads(wire['text']) if wire['status_code']==200 else {}
+            except (ValueError,TypeError): raw={}
+            if not isinstance(raw,dict): raw={}
+            if raw.get('model')==PHASES[attempt['phase']][1]:
+                usage=dict(input_tokens=raw.get('prompt_eval_count'),output_tokens=raw.get('eval_count'))
         if type(usage.get('input_tokens')) is not int or type(usage.get('output_tokens')) is not int:
             unknown+=1;continue
         i,o=usage['input_tokens'],usage['output_tokens'];known_input+=i;known_output+=o
@@ -487,7 +498,7 @@ def usage_account(store):
         unknown_usage_attempts=unknown,runtime_repairs=0,runtime_approvals=0,reference_inputs=0)
 
 
-def execute_pipeline(packet,store,transport,*,encoding):
+def execute_pipeline(packet,store,transport,*,encoding,progress=None):
     """One automatic recipe. Tests inject only synthetic model boundary responses.
 
     This function contains no human references, fixed fingerprints or pastor warrants.
@@ -500,9 +511,13 @@ def execute_pipeline(packet,store,transport,*,encoding):
         return replace(contract.generation_request(phase,state,source_identity),
                        runtime_identity=packet.get('generation_runtime',{}))
     def send(request):
-        return execute(request,ledger,store,transport,encoding=encoding)
-    for serialized in packet['source_requests']:
+        if progress: progress(f'{request.phase}: started')
+        response=execute(request,ledger,store,transport,encoding=encoding)
+        if progress: progress(f'{request.phase}: response received')
+        return response
+    for index,serialized in enumerate(packet['source_requests'],1):
         request=RequestSpec(**serialized['request']);window=windows[serialized['case_id']]
+        if progress: progress(f'Source window {index}/{len(packet["source_requests"])}: {window.id}')
         response=send(request)
         try: reading=contract.generated_output('source_reading',response)
         except (ValueError,KeyError,TypeError) as error:
@@ -522,6 +537,7 @@ def execute_pipeline(packet,store,transport,*,encoding):
         if len({r['id'] for r in proposed})!=len(proposed):
             failures.append(dict(component='reading_schema',window_id=window.id,reason='duplicate_claim_ids'))
             proposed=list({r['id']:r for r in proposed}.values())
+        if progress: progress(f'Source window {index}: {len(reading["claims"])} proposed, {len(proposed)} literal-bound')
         raw_observations.extend(json.loads(json.dumps(proposed)))
         state=dict(source=_source_state(window),items=[dict(id=r['id'],binding=r['binding']) for r in proposed])
         verify=contract.verification_request('source_verification',state,proposed,
@@ -686,8 +702,9 @@ def require_execution(packet,approve_input,experimental,max_usd,confirm_proposal
 
 
 def run(input_path,base_dir=None,*,approve_input=None,experimental=False,max_usd='.10',
-        confirm_proposal_prices=False,check_only=False):
+        confirm_proposal_prices=False,check_only=False,progress=None):
     # No transport, credential checks or attempt files during provider-free preflight.
+    if progress: progress('Validating frozen input and local model identity')
     packet,encoding=verify_input(input_path,base_dir)
     if check_only:
         return dict(status='PREPARED_NO_EXECUTION',input_fingerprint=packet['input_fingerprint'],
@@ -706,9 +723,10 @@ def run(input_path,base_dir=None,*,approve_input=None,experimental=False,max_usd
     def transport(spec):
         return (ollama_transport if PHASES[spec.phase][0]=='Ollama' else typesafe_transport)(spec)
     try:
-        return execute_pipeline(packet,store,transport,encoding=encoding)
+        return execute_pipeline(packet,store,transport,encoding=encoding,progress=progress)
     except (ValueError,OSError,KeyError,TypeError) as error:
         # Technical failures are not semantic source insufficiency; never purchase a repair.
+        if progress: progress(f'Stopped: {error}')
         failure=dict(status='FAIL(component)',component='execution_or_contract_fit',reason=str(error),
             input_fingerprint=packet['input_fingerprint'],attempts=len(store.attempts()),accounting=cumulative_account(store,packet),
             production_admission=False,next_step='Inspect preserved receipts; no retry, variant or added batches')
@@ -810,6 +828,56 @@ def decide_outcome(checks,*,audit_complete=False):
     return dict(status='PASS',components=sorted(required))
 
 
+def source_contract_diagnostics(packet,store):
+    """Replay only saved structural/literal checks, never reinterpret old contracts."""
+    if packet.get('contracts',{}).get('schemas')!=contract.SCHEMAS:
+        return dict(status='UNAVAILABLE',reason='Historical schema differs; no reinterpretation')
+    windows={raw['id']:SourceWindow(**{**raw,'blocks':tuple(raw['blocks']),
+                'excluded_neighbors':tuple(raw['excluded_neighbors'])}) for raw in packet['windows']}
+    rows=[];errors=Counter()
+    for item in packet['source_requests']:
+        key=item['fingerprint'];path=store.root/'receipts'/(key+'.json')
+        if not path.exists(): continue
+        receipt=json.loads(path.read_text())
+        row=dict(window_id=item['case_id'],request_fingerprint=key,transport_complete=False,
+                 schema_valid=False,proposed_claims=0,literal_bound_claims=0,first_binding_errors=[])
+        response=receipt.get('response')
+        if receipt.get('halt') or response is None:
+            row['halt']=receipt.get('halt') or 'Missing decoded response'
+            rows.append(row);continue
+        if receipt['response_digest']!=digest(response): raise ValueError('Corrupt saved response')
+        row['transport_complete']=True
+        try:
+            reading=contract.generated_output('source_reading',response)
+            row.update(schema_valid=True,status=reading['status'],proposed_claims=len(reading['claims']))
+            for claim in reading['claims']:
+                try:
+                    compile_machine_binding(windows[item['case_id']],claim,model=item['request']['body']['model'],
+                        prompt_digest=digest(dict(system=item['request']['body']['messages'][0]['content'],
+                            schema=item['request']['body']['format'])),raw_response_ref='receipts/'+key+'.json',
+                        locate_quotes=True)
+                    row['literal_bound_claims']+=1
+                except (ValueError,KeyError,TypeError) as error:
+                    row['first_binding_errors'].append(str(error));errors[str(error)]+=1
+        except (ValueError,KeyError,TypeError) as error: row['schema_error']=str(error)
+        rows.append(row)
+    return dict(status='SAVED_CONTRACT_CHECKS_ONLY',attempted_windows=len(rows),
+        complete_responses=sum(r['transport_complete'] for r in rows),
+        schema_valid_responses=sum(r['schema_valid'] for r in rows),
+        proposed_claims=sum(r['proposed_claims'] for r in rows),
+        literal_bound_claims=sum(r['literal_bound_claims'] for r in rows),
+        first_binding_error_counts=dict(errors),windows=rows,
+        limit='First failed binding check per claim; not a complete error inventory or semantic accuracy audit. No provider calls or admission.')
+
+
+def _write_report(run_dir,value):
+    from .analysis_artifact_cache import write_json_markdown
+    destination=run_dir/'reports'/digest(value)/'report.json'
+    write_json_markdown(destination,value,'# V3 demonstration report\n\n'+
+        json.dumps(value,indent=2,ensure_ascii=False)+'\n')
+    return value
+
+
 def report(run_dir,*,audit=None,base_dir=None):
     run_dir=Path(run_dir)
     packet=json.loads((run_dir/'input.json').read_text())
@@ -820,9 +888,10 @@ def report(run_dir,*,audit=None,base_dir=None):
         execution=ReceiptStore(run_dir/'execution')
         if execution.root.exists() and execution.attempts():
             stops=sorted(execution.root.glob('stopped-*.json'))
-            return dict(status='FAIL(component)',component='execution_incomplete',
+            return _write_report(run_dir,dict(status='FAIL(component)',component='execution_incomplete',
                 accounting=cumulative_account(execution,packet),stops=[json.loads(p.read_text()) for p in stops],
-                input_fingerprint=packet['input_fingerprint'],semantic_outcome='NOT_EVALUATED')
+                input_fingerprint=packet['input_fingerprint'],semantic_outcome='NOT_EVALUATED',
+                source_contract_diagnostics=source_contract_diagnostics(packet,execution)))
         return dict(status='PREPARED_NO_EXECUTION',input_fingerprint=packet['input_fingerprint'],
             coverage=packet['coverage'],budget=packet['budget'],provider_calls=0,
             prerequisites=packet['prerequisites'],semantic_outcome='NOT_EVALUATED')
@@ -850,8 +919,4 @@ def report(run_dir,*,audit=None,base_dir=None):
             value['outcome']=dict(status='FAIL(component)',components=sorted({r['component'] for r in result['failures']}))
         if any(r['verifier_yield_fail'] for r in value['verification_bias']['groups']):
             value['outcome']=dict(status='FAIL(component)',components=['verification_yield'])
-    from .analysis_artifact_cache import write_json_markdown
-    destination=run_dir/'reports'/digest(value)/'report.json'
-    write_json_markdown(destination,value,'# V3 demonstration report\n\n'+
-        json.dumps(value,indent=2,ensure_ascii=False)+'\n')
-    return value
+    return _write_report(run_dir,value)
