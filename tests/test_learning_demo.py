@@ -185,3 +185,38 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(encoded['entries'][alias]['text'],identity)
         self.assertEqual(encoded['entries'][alias]['conditions'],['if trust'])
         self.assertEqual(encoded['entries'][alias]['voice'],'reported')
+
+
+class TechnicalRestartTests(unittest.TestCase):
+    def test_one_failed_local_attempt_is_preserved_and_counted(self):
+        with TemporaryDirectory() as directory:
+            base=Path(directory);prior=dict(schema_version='synthetic-prior')
+            fingerprint=digest(prior);prior['input_fingerprint']=fingerprint
+            root=base/fingerprint;root.mkdir();input_path=root/'input.json'
+            input_path.write_text(json.dumps(prior))
+            store=ReceiptStore(root/'execution')
+            store.write_immutable('attempts/local.json',dict(phase='source_reading',reserved_usd='0'))
+            store.write_immutable('stopped-local.json',dict(reason="'prompt_eval_count'"))
+            with patch.object(demo,'RESTART_FROM',fingerprint),patch.object(demo,'_run_directory',lambda base,key:Path(base)/key):
+                lineage=demo.restart_lineage(input_path,base)
+                self.assertEqual(lineage['prior_local_attempts'],1)
+                self.assertIn(str(input_path.resolve()),lineage['preserved_files'])
+                # The separately claimed restart marker cannot alter the frozen failure snapshot.
+                store.write_immutable('restart-authorization.json',dict(restart_input_fingerprint='synthetic-new'))
+                self.assertEqual(lineage,demo.restart_lineage(input_path,base))
+                current=ReceiptStore(base/'new-execution')
+                account=demo.cumulative_account(current,dict(restart=lineage))
+                self.assertEqual(account['cumulative_attempts'],1)
+                self.assertEqual(account['cumulative_paid_attempts'],0)
+                self.assertEqual(account['cumulative_unknown_usage_attempts'],1)
+                store.write_immutable('attempts/extra.json',dict(phase='source_reading',reserved_usd='0'))
+                with self.assertRaisesRegex(ValueError,'exactly'):demo.restart_lineage(input_path,base)
+
+    def test_exception_does_not_expand_current_run_ledger(self):
+        from pastor_transcript_extractor.evidence_requests import BudgetLedger
+        with self.assertRaisesRegex(ValueError,'expand'):BudgetLedger(max_attempts=67).check([],'source_reading')
+        packet=dict(input_fingerprint='new',budget=dict(maximum_attempts=67,maximum_local_attempts=34))
+        decision=demo.require_execution(packet,'new',True,'.10',True)
+        self.assertEqual(decision['max_attempts'],67)
+        self.assertEqual(decision['max_paid_attempts'],33)
+        self.assertEqual(decision['max_usd'],'.10')

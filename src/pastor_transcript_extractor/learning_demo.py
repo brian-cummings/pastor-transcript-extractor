@@ -94,7 +94,40 @@ def _run_directory(base_dir,fingerprint):
     return root/fingerprint
 
 
-def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokenizer_identity=None):
+RESTART_FROM = '52aad7b4aee1013b80298278fbf12a81cb58b4eb0138dbadc2fb8a00307c59b8'
+
+
+def restart_lineage(prior_input,base_dir):
+    """Only Brian's approved one-local-attempt technical restart, never a general retry."""
+    prior_input=Path(prior_input).resolve()
+    root=_run_directory(base_dir,RESTART_FROM).resolve()
+    if prior_input!=root/'input.json': raise ValueError('Restart exception applies only to the original failed Ollama input')
+    prior=json.loads(prior_input.read_text())
+    if prior['input_fingerprint']!=RESTART_FROM or digest({k:v for k,v in prior.items() if k!='input_fingerprint'})!=RESTART_FROM:
+        raise ValueError('Original restart input identity differs')
+    execution=root/'execution';attempts=ReceiptStore(execution).attempts()
+    if (len(attempts)!=1 or attempts[0]['phase']!='source_reading'
+        or Decimal(attempts[0]['reserved_usd'])!=0 or list((execution/'receipts').glob('*.json'))):
+        raise ValueError('Restart requires exactly the preserved single local attempt without a receipt')
+    stops=[json.loads(path.read_text()) for path in execution.glob('stopped-*.json')]
+    if len(stops)!=1 or stops[0]['reason']!="'prompt_eval_count'": raise ValueError('Original failure differs')
+    files=[prior_input,*sorted(path for path in execution.rglob('*.json') if path.name!='restart-authorization.json')]
+    return dict(prior_input=str(prior_input),prior_input_fingerprint=RESTART_FROM,
+        preserved_files={str(path):file_hash(path) for path in files},prior_attempts=1,prior_local_attempts=1,
+        prior_paid_attempts=0,prior_reserved_usd='0',
+        authorization='Brian explicitly approved one technical restart after response-decoding fix; cumulative maximum 67 attempts, 34 local, 33 paid, $0.10; no further retries')
+
+
+def cumulative_account(store,packet):
+    account=usage_account(store)
+    if packet.get('restart'):
+        account.update(prior_attempts=1,cumulative_attempts=account['attempts']+1,
+            cumulative_local_attempts=account['local_attempts']+1,cumulative_paid_attempts=account['paid_attempts'],
+            cumulative_reserved_usd=account['reserved_usd'],cumulative_unknown_usage_attempts=account['unknown_usage_attempts']+1)
+    return account
+
+
+def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokenizer_identity=None,restart_from=None):
     from . import segment_cache_inventory
     from .profile_evidence_supply import read_sample
     from .sermon_topics import resolve_topic_analysis_artifact
@@ -195,6 +228,14 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
             'Installed pinned gemma3:4b model and local Ollama service available; memory/time capacity for explicitly sized request contexts (up to 131072 tokens) is untested without inference',
             'TYPESAFE_API_KEY and Jev account access; confirm verifier input price $0.042 per million tokens within $0.10 total cap',
             'All dynamically expanded batches pass frozen per-question/request preflight; otherwise stop'])
+    if restart_from is not None:
+        packet['restart']=restart_lineage(restart_from,base_dir)
+        prior=json.loads(Path(restart_from).read_text())
+        for key in ('source_requests','windows','contracts','generation_runtime','samples','measurements'):
+            if digest(packet[key])!=digest(prior[key]): raise ValueError('Technical restart changed frozen '+key)
+        packet['budget'].update(maximum_attempts=67,maximum_local_attempts=34,
+            maximum_current_run_attempts=66,maximum_current_run_local_attempts=33,prior_local_attempts=1,
+            technical_restarts=1)
     packet['input_fingerprint']=digest(packet)
     out=_run_directory(base_dir,packet['input_fingerprint'])
     if not check_only:
@@ -214,6 +255,8 @@ def render_preparation(packet,out):
     preflight=f'pte analysis learning-demo run --base-dir {base} --input {out / "input.json"} --check-only --json'
     execution=f'pte analysis learning-demo run --base-dir {base} --input {out / "input.json"} --experimental --approve-input {packet["input_fingerprint"]} --max-usd 0.10 --confirm-verifier-price --json'
     reporting=f'pte analysis learning-demo report --base-dir {base} --run-dir {out} --json'
+    if packet.get('restart'):
+        text+='\nApproved technical restart: one preserved failed local attempt plus at most 66 new attempts = 67 cumulative (34 local, 33 paid). Paid ceiling remains $0.10. Original records remain immutable. No further retry.\n'
     text+='\nProvider-free preflight:\n\n```sh\n'+preflight+'\n```\n\nSeparately authorized M5 only (not executed):\n\n```sh\n'+execution+'\n```\n\nReport:\n\n```sh\n'+reporting+'\n```\n'
     path=out/'preparation.md'
     if path.exists() and path.read_text()!=text: raise ValueError('Immutable preparation report changed')
@@ -236,6 +279,12 @@ def verify_input(input_path,base_dir=None):
         inventory,_,_=read_sample(sample,base_dir)
         if tuple(s['run_id'] for s in inventory['sermons'])!=sample.input_run_ids:
             raise ValueError('Frozen run lineage changed')
+    if packet.get('restart'):
+        if restart_lineage(packet['restart']['prior_input'],base_dir)!=packet['restart']:
+            raise ValueError('Preserved restart lineage changed')
+        marker=Path(packet['restart']['prior_input']).parent/'execution/restart-authorization.json'
+        if marker.exists() and json.loads(marker.read_text())!={'restart_input_fingerprint':packet['input_fingerprint']}:
+            raise ValueError('Technical restart already assigned to a different input')
     runtime=ollama_runtime_identity()
     if runtime!=packet['generation_runtime']: raise ValueError('Frozen local Ollama model/runtime differs')
     encoding=None
@@ -545,7 +594,7 @@ def execute_pipeline(packet,store,transport,*,encoding):
         raw_readings=reading_outputs,raw_observations=raw_observations,observations=observations,
         assignments=assignment_outputs,fingerprints=fingerprints,comparisons=comparisons,
         hypotheses=interpreted,narratives=narratives,omission_views=omissions,failures=failures,
-        accounting=usage_account(store),
+        accounting=cumulative_account(store,packet),
         evaluation=dict(status='PENDING_BLINDED_SOURCE_AUDIT',family_coverage='reference-dependent; no completeness claim',
             verification_bias='not estimable without blinded reference matches',human_effort=dict(
                 reference_preparation_minutes=None,evaluation_minutes=None,brian_minutes=None,
@@ -561,7 +610,7 @@ def require_execution(packet,approve_input,experimental,max_usd,confirm_proposal
     if Decimal(str(max_usd))!=Decimal('.10') or confirm_proposal_prices is not True:
         raise ValueError('Confirm unchanged proposal prices and exact $0.10 verifier ceiling before M5')
     return dict(schema_version='learning-demo-execution-decision-v1',input_fingerprint=approve_input,
-        decision='explicit_cli_M5_execution',experimental=True,max_attempts=66,max_paid_attempts=33,max_local_attempts=33,max_usd='.10',generation_provider='Ollama',model='gemma3:4b',
+        decision='explicit_cli_M5_execution',experimental=True,max_attempts=packet.get('budget',{}).get('maximum_attempts',66),max_paid_attempts=33,max_local_attempts=packet.get('budget',{}).get('maximum_local_attempts',33),max_usd='.10',generation_provider='Ollama',model='gemma3:4b',
         proposal_prices_confirmed=True,retries=0,production_admission=False)
 
 
@@ -575,6 +624,9 @@ def run(input_path,base_dir=None,*,approve_input=None,experimental=False,max_usd
     decision=require_execution(packet,approve_input,experimental,max_usd,confirm_proposal_prices)
     if not os.environ.get('TYPESAFE_API_KEY'):
         raise ValueError('TYPESAFE_API_KEY required for Jev verification; Ollama needs no API key; no attempts started')
+    if packet.get('restart'):
+        EvidenceArtifactStore(Path(packet['restart']['prior_input']).parent/'execution').write_immutable(
+            'restart-authorization.json',dict(restart_input_fingerprint=packet['input_fingerprint']))
     store=ReceiptStore(Path(input_path).parent/'execution')
     store.write_immutable('authorization.json',decision)
     def transport(spec):
@@ -584,7 +636,7 @@ def run(input_path,base_dir=None,*,approve_input=None,experimental=False,max_usd
     except (ValueError,OSError,KeyError,TypeError) as error:
         # Technical failures are not semantic source insufficiency; never purchase a repair.
         failure=dict(status='FAIL(component)',component='execution_or_contract_fit',reason=str(error),
-            input_fingerprint=packet['input_fingerprint'],attempts=len(store.attempts()),
+            input_fingerprint=packet['input_fingerprint'],attempts=len(store.attempts()),accounting=cumulative_account(store,packet),
             production_admission=False,next_step='Inspect preserved receipts; no retry, variant or added batches')
         store.write_immutable('stopped-'+digest(failure)+'.json',failure)
         return failure
@@ -695,7 +747,7 @@ def report(run_dir,*,audit=None,base_dir=None):
         if execution.root.exists() and execution.attempts():
             stops=sorted(execution.root.glob('stopped-*.json'))
             return dict(status='FAIL(component)',component='execution_incomplete',
-                accounting=usage_account(execution),stops=[json.loads(p.read_text()) for p in stops],
+                accounting=cumulative_account(execution,packet),stops=[json.loads(p.read_text()) for p in stops],
                 input_fingerprint=packet['input_fingerprint'],semantic_outcome='NOT_EVALUATED')
         return dict(status='PREPARED_NO_EXECUTION',input_fingerprint=packet['input_fingerprint'],
             coverage=packet['coverage'],budget=packet['budget'],provider_calls=0,

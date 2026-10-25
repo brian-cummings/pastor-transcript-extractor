@@ -114,3 +114,14 @@ the output or make that run resumable. Changed implementation hashes also invali
 the old preparation for execution. A technical restart requires a separately approved
 preparation and explicit accounting for the prior local attempt; do not delete the
 attempt, refreeze and rerun to bypass the no-retry decision.
+
+Brian subsequently approved exactly one technical restart. `prepare --restart-from
+<original-input.json>` supports only the preserved `52aad7b4…` failure with one local
+attempt and no paid attempts. It freezes hashes of the original input and execution
+records and requires unchanged sources, prompts, schemas, requests and model. The
+new manifest permits 67 cumulative attempts (34 local, 33 paid), including the original
+failed local attempt. The executor still permits only 66 attempts in the new run,
+with the original phase limits and $0.10 paid ceiling. Reports expose prior and
+cumulative accounting. Execution immutably claims the exception for one new input;
+a second input cannot reuse it. This exception provides no automatic retry or model
+fallback. Brian runs the prepared command; preparation performs no inference.
