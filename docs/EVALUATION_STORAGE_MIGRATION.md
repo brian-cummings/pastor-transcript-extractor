@@ -163,3 +163,45 @@ pte identity evaluate-profile-promotions --cache-only --details \
 The first command should report zero planned and remaining legacy files. The second
 prints the same grouping IDs and observation IDs with `model_calls=0`; `--cache-only`
 never constructs the TypeSafe provider and reports any missing cache entries instead.
+
+## Prepare a publishing history
+
+After committing the migration's tracked-file removals, inspect the complete history:
+
+```console
+pte storage prepare-publish-history \
+  --base-dir /Users/briancummings/Documents/PastorSearchData \
+  --repo-root /Users/briancummings/code/pastor-transcript-extractor
+```
+
+The dry run writes `evaluation/publish-history/preparation.json` and `.md` under
+application data. It identifies managed artifact paths across every ancestor of the
+committed source ref and reports which selected paths already occur at `origin/main`.
+Filtering only unpublished commits cannot remove artifacts from published ancestors.
+The explicit storage policy is applied across the full alternative history.
+
+```console
+pte storage prepare-publish-history --apply \
+  --base-dir /Users/briancummings/Documents/PastorSearchData \
+  --repo-root /Users/briancummings/code/pastor-transcript-extractor
+```
+
+Apply creates `codex/publish-clean` and a local
+`codex/private-artifact-history-backup` ref, without checking out files or changing
+the real index, source branch or remote. Temporary indexes live under application
+data. The result retains commit ordering, merge parents, author/committer metadata
+and messages. Rewritten commit signatures cannot survive changed trees/parents.
+Uncommitted work remains in place and is excluded from the publishing snapshot.
+
+Before creating either ref, verification requires an identical final source tree
+and zero selected artifact blobs reachable from the clean tip. Retained aliases of
+filtered blobs, changed source/published refs, existing destination branch names,
+shallow history and Git replacement refs block preparation. Branch creation is atomic.
+The JSON report records the original-to-filtered commit mapping and exact source tip.
+
+This is not a general anonymizer: names in retained source, documentation, commit
+messages and author metadata remain. The old local history also still contains the
+artifacts. **Do not push all refs or mirror the repository.** No push command runs;
+replacing published `main`, removing old remote refs and dealing with host retention
+are separate publishing decisions. This command does not claim that already published
+objects have been erased from GitHub.

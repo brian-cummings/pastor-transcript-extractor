@@ -23,6 +23,42 @@ from pastor_transcript_extractor.storage_maintenance import (
 console = Console()
 
 
+@storage_app.command("prepare-publish-history", help="Prepare a separate Git history without managed private artifacts; never push or change the checkout.")
+def prepare_publish_history(
+    apply: bool = typer.Option(False, "--apply/--dry-run"),
+    source_ref: str = typer.Option("HEAD", "--source-ref"),
+    published_ref: str = typer.Option("origin/main", "--published-ref"),
+    branch: str = typer.Option("codex/publish-clean", "--branch"),
+    backup_branch: str = typer.Option("codex/private-artifact-history-backup", "--backup-branch"),
+    repo_root: Path = typer.Option(Path.cwd(), "--repo-root"),
+    base_dir: Path | None = typer.Option(None, "--base-dir"),
+) -> None:
+    from pastor_transcript_extractor.publish_history import (
+        PublishHistoryError, plan_publish_history, apply_publish_history, write_history_report,
+    )
+    paths = build_paths(base_dir)
+    report_path = paths.evaluation / "publish-history/preparation.json"
+    if report_path.resolve().is_relative_to(repo_root.expanduser().resolve()):
+        raise typer.BadParameter("History reports and temporary indexes must be outside the repository")
+    try:
+        plan = plan_publish_history(repo_root=repo_root, source_ref=source_ref,
+                                    published_ref=published_ref, branch=branch, backup_branch=backup_branch)
+        write_history_report(plan, report_path)
+        console.print(f"History {'apply' if apply else 'dry-run'}: commits={plan['commit_count']} "
+                      f"artifact_paths={plan['removed_path_count']} "
+                      f"published_tip_artifact_paths={len(plan['published_tip_selected_paths'])}")
+        if apply:
+            def progress(done, total):
+                console.print(f"Prepared Git commits: {done}/{total}")
+            result = apply_publish_history(plan, workspace=report_path.parent, progress=progress)
+            write_history_report(plan, report_path, result)
+            console.print(f"Prepared {branch} at {result['clean_commit']}; "
+                          f"backup={backup_branch}; filtered_blobs_still_reachable=0. No checkout or push.")
+        console.print(f"Report: {report_path}")
+    except (PublishHistoryError, OSError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 def _format_bytes(value: int) -> str:
     amount = float(max(0, value))
     for unit in ("B", "KiB", "MiB", "GiB", "TiB"):

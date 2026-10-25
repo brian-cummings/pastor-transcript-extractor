@@ -4560,6 +4560,29 @@ pte storage restore [OPTIONS] ARCHIVE
 | `--base-dir PATH` | Override app data directory. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte storage prepare-publish-history`
+
+Prepare a separate Git history without managed private artifacts; never push or change the checkout.
+
+#### Usage
+
+```console
+pte storage prepare-publish-history [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--apply / --dry-run` | Create clean and backup refs after verification; dry-run is default. | no | False |
+| `--source-ref TEXT` | Committed source snapshot; uncommitted changes are excluded. | no | HEAD |
+| `--published-ref TEXT` | Published reference used to disclose inherited artifact paths. | no | origin/main |
+| `--branch TEXT` | New publishing branch; existing refs are refused. | no | codex/publish-clean |
+| `--backup-branch TEXT` | New local backup of the complete original history. | no | codex/private-artifact-history-backup |
+| `--repo-root PATH` | Repository to inspect. | no | current directory |
+| `--base-dir PATH` | Application data directory for reports and temporary indexes. | no | configured base directory |
+| `--help` | Show this message and exit. | no | — |
+
 ## `pte docs`
 
 Generate documentation from the CLI definition.

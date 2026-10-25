@@ -225,7 +225,7 @@ GROUP_COMMANDS = {
         "set-organization",
     },
     "source-ownership": {"audit", "migrate"},
-    "storage": {"compact", "restore", "verify"},
+    "storage": {"compact", "restore", "verify", "prepare-publish-history"},
     "video": {"exclude", "excluded", "list", "unexclude"},
 }
 
