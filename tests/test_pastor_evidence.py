@@ -49,3 +49,14 @@ class EvidenceTests(unittest.TestCase):
             with self.assertRaises(ValueError): store.write_immutable('a.json', {'a':2})
             with self.assertRaises(ValueError): store.write_immutable('../escape.json', {})
         with self.assertRaises(ValueError): SampleSpec(1, (2,2), 'membership')
+
+    def test_model_question_and_context_mutations_rejected(self):
+        from pastor_transcript_extractor.pastor_evidence import ObservationEnvelope
+        texts,row,_=fixture()
+        envelope=compile_machine_binding(self.window(texts['target_text']),row,
+            model='pinned',prompt_digest='question',raw_response_ref='receipt')
+        for field in ('model','prompt_digest','source_refs'):
+            mutated=deepcopy(envelope)
+            if field=='source_refs': mutated[field][0]['target_sha256']='stale-context'
+            else: mutated[field]='foreign'
+            with self.assertRaisesRegex(ValueError,'identity changed'): ObservationEnvelope(mutated)

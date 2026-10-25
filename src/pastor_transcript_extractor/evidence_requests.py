@@ -105,6 +105,8 @@ def execute(spec, ledger, store, transport, *, encoding=None):
     key=spec.fingerprint
     with store.exclusive():
         attempts=store.attempts()
+        if any(a['namespace']!=spec.namespace for a in attempts):
+            raise ValueError('Receipt store namespace mismatch')
         # Stop the entire run after uncertain spend or an unrecoverable receipt.
         for attempt in attempts:
             path=store._path('receipts/'+attempt['request_fingerprint']+'.json')

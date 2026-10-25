@@ -3,7 +3,7 @@ import unittest
 from pastor_transcript_extractor.pastor_evidence import SampleSpec, EvidenceView, compile_machine_binding, REQUIRED_CHECKS
 from pastor_transcript_extractor.pastor_fingerprint import build_fingerprint, qualified_key
 from pastor_transcript_extractor.pastor_similarity import compare_fingerprints, ComparisonSpec, compare_panel
-from test_pastor_evidence import EvidenceTests
+import test_pastor_evidence as evidence_fixture
 from test_theological_binding import fixture
 
 
@@ -13,7 +13,7 @@ def observation(polarity='affirmed', conditions=(), video_id=2, adopted=True):
     if not adopted:
         row['voice'].update(kind='quoted_or_reported',speaker='reported person')
         row['adoption'].update(status='reported_not_adopted',basis='quotation_only')
-    window = EvidenceTests().window(text['target_text'])
+    window = evidence_fixture.EvidenceTests().window(text['target_text'])
     from dataclasses import replace
     window = replace(window, video_id=video_id)
     result = compile_machine_binding(window,row,model='fake',prompt_digest='p',raw_response_ref='fake',
@@ -86,3 +86,44 @@ class FingerprintTests(unittest.TestCase):
         self.assertIsNone(compare_fingerprints(a,fingerprint())['relation_metrics']['resemblance'])
         invalid=measured(.3,op='relation'); invalid['assessed']=False
         with self.assertRaises(ValueError): fingerprint(measurements=[invalid])
+
+    def test_exact_fractions_and_unknown_changes_only_coverage(self):
+        from pastor_transcript_extractor.pastor_evidence import observation_identity
+        def row(label,denied=False):
+            r=observation('denied' if denied else 'affirmed')
+            r['binding']['binding_id']=label
+            r['id']=observation_identity(r)
+            r['alignment']['meaning']['proposition']=label
+            r['alignment']['evidence']=[r['id']]
+            return r
+        left=fingerprint([row(k) for k in 'abcd'])
+        right=fingerprint([row('a'),row('b'),row('c',True),row('e')])
+        metrics=compare_fingerprints(left,right)['position_metrics']
+        self.assertEqual(metrics['agreement'],2/3)
+        self.assertEqual(metrics['opposition'],1/3)
+        self.assertEqual(metrics['coverage'],3/5)
+        self.assertEqual(len(metrics['feature_contributions']),3)
+
+    def test_same_kernel_accepts_admissible_policy_fixture(self):
+        from pastor_transcript_extractor.pastor_evidence import EvidencePolicy, observation_identity
+        original=observation()
+        policy=EvidencePolicy(namespace='fixture',require_production_admission=True,version='test-only-admissible')
+        rejected=build_fingerprint(SampleSpec(1,(2,),'m'),EvidenceView((original,),policy))
+        self.assertEqual(next(iter(rejected['claim_frames'].values()))['state'],[0,0])
+        admitted=deepcopy(original)
+        admitted.update(origin='admitted_policy_fixture',namespace='fixture',production_admission='admitted')
+        admitted['id']=observation_identity(admitted)
+        admitted['alignment']['evidence']=[admitted['id']]
+        fp=build_fingerprint(SampleSpec(1,(2,),'m'),EvidenceView((admitted,),policy))
+        self.assertEqual(compare_fingerprints(fp,fp)['position_metrics']['agreement'],1)
+
+    def test_emphasis_estimands_not_mixed(self):
+        from pastor_transcript_extractor.pastor_fingerprint import topic_measurements
+        rows=list(topic_measurements(2,{'t':dict(normalized_expected_prominence=.2,
+            developed_emphasis_probability=.8)},'pinned',[]))
+        other=list(topic_measurements(2,{'t':dict(normalized_expected_prominence=.2,
+            developed_emphasis_probability=.1)},'pinned',[]))
+        result=compare_fingerprints(fingerprint(measurements=rows),fingerprint(measurements=other),
+            ComparisonSpec(path='theological_emphasis'))
+        self.assertEqual(result['emphasis_metrics']['resemblance'],1)
+        self.assertEqual(result['emphasis_metrics']['denominator'],1)

@@ -113,6 +113,13 @@ def code_identity():
     return {name:file_hash(Path(__file__).with_name(name+'.py')) for name in names}
 
 
+def _run_directory(base_dir,fingerprint):
+    root=build_paths(base_dir).evaluation/'learning-demo-v3'
+    repository=Path(__file__).parents[2].resolve()
+    if root.resolve().is_relative_to(repository): raise ValueError('Generated artifacts must be outside repository')
+    return root/fingerprint
+
+
 def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokenizer_identity=None):
     from . import segment_cache_inventory
     from .profile_evidence_supply import read_sample
@@ -203,7 +210,7 @@ def prepare(proposal_path,base_dir=None,*,check_only=False,encoding=None,tokeniz
             'Both credentials present; provider-free preflight cannot establish account access',
             'All dynamically expanded batches pass frozen per-question/request preflight; otherwise stop'])
     packet['input_fingerprint']=digest(packet)
-    out=build_paths(base_dir).evaluation/'learning-demo-v3'/packet['input_fingerprint']
+    out=_run_directory(base_dir,packet['input_fingerprint'])
     if not check_only:
         EvidenceArtifactStore(out).write_immutable('input.json',packet)
         render_preparation(packet,out)
@@ -217,6 +224,11 @@ def render_preparation(packet,out):
         'Existing V8/P1 and Scripture commands remain separate. New `pte analysis learning-demo prepare`, `run` and `report` adapt shared services.\n\n'+\
         'M5 is separately authorized. Run input must match the immutable fingerprint and code/source hashes; no runtime repair or routine approval.\n\n'+\
         '\n'.join('- '+s for s in packet['prerequisites'])+'\n'
+    base=out.parents[2]
+    preflight=f'pte analysis learning-demo run --base-dir {base} --input {out / "input.json"} --check-only --json'
+    execution=f'pte analysis learning-demo run --base-dir {base} --input {out / "input.json"} --experimental --approve-input {packet["input_fingerprint"]} --max-usd 2.00 --confirm-proposal-prices --json'
+    reporting=f'pte analysis learning-demo report --base-dir {base} --run-dir {out} --json'
+    text+='\nProvider-free preflight:\n\n```sh\n'+preflight+'\n```\n\nSeparately authorized M5 only (not executed):\n\n```sh\n'+execution+'\n```\n\nReport:\n\n```sh\n'+reporting+'\n```\n'
     path=out/'preparation.md'
     if path.exists() and path.read_text()!=text: raise ValueError('Immutable preparation report changed')
     path.write_text(text)
@@ -226,10 +238,18 @@ def verify_input(input_path,base_dir=None):
     packet=json.loads(Path(input_path).read_text())
     if packet['input_fingerprint']!=digest({k:v for k,v in packet.items() if k!='input_fingerprint'}):
         raise ValueError('Input fingerprint differs')
+    if Path(input_path).resolve()!=(_run_directory(base_dir,packet['input_fingerprint'])/'input.json').resolve():
+        raise ValueError('Input must be in the configured immutable application run directory')
     if packet['code_identity']!=code_identity(): raise ValueError('Implementation changed after freeze')
     if file_hash(packet['proposal']['path'])!=packet['proposal']['sha256']: raise ValueError('Proposal changed')
     for source in packet['source_refs']:
         if file_hash(source['path'])!=source['sha256']: raise ValueError('Frozen source changed')
+    from .profile_evidence_supply import read_sample
+    for raw in packet['samples']:
+        sample=SampleSpec(**{**raw,'video_ids':tuple(raw['video_ids']),'input_run_ids':tuple(raw['input_run_ids'])})
+        inventory,_,_=read_sample(sample,base_dir)
+        if tuple(s['run_id'] for s in inventory['sermons'])!=sample.input_run_ids:
+            raise ValueError('Frozen run lineage changed')
     encoding,identity=local_tokenizer(base_dir)
     if identity!=packet['tokenizer']: raise ValueError('Tokenizer identity changed')
     for raw in packet['source_requests']:
@@ -287,6 +307,27 @@ def _entries(fingerprints,observations,hypotheses):
     return entries
 
 
+def _comparison_entry(value,scope):
+    metrics={};premises=set()
+    for op,metric in value.items():
+        if not op.endswith('_metrics'): continue
+        summary={k:v for k,v in metric.items() if k not in ('feature_contributions','exclusions')}
+        contributions=[]
+        for row in metric['feature_contributions']:
+            contribution={k:v for k,v in row.items() if k not in ('left_sources','right_sources')}
+            for side in ('left_sources','right_sources'):
+                evidence=row[side]
+                premises.update(evidence.get('evidence_ids',[]))
+                if 'contract' in evidence:
+                    contribution[side]=dict(contract=evidence['contract'],estimand=evidence['estimand'],
+                        recordings=evidence['recordings'])
+            contributions.append(contribution)
+        summary['feature_contributions']=contributions
+        summary['exclusions']=[dict(id=r['id'],reason=r['reason']) for r in metric['exclusions']]
+        metrics[op]=summary
+    return dict(scope_video_ids=scope,comparison=metrics,premise_ids=sorted(premises))
+
+
 def dependency_entries(entries, ids):
     selected=set(ids)
     while True:
@@ -295,6 +336,22 @@ def dependency_entries(entries, ids):
         if expanded==selected: break
         selected=expanded
     return {key:entries[key] for key in sorted(selected & set(entries))}
+
+
+def usage_account(store):
+    attempts=store.attempts(); known_input=0;known_output=0;known_cost=Decimal(0);unknown=0
+    for attempt in attempts:
+        path=store.root/'receipts'/(attempt['request_fingerprint']+'.json')
+        if not path.exists(): unknown+=1;continue
+        receipt=json.loads(path.read_text()); usage=receipt['response'].get('usage',{})
+        if type(usage.get('input_tokens')) is not int or type(usage.get('output_tokens')) is not int:
+            unknown+=1;continue
+        i,o=usage['input_tokens'],usage['output_tokens'];known_input+=i;known_output+=o
+        phase=PHASES[attempt['phase']]
+        known_cost+=(Decimal(i)*Decimal(phase[5])+Decimal(o)*Decimal(phase[6]))/Decimal(1000000)
+    return dict(attempts=len(attempts),reserved_usd=str(sum((Decimal(a['reserved_usd']) for a in attempts),Decimal(0))),
+        known_input_tokens=known_input,known_output_tokens=known_output,known_list_price_usage_usd=str(known_cost),
+        unknown_usage_attempts=unknown,runtime_repairs=0,runtime_approvals=0,reference_inputs=0)
 
 
 def execute_pipeline(packet,store,transport,*,encoding):
@@ -385,6 +442,10 @@ def execute_pipeline(packet,store,transport,*,encoding):
         by_id={r['id']:r for r in target_rows}
         from .pastor_fingerprint import qualified_key
         for relation in generated['relation_assessments']:
+            from .theological_binding import RELATIONS, ADOPTION
+            if (relation['kind'] not in RELATIONS or relation['source_voice'] not in ('preacher','quoted_or_reported','unresolved')
+                or relation['adoption'] not in ADOPTION or not relation['scope']):
+                raise ValueError('Unsupported relation meaning/attribution')
             ends=[by_id.get(relation[k]) for k in ('from_id','to_id')]
             if (not _checks_pass(findings.get(relation['id'],{})) or any(r is None or
                 r['id'] not in supported or not r.get('alignment',{}).get('resolved') for r in ends)
@@ -418,9 +479,7 @@ def execute_pipeline(packet,store,transport,*,encoding):
         local={key:value for key,value in entries.items() if set(value['scope_video_ids'])<=set(scope)}
         if number==2:
             for path,value in comparisons.items():
-                local['comparison:'+path]=dict(scope_video_ids=scope,comparison={
-                    op:{k:v for k,v in metric.items() if k not in ('feature_contributions','exclusions')}
-                    for op,metric in value.items() if op.endswith('_metrics')})
+                local['comparison:'+path]=_comparison_entry(value,scope)
         state=dict(entries=local,scope_video_ids=scope,kind='pair' if number==2 else 'profile')
         request=contract.generation_request('narratives_and_pair_report',state,dict(entries_digest=digest(local)))
         proposal=contract.generated_output(request.phase,send(request))
@@ -458,8 +517,7 @@ def execute_pipeline(packet,store,transport,*,encoding):
         raw_readings=reading_outputs,raw_observations=raw_observations,observations=observations,
         assignments=assignment_outputs,fingerprints=fingerprints,comparisons=comparisons,
         hypotheses=interpreted,narratives=narratives,omission_views=omissions,failures=failures,
-        accounting=dict(attempts=len(attempts),reserved_usd=str(sum((Decimal(a['reserved_usd']) for a in attempts),Decimal(0))),
-            runtime_repairs=0,runtime_approvals=0,reference_inputs=0),
+        accounting=usage_account(store),
         evaluation=dict(status='PENDING_BLINDED_SOURCE_AUDIT',family_coverage='reference-dependent; no completeness claim',
             verification_bias='not estimable without blinded reference matches',human_effort=dict(
                 reference_preparation_minutes=None,evaluation_minutes=None,brian_minutes=None,
@@ -467,3 +525,179 @@ def execute_pipeline(packet,store,transport,*,encoding):
             source_strata=dict(Counter(w.stratum for w in windows.values()))))
     store.write_immutable('results.json',result)
     return result
+
+
+def require_execution(packet,approve_input,experimental,max_usd,confirm_proposal_prices):
+    if approve_input!=packet['input_fingerprint'] or experimental is not True:
+        raise ValueError('Separate M5 decision requires --experimental and --approve-input exact fingerprint')
+    if Decimal(str(max_usd))!=Decimal('2.00') or confirm_proposal_prices is not True:
+        raise ValueError('Confirm unchanged proposal prices and exact $2 ceiling before M5')
+    return dict(schema_version='learning-demo-execution-decision-v1',input_fingerprint=approve_input,
+        decision='explicit_cli_M5_execution',experimental=True,max_attempts=66,max_usd='2.00',
+        proposal_prices_confirmed=True,retries=0,production_admission=False)
+
+
+def run(input_path,base_dir=None,*,approve_input=None,experimental=False,max_usd='2.00',
+        confirm_proposal_prices=False,check_only=False):
+    # No transport, credential checks or attempt files during provider-free preflight.
+    packet,encoding=verify_input(input_path,base_dir)
+    if check_only:
+        return dict(status='PREPARED_NO_EXECUTION',input_fingerprint=packet['input_fingerprint'],
+                    provider_calls=0,budget=packet['budget'],prerequisites=packet['prerequisites'])
+    decision=require_execution(packet,approve_input,experimental,max_usd,confirm_proposal_prices)
+    if not all(os.environ.get(name) for name in ('OPENAI_API_KEY','TYPESAFE_API_KEY')):
+        raise ValueError('Both provider credentials required; no attempts started')
+    store=ReceiptStore(Path(input_path).parent/'execution')
+    store.write_immutable('authorization.json',decision)
+    def transport(spec):
+        return (openai_transport if PHASES[spec.phase][0]=='OpenAI' else typesafe_transport)(spec)
+    try:
+        return execute_pipeline(packet,store,transport,encoding=encoding)
+    except (ValueError,OSError,KeyError,TypeError) as error:
+        # Technical failures are not semantic source insufficiency; never purchase a repair.
+        failure=dict(status='FAIL(component)',component='execution_or_contract_fit',reason=str(error),
+            input_fingerprint=packet['input_fingerprint'],attempts=len(store.attempts()),
+            production_admission=False,next_step='Inspect preserved receipts; no retry, variant or added batches')
+        store.write_immutable('stopped-'+digest(failure)+'.json',failure)
+        return failure
+
+
+def source_stratum_report(observations,profile_ids=()):
+    groups=defaultdict(lambda:dict(raw=set(),supported=set(),aligned=set(),anchor_origin=set(),families=defaultdict(set)))
+    for profile_id in profile_ids:
+        for stratum in ('detector_selected','independent_control'): groups[(profile_id,stratum)]
+    for row in observations:
+        for ref in row['source_refs']:
+            group=groups[(ref.get('profile_id'),ref['stratum'])]
+            # Profiles supplied separately in report(); canonical source occurrence key
+            # counts window overlap without pretending repeated readings are independent.
+            key=digest({k:ref[k] for k in ('video_id','block_id','target_sha256','local_start','local_end')})
+            group['raw'].add(key)
+            if ref['block_id']==ref['anchor_block_id']: group['anchor_origin'].add(key)
+            if EvidencePolicy().permits(row)[0]: group['supported'].add(key)
+            if row.get('alignment',{}).get('resolved'):
+                group['aligned'].add(key)
+                for path in row['alignment']['paths']:
+                    group['families'][path].add(key)
+    return [dict(profile_id=p,stratum=s,**{k:len(v) for k,v in g.items() if k!='families'},
+        families={k:len(v) for k,v in sorted(g['families'].items())},
+        limit='literal occurrence counts; source-reference recall/accuracy and control-only new-content audit pending')
+        for (p,s),g in sorted(groups.items(),key=str)]
+
+
+def _interval(n,d):
+    if not d: return None
+    import math
+    z=1.959963984540054;p=n/d;den=1+z*z/d
+    mid=(p+z*z/(2*d))/den
+    spread=z*math.sqrt(p*(1-p)/d+z*z/(4*d*d))/den
+    return [max(0,mid-spread),min(1,mid+spread)]
+
+
+def verification_bias(reference_rows,matches,accepted_ids):
+    """Offline audit only: complexity/family tags come from blinded references.
+
+    matches are audited all-field correspondences, never the generator's own labels.
+    Multiple windows matching one reference do not enlarge the reference denominator.
+    """
+    accepted_ids=set(accepted_ids)
+    correct=defaultdict(set)
+    incorrect=set();false_accepted=set()
+    for row in matches:
+        if row['correct']: correct[row['reference_id']].add(row['observation_id'])
+        else:
+            incorrect.add(row['observation_id'])
+            if row['observation_id'] in accepted_ids: false_accepted.add(row['observation_id'])
+    groups=defaultdict(set); refs={r['id']:r for r in reference_rows if r['adjudicable']}
+    if len(refs)!=sum(bool(r['adjudicable']) for r in reference_rows): raise ValueError('Duplicate reference IDs')
+    for key,row in refs.items():
+        groups[('pooled','all')].add(key)
+        for field in ('profile','stratum','theological_family'):
+            groups[(field,str(row[field]))].add(key)
+        for tag in ('conditional_qualified','indirect','multi_sentence','biblical_interpretation_dependent','nuanced_contested'):
+            groups[('complexity',tag if tag in row['complexity_tags'] else 'other:'+tag)].add(key)
+        for tag in row['complexity_tags']:
+            groups[('profile_stratum_family_complexity',f"{row['profile']}|{row['stratum']}|{row['theological_family']}|{tag}")].add(key)
+    rows=[]
+    for (kind,label),ids in sorted(groups.items()):
+        generated={key for key in ids if correct[key]}
+        retained={key for key in generated if correct[key] & accepted_ids}
+        r,g,k=len(ids),len(generated),len(retained)
+        rows.append(dict(group_type=kind,group=label,reference_adjudicable=r,correct_generated=g,correct_retained=k,
+            generator_recall=g/r if r else None,correct_retention=k/g if g else None,
+            false_rejection=1-k/g if g else None,final_correct_coverage=k/r if r else None,
+            retention_interval=_interval(k,g),recall_interval=_interval(g,r),
+            powered=g>=5,verifier_yield_fail=g>=5 and k/g<.60,
+            uncovered_family=kind=='theological_family' and r>0 and k==0))
+    gaps=[]
+    by_group={(r['group_type'],r['group']):r for r in rows}
+    for (kind,label),row in by_group.items():
+        if kind!='complexity' or label.startswith('other:'): continue
+        other=by_group.get(('complexity','other:'+label))
+        if not other or row['correct_retention'] is None or other['correct_retention'] is None: continue
+        gap=other['correct_retention']-row['correct_retention']
+        gaps.append(dict(group=label,retention_gap=gap,powered=row['powered'] and other['powered'],
+                         selective_loss_concern=gap>.20,causal_bias_established=False))
+    return dict(groups=rows,gaps=gaps,incorrect_generated=len(incorrect),erroneously_accepted=len(false_accepted),
+        accepted_observations=len(accepted_ids),semantic_accuracy=(len(accepted_ids-false_accepted)/len(accepted_ids))
+            if accepted_ids and accepted_ids <= false_accepted | {x for values in correct.values() for x in values} else None,
+        dependence_warning='Nonexclusive reference groups and overlapping source windows are dependent; intervals are descriptive.')
+
+
+def decide_outcome(checks,*,audit_complete=False):
+    failed=[r['component'] for r in checks if r.get('adequate_evidence') and r.get('passed') is False]
+    if failed: return dict(status='FAIL(component)',components=failed)
+    if not audit_complete or not checks or any(r.get('passed') is not True or not r.get('adequate_evidence') for r in checks):
+        return dict(status='INCONCLUSIVE',reason='Incomplete or insufficient independent source/reference evidence')
+    required={'grounding','semantic_fidelity','discovery','verification_yield','alignment','theological_content',
+              'interpretation','narrative','usefulness','sample_dependence','effort','budget','mathematics','verification_bias'}
+    if {r['component'] for r in checks}!=required:
+        return dict(status='INCONCLUSIVE',reason='Missing required acceptance components')
+    return dict(status='PASS',components=sorted(required))
+
+
+def report(run_dir,*,audit=None,base_dir=None):
+    run_dir=Path(run_dir)
+    packet=json.loads((run_dir/'input.json').read_text())
+    if run_dir.resolve()!=_run_directory(base_dir,packet['input_fingerprint']).resolve():
+        raise ValueError('Report directory must be under configured application base')
+    result_path=run_dir/'execution/results.json'
+    if not result_path.exists():
+        execution=ReceiptStore(run_dir/'execution')
+        if execution.root.exists() and execution.attempts():
+            stops=sorted(execution.root.glob('stopped-*.json'))
+            return dict(status='FAIL(component)',component='execution_incomplete',
+                accounting=usage_account(execution),stops=[json.loads(p.read_text()) for p in stops],
+                input_fingerprint=packet['input_fingerprint'],semantic_outcome='NOT_EVALUATED')
+        return dict(status='PREPARED_NO_EXECUTION',input_fingerprint=packet['input_fingerprint'],
+            coverage=packet['coverage'],budget=packet['budget'],provider_calls=0,
+            prerequisites=packet['prerequisites'],semantic_outcome='NOT_EVALUATED')
+    result=json.loads(result_path.read_text())
+    profile_by_video={v:s['profile_id'] for s in packet['samples'] for v in s['video_ids']}
+    rows=json.loads(json.dumps(result['observations']))
+    for row in rows:
+        for ref in row['source_refs']: ref['profile_id']=profile_by_video[ref['video_id']]
+    value=dict(input_fingerprint=packet['input_fingerprint'],outcome=dict(status=result['status'],reason=result['decision_reason']),
+        accounting=result['accounting'],source_strata=source_stratum_report(rows,[s['profile_id'] for s in packet['samples']]),
+        human_effort=result['evaluation']['human_effort'],source_coverage=packet['coverage'],
+        semantic_audit='PENDING',verification_bias=None)
+    if audit is not None:
+        if audit['input_fingerprint']!=packet['input_fingerprint']: raise ValueError('Foreign audit')
+        value['verification_bias']=verification_bias(audit['references'],audit['matches'],
+            [r['id'] for r in rows if EvidencePolicy().permits(r)[0]])
+        value['outcome']=decide_outcome(audit['component_checks'],audit_complete=audit['complete'])
+        value['semantic_audit']='COMPLETE' if audit['complete'] else 'INCOMPLETE'
+        value['human_effort']=audit['human_effort']
+        effort=audit['human_effort']
+        total=sum(effort.get(k,0) or 0 for k in ('reference_preparation_minutes','evaluation_minutes','brian_minutes','release_validation_minutes'))
+        if effort.get('runtime_intervention_minutes',0)>0 or total>360 or effort.get('brian_minutes',0)>20:
+            value['outcome']=dict(status='FAIL(component)',components=['effort'])
+        if result['failures']:
+            value['outcome']=dict(status='FAIL(component)',components=sorted({r['component'] for r in result['failures']}))
+        if any(r['verifier_yield_fail'] for r in value['verification_bias']['groups']):
+            value['outcome']=dict(status='FAIL(component)',components=['verification_yield'])
+    from .analysis_artifact_cache import write_json_markdown
+    destination=run_dir/'reports'/digest(value)/'report.json'
+    write_json_markdown(destination,value,'# V3 demonstration report\n\n'+
+        json.dumps(value,indent=2,ensure_ascii=False)+'\n')
+    return value

@@ -71,9 +71,11 @@ def build_fingerprint(sample, evidence_view, dimension_policy=DIMENSION_POLICY, 
             continue
         meaning = row['alignment']['meaning']
         frame = frames.setdefault(key, dict(id=key, meaning=meaning, paths=[], A=[], D=[], U=[],
-            evidence_ids=[], withheld=[], alignment_decisions=[]))
+            evidence_ids=[], withheld=[], alignment_decisions=[], evidence_contracts=[]))
         frame['paths'] = sorted(set(frame['paths']) | set(paths))
         frame['evidence_ids'].append(row['id'])
+        identity=dict(model=row['model'],prompt_digest=row['prompt_digest'],producer=row['producer'])
+        if identity not in frame['evidence_contracts']: frame['evidence_contracts'].append(identity)
         frame['alignment_decisions'].append(row['alignment'])
         binding = row['binding']
         usable = (row['id'] in admitted and verified and binding['voice']['occurrence'] == 'actual'
@@ -85,6 +87,7 @@ def build_fingerprint(sample, evidence_view, dimension_policy=DIMENSION_POLICY, 
             frame['withheld'].append(dict(id=row['id'], reason='unverified_unadopted_or_unresolved'))
     for frame in frames.values():
         for state in ('A', 'D', 'U'): frame[state] = aggregate_occurrences(frame[state])
+        frame['evidence_contracts'].sort(key=digest)
         frame['state'] = [int(bool(frame['A'])), int(bool(frame['D']))]
         frame['evidence_ids'] = sorted(set(frame['evidence_ids']))
     # Measurements retain independent estimands, contract identity and per-recording exposure.

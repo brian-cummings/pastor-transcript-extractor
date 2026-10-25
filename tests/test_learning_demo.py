@@ -118,3 +118,50 @@ class IntegrationTests(unittest.TestCase):
     def test_strict_schema_overflow_and_foreign_fields(self):
         with self.assertRaises(ValueError): c.validate_shape({'status':'none','claims':[],'manual_fix':True},c.READ_SCHEMA)
         with self.assertRaises(ValueError): c.validate_shape({'clauses':[{}]*13},c.NARRATIVE_SCHEMA)
+
+    def test_verification_bias_uses_references_and_underpower_is_visible(self):
+        references=[];matches=[];accepted=[]
+        for i in range(10):
+            references.append(dict(id=str(i),profile=1,stratum='independent_control' if i<5 else 'detector_selected',
+                theological_family='qualified' if i<5 else 'simple',adjudicable=True,
+                complexity_tags=['conditional_qualified'] if i<5 else []))
+            matches.append(dict(reference_id=str(i),observation_id=str(i),correct=True))
+            if i>=3: accepted.append(str(i))
+        # Repeated readings/windows cannot enlarge correct-generation denominators.
+        matches.append(dict(reference_id='0',observation_id='repeated',correct=True))
+        result=demo.verification_bias(references,matches,accepted)
+        tag=next(r for r in result['groups'] if r['group_type']=='complexity' and r['group']=='conditional_qualified')
+        self.assertEqual(tag['correct_generated'],5)
+        self.assertEqual(tag['correct_retention'],.4)
+        self.assertTrue(tag['verifier_yield_fail'])
+        self.assertTrue(result['gaps'][0]['selective_loss_concern'])
+        self.assertIsNotNone(tag['retention_interval'])
+        self.assertFalse(demo.verification_bias(references[:1],matches,[])['groups'][0]['powered'])
+
+    def test_outcomes_and_authorization_are_distinct(self):
+        self.assertEqual(demo.decide_outcome([],audit_complete=True)['status'],'INCONCLUSIVE')
+        self.assertEqual(demo.decide_outcome([dict(component='extraction',passed=False,adequate_evidence=True)])['status'],'FAIL(component)')
+        self.assertEqual(demo.decide_outcome([dict(component='extraction',passed=False,adequate_evidence=False)])['status'],'INCONCLUSIVE')
+        required=('grounding','semantic_fidelity','discovery','verification_yield','alignment','theological_content',
+              'interpretation','narrative','usefulness','sample_dependence','effort','budget','mathematics','verification_bias')
+        self.assertEqual(demo.decide_outcome([dict(component=k,passed=True,adequate_evidence=True) for k in required],audit_complete=True)['status'],'PASS')
+        for args in [('wrong',True,'2.00',True),('exact',False,'2.00',True),('exact',True,'3.00',True),('exact',True,'2.00',False)]:
+            with self.assertRaises(ValueError): demo.require_execution({'input_fingerprint':'exact'},*args)
+        self.assertEqual(demo.require_execution({'input_fingerprint':'exact'},'exact',True,'2.00',True)['max_attempts'],66)
+
+    def test_literal_neighbor_gaps_not_skipped(self):
+        from pastor_transcript_extractor.sermon_topics import resolve_topic_block_context
+        from pastor_transcript_extractor.binding_evidence import text_digest,context_digest
+        # Tests the actual adjacency boundary without rebuilding transcript geometry.
+        analysis=dict(blocks=[dict(block_id=i,start_seconds=i,end_seconds=i+1) for i in range(5)],context_policy_version='fixture')
+        case=dict(case_id='c',profile_id=1,video_id=2,source_sha256='s',anchor_block_id=2,
+            target_block_ids=[2,3],excluded_immediate_neighbors=[1],stratum='independent_control',blocks=[])
+        for i in [2,3]:
+            block=analysis['blocks'][i];block.update(segment_indexes=[i],context_identity='fixture')
+            case['blocks'].append(dict(block_id=i,start_seconds=i,end_seconds=i+1,
+                target_sha256=text_digest(str(i)),context_sha256=context_digest({'target_text':str(i)})))
+        with patch('pastor_transcript_extractor.sermon_topics.resolve_topic_block_context',side_effect=lambda b:{'target_text':str(b['block_id'])}):
+            window=demo.source_window(case,analysis,{0,2,3,4})
+            self.assertEqual([b['block_id'] for b in window.blocks],[2,3])
+            bad=dict(case,target_block_ids=[0,2,3])
+            with self.assertRaisesRegex(ValueError,'adjacent'): demo.source_window(bad,analysis,{0,2,3,4})

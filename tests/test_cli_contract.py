@@ -46,6 +46,12 @@ ROOT_COMMANDS = {
 
 GROUP_COMMANDS = {
     "analysis": {
+        "learning-demo",
+        "profile-binding-review",
+        "profile-proposition-review",
+        "profile-synthesis",
+        "profile-binding-development",
+        "profile-connected-binding",
         "evidence-supply-review",
         "evidence-supply-collector-design",
         "evidence-supply-boundary-validation",

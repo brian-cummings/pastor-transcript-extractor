@@ -36,6 +36,7 @@ def compare_fingerprints(left, right, comparison_spec=ComparisonSpec()):
         reason = None
         if key not in lview['position'] or key not in rview['position']: reason = 'missing_or_outside_dimension'
         elif a['meaning'] != b['meaning']: reason = 'qualified_difference'
+        elif a['evidence_contracts'] != b['evidence_contracts']: reason = 'incompatible_evidence_contract'
         elif a['state'] not in ([1,0],[0,1]) or b['state'] not in ([1,0],[0,1]): reason = 'neither_both_or_withheld'
         if reason:
             exclusions.append(dict(id=key, reason=reason, left=a, right=b)); continue

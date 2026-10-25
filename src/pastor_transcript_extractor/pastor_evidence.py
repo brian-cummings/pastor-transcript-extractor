@@ -83,6 +83,11 @@ class EvidencePolicy:
         return True, None
 
 
+def observation_identity(row):
+    return digest({k:row[k] for k in ('contract_version','namespace','source_refs','producer',
+        'model','prompt_digest','raw_response_ref','origin','binding')})
+
+
 @dataclass(frozen=True)
 class ObservationEnvelope:
     payload: dict
@@ -94,6 +99,8 @@ class ObservationEnvelope:
                     'experimental_eligibility', 'production_admission', 'uncertainty', 'namespace'):
             if key not in row:
                 raise ValueError(f'Missing envelope field: {key}')
+        if row.get('binding') is not None and row['id'] != observation_identity(row):
+            raise ValueError('Observation source/model/question identity changed')
         if row['origin'] == 'machine_generated' and row['production_admission'] != 'not_admitted':
             raise ValueError('Machine adapter cannot confer production authority')
 
@@ -136,6 +143,7 @@ def compile_machine_binding(window, proposal, *, model, prompt_digest, raw_respo
         experimental_eligibility='pending_verification', production_admission='not_admitted',
         uncertainty=dict(expressed=row['epistemic_status'], model='diagnostic_not_calibrated',
                          sample_independence='unknown'), binding=row)
+    envelope['id']=observation_identity(envelope)
     ObservationEnvelope(envelope)
     return envelope
 
