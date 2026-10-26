@@ -24,6 +24,32 @@ def packet():
 
 
 class GuidedSourceTests(unittest.TestCase):
+    def test_one_saved_answer_binding_replacement_preserves_source_and_checks_coverage(self):
+        from pastor_transcript_extractor import binding_retry
+        value,valid=packet();old=g.requests.RequestSpec(**value['request'])
+        bad=deepcopy(valid);bad['claims'][0]['proposition']['span']['text']='missing'
+        response=dict(output=json.dumps(bad))
+        corrected=binding_retry.retry_request(old,response,[dict(path='$.claims[0].proposition.span',code='literal',message='missing')],contextual=True)
+        self.assertEqual(corrected.body['messages'][:2],old.body['messages'])
+        self.assertEqual(json.loads(corrected.body['messages'][2]['content']),bad)
+        self.assertEqual(corrected.body['response_format'],old.body['response_format'])
+        corrected.preflight()
+        value['request']=asdict(corrected)
+        value['policy']=dict(binding_correction=True,binding_ids=g.context.inventory(valid))
+        for drop in (False,True):
+            output=deepcopy(valid)
+            if drop: output['claims'].pop()
+            calls=[];verifier=[]
+            def flash(spec): calls.append(spec);return wire_response(spec,json.dumps(output))
+            def typesafe(spec):
+                verifier.append(spec)
+                return dict(model='jev-1.13.0',complete=True,usage=dict(input_tokens=100,output_tokens=100),
+                    output={k:dict(type='noul',noul=.5) for k in spec.body['questions']})
+            with self.subTest(drop=drop),TemporaryDirectory() as directory:
+                result=g.run_recipe(value,Path(directory)/'execution',flash,typesafe)
+                self.assertEqual(len(calls),1);self.assertEqual(len(verifier),0 if drop else 1)
+                self.assertEqual(result['status'],'FAIL(component)' if drop else 'INCONCLUSIVE')
+
     def test_unchanged_full_schema_source_and_mechanically_derived_guide(self):
         _,_,old,_=fixture();case=old['cases'][0];spec=g.source_request(case)
         self.assertEqual(spec.body['messages'][1],case['request']['body']['messages'][1])

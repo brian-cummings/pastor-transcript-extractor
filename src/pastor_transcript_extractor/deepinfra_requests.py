@@ -57,7 +57,7 @@ def preflight(spec):
     body=spec.body
     policy=policy_for(spec.version)
     binding=spec.version==DEEPINFRA_BINDING_VERSION
-    corrective=spec.version==DEEPINFRA_CORRECTION_VERSION or binding
+    corrective=spec.version in (DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_GUIDED_VERSION) or binding
     expanded=spec.version in (DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION)
     namespace=(GUIDED_NAMESPACE if spec.version==DEEPINFRA_GUIDED_VERSION else ENUM_NAMESPACE if spec.version==DEEPINFRA_ENUM_VERSION else BINDING_NAMESPACE if binding else CORRECTION_NAMESPACE if corrective else DIRECT_NAMESPACE if spec.version==DEEPINFRA_DIRECT_VERSION else EXPANDED_NAMESPACE if expanded else NAMESPACE)
     input_cap,output_cap=policy['input_cap'],policy['output_cap']

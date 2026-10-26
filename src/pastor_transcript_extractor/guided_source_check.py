@@ -15,16 +15,18 @@ from . import learning_demo_model_fit as fit
 from . import learning_demo_feedback as feedback
 from . import evidence_requests as requests
 from . import deepinfra_requests as hosted
+from . import binding_retry
 from .pastor_evidence import SourceWindow,EvidenceArtifactStore,digest
 
 VERSION='guided-full-source-check-v1'
 PRIOR='e98578cb5bc750b495f71eda70be18bd94676e6901ee808af81a833e002fb087'
+BOUND_STOP='785e333bac45989b32e5cde03adaf540bf4ff5445f78e8d4c1bdd755e6aeda44'
 CASE='P318-R281-application'
 LIMITATION='One previously exposed source window; full schema plus generated vocabulary guide and lower output cap. Not an isolated ablation, independent accuracy benchmark or production admission.'
 
 
 def identity():
-    modules=(enum_check,context,requests,hosted,feedback,context.diagnostics,context.fields,fit)
+    modules=(enum_check,context,requests,hosted,feedback,context.diagnostics,context.fields,fit,binding_retry)
     return {**demo.code_identity(),**{m.__name__.rsplit('.',1)[-1]:demo.file_hash(Path(m.__file__)) for m in modules},
         'guided_source_check':demo.file_hash(Path(__file__))}
 
@@ -51,6 +53,8 @@ def directory(base_dir,fp):
 
 def prepare(prior_input,base_dir=None,*,check_only=False):
     path=Path(prior_input).resolve()
+    if path==(directory(base_dir,BOUND_STOP)/'input.json').resolve():
+        return prepare_binding_correction(path,base_dir,check_only=check_only)
     if path!=(enum_check.directory(base_dir,PRIOR)/'input.json').resolve(): raise ValueError('Requires the completed synthetic nested-field PASS')
     prior=json.loads(path.read_text());root=path.parent/'execution';result=json.loads((root/'results.json').read_text())
     if prior['input_fingerprint']!=PRIOR or digest({k:v for k,v in prior.items() if k!='input_fingerprint'})!=PRIOR:
@@ -110,6 +114,60 @@ def prepare(prior_input,base_dir=None,*,check_only=False):
     return packet,out
 
 
+def prepare_binding_correction(path,base_dir=None,*,check_only=False):
+    """One separately authorized correction of an already-paid, bound-stop answer."""
+    path=Path(path);prior=json.loads(path.read_text());root=path.parent/'execution'
+    result=json.loads((root/'results.json').read_text())
+    if prior['input_fingerprint']!=BOUND_STOP or digest({k:v for k,v in prior.items() if k!='input_fingerprint'})!=BOUND_STOP:
+        raise ValueError('Binding-stop input identity changed')
+    if (result['input_fingerprint']!=BOUND_STOP or result['status']!='FAIL(component)' or result['halt'] is not None
+        or result['verification'] is not None or result['accounting']['attempts']!=1
+        or result['accounting']['unknown_usage_attempts']!=0 or result['accounting']['cumulative_paid_attempts']!=40):
+        raise ValueError('Requires the completed one-call mechanical binding stop')
+    current,_=prepare(prior['history']['prior_input'],base_dir,check_only=True)
+    if any(current[k]!=prior[k] for k in ('request','window','schema','field_guide','published_model_metadata')):
+        raise ValueError('Source, guide, schema or model changed since the saved answer')
+    for filename,sha in prior['history']['preserved_files'].items():
+        if demo.file_hash(Path(filename))!=sha: raise ValueError('Preserved history changed')
+    old=requests.RequestSpec(**prior['request']);store=requests.ReceiptStore(root/'initial')
+    receipt=json.loads((store.root/'receipts'/f'{old.fingerprint}.json').read_text())
+    if receipt['request']!=asdict(old) or receipt['halt'] or receipt['response_digest']!=digest(receipt['response']):
+        raise ValueError('Saved reader receipt changed')
+    requests.validate_response(old,receipt['response'])
+    usage=demo.usage_account(store)
+    account_fields=('attempts','local_attempts','paid_attempts','openai_calls','known_input_tokens',
+        'known_output_tokens','unknown_usage_attempts','reserved_usd','known_list_price_usage_usd','known_provider_estimated_usage_usd')
+    if any(result['accounting'].get(k)!=usage[k] for k in account_fields): raise ValueError('Saved attempt accounting differs')
+    checked=context.inspect(receipt['response']['output'],SourceWindow(**prior['window']),model=hosted.FLASH_MODEL,
+        prompt_digest=digest(old.body['messages']),raw_response_ref='initial/receipts/'+old.fingerprint+'.json')
+    if checked!=result['validation'] or not checked['errors'] or context.diagnostics.shape_errors(checked['reading'],context.schema()):
+        raise ValueError('Saved answer is not a schema-valid binding failure')
+    corrected=binding_retry.retry_request(old,receipt['response'],checked['errors'],contextual=True)
+    packet=deepcopy(current);packet.pop('input_fingerprint',None)
+    packet.update(request=asdict(corrected),token_account=corrected.preflight(),original_output=receipt['response']['output'],
+        original_request_fingerprint=old.fingerprint,original_errors=checked['errors'],
+        continuation_from=str(path),code_identity=identity())
+    packet['policy'].update(binding_correction=True,binding_ids=context.inventory(checked['reading']),
+        saved_response_reuse='Previous paid response is supplied verbatim; original source prefix and producer receipt preserved')
+    account=result['accounting']
+    packet['history'].update(prior_input=str(path),prior_attempts=account['cumulative_attempts'],
+        prior_local_attempts=account['cumulative_local_attempts'],prior_paid_attempts=account['cumulative_paid_attempts'],
+        prior_known_list_price_usage_usd=account['cumulative_known_list_price_usage_usd'])
+    files=[path,*sorted(p for p in root.rglob('*.json') if p.name!='guided-source-authorization.json')]
+    packet['history']['preserved_files'].update({str(p):demo.file_hash(p) for p in files})
+    packet['budget']['cumulative_maximum_paid_attempts']=account['cumulative_paid_attempts']+2
+    if packet['budget']['cumulative_maximum_paid_attempts']>66 or Decimal(account['cumulative_known_list_price_usage_usd'])+Decimal(packet['budget']['reserved_usd'])>2:
+        raise ValueError('Cumulative correction budget exceeded')
+    packet['input_fingerprint']=digest(packet);out=directory(base_dir,packet['input_fingerprint'])
+    if not check_only:
+        EvidenceArtifactStore(out).write_immutable('input.json',packet)
+        (out/'preparation.md').write_text('# One guided binding correction\n\nReuse the complete saved answer and '
+            'exact mechanical errors. One Flash 1017 replacement under the same source, schema, guide, decoding and output cap; '
+            'preserve binding IDs. TypeSafe follows only after binding passes. No further retry or semantic correction. '
+            'Maximum two new calls, reservation $0.017498112 under $0.02. Original answer is not regenerated or repaired by code.\n\n```sh\n'+command(out,packet,base_dir)+'\n```\n')
+    return packet,out
+
+
 def command(out,packet,base_dir):
     return (f'pte analysis learning-demo model-fit guided-source-run --base-dir {demo.build_paths(base_dir).root} '
         f'--input {out/"input.json"} --experimental --approve-input {packet["input_fingerprint"]} --max-usd 0.02 --confirm-prices --json')
@@ -124,10 +182,14 @@ def run_recipe(packet,root,flash_transport,verifier_transport,*,progress=None):
     checked=judgment=None;halt=None
     try:
         spec=requests.RequestSpec(**packet['request']);window=SourceWindow(**packet['window'])
-        if progress: progress(CASE+': full-schema guided Flash reading; one attempt; no retry')
+        if progress: progress(CASE+(': one binding correction from saved answer; no further retry' if packet.get('policy',{}).get('binding_correction') else ': full-schema guided Flash reading; one attempt; no retry'))
         response=requests.execute(spec,hosted.OneRequestLedger('0.02',spec.version),requests.ReceiptStore(root/'initial'),flash_transport)
         checked=context.inspect(response['output'],window,model=hosted.FLASH_MODEL,
             prompt_digest=digest(spec.body['messages']),raw_response_ref='initial/receipts/'+spec.fingerprint+'.json')
+        if not checked['errors'] and packet.get('policy',{}).get('binding_correction'):
+            if set(context.inventory(checked['reading']))!=set(packet['policy']['binding_ids']):
+                checked['errors'].append(dict(path='$.claims',code='identity',message='Binding correction changed identity/coverage'))
+                checked['observations']=[];checked['abstentions']=[]
         artifacts.write_immutable('reading-validation.json',checked)
         if not checked['errors'] and checked['observations']:
             verify,candidates=context.verification(window,checked['observations'])

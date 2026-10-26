@@ -60,3 +60,14 @@ remains separate from semantic accuracy and production admission. Brian explicit
 authorized Codex to execute this small follow-up, overriding the normal command-only
 handoff for these two requests; that authorization does not launch the remaining
 windows or the full demonstration workflow.
+
+The full-schema follow-up completed normally in 1,390 output tokens, but its saved
+answer failed binding: two ambiguous literal references and one undefined
+qualification node. Passing that frozen input to `guided-source-prepare` now
+prepares the separately authorized single binding correction. It reuses the exact
+paid answer and compiler diagnostics as model context, retains the original
+system/source prefix, and enforces binding-ID coverage. The initial answer is not
+regenerated or repaired by code. One new replacement and one conditional TypeSafe
+check are reserved within $0.02, with no further retry and no automatic source
+expansion or admission. Brian explicitly authorized Codex to execute this correction
+as well.
