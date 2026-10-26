@@ -254,6 +254,50 @@ verification call, full-workflow advancement or production admission.
 Existing `deepinfra-run`, local model-fit, V8/P1 and Scripture benchmark behavior
 is unchanged; old request versions retain their one-attempt policies.
 
+## Explicit field presentation check
+
+The feedback experiment completed one verifier request and returned uncertainty
+on every core field, with no selected source passages. No correction ran. The
+passage questions had asked the model to locate character ranges in a larger text.
+Brian authorized a smaller follow-up, with an explicit instruction not to overfit.
+
+`pte analysis learning-demo model-fit field-check-prepare --from-input <closed-feedback-input> --base-dir <base> --json`
+prepares one TypeSafe-only request under
+`<base>/evaluation/learning-demo-explicit-field-check/<fingerprint>/`. Its
+`preparation.md` contains the exact `field-check-run` command. Both commands
+support `--check-only`; preparation and preflight make zero provider calls.
+Only `TYPESAFE_API_KEY` is required for execution.
+
+The general presentation rule applies uniformly to both saved claims: include the
+exact returned field value in the question, identify its state path, and supply
+every complete declared block as literal text in state. Coordinates and hashes
+remain for provenance; the model need not calculate text slices. All original
+source and proposed bindings remain available. The two fields are qualifications
+and polarity, retaining the existing field meanings, Jev 1.13.0 model and 0.90/0.10
+thresholds. The actual three-block window produces four field questions and twelve
+independent passage-relevance questions, all in one request.
+
+No claim, passage or question is selected by whether it agrees with the prior
+review. No pastor-specific examples, expected answers, hand-authored corrected
+meanings or prior scores enter the request. Synthetic structural/metamorphic tests
+check exact Unicode source copying, uniform field coverage, claim reordering and
+renaming, and copying changed proposed values without changing question criteria.
+They test the presentation implementation, not semantic model accuracy.
+
+This is a single frozen presentation diagnostic, with no correction, Flash call,
+retry, automatic expansion or production admission. Full reservation is
+$0.002752512 under a $0.003 ceiling; cumulative maximum attempts 34. Original
+results and decisions remain immutable, with a one-variant predecessor marker.
+The report preserves raw probabilities and compares every claim/field with the
+prior scores. Overall semantic outcome stays INCONCLUSIVE pending source review;
+individual field outcomes are model judgments, not established correctness.
+
+Presentation and question count both change, so a changed score cannot isolate
+the cause. This previously reviewed window cannot establish calibration or general
+accuracy. Any later validation must freeze this question policy before using
+existing unseen cases; no additional variant or held-out execution is authorized
+by this preparation.
+
 ## TypeSafe feedback experiment on the saved Flash answer
 
 The completed `37c64e52...` run bound two claims on its first attempt. Offline
