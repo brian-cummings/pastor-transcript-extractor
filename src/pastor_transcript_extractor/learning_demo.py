@@ -6,7 +6,7 @@ The CLI defaults to offline preparation; execution needs a separately bound deci
 from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import asdict, replace
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import os
@@ -472,6 +472,7 @@ def dependency_entries(entries, ids):
 
 def usage_account(store):
     attempts=store.attempts(); known_input=0;known_output=0;known_cost=Decimal(0);unknown=0
+    provider_estimated=Decimal(0);estimated_count=0
     for attempt in attempts:
         provider=attempt.get('provider',PHASES[attempt['phase']][0])
         path=store.root/'receipts'/(attempt['request_fingerprint']+'.json')
@@ -495,14 +496,28 @@ def usage_account(store):
         i,o=usage['input_tokens'],usage['output_tokens'];known_input+=i;known_output+=o
         phase=PHASES[attempt['phase']]
         if provider=='DeepInfra':
-            from .deepinfra_requests import INPUT_PRICE,OUTPUT_PRICE
-            ip,op=INPUT_PRICE,OUTPUT_PRICE
+            from .deepinfra_requests import policy_for
+            policy=policy_for(receipt['request']['version'])
+            ip,op=policy['input_usd_per_million'],policy['output_usd_per_million']
+            if raw_path.exists():
+                saved_wire=json.loads(raw_path.read_text())
+                if digest(saved_wire)!=receipt.get('wire_response_digest'): raise ValueError('Corrupt provider cost evidence')
+                try: estimate=json.loads(saved_wire['text']).get('usage',{}).get('estimated_cost')
+                except (ValueError,TypeError,AttributeError): estimate=None
+                if type(estimate) in (int,float,str):
+                    try: amount=Decimal(str(estimate))
+                    except InvalidOperation: amount=Decimal('NaN')
+                    if amount.is_finite() and amount>=0:
+                        provider_estimated+=amount;estimated_count+=1
         else: ip,op=phase[5],phase[6]
         known_cost+=(Decimal(i)*Decimal(ip)+Decimal(o)*Decimal(op))/Decimal(1000000)
-    return dict(attempts=len(attempts),local_attempts=sum(a.get('provider',PHASES[a['phase']][0])=='Ollama' for a in attempts),
+    result=dict(attempts=len(attempts),local_attempts=sum(a.get('provider',PHASES[a['phase']][0])=='Ollama' for a in attempts),
         paid_attempts=sum(a.get('provider',PHASES[a['phase']][0]) in ('TypeSafe','DeepInfra') for a in attempts),openai_calls=0,reserved_usd=str(sum((Decimal(a['reserved_usd']) for a in attempts),Decimal(0))),
         known_input_tokens=known_input,known_output_tokens=known_output,known_list_price_usage_usd=str(known_cost),
         unknown_usage_attempts=unknown,runtime_repairs=0,runtime_approvals=0,reference_inputs=0)
+    if estimated_count:
+        result.update(known_provider_estimated_usage_usd=str(provider_estimated),provider_estimated_usage_attempts=estimated_count)
+    return result
 
 
 def execute_pipeline(packet,store,transport,*,encoding,progress=None):

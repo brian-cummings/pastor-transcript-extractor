@@ -4,10 +4,11 @@ from decimal import Decimal, InvalidOperation
 import math
 import os
 
-from .evidence_requests import DEEPINFRA_VERSION, DEEPINFRA_EXPANDED_VERSION, WireResponse, wire
+from .evidence_requests import DEEPINFRA_VERSION, DEEPINFRA_EXPANDED_VERSION, DEEPINFRA_DIRECT_VERSION, WireResponse, wire
 
 NAMESPACE='learning-demo-deepinfra-fit-v1'
 MODEL='deepseek-ai/DeepSeek-V4-Pro-0813'
+FLASH_MODEL='deepseek-ai/DeepSeek-V4.1-Flash-1017'
 ENDPOINT='https://api.deepinfra.com/v1/openai/chat/completions'
 INPUT_CAP=65536
 OUTPUT_CAP=16384
@@ -22,30 +23,36 @@ POLICY=dict(provider='DeepInfra',model=MODEL,endpoint=ENDPOINT,input_cap=INPUT_C
 EXPANDED_NAMESPACE='learning-demo-deepinfra-expanded-v1'
 EXPANDED_POLICY={**POLICY,'input_cap':49152,'output_cap':65536,
     'timeout_policy':'120s_plus_input_bound_at_100tps_plus_output_at_20tps_rounded_to_minute_max_7200s'}
+DIRECT_NAMESPACE='learning-demo-deepinfra-direct-v1'
+DIRECT_POLICY={**EXPANDED_POLICY,'model':FLASH_MODEL,'reasoning_effort':'none',
+    'input_usd_per_million':'0.20','output_usd_per_million':'0.60','maximum_usd':'0.05'}
 
 
 def policy_for(version):
     if version==DEEPINFRA_VERSION: return POLICY
     if version==DEEPINFRA_EXPANDED_VERSION: return EXPANDED_POLICY
+    if version==DEEPINFRA_DIRECT_VERSION: return DIRECT_POLICY
     raise ValueError('Unknown DeepInfra request policy')
 
 
 def reserved_usd(version=DEEPINFRA_VERSION):
     policy=policy_for(version)
-    return (Decimal(policy['input_cap'])*Decimal(INPUT_PRICE)+Decimal(policy['output_cap'])*Decimal(OUTPUT_PRICE))/Decimal(1000000)
+    return (Decimal(policy['input_cap'])*Decimal(policy['input_usd_per_million'])+
+            Decimal(policy['output_cap'])*Decimal(policy['output_usd_per_million']))/Decimal(1000000)
 
 
 def preflight(spec):
     body=spec.body
     policy=policy_for(spec.version)
-    expanded=spec.version==DEEPINFRA_EXPANDED_VERSION
+    expanded=spec.version in (DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION)
+    namespace=(DIRECT_NAMESPACE if spec.version==DEEPINFRA_DIRECT_VERSION else EXPANDED_NAMESPACE if expanded else NAMESPACE)
     input_cap,output_cap=policy['input_cap'],policy['output_cap']
-    if (spec.namespace!=(EXPANDED_NAMESPACE if expanded else NAMESPACE) or spec.phase!='source_reading'
-        or spec.runtime_identity!=policy or body.get('model')!=MODEL
+    if (spec.namespace!=namespace or spec.phase!='source_reading'
+        or spec.runtime_identity!=policy or body.get('model')!=policy['model']
         or set(body)!={'model','messages','max_tokens','response_format','temperature','top_p','stream','n','reasoning_effort'}
         or body.get('max_tokens')!=output_cap or body.get('temperature')!=0 or body.get('top_p')!=1
         or body.get('stream') is not False or type(body.get('n')) is not int or body['n']!=1
-        or body.get('reasoning_effort')!='medium'):
+        or body.get('reasoning_effort')!=policy['reasoning_effort']):
         raise ValueError('Frozen DeepInfra model, endpoint, scope or generation policy differs')
     fmt=body['response_format']
     if (not isinstance(fmt,dict) or set(fmt)!={'type','json_schema'} or fmt['type']!='json_schema'
@@ -62,8 +69,8 @@ def preflight(spec):
     if timeout>(7200 if expanded else 1800): raise ValueError('DeepInfra timeout exceeds bounded policy')
     return dict(method='utf8_byte_upper_bound_plus_4096_framing',request_upper_bound=bound,
         reserved_input=input_cap,output_cap=output_cap,timeout_seconds=timeout,
-        reserved_usd=str(reserved_usd(spec.version)),maximum_usd=MAX_USD,
-        execution_policy=dict(provider='DeepInfra',reasoning_effort='medium',output_cap=output_cap,timeout_seconds=timeout),
+        reserved_usd=str(reserved_usd(spec.version)),maximum_usd=policy.get('maximum_usd',MAX_USD),
+        execution_policy=dict(provider='DeepInfra',reasoning_effort=policy['reasoning_effort'],output_cap=output_cap,timeout_seconds=timeout),
         output_accounting='completion_tokens includes billed reasoning; no cached-input discount assumed')
 
 
@@ -75,14 +82,16 @@ class OneRequestLedger:
     def check(self,attempts,phase):
         try: cap=Decimal(self.max_usd)
         except InvalidOperation as error: raise ValueError('Invalid DeepInfra dollar ceiling') from error
-        if not cap.is_finite() or cap<=0 or cap>Decimal(MAX_USD):
-            raise ValueError('DeepInfra maximum ceiling is $0.25')
+        maximum=policy_for(self.request_version).get('maximum_usd',MAX_USD)
+        if not cap.is_finite() or cap<=0 or cap>Decimal(maximum):
+            raise ValueError('DeepInfra maximum ceiling is $'+maximum)
         if phase!='source_reading' or attempts: raise ValueError('One DeepInfra attempt only; no retry')
         if reserved_usd(self.request_version)>cap: raise ValueError('DeepInfra reservation exceeds approved dollar ceiling')
 
 
-def decode(raw):
-    if raw.get('model')!=MODEL: raise ValueError('Resolved DeepInfra model differs; no substitution')
+def decode(raw,spec=None):
+    policy=policy_for(spec.version if spec is not None else DEEPINFRA_VERSION)
+    if raw.get('model')!=policy['model']: raise ValueError('Resolved DeepInfra model differs; no substitution')
     if raw.get('service_tier','standard') not in ('standard','default'):
         raise ValueError('Unexpected DeepInfra service tier')
     choices=raw.get('choices')
@@ -97,32 +106,43 @@ def decode(raw):
         raise ValueError('DeepInfra refused or returned no final JSON')
     usage=raw['usage']
     if not isinstance(usage,dict): raise ValueError('Invalid DeepInfra usage')
+    if spec is not None and spec.version==DEEPINFRA_DIRECT_VERSION:
+        details=usage.get('completion_tokens_details') or {}
+        if not isinstance(details,dict): raise ValueError('Invalid DeepInfra token details')
+        if (message.get('reasoning_content') or message.get('thinking') or message.get('reasoning')
+            or details.get('reasoning_tokens',0)):
+            raise ValueError('DeepInfra emitted reasoning despite frozen disabled policy; no retry')
     return dict(model=raw['model'],complete=True,output=message['content'],
         usage=dict(input_tokens=usage['prompt_tokens'],output_tokens=usage['completion_tokens']),raw=raw)
 
 
 def validate(response,spec=None):
-    if response['model']!=MODEL or response.get('complete') is not True:
+    policy=policy_for(spec.version if spec is not None else DEEPINFRA_VERSION)
+    if response['model']!=policy['model'] or response.get('complete') is not True:
         raise ValueError('Incomplete or substituted DeepInfra response')
     usage=response['usage']
-    policy=policy_for(spec.version if spec is not None else DEEPINFRA_VERSION)
     for field,cap in (('input_tokens',policy['input_cap']),('output_tokens',policy['output_cap'])):
         if type(usage[field]) is not int or not 0<=usage[field]<=cap:
             raise ValueError('DeepInfra usage outside reservation')
 
 
-def public_model_metadata():
+def public_model_metadata(model=MODEL):
     """Public GET only; no authentication, source text or inference."""
     import httpx
+    if model not in (MODEL,FLASH_MODEL): raise ValueError('Unsupported pinned DeepInfra model')
     with httpx.Client(timeout=15,follow_redirects=False,trust_env=False,
                       transport=httpx.HTTPTransport(retries=0)) as client:
-        response=client.get('https://api.deepinfra.com/models/'+MODEL)
+        response=client.get('https://api.deepinfra.com/models/'+model)
     response.raise_for_status()
     raw=response.json()
-    return dict(model=raw['model_name'],deployment_version=raw['version'],
+    result=dict(model=raw['model_name'],deployment_version=raw['version'],
         native_output_schema_maximum=raw['in_schema']['properties']['max_new_tokens']['maximum'],
         context=raw['max_tokens'],input_cents_per_token=str(raw['pricing']['cents_per_input_token']),
         output_cents_per_token=str(raw['pricing']['cents_per_output_token']))
+    if model==FLASH_MODEL:
+        result.update(discount=raw['pricing']['discount'],discount_ends_at=raw['pricing']['discount_ends_at'],
+                      capabilities=sorted(raw['tags']))
+    return result
 
 
 def credential_present():

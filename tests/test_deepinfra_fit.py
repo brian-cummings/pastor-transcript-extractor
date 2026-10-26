@@ -248,3 +248,77 @@ class DeepInfraTests(unittest.TestCase):
             client.post.assert_not_called()
             self.assertNotIn('headers',client.get.call_args.kwargs)
             self.assertFalse(factory.call_args.kwargs['trust_env'])
+
+    def test_selected_flash_direct_policy_exact_model_and_five_cent_budget(self):
+        _,old=specimen()
+        spec=replace(old,body={**old.body,'model':provider.FLASH_MODEL,'reasoning_effort':'none','max_tokens':65536},
+            namespace=provider.DIRECT_NAMESPACE,version=requests.DEEPINFRA_DIRECT_VERSION,
+            runtime_identity=deepcopy(provider.DIRECT_POLICY))
+        self.assertEqual(requests.request_model(spec),'deepseek-ai/DeepSeek-V4.1-Flash-1017')
+        self.assertEqual(spec.preflight()['execution_policy']['reasoning_effort'],'none')
+        self.assertEqual(provider.reserved_usd(spec.version),Decimal('.049152'))
+        for ceiling in ('.06','.04'):
+            with self.assertRaises(ValueError):provider.OneRequestLedger(ceiling,spec.version).check([],'source_reading')
+        provider.OneRequestLedger('.05',spec.version).check([],'source_reading')
+        for body in ({**spec.body,'reasoning_effort':'medium'},{**spec.body,'model':provider.MODEL}):
+            with self.assertRaises(ValueError):replace(spec,body=body).preflight()
+        with self.assertRaisesRegex(ValueError,'model differs'):
+            requests.decode_response(spec,response(spec))
+
+    def test_direct_flash_rejects_unexpected_reasoning_and_never_retries(self):
+        _,old=specimen()
+        spec=replace(old,body={**old.body,'model':provider.FLASH_MODEL,'reasoning_effort':'none','max_tokens':65536},
+            namespace=provider.DIRECT_NAMESPACE,version=requests.DEEPINFRA_DIRECT_VERSION,runtime_identity=deepcopy(provider.DIRECT_POLICY))
+        for trace,tokens in [('unexpected',0),('',25)]:
+            calls=[]
+            def send(s):
+                calls.append(s)
+                return response(s,model=provider.FLASH_MODEL,
+                    choices=[dict(finish_reason='stop',message=dict(content='{}',reasoning_content=trace))],
+                    usage=dict(prompt_tokens=100,completion_tokens=200,completion_tokens_details=dict(reasoning_tokens=tokens)))
+            with self.subTest(trace=trace,tokens=tokens),TemporaryDirectory() as directory:
+                store=requests.ReceiptStore(Path(directory))
+                ledger=provider.OneRequestLedger('.05',spec.version)
+                with self.assertRaisesRegex(ValueError,'despite frozen disabled'):
+                    requests.execute(spec,ledger,store,send)
+                with self.assertRaisesRegex(ValueError,'halted'):requests.execute(spec,ledger,store,send)
+                self.assertEqual(len(calls),1)
+
+    def test_direct_flash_complete_pipeline_uses_frozen_prices_and_separate_provider_estimate(self):
+        value,old=specimen()
+        spec=replace(old,body={**old.body,'model':provider.FLASH_MODEL,'reasoning_effort':'none','max_tokens':65536},
+            namespace=provider.DIRECT_NAMESPACE,version=requests.DEEPINFRA_DIRECT_VERSION,runtime_identity=deepcopy(provider.DIRECT_POLICY))
+        value.update(request=asdict(spec),history=dict(prior_attempts=30,prior_local_attempts=28,prior_paid_attempts=2,
+            prior_source_attempts=26,prior_known_list_price_usage_usd='.2259348'))
+        value['input_fingerprint']=digest(value)
+        fake=FakeProvider()
+        def send(s):
+            return response(s,model=provider.FLASH_MODEL,
+                choices=[dict(finish_reason='stop',message=dict(content=json.dumps(fake(s)['output']),reasoning_content=None))],
+                usage=dict(prompt_tokens=100,completion_tokens=200,completion_tokens_details=dict(reasoning_tokens=0),estimated_cost=.0000686))
+        with TemporaryDirectory() as directory:
+            store=requests.ReceiptStore(Path(directory)/'execution')
+            result=thinking.run_recipe(value,store,send,ledger=provider.OneRequestLedger('.05',spec.version))
+            self.assertEqual(result['contract_fit'],'PASS');self.assertEqual(result['status'],'INCONCLUSIVE')
+            self.assertFalse(result['thinking_emitted'])
+            self.assertEqual(result['literal_bound_claims'],2)
+            self.assertEqual(result['accounting']['cumulative_attempts'],31)
+            self.assertEqual(result['accounting']['cumulative_local_attempts'],28)
+            self.assertEqual(result['accounting']['cumulative_paid_attempts'],3)
+            self.assertEqual(Decimal(result['accounting']['known_list_price_usage_usd']),Decimal('.00014'))
+            self.assertEqual(Decimal(result['accounting']['known_provider_estimated_usage_usd']),Decimal('.0000686'))
+            self.assertTrue(all(o['model']==provider.FLASH_MODEL for o in result['observations']))
+
+    def test_direct_cli_routes_explicit_flag_and_displays_selected_model(self):
+        from typer.testing import CliRunner
+        from pastor_transcript_extractor.cli import app
+        value=dict(input_fingerprint='fixture',request=dict(body=dict(model=provider.FLASH_MODEL,reasoning_effort='none')),
+            budget={},credentials={})
+        with patch.object(hosted,'prepare',return_value=(value,Path('/tmp/fixture'))) as prepare:
+            result=CliRunner().invoke(app,['analysis','learning-demo','model-fit','deepinfra-prepare',
+                '--from-input','/tmp/prior.json','--no-reasoning','--json'])
+            self.assertEqual(result.exit_code,0,result.output)
+            self.assertIn(provider.FLASH_MODEL,result.output)
+            self.assertTrue(prepare.call_args.kwargs['no_reasoning'])
+        with self.assertRaisesRegex(ValueError,'not both'):
+            hosted.prepare('/tmp/prior.json',no_reasoning=True,expanded_output=True)

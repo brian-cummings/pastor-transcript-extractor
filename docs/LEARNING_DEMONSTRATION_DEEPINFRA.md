@@ -146,3 +146,46 @@ First review whether a complete, faithful answer was delivered. Smaller output o
 reasoning budgets are future decisions, not an automatic search following this
 attempt. The assistant does not execute or monitor the paid source run. No partial
 answer is repaired or admitted, and no full-workflow advancement follows.
+
+## Selected Flash 1017 check with reasoning disabled
+
+After Pro's 65,536-token request spent 65,535 tokens on reasoning without a final
+answer, Brian approved disabling reasoning and explicitly selected
+`deepseek-ai/DeepSeek-V4.1-Flash-1017`. The next preparation uses that exact model
+and `reasoning_effort: "none"`. It reuses the same full source window, two-claim
+schema, system/source messages, 65,536 output allowance and timeout policy.
+Model and reasoning mode both change, so this is a user-selected feasibility
+check rather than a controlled comparison attributing improvement to either one.
+
+Prepare through:
+
+```sh
+pte analysis learning-demo model-fit deepinfra-prepare --base-dir /Users/briancummings/Documents/PastorSearchData --from-input /Users/briancummings/Documents/PastorSearchData/evaluation/learning-demo-deepinfra-expanded/f1bafae24c11abf0f6fdadb975bade428b94cef517b19a87c2723838e69cefcc/input.json --no-reasoning --json
+```
+
+The packet is written under `<base>/evaluation/learning-demo-deepinfra-direct/`.
+It freezes public Flash deployment/capability metadata, prices and discount before
+execution. Preparation and preflight make one public metadata GET and no generation
+calls. A metadata change blocks sending. The public metadata currently reports
+a 51% discount but no end date; the October 1–November 1 dates mentioned in chat
+are not used as an unverified pricing assumption.
+
+Full uncached prices are $0.20/million input and $0.60/million output. The
+reservation is **$0.049152**, with a **$0.05** new-attempt ceiling, even without
+promotion. At the currently advertised discounted rates ($0.098/$0.294), the same
+maximum usage would cost $0.02408448. Full-list usage and the provider's actual
+estimated charge are reported as separate fields; cached-input discounts and
+promotional discounts are not invented or used to weaken the reservation.
+
+`preparation.md` contains the exact `deepinfra-run --max-usd 0.05` command. The
+resulting request uses a distinct version, namespace and immutable authorization
+marker on the completed Pro stop. Any returned model other than the exact Flash
+ID is rejected; unexpected reasoning content or a positive reported reasoning-token
+count also fails explicitly. Existing length/usage/receipt/no-retry rules remain.
+The same literal compiler and qualified observation envelope are used. No result
+can grant production admission or automatically launch a follow-up.
+
+Maximum one new paid attempt. All 28 local and two paid attempts remain preserved;
+cumulative maximum 31. The 63-minute HTTP inactivity allowance is a budget-derived
+waiting allowance, not an expected runtime. Semantic accuracy remains INCONCLUSIVE
+until saved source and output are independently reviewed.

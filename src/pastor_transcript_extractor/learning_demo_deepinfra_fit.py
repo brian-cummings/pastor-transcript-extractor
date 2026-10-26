@@ -26,7 +26,11 @@ def directory(base_dir,fingerprint,*,expanded=False):
     return path
 
 
-def prepare(prior_input,base_dir=None,*,check_only=False,expanded_output=False):
+def prepare(prior_input,base_dir=None,*,check_only=False,expanded_output=False,no_reasoning=False):
+    if no_reasoning:
+        if expanded_output: raise ValueError('Choose --no-reasoning or --expanded-output, not both')
+        from .learning_demo_deepinfra_direct import prepare as direct_prepare
+        return direct_prepare(prior_input,base_dir,check_only=check_only)
     if expanded_output: return prepare_expanded(prior_input,base_dir,check_only=check_only)
     prior_input=Path(prior_input).resolve()
     if prior_input!=(thinking.directory(base_dir,PRIOR)/'input.json').resolve():
@@ -154,13 +158,19 @@ def prepare_expanded(prior_input,base_dir=None,*,check_only=False):
 def verify(input_path,base_dir):
     packet=json.loads(Path(input_path).read_text())
     fingerprint=packet['input_fingerprint']
+    direct='direct_from' in packet
     expanded='expanded_from' in packet
-    if (packet['schema_version']!=(provider.EXPANDED_NAMESPACE if expanded else VERSION) or digest({k:v for k,v in packet.items() if k!='input_fingerprint'})!=fingerprint
-        or Path(input_path).resolve()!=(directory(base_dir,fingerprint,expanded=expanded)/'input.json').resolve()):
+    if direct:
+        from .learning_demo_deepinfra_direct import directory as direct_directory
+        expected_directory=direct_directory(base_dir,fingerprint)
+    else: expected_directory=directory(base_dir,fingerprint,expanded=expanded)
+    if (packet['schema_version']!=(provider.DIRECT_NAMESPACE if direct else provider.EXPANDED_NAMESPACE if expanded else VERSION)
+        or digest({k:v for k,v in packet.items() if k!='input_fingerprint'})!=fingerprint
+        or Path(input_path).resolve()!=(expected_directory/'input.json').resolve()):
         raise ValueError('DeepInfra input identity or location differs')
-    expected,_=prepare(packet['history']['prior_input'],base_dir,check_only=True,expanded_output=expanded)
+    expected,_=prepare(packet['history']['prior_input'],base_dir,check_only=True,expanded_output=expanded,no_reasoning=direct)
     if expected!=packet: raise ValueError('DeepInfra source, implementation, model, prices or budget changed after freeze')
-    marker=Path(packet['history']['prior_input']).parent/'execution'/('expanded-output-authorization.json' if expanded else 'deepinfra-fit-authorization.json')
+    marker=Path(packet['history']['prior_input']).parent/'execution'/('direct-flash-authorization.json' if direct else 'expanded-output-authorization.json' if expanded else 'deepinfra-fit-authorization.json')
     if marker.exists() and json.loads(marker.read_text())!={'input_fingerprint':fingerprint}:
         raise ValueError('One DeepInfra attempt already assigned to another input')
     return packet,marker
@@ -171,7 +181,7 @@ def run(input_path,base_dir=None,*,experimental=False,approve_input=None,max_usd
     if check_only:
         return dict(status='PREPARED_NO_EXECUTION',input_fingerprint=packet['input_fingerprint'],
             budget=packet['budget'],token_account=packet['token_account'],
-            provider_calls=int('expanded_from' in packet),metadata_requests=int('expanded_from' in packet),
+            provider_calls=int('expanded_from' in packet or 'direct_from' in packet),metadata_requests=int('expanded_from' in packet or 'direct_from' in packet),
             generation_calls=0,paid_calls=0,
             credential_configured=provider.credential_present())
     if not experimental or approve_input!=packet['input_fingerprint'] or not confirm_prices:
@@ -185,6 +195,6 @@ def run(input_path,base_dir=None,*,experimental=False,approve_input=None,max_usd
     EvidenceArtifactStore(marker.parent).write_immutable(marker.name,dict(input_fingerprint=approve_input))
     store.write_immutable('authorization.json',dict(input_fingerprint=approve_input,max_usd=str(Decimal(max_usd)),
         confirm_prices=True,maximum_attempts=1,production_admission=False))
-    if progress: progress(f'DeepInfra source window 1/1: {packet["window"]["id"]}; {provider.MODEL}; medium reasoning; one attempt; no retries')
+    if progress: progress(f'DeepInfra source window 1/1: {packet["window"]["id"]}; {packet["request"]["body"]["model"]}; reasoning={packet["request"]["body"]["reasoning_effort"]}; one attempt; no retries')
     result=thinking.run_recipe(packet,store,provider.transport,ledger=ledger)
     return {k:v for k,v in result.items() if k not in ('reading','observations')} | dict(results=str(store.root/'results.json'))

@@ -18,16 +18,18 @@ app.add_typer(fit_app,name='model-fit')
 def deepinfra_prepare(prior_input:Path=typer.Option(...,'--from-input'),
                      base_dir:Path|None=typer.Option(None,'--base-dir'),
                      expanded_output:bool=typer.Option(False,'--expanded-output',help='Prepare one generous-output request after the reviewed hosted length stop.'),
+                     no_reasoning:bool=typer.Option(False,'--no-reasoning',help='Prepare the user-selected Flash 1017 check with reasoning disabled.'),
                      check_only:bool=typer.Option(False,'--check-only'),
                      as_json:bool=typer.Option(False,'--json')):
     """Prepare one hosted DeepSeek source check without provider calls."""
     from ... import learning_demo_deepinfra_fit as hosted
     try:
-        packet,out=hosted.prepare(prior_input,base_dir,check_only=check_only,expanded_output=expanded_output)
+        packet,out=hosted.prepare(prior_input,base_dir,check_only=check_only,expanded_output=expanded_output,no_reasoning=no_reasoning)
         emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',
             input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],
-            model=packet['request']['body']['model'],budget=packet['budget'],provider_calls=int(expanded_output),
-            metadata_requests=int(expanded_output),generation_calls=0,paid_calls=0,
+            model=packet['request']['body']['model'],reasoning_effort=packet['request']['body']['reasoning_effort'],
+            budget=packet['budget'],provider_calls=int(expanded_output or no_reasoning),
+            metadata_requests=int(expanded_output or no_reasoning),generation_calls=0,paid_calls=0,
             credentials=packet['credentials']),as_json)
     except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
 

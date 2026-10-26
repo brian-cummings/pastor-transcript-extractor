@@ -30,6 +30,7 @@ THINKING_CHECK_VERSION = 'evidence-request-thinking-check-v1'
 THINKING_CHECK_NAMESPACE = 'learning-demo-thinking-check-v1'
 DEEPINFRA_VERSION = 'evidence-request-deepinfra-fit-v1'
 DEEPINFRA_EXPANDED_VERSION = 'evidence-request-deepinfra-expanded-v1'
+DEEPINFRA_DIRECT_VERSION = 'evidence-request-deepinfra-direct-v1'
 THINKING_CHECK_POLICY = dict(thinking=True, output_cap=4096,
     timeout_policy='input-output-budget-v1', startup_seconds=120,
     input_tokens_per_second=100, output_tokens_per_second=8, maximum_seconds=1800)
@@ -117,15 +118,15 @@ def ollama_runtime_identity(model=None):
 def request_model(spec):
     """The request's frozen selection, independent of mutable process defaults."""
     if request_provider(spec)=='DeepInfra':
-        from .deepinfra_requests import MODEL
-        return MODEL
+        from .deepinfra_requests import policy_for
+        return policy_for(spec.version)['model']
     provider,default,*_=PHASES[spec.phase]
     if provider!='Ollama': return default
     return ollama_model_name(spec.runtime_identity.get('model',default))
 
 
 def request_provider(spec):
-    return 'DeepInfra' if spec.version in (DEEPINFRA_VERSION,DEEPINFRA_EXPANDED_VERSION) else PHASES[spec.phase][0]
+    return 'DeepInfra' if spec.version in (DEEPINFRA_VERSION,DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION) else PHASES[spec.phase][0]
 
 
 def request_reservation(spec):
@@ -274,7 +275,7 @@ def decode_response(spec, response):
     if not isinstance(raw,dict): raise ValueError('Provider response must be an object')
     if provider=='DeepInfra':
         from .deepinfra_requests import decode
-        return decode(raw)
+        return decode(raw,spec)
     if provider=='Ollama':
         if raw.get('done') is not True or raw.get('done_reason')!='stop':
             raise ValueError(f"Incomplete Ollama response (done={raw.get('done')!r}, done_reason={raw.get('done_reason')!r}); no repair/retry")
