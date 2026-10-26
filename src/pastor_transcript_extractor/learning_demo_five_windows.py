@@ -16,6 +16,7 @@ from . import learning_demo_model_fit as fit
 from . import reading_diagnostics as diagnostics
 from . import deepinfra_requests as hosted
 from . import evidence_requests as requests
+from . import binding_retry
 from .pastor_evidence import EvidenceArtifactStore,SourceWindow,digest
 
 VERSION='learning-demo-remaining-five-v1'
@@ -43,14 +44,40 @@ def compatible_receipts(spec,files):
     return matches
 
 
-def prepare(prior_input,base_dir=None,*,check_only=False):
+def load_seed(stage,result=None):
+    paths=list(Path(stage).glob('receipts/*.json'))
+    if len(paths)!=1: raise ValueError('Continuation requires one preserved receipt per old stage')
+    path=paths[0];receipt=json.loads(path.read_text());spec=requests.RequestSpec(**receipt['request'])
+    if receipt.get('halt') or receipt['response_digest']!=digest(receipt['response']): raise ValueError('Old stage did not complete safely')
+    wire_path=Path(stage)/'wire-responses'/path.name
+    wire=json.loads(wire_path.read_text()) if wire_path.exists() else None
+    if wire is not None and receipt['wire_response_digest']!=digest(wire): raise ValueError('Old wire response changed')
+    observations=result['observations'] if result else []
+    return dict(path=str(path),receipt=receipt,wire=wire,
+        raw_response_ref=observations[0]['raw_response_ref'] if observations else 'initial/receipts/'+spec.fingerprint+'.json')
+
+
+def prepare(prior_input,base_dir=None,*,check_only=False,binding_retries=True):
     path=Path(prior_input).resolve()
     if path!=(review.directory(base_dir,PRIOR)/'input.json').resolve(): raise ValueError('Requires the closed uncertainty-review experiment')
     prior=json.loads(path.read_text())
     if prior['input_fingerprint']!=PRIOR or digest({k:v for k,v in prior.items() if k!='input_fingerprint'})!=PRIOR:
         raise ValueError('Prior input changed')
-    expected,_=review.prepare(prior['history']['prior_input'],base_dir,check_only=True)
-    if expected!=prior: raise ValueError('Prior source, policies, implementation or metadata changed')
+    if not binding_retries:
+        expected,_=review.prepare(prior['history']['prior_input'],base_dir,check_only=True)
+        if expected!=prior: raise ValueError('Prior source, policies, implementation or metadata changed')
+    else:
+        # Closed evidence is checked against its frozen hashes, not reconstructed
+        # under an additive executor policy that did not exist when it ran.
+        for filename,sha in prior['history']['preserved_files'].items():
+            if demo.file_hash(Path(filename))!=sha: raise ValueError('Historical evidence changed')
+        for name in ('pastor_evidence','theological_binding','binding_evidence','learning_demo_contracts'):
+            if prior['code_identity'][name]!=demo.code_identity()[name]: raise ValueError('Shared evidence semantics changed')
+        for name,module in (('learning_demo_uncertainty',review),('learning_demo_field_check',fields),
+                            ('reading_diagnostics',diagnostics),('learning_demo_correction',correction)):
+            if prior['code_identity'][name]!=demo.file_hash(Path(module.__file__)): raise ValueError('Frozen prompt/verifier policy changed')
+        if hosted.public_model_metadata(hosted.FLASH_MODEL)!=prior['published_model_metadata']:
+            raise ValueError('Frozen Flash metadata changed')
     old_store=requests.ReceiptStore(path.parent/'execution/review')
     result=json.loads((path.parent/'execution/results.json').read_text())
     if (result['input_fingerprint']!=PRIOR or result['status']!='FAIL(component)' or result['halt'] is not None
@@ -77,6 +104,9 @@ def prepare(prior_input,base_dir=None,*,check_only=False):
         raise ValueError('Frozen source selection changed')
     windows={w['id']:w for w in ancestor['windows']};source_requests={s['case_id']:s for s in ancestor['source_requests']}
     base=replace(old,body={**deepcopy(old.body),'messages':deepcopy(old.body['messages'][:2])})
+    if binding_retries:
+        base=replace(base,version=requests.DEEPINFRA_BINDING_VERSION,namespace=hosted.BINDING_NAMESPACE,
+            runtime_identity=hosted.BINDING_POLICY)
     prepared=[];reuse_matches={}
     for case in cases[1:]:
         source=requests.RequestSpec(**source_requests[case]['request'])
@@ -91,8 +121,10 @@ def prepare(prior_input,base_dir=None,*,check_only=False):
         matches=compatible_receipts(spec,prior['history']['preserved_files'])
         reuse_matches[case]=matches
         if matches: raise ValueError('Compatible Flash constituent found for '+case+'; resolve reuse before any new execution')
-    files=[path,*sorted(p for p in (path.parent/'execution').rglob('*.json') if p.name!='remaining-five-authorization.json')]
-    reservation=10*(hosted.reserved_usd(base.version)+requests.reservation('source_verification'))
+    files=[path,*sorted(p for p in (path.parent/'execution').rglob('*.json') if p.name not in (
+        'remaining-five-authorization.json','remaining-five-binding-authorization.json'))]
+    flash_attempts=20 if binding_retries else 10
+    reservation=flash_attempts*hosted.reserved_usd(base.version)+10*requests.reservation('source_verification')
     identities={**demo.code_identity(),**{name:demo.file_hash(Path(module.__file__)) for name,module in (
         ('learning_demo_uncertainty',review),('learning_demo_field_check',fields),('learning_demo_feedback',feedback),
         ('learning_demo_correction',correction),('learning_demo_model_fit',fit),('reading_diagnostics',diagnostics),
@@ -119,16 +151,87 @@ def prepare(prior_input,base_dir=None,*,check_only=False):
             prior_known_list_price_usage_usd=result['accounting']['cumulative_known_list_price_usage_usd'],
             preserved_files={**prior['history']['preserved_files'],**{str(p):demo.file_hash(p) for p in files}}),
         limitation='Fixed remaining-five feasibility validation, not blinded accuracy, threshold calibration, full semantic verification, pastor comparison or production admission.')
+    if binding_retries:
+        packet['code_identity']['binding_retry']=demo.file_hash(Path(binding_retry.__file__))
+        packet['policy'].update(binding_retries=1,binding_retry_template=binding_retry.TEMPLATE,
+            initial_failure='One automatic binding retry; exhausted binding/schema failure ends case',
+            binding_retry_scope='Once per initial and semantic-review stage; no schema, status or transport retry')
+        packet['budget'].update(maximum_attempts=30,maximum_paid_attempts=30,flash_attempts=20,
+            max_usd='1.02',retries=1,transport_retries=0,binding_retries_per_stage=1,
+            maximum_binding_retries=10,cumulative_maximum_attempts=65)
+        marker=path.parent/'execution/remaining-five-authorization.json'
+        if marker.exists():
+            old_fp=json.loads(marker.read_text())['input_fingerprint'];old_root=directory(base_dir,old_fp)
+            old_packet=json.loads((old_root/'input.json').read_text());old_results=json.loads((old_root/'execution/results.json').read_text())
+            if (digest({k:v for k,v in old_packet.items() if k!='input_fingerprint'})!=old_fp
+                or old_results['input_fingerprint']!=old_fp or old_results['completed_windows']!=5
+                or old_results['accounting']['unknown_usage_attempts']!=0):
+                raise ValueError('Previous five-window batch is incomplete or has uncertain spend; no new variant')
+            if [c['case_id'] for c in old_packet['cases']]!=cases[1:]: raise ValueError('Continuation selection differs')
+            if old_packet['published_model_metadata']!=prior['published_model_metadata']:
+                raise ValueError('Saved Flash deployment differs')
+            if old_packet['code_identity']['learning_demo_field_check']!=demo.file_hash(Path(fields.__file__)):
+                raise ValueError('Saved TypeSafe question policy differs')
+            new_flash=new_ts=0
+            for case in prepared:
+                old_case=next(c for c in old_packet['cases'] if c['case_id']==case['case_id'])
+                if old_case['window']!=case['window'] or old_case['request']['body']!=case['request']['body']:
+                    raise ValueError('Saved initial reading is not source/prompt/model compatible')
+                old_case_root=old_root/'execution'/case['case_id'];saved=json.loads((old_case_root/'results.json').read_text())
+                initial=load_seed(old_case_root/'initial',saved['initial']);case['seeds']=dict(initial=initial)
+                window=SourceWindow(**case['window'])
+                initial_check=diagnostics.inspect(initial['receipt']['response']['output'],prior['schema'],window,
+                    model=hosted.FLASH_MODEL,prompt_digest=digest(case['request']['body']['messages']),raw_response_ref=initial['raw_response_ref'])
+                if initial_check!=saved['initial']: raise ValueError('Saved initial binding no longer reconstructs exactly')
+                new_flash+=int(bool(saved['initial']['errors']))
+                if saved['before'] is not None:
+                    case['seeds']['before']=load_seed(old_case_root/'before')
+                    verify,candidates=fields.verification(window,initial_check['observations'])
+                    if case['seeds']['before']['receipt']['request']!=asdict(verify): raise ValueError('Saved initial verifier cache differs')
+                else: new_ts+=1
+                if saved['revision'] is not None:
+                    case['seeds']['review']=load_seed(old_case_root/'revision/review',saved['revision']['mechanical'])
+                    verdict=feedback.judgments(case['seeds']['before']['receipt']['response'],verify,candidates)
+                    retry_request=correction.corrective_request(dict(request=case['request'],correction=dict(template=review.TEMPLATE)),
+                        initial['receipt']['response']['output'],review.review_scores(verify,verdict))
+                    seed_review=case['seeds']['review']
+                    if seed_review['receipt']['request']['body']!=retry_request.body: raise ValueError('Saved semantic review body differs')
+                    review_check=diagnostics.inspect(seed_review['receipt']['response']['output'],prior['schema'],window,
+                        model=hosted.FLASH_MODEL,prompt_digest=digest(retry_request.body['messages']),raw_response_ref=seed_review['raw_response_ref'])
+                    if review_check!=saved['revision']['mechanical']: raise ValueError('Saved review binding no longer reconstructs exactly')
+                    new_flash+=int(bool(saved['revision']['mechanical']['errors']))
+                    if saved['revision']['after'] is not None:
+                        case['seeds']['after']=load_seed(old_case_root/'revision/after')
+                        after_verify,_=fields.verification(window,review_check['observations'])
+                        if case['seeds']['after']['receipt']['request']!=asdict(after_verify): raise ValueError('Saved verifier recheck differs')
+                    else: new_ts+=1
+                else:
+                    new_flash+=2;new_ts+=1  # Worst case: semantic re-review and one binding retry.
+            preserved=[old_root/'input.json',*sorted((old_root/'execution').rglob('*.json'))]
+            packet['continuation_from']=str(old_root/'input.json')
+            packet['reuse_audit']['continuation']='Saved initial/review outputs and exact compatible verifier receipts imported without new billed attempts'
+            packet['history'].update(prior_attempts=old_results['accounting']['cumulative_attempts'],
+                prior_local_attempts=old_results['accounting']['cumulative_local_attempts'],
+                prior_paid_attempts=old_results['accounting']['cumulative_paid_attempts'],
+                prior_known_list_price_usage_usd=old_results['accounting']['cumulative_known_list_price_usage_usd'])
+            packet['history']['preserved_files'].update({str(p):demo.file_hash(p) for p in preserved})
+            reservation=new_flash*hosted.reserved_usd(base.version)+new_ts*requests.reservation('source_verification')
+            flash_attempts=new_flash
+            packet['budget'].update(maximum_attempts=new_flash+new_ts,maximum_paid_attempts=new_flash+new_ts,
+                flash_attempts=new_flash,typesafe_attempts=new_ts,reserved_usd=str(reservation),max_usd='0.52',
+                cumulative_maximum_attempts=packet['history']['prior_attempts']+new_flash+new_ts)
     packet['input_fingerprint']=digest(packet);out=directory(base_dir,packet['input_fingerprint'])
     if not check_only:
         EvidenceArtifactStore(out).write_immutable('input.json',packet)
         (out/'preparation.md').write_text('# Remaining five windows with TypeSafe correction loop\n\n'+packet['limitation']+
             '\n\nInitial Flash reading, unchanged qualification/polarity TypeSafe checks, one Flash source re-review when any field is below 0.90, then identical TypeSafe recheck. '
-            'Prompts, model settings, schema, thresholds and all complete source blocks stay fixed. '
-            'Complete initial binding failures end that case without repair; execution/uncertain-spend halts end the entire batch. '
-            'All before/after answers and failures are retained. No source-review labels or historical readings enter inference. '
+            'Prompts, model settings, schema, thresholds and all complete source blocks stay fixed. '+
+            ('One automatic binding retry at each Flash stage. Exhausted binding/schema failures end that case; ' if binding_retries else
+             'Complete initial binding failures end that case without repair; ')+
+            'execution/uncertain-spend halts end the entire batch. '
+            'All before/after answers and failures are retained. No human source-review labels or incompatible old-model readings enter inference. '
             'These cases were exposed in prior local trials, so they are not a pristine holdout. '
-            f'Maximum 20 paid attempts (10 Flash, 10 TypeSafe); full uncached reservation ${reservation}, ceiling $0.52. '
+            f'Maximum {packet["budget"]["maximum_attempts"]} paid attempts ({flash_attempts} Flash, {packet["budget"]["typesafe_attempts"]} TypeSafe); full uncached reservation ${reservation}, ceiling ${packet["budget"]["max_usd"]}. '
             'Actual use may be lower due to stops or no-review decisions. Both API keys required.\n\nCases:\n\n'+
             '\n'.join('- '+c for c in cases[1:])+'\n\n```sh\n'+command(out,packet,base_dir)+'\n```\n')
     return packet,out
@@ -136,7 +239,7 @@ def prepare(prior_input,base_dir=None,*,check_only=False):
 
 def command(out,packet,base_dir):
     return (f'pte analysis learning-demo model-fit remaining-five-run --base-dir {demo.build_paths(base_dir).root} '
-        f'--input {out / "input.json"} --experimental --approve-input {packet["input_fingerprint"]} --max-usd 0.52 --confirm-prices --json')
+        f'--input {out / "input.json"} --experimental --approve-input {packet["input_fingerprint"]} --max-usd {packet["budget"]["max_usd"]} --confirm-prices --json')
 
 
 def run_case(packet,case,root,flash_transport,typesafe_transport,*,progress=None):
@@ -146,6 +249,8 @@ def run_case(packet,case,root,flash_transport,typesafe_transport,*,progress=None
         saved=json.loads((root/'results.json').read_text())
         if saved['case_fingerprint']!=case_fp: raise ValueError('Foreign case result')
         return saved
+    if packet.get('policy',{}).get('binding_retries')==1:
+        return binding_retry.run_case(packet,case,root,flash_transport,typesafe_transport,progress=progress)
     initial=before=revision=None;halt=None
     try:
         spec=requests.RequestSpec(**case['request']);window=SourceWindow(**case['window'])
@@ -221,11 +326,13 @@ def run_recipe(packet,root,flash_transport,typesafe_transport,*,progress=None):
             initial_proposed_claims=len(reading['claims']) if isinstance(reading,dict) and isinstance(reading.get('claims'),list) else 0,
             initial_literal_bound_claims=len(original['observations']) if original else 0,
             abstention=bool(original and not original['errors'] and not original['observations']),
+            binding_retries=(outcome.get('initial_binding_retries',0)+(revised.get('binding_retries',0) if revised else 0)),
             review_attempted=revised is not None,review_errors=(revised['mechanical']['errors'] if revised and revised['mechanical'] else []),
             changed_fields=revised['changed_fields'] if revised else [],field_comparisons=revised['field_comparisons'] if revised else [],
             initial_findings=before['findings'] if before else {}))
         review_cases.append(dict(case_id=case['case_id'],source=demo._source_state(SourceWindow(**case['window'])),
             original=original['reading'] if original else None,
+            initial_binding_attempts=outcome.get('initial_binding_attempts',[]),
             revised=(revised['mechanical']['reading'] if revised and revised['mechanical'] else None),
             review_required=['errors corrected','correct content damaged','unsupported new content','retained errors','abstentions'],
             outcome=outcome['status']))
@@ -243,23 +350,26 @@ def run_recipe(packet,root,flash_transport,typesafe_transport,*,progress=None):
     return result
 
 
-def run(input_path,base_dir=None,*,experimental=False,approve_input=None,max_usd='0.52',confirm_prices=False,check_only=False,progress=None):
+def run(input_path,base_dir=None,*,experimental=False,approve_input=None,max_usd=None,confirm_prices=False,check_only=False,progress=None):
     path=Path(input_path);packet=json.loads(path.read_text());fp=packet['input_fingerprint']
     if digest({k:v for k,v in packet.items() if k!='input_fingerprint'})!=fp or path.resolve()!=(directory(base_dir,fp)/'input.json').resolve():
         raise ValueError('Frozen identity or location changed')
-    expected,_=prepare(packet['history']['prior_input'],base_dir,check_only=True)
+    expected,_=prepare(packet['history']['prior_input'],base_dir,check_only=True,
+        binding_retries=packet.get('policy',{}).get('binding_retries')==1)
     if expected!=packet: raise ValueError('Source, implementation, metadata or budget changed after freeze')
-    try: cap=Decimal(max_usd)
+    maximum=packet['budget'].get('max_usd','0.52')
+    try: cap=Decimal(max_usd if max_usd is not None else maximum)
     except InvalidOperation as error: raise ValueError('Invalid dollar ceiling') from error
-    if not cap.is_finite() or not Decimal(packet['budget']['reserved_usd'])<=cap<=Decimal('0.52'):
-        raise ValueError('Reserve full twenty-attempt plan within $0.52')
+    if not cap.is_finite() or not Decimal(packet['budget']['reserved_usd'])<=cap<=Decimal(maximum):
+        raise ValueError('Reserve full plan within $'+maximum)
     if check_only: return dict(status='PREPARED_NO_EXECUTION',budget=packet['budget'],selection=packet['selection'],metadata_requests=1,generation_calls=0,paid_calls=0)
     if not experimental or approve_input!=fp or not confirm_prices: raise ValueError('Use --experimental --approve-input exact fingerprint --confirm-prices')
     root=path.parent/'execution'
     if not (root/'results.json').exists() and (not hosted.credential_present() or not os.environ.get('TYPESAFE_API_KEY','').strip()):
         raise ValueError('Both TYPESAFE_API_KEY and DEEPINFRA_API_KEY required; no attempts started')
-    marker=Path(packet['history']['prior_input']).parent/'execution/remaining-five-authorization.json'
+    marker=Path(packet['history']['prior_input']).parent/'execution'/(
+        'remaining-five-binding-authorization.json' if packet.get('policy',{}).get('binding_retries') else 'remaining-five-authorization.json')
     EvidenceArtifactStore(marker.parent).write_immutable(marker.name,dict(input_fingerprint=fp))
-    EvidenceArtifactStore(root).write_immutable('authorization.json',dict(input_fingerprint=fp,max_usd=str(cap),maximum_attempts=20,confirm_prices=True))
+    EvidenceArtifactStore(root).write_immutable('authorization.json',dict(input_fingerprint=fp,max_usd=str(cap),maximum_attempts=packet['budget']['maximum_attempts'],confirm_prices=True))
     result=run_recipe(packet,root,hosted.transport,requests.typesafe_transport,progress=progress)
     return result | dict(results=str(root/'results.json'),review_packet=str(root/'source-review-packet.json'))

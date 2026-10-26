@@ -171,7 +171,7 @@ class FiveWindowTests(unittest.TestCase):
             with patch.object(f,'PRIOR',fp),patch.object(f,'SIX',six_fp),patch.object(f,'DEVELOPMENT',source_cases[0]),\
                  patch.object(f.review,'prepare',return_value=(prior,old)),patch.object(f.fit,'verify_sources'),\
                  patch.object(f.fit,'select_cases',return_value=source_cases),patch.object(f.hosted,'transport') as send:
-                frozen,out=f.prepare(old/'input.json',base)
+                frozen,out=f.prepare(old/'input.json',base,binding_retries=False)
                 self.assertEqual([c['case_id'] for c in frozen['cases']],source_cases[1:])
                 self.assertEqual(Decimal(frozen['budget']['reserved_usd']),Decimal('.51904512'))
                 self.assertTrue(all(c['request']['body']['messages'][0]==prior['request']['body']['messages'][0] for c in frozen['cases']))
@@ -186,4 +186,4 @@ class FiveWindowTests(unittest.TestCase):
                 prior['history']['preserved_files'][str(cached)]=f.demo.file_hash(cached)
                 (old/'input.json').write_text(json.dumps(prior))
                 with self.assertRaisesRegex(ValueError,'Prior input changed'):
-                    f.prepare(old/'input.json',base)
+                    f.prepare(old/'input.json',base,binding_retries=False)

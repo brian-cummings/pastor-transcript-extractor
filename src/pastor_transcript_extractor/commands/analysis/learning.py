@@ -34,7 +34,7 @@ def remaining_five_run(input_path:Path=typer.Option(...,'--input'),
                        base_dir:Path|None=typer.Option(None,'--base-dir'),
                        experimental:bool=typer.Option(False,'--experimental'),
                        approve_input:str|None=typer.Option(None,'--approve-input'),
-                       max_usd:str=typer.Option('0.52','--max-usd'),
+                       max_usd:str|None=typer.Option(None,'--max-usd',help='Ceiling from the frozen packet when omitted.'),
                        confirm_prices:bool=typer.Option(False,'--confirm-prices'),
                        check_only:bool=typer.Option(False,'--check-only'),
                        as_json:bool=typer.Option(False,'--json')):

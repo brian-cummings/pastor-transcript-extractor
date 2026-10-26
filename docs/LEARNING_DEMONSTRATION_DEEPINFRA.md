@@ -404,6 +404,54 @@ base. Mechanical success is distinct from semantic INCONCLUSIVE. Only two fields
 verified in this feasibility slice; this does not confer full semantic verification,
 general accuracy, recall, calibration, pastor comparisons or production admission.
 
+## Automatic binding retries
+
+Brian explicitly authorized automatic re-requesting when binding fails. Newly
+prepared remaining-five workflows now allow **one binding retry per Flash stage**:
+one after an initial reading, and one after a TypeSafe-triggered semantic re-review.
+This is distinct from the single semantic re-review. Existing completed artifacts
+are immutable; the earlier frozen no-retry policy is not silently rewritten.
+
+The shared `binding_retry.read` helper applies the unchanged schema and literal
+compiler. A complete schema-valid answer with binding errors causes a second
+model request containing the exact field-path errors, full original source and
+latest failed answer. Any earlier TypeSafe review instructions/scores are retained.
+The superseded assistant answer is archived rather than repeated in context, keeping
+source and current task intact without needless transcript growth. No code inserts
+nodes, selects quotations, repairs meanings or drops unsupported fields to pass.
+Existing unique claim IDs must be preserved. Every attempt, response and validation
+report remains durable, including failures.
+
+Invalid JSON/schema or inconsistent status, provider refusal, timeout, length stop,
+unexpected reasoning, lost response, insufficient context or exhausted budget does
+not trigger another generation. A second binding failure ends that stage. Once
+binding passes, TypeSafe runs normally, with unchanged questions and thresholds.
+Retries do not confer semantic correctness or production admission. Progress states
+when a retry occurs and why a TypeSafe stage is skipped.
+
+Each Flash stage uses a versioned two-attempt ledger that reserves both requests
+before sending; the full workflow budget includes both binding retries. A wholly
+fresh five-case run can use at most 30 requests (20 Flash, 10 TypeSafe), reserving
+$1.010565120 under a $1.02 ceiling. Transport retries remain disabled.
+
+For the already completed batch, preparation automatically builds a **continuation**
+from its saved initial/review answers and exact compatible TypeSafe receipts.
+It verifies source, prompt, model, frozen deployment, compiler, question policy,
+literal reconstruction and receipt identities before reuse. Imported cached evidence
+is marked with its original path/hash and is never counted as a new billed attempt.
+The structurally valid control case replays without new provider calls. Failed
+saved answers go directly to their one binding retry; successful old initial readings
+are not regenerated. The original batch remains closed and unchanged.
+
+For the current saved failures the conservative new-call bound is 17 requests
+(ten Flash, seven TypeSafe), reserving $0.510787584 under $0.52. Prior 45 attempts
+and 17 paid calls remain separate; cumulative maximum is 62 attempts. A distinct
+immutable continuation authorization marker prevents assigning multiple variants.
+`remaining-five-prepare` and its generated `remaining-five-run` command remain the
+CLI entry points; `--check-only` makes no inference calls. Both keys and a fresh
+exact-input execution decision are required. Nothing starts automatically merely
+because application code changed.
+
 ## TypeSafe feedback experiment on the saved Flash answer
 
 The completed `37c64e52...` run bound two claims on its first attempt. Offline
