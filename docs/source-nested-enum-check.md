@@ -71,3 +71,18 @@ regenerated or repaired by code. One new replacement and one conditional TypeSaf
 check are reserved within $0.02, with no further retry and no automatic source
 expansion or admission. Brian explicitly authorized Codex to execute this correction
 as well.
+
+The next feedback version, `binding-feedback-facts-v1`, enriches existing compiler
+errors without changing their meanings or acceptance checks. Literal errors include
+every exact occurrence, Unicode target and block-local coordinates, source hashes
+and bounded literal surroundings. No occurrence is selected; the full original
+source remains available. Qualification-reference errors include the referenced ID,
+whether it exists, all saved node IDs and roles, and the required role/proposition
+pairing. Saved roles are explicitly marked as model proposals, not verified facts.
+No node is selected or rewritten. Unknown diagnostic types remain verbatim.
+
+`guided-source-prepare` accepts the failed correction's frozen input to prepare one
+further explicitly authorized correction with these facts. It preserves the latest
+complete answer and original system/source prefix, and replaces superseded generic
+mechanical feedback with the current enriched errors. No historical answer, receipt,
+binding contract, quotation rule, threshold or production admission is changed.

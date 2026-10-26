@@ -16,17 +16,19 @@ from . import learning_demo_feedback as feedback
 from . import evidence_requests as requests
 from . import deepinfra_requests as hosted
 from . import binding_retry
+from . import binding_feedback
 from .pastor_evidence import SourceWindow,EvidenceArtifactStore,digest
 
 VERSION='guided-full-source-check-v1'
 PRIOR='e98578cb5bc750b495f71eda70be18bd94676e6901ee808af81a833e002fb087'
 BOUND_STOP='785e333bac45989b32e5cde03adaf540bf4ff5445f78e8d4c1bdd755e6aeda44'
+FEEDBACK_STOP='a56ac6f5bce123a1799991b6c16ce76514cf706dc9109dabad974fe86d377633'
 CASE='P318-R281-application'
 LIMITATION='One previously exposed source window; full schema plus generated vocabulary guide and lower output cap. Not an isolated ablation, independent accuracy benchmark or production admission.'
 
 
 def identity():
-    modules=(enum_check,context,requests,hosted,feedback,context.diagnostics,context.fields,fit,binding_retry)
+    modules=(enum_check,context,requests,hosted,feedback,context.diagnostics,context.fields,fit,binding_retry,binding_feedback)
     return {**demo.code_identity(),**{m.__name__.rsplit('.',1)[-1]:demo.file_hash(Path(m.__file__)) for m in modules},
         'guided_source_check':demo.file_hash(Path(__file__))}
 
@@ -53,6 +55,8 @@ def directory(base_dir,fp):
 
 def prepare(prior_input,base_dir=None,*,check_only=False):
     path=Path(prior_input).resolve()
+    if path==(directory(base_dir,FEEDBACK_STOP)/'input.json').resolve():
+        return prepare_binding_correction(path,base_dir,check_only=check_only,enriched=True)
     if path==(directory(base_dir,BOUND_STOP)/'input.json').resolve():
         return prepare_binding_correction(path,base_dir,check_only=check_only)
     if path!=(enum_check.directory(base_dir,PRIOR)/'input.json').resolve(): raise ValueError('Requires the completed synthetic nested-field PASS')
@@ -114,15 +118,16 @@ def prepare(prior_input,base_dir=None,*,check_only=False):
     return packet,out
 
 
-def prepare_binding_correction(path,base_dir=None,*,check_only=False):
+def prepare_binding_correction(path,base_dir=None,*,check_only=False,enriched=False):
     """One separately authorized correction of an already-paid, bound-stop answer."""
     path=Path(path);prior=json.loads(path.read_text());root=path.parent/'execution'
     result=json.loads((root/'results.json').read_text())
-    if prior['input_fingerprint']!=BOUND_STOP or digest({k:v for k,v in prior.items() if k!='input_fingerprint'})!=BOUND_STOP:
+    expected_fp=FEEDBACK_STOP if enriched else BOUND_STOP
+    if prior['input_fingerprint']!=expected_fp or digest({k:v for k,v in prior.items() if k!='input_fingerprint'})!=expected_fp:
         raise ValueError('Binding-stop input identity changed')
-    if (result['input_fingerprint']!=BOUND_STOP or result['status']!='FAIL(component)' or result['halt'] is not None
+    if (result['input_fingerprint']!=expected_fp or result['status']!='FAIL(component)' or result['halt'] is not None
         or result['verification'] is not None or result['accounting']['attempts']!=1
-        or result['accounting']['unknown_usage_attempts']!=0 or result['accounting']['cumulative_paid_attempts']!=40):
+        or result['accounting']['unknown_usage_attempts']!=0 or result['accounting']['cumulative_paid_attempts']!=(41 if enriched else 40)):
         raise ValueError('Requires the completed one-call mechanical binding stop')
     current,_=prepare(prior['history']['prior_input'],base_dir,check_only=True)
     if any(current[k]!=prior[k] for k in ('request','window','schema','field_guide','published_model_metadata')):
@@ -142,13 +147,21 @@ def prepare_binding_correction(path,base_dir=None,*,check_only=False):
         prompt_digest=digest(old.body['messages']),raw_response_ref='initial/receipts/'+old.fingerprint+'.json')
     if checked!=result['validation'] or not checked['errors'] or context.diagnostics.shape_errors(checked['reading'],context.schema()):
         raise ValueError('Saved answer is not a schema-valid binding failure')
-    corrected=binding_retry.retry_request(old,receipt['response'],checked['errors'],contextual=True)
+    errors=binding_feedback.enrich(checked['errors'],checked['reading'],SourceWindow(**prior['window'])) if enriched else checked['errors']
+    base=replace(old,body={**deepcopy(old.body),'messages':deepcopy(old.body['messages'][:2])}) if enriched else old
+    corrected=binding_retry.retry_request(base,receipt['response'],errors,contextual=True)
+    if enriched:
+        corrected=replace(corrected,source_identity={**corrected.source_identity,'binding_retry_of':old.fingerprint})
     packet=deepcopy(current);packet.pop('input_fingerprint',None)
     packet.update(request=asdict(corrected),token_account=corrected.preflight(),original_output=receipt['response']['output'],
         original_request_fingerprint=old.fingerprint,original_errors=checked['errors'],
         continuation_from=str(path),code_identity=identity())
     packet['policy'].update(binding_correction=True,binding_ids=context.inventory(checked['reading']),
         saved_response_reuse='Previous paid response is supplied verbatim; original source prefix and producer receipt preserved')
+    if enriched:
+        packet['binding_feedback']=errors
+        packet['policy'].update(feedback_version=binding_feedback.VERSION,
+            feedback_scope='All literal occurrences and saved node IDs/roles; no selected occurrence, node or semantic repair')
     account=result['accounting']
     packet['history'].update(prior_input=str(path),prior_attempts=account['cumulative_attempts'],
         prior_local_attempts=account['cumulative_local_attempts'],prior_paid_attempts=account['cumulative_paid_attempts'],

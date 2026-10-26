@@ -34,6 +34,12 @@ class GuidedSourceTests(unittest.TestCase):
         self.assertEqual(json.loads(corrected.body['messages'][2]['content']),bad)
         self.assertEqual(corrected.body['response_format'],old.body['response_format'])
         corrected.preflight()
+        enriched=g.binding_feedback.enrich([dict(path='$.claims[0].proposition.span',code='literal',message='missing')],
+            bad,g.SourceWindow(**value['window']))
+        enriched_request=binding_retry.retry_request(old,response,enriched,contextual=True)
+        self.assertEqual(enriched_request.body['messages'][:3],corrected.body['messages'][:3])
+        self.assertIn('mechanical_details',enriched_request.body['messages'][3]['content'])
+        self.assertNotEqual(enriched_request.source_identity['binding_errors_digest'],corrected.source_identity['binding_errors_digest'])
         value['request']=asdict(corrected)
         value['policy']=dict(binding_correction=True,binding_ids=g.context.inventory(valid))
         for drop in (False,True):
