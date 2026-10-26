@@ -342,6 +342,68 @@ automatic expansion or production admission. Overall semantic result remains
 INCONCLUSIVE pending review even if all field judgments pass. This reviewed case
 does not establish general accuracy, calibration or suitability of a correction loop.
 
+## Remaining five windows with the TypeSafe correction loop
+
+After the uncertainty-guided re-review corrected a polarity and recovered a
+qualification but failed mechanical binding, Brian authorized fixed-policy
+validation on the remaining five cases and explicitly included the TypeSafe loop.
+The failed development case stays closed and is excluded. The original six-window
+ordering is retained: P130-R1037-theology, P318-R281-application,
+P130-R350-application, P318-R4589-independent_control and
+P130-R4430-independent_control. The last two are the existing detector-independent
+controls. These cases appeared in earlier local-model trials; they are not a pristine
+unseen holdout, and the five-case profile distribution is asymmetric after exclusion.
+
+`pte analysis learning-demo model-fit remaining-five-prepare --from-input <closed-uncertainty-input> --base-dir <base> --json`
+freezes a manifest under `<base>/evaluation/learning-demo-remaining-five/`.
+`preparation.md` contains the exact `remaining-five-run` command. Both commands
+support `--check-only`. Preparation/preflight use one public Flash metadata GET,
+source/history/implementation checks and no generation. Existing receipts are
+inspected for compatible source/prompt/model/policy constituents; compatible
+readings must be resolved for reuse before any new execution is permitted.
+Budget-ceiling differences alone do not make an otherwise identical producer
+incompatible. Historical Gemma/Qwen readings remain immutable, are model-incompatible
+with this Flash-policy validation, and are not runtime inputs.
+
+For every case the frozen workflow is:
+
+1. One Flash 1017 initial reading, reasoning disabled, using the same generic system
+   prompt and strict two-claim schema as the development run. The exact original
+   user source message, source identity, complete blocks and geometry are reused.
+2. If the answer binds and is nonempty, use the unchanged explicit-field TypeSafe
+   builder for qualification/polarity checks and literal-passage relevance.
+3. If any checked field is below the existing 0.90 pass threshold, make one Flash
+   re-review using the exact frozen uncertainty template and all machine field scores.
+   Uncertainty does not assert an error. The original system/source prefix and exact
+   initial assistant output are retained. No expected correction or manual repair.
+4. Recheck a complete, mechanically valid revision with the same TypeSafe builder.
+   Preserve claim IDs; retain all original/revised content and changed sections.
+   There is no second review regardless of the final scores.
+
+A complete initial schema/binding failure or empty inventory purchases no TypeSafe
+check or repair; the fixed remaining cases still run. A complete revised binding
+failure receives no recheck, and the fixed cases continue. A transport/provider,
+length, uncertain-spend or dynamic-fit halt stops the whole batch. No added batches,
+source truncation, runtime approvals, fallback models, threshold changes or prompt
+variants are permitted. Exact cache replay supports interrupted execution without
+rebilling completed requests; ambiguous spend is never retried.
+
+Maximum **20 new paid attempts**: ten Flash and ten TypeSafe. Full uncached
+reservation **$0.519045120**, ceiling **$0.52**, with no assumed promotional or
+prefix-cache savings. Actual calls can be fewer when a case fails, abstains or needs
+no re-review. Cumulative maximum attempts are 55 (28 local, 27 paid). Both API keys
+must be configured. Stage/window progress is emitted to stderr; JSON remains clean.
+
+Results include component failures, abstentions, before/after field scores, review
+attempts, changed sections, source strata and cumulative cost. The generated
+`execution/source-review-packet.json` pairs the complete source with both answers,
+including failed revisions, for assistant source review. Counts of corrected errors,
+damaged correct content and unsupported additions remain unknown until that review;
+model scores are not accuracy labels. Reports use JSON/Markdown under the application
+base. Mechanical success is distinct from semantic INCONCLUSIVE. Only two fields are
+verified in this feasibility slice; this does not confer full semantic verification,
+general accuracy, recall, calibration, pastor comparisons or production admission.
+
 ## TypeSafe feedback experiment on the saved Flash answer
 
 The completed `37c64e52...` run bound two claims on its first attempt. Offline

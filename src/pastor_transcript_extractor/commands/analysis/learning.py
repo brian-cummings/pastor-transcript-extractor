@@ -14,6 +14,41 @@ fit_app=typer.Typer(help='Prepare and inspect a six-window, local-only source-re
 app.add_typer(fit_app,name='model-fit')
 
 
+@fit_app.command('remaining-five-prepare')
+def remaining_five_prepare(prior_input:Path=typer.Option(...,'--from-input'),
+                           base_dir:Path|None=typer.Option(None,'--base-dir'),
+                           check_only:bool=typer.Option(False,'--check-only'),
+                           as_json:bool=typer.Option(False,'--json')):
+    """Freeze the five remaining windows with the TypeSafe uncertainty loop."""
+    from ... import learning_demo_five_windows as five
+    try:
+        packet,out=five.prepare(prior_input,base_dir,check_only=check_only)
+        emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',
+            input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],budget=packet['budget'],
+            selection=packet['selection'],metadata_requests=1,generation_calls=0,paid_calls=0),as_json)
+    except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@fit_app.command('remaining-five-run')
+def remaining_five_run(input_path:Path=typer.Option(...,'--input'),
+                       base_dir:Path|None=typer.Option(None,'--base-dir'),
+                       experimental:bool=typer.Option(False,'--experimental'),
+                       approve_input:str|None=typer.Option(None,'--approve-input'),
+                       max_usd:str=typer.Option('0.52','--max-usd'),
+                       confirm_prices:bool=typer.Option(False,'--confirm-prices'),
+                       check_only:bool=typer.Option(False,'--check-only'),
+                       as_json:bool=typer.Option(False,'--json')):
+    """Execute fixed five-window validation, with at most one re-review each."""
+    from ... import learning_demo_five_windows as five
+    try:
+        result=five.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,
+            max_usd=max_usd,confirm_prices=confirm_prices,check_only=check_only,
+            progress=lambda message:typer.echo(message,err=True))
+        emit(result,as_json)
+        if result['status']=='FAIL(component)': raise typer.Exit(1)
+    except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('uncertainty-prepare')
 def uncertainty_prepare(prior_input:Path=typer.Option(...,'--from-input'),
                         base_dir:Path|None=typer.Option(None,'--base-dir'),
