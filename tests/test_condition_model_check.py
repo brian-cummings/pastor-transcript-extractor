@@ -31,6 +31,37 @@ def packet():
 
 
 class ConditionModelTests(unittest.TestCase):
+    def test_preparation_freezes_reader_not_historical_verifier(self):
+        value=packet();value['input_fingerprint']=c.PRIOR
+        value['history']['prior_accounting'].update(cumulative_paid_attempts=43,cumulative_attempts=71)
+        prior=dict(request=value['request'],published_model_metadata=dict(model='synthetic'),
+            history=dict(prior_known_list_price_usage_usd='0.332433348'))
+        def verifier(spec):
+            return dict(model='jev-1.13.0',complete=True,usage=dict(input_tokens=100,output_tokens=100),
+                output={k:dict(type='noul',noul=.5) for k in spec.body['questions']})
+        with TemporaryDirectory() as directory:
+            base=Path(directory);root=c.guided.directory(base,c.PRIOR);root.mkdir(parents=True)
+            (root/'input.json').write_text(json.dumps(prior))
+            c.run_recipe(value,root/'execution',lambda s:wire_response(s,json.dumps(answer())),verifier)
+            with patch.object(c.guided,'run',return_value=dict(status='PREPARED_NO_EXECUTION')):
+                prepared,_=c.prepare(base,check_only=True)
+            self.assertEqual(prepared['request'],asdict(c.reader_request()))
+            self.assertEqual(prepared['request']['phase'],'source_reading')
+            self.assertEqual(prepared['request']['body']['model'],c.hosted.FLASH_MODEL)
+            self.assertEqual(prepared['token_account'],c.reader_request().preflight())
+
+    def test_zero_attempt_recovery_rejects_any_provider_evidence(self):
+        value=dict(request=dict(version='historical wiring error'))
+        fp=c.digest(value);value['input_fingerprint']=fp
+        with TemporaryDirectory() as directory,patch.object(c,'ZERO_ATTEMPT_STOP',fp):
+            base=Path(directory);root=c.directory(base,fp);store=c.requests.ReceiptStore(root/'execution')
+            c.EvidenceArtifactStore(root).write_immutable('input.json',value)
+            store.write_immutable('results.json',dict(input_fingerprint=fp,halt='Unknown DeepInfra request policy',
+                accounting=dict(attempts=0,unknown_usage_attempts=0)))
+            self.assertEqual(c.zero_attempt_stop(base)['attempts'],0)
+            c.requests.ReceiptStore(store.root/'initial').write_immutable('wire-responses/unexpected.json',{})
+            with self.assertRaisesRegex(ValueError,'provider evidence'): c.zero_attempt_stop(base)
+
     def test_request_has_only_sources_and_propositions_without_reference_answers(self):
         spec=c.reader_request();state=json.loads(spec.body['messages'][1]['content'])
         self.assertEqual(state,dict(synthetic=True,cases=c.inputs()))
@@ -47,6 +78,10 @@ class ConditionModelTests(unittest.TestCase):
         self.assertEqual(c.inspect(value)['errors'],[])
         checked=c.assess(value)
         self.assertEqual([r['case_id'] for r in checked if r['outcome']!='PASS'],['s1','s3','s5'])
+        split=answer();split['cases'][4]['conditional_consequences'][0]['proposition']['text']='it can sprout'
+        split['cases'][0]['conditions'][0]['span']['text']='the soil stays moist'
+        self.assertEqual(c.inspect(split)['errors'],[])
+        self.assertTrue(all(r['outcome']=='PASS' for r in c.assess(split)))
 
     def test_negative_controls_have_no_labels_in_model_state_even_when_duplicate(self):
         value=answer();value['cases'][0]['conditions']=[]
