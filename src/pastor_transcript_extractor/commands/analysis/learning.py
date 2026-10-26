@@ -14,6 +14,41 @@ fit_app=typer.Typer(help='Prepare and inspect a six-window, local-only source-re
 app.add_typer(fit_app,name='model-fit')
 
 
+@fit_app.command('feedback-prepare')
+def feedback_prepare(prior_input:Path=typer.Option(...,'--from-input'),
+                     base_dir:Path|None=typer.Option(None,'--base-dir'),
+                     check_only:bool=typer.Option(False,'--check-only'),
+                     as_json:bool=typer.Option(False,'--json')):
+    """Freeze TypeSafe check, one Flash correction, and TypeSafe recheck."""
+    from ... import learning_demo_feedback as feedback
+    try:
+        packet,out=feedback.prepare(prior_input,base_dir,check_only=check_only)
+        emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',
+            input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],budget=packet['budget'],
+            metadata_requests=1,generation_calls=0,paid_calls=0),as_json)
+    except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@fit_app.command('feedback-run')
+def feedback_run(input_path:Path=typer.Option(...,'--input'),
+                 base_dir:Path|None=typer.Option(None,'--base-dir'),
+                 experimental:bool=typer.Option(False,'--experimental'),
+                 approve_input:str|None=typer.Option(None,'--approve-input'),
+                 max_usd:str=typer.Option('0.10','--max-usd'),
+                 confirm_prices:bool=typer.Option(False,'--confirm-prices'),
+                 check_only:bool=typer.Option(False,'--check-only'),
+                 as_json:bool=typer.Option(False,'--json')):
+    """Execute at most two TypeSafe checks and one Flash correction."""
+    from ... import learning_demo_feedback as feedback
+    try:
+        result=feedback.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,
+            max_usd=max_usd,confirm_prices=confirm_prices,check_only=check_only,
+            progress=lambda message:typer.echo(message,err=True))
+        emit(result,as_json)
+        if result['status']=='FAIL(component)': raise typer.Exit(1)
+    except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('corrective-prepare')
 def corrective_prepare(prior_input:Path=typer.Option(...,'--from-input'),
                        base_dir:Path|None=typer.Option(None,'--base-dir'),

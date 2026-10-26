@@ -253,3 +253,73 @@ validation failure is a component FAIL; there is no third attempt, fallback,
 verification call, full-workflow advancement or production admission.
 Existing `deepinfra-run`, local model-fit, V8/P1 and Scripture benchmark behavior
 is unchanged; old request versions retain their one-attempt policies.
+
+## TypeSafe feedback experiment on the saved Flash answer
+
+The completed `37c64e52...` run bound two claims on its first attempt. Offline
+source review found a lost middle-of-the-road qualification and a polarity error
+in b2 despite mechanical PASS. Brian authorized a bounded test of verifier
+detection and feedback usefulness. No initial extraction is repeated.
+
+```sh
+pte analysis learning-demo model-fit feedback-prepare --base-dir /Users/briancummings/Documents/PastorSearchData --from-input /Users/briancummings/Documents/PastorSearchData/evaluation/learning-demo-deepinfra-correction/37c64e52e9a3886d5c9282bcca25ccdb7c924293f2c2d092d033876ad262d7c0/input.json --json
+```
+
+The packet and exact `feedback-run` command are written under
+`<base>/evaluation/learning-demo-verifier-feedback/<fingerprint>/`. Add
+`--check-only` to its run command to revalidate without inference. Frozen inputs
+include the original complete source, exact saved response and compiled proposals,
+before-verification request, source-range candidates, correction template,
+thresholds, schemas, model metadata, historical hashes and implementation hashes.
+No human-authored replacement claim, warrant or expected answer is a runtime model
+input. Preparation uses one public Flash metadata GET and no inference.
+
+The experiment reuses the existing ten source-verification checks, pinned
+`jev-1.13.0`, request/cache/receipt executor and literal compiler. It does not
+silently migrate the verifier to a newer model. The live
+[TypeSafe API](https://docs.typesafe.ai/api/system-one) and
+[Noul contract](https://docs.typesafe.ai/primitives/noul) return probabilities,
+not free-text critique. Following the
+[citation-check pattern](https://docs.typesafe.ai/cookbooks/citation_check), code
+supplies existing source blocks as candidates. Additional independent relevance
+questions cover conditions, qualifications, polarity, voice and adoption. Code
+selects source-range/hash references at probability >=0.90 and assembles feedback
+containing binding ID, failed field, criterion and raw probability. References
+are selected passages, not proven error explanations; no selection means inspect
+the complete original source. No source words are truncated or synthesized.
+
+Execution is at most three paid requests:
+
+1. TypeSafe evaluates the existing two proposals and candidate passage relevance.
+2. If any core check has correctness probability <=0.10, Flash 1017 (reasoning
+   disabled) gets one complete correction request. The exact original two-message
+   prefix and unchanged saved assistant answer are preserved. The appended feedback
+   is proposed judgment, not source authority. A pass or only uncertainty stops
+   without generation.
+3. If the correction passes mechanical checks and preserves the claim IDs, TypeSafe
+   repeats all ten source checks and checks that the same points were corrected
+   rather than replaced by unrelated easier claims. The original proposals remain
+   explicitly fallible. There is no second correction or automatic advancement.
+
+Each stage has one shared-executor receipt store. Durable attempts, raw responses,
+validation and accounting are preserved. Crash recovery replays exact completed
+receipts; uncertain spend or any transport/length failure stops. Dynamic correction
+and recheck fit are checked before sending, without truncation or extra batches.
+An immutable predecessor authorization marker prevents assigning another variant.
+`TYPESAFE_API_KEY` and `DEEPINFRA_API_KEY` must both be configured before starting.
+
+The full uncached reservation is **$0.054657024**: two verifier reservations of
+$0.002752512 and one Flash reservation of $0.049152. The ceiling is **$0.10**;
+promotion and prefix-cache savings are never required. Verifier prices retain
+the existing $0.042/million input, free output contract, confirmed in current
+[model documentation](https://docs.typesafe.ai/models). Maximum cumulative attempts:
+35 (28 local, seven paid). Prior spend remains separate from this new ceiling.
+
+The known b2 qualification and polarity findings are an evaluation-only audit;
+they are never sent as expected labels or used to choose runtime corrections.
+A diagnostic PASS requires both known errors to be confidently detected and the
+correction to pass every final verifier check. A confident miss, mechanical failure,
+failed recheck or execution error is component FAIL; uncertainty is INCONCLUSIVE.
+Even PASS is specific to this previously reviewed case and requires saved-output
+source review. It does not prove verifier independence, accuracy, calibration,
+production admission or general extraction recall. Existing CLI behavior is unchanged.
