@@ -34,6 +34,7 @@ def import_receipt(store,seed):
     """Import compatible evidence as a cache entry, never as a newly billed attempt."""
     receipt=seed['receipt'];key=requests.RequestSpec(**receipt['request']).fingerprint
     if receipt.get('halt') or receipt['response_digest']!=digest(receipt['response']): raise ValueError('Invalid seed receipt')
+    requests.validate_response(requests.RequestSpec(**receipt['request']),receipt['response'])
     store.write_immutable('receipts/'+key+'.json',receipt)
     if seed.get('wire') is not None: store.write_immutable('wire-responses/'+key+'.json',seed['wire'])
     store.write_immutable('reuse-'+key+'.json',dict(origin=seed['path'],receipt_digest=digest(receipt)))

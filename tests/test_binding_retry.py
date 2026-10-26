@@ -179,3 +179,14 @@ class BindingRetryTests(unittest.TestCase):
             result=five.run_recipe(new,root/'new',lambda s:self.fail('no new Flash'),lambda s:self.fail('no new verifier'))
             self.assertEqual(result['accounting']['attempts'],0)
             self.assertEqual(result['completed_windows'],5);self.assertEqual(result['status'],'INCONCLUSIVE')
+
+    def test_imported_receipts_must_match_pinned_model_and_usage_contract(self):
+        value,spec,valid,bad=specimen()
+        with TemporaryDirectory() as directory:
+            root=Path(directory);store=r.ReceiptStore(root/'old')
+            r.execute(spec,h.BindingRetryLedger(),store,lambda s:wire_response(s,json.dumps(valid)))
+            seed=five.load_seed(store.root)
+            seed['receipt']['response']['model']='wrong-model'
+            seed['receipt']['response_digest']=b.digest(seed['receipt']['response'])
+            with self.assertRaisesRegex(ValueError,'substituted'):
+                b.import_receipt(r.ReceiptStore(root/'new'),seed)

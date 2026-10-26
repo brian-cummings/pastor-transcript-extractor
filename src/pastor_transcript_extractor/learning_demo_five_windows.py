@@ -49,6 +49,7 @@ def load_seed(stage,result=None):
     if len(paths)!=1: raise ValueError('Continuation requires one preserved receipt per old stage')
     path=paths[0];receipt=json.loads(path.read_text());spec=requests.RequestSpec(**receipt['request'])
     if receipt.get('halt') or receipt['response_digest']!=digest(receipt['response']): raise ValueError('Old stage did not complete safely')
+    requests.validate_response(spec,receipt['response'])
     wire_path=Path(stage)/'wire-responses'/path.name
     wire=json.loads(wire_path.read_text()) if wire_path.exists() else None
     if wire is not None and receipt['wire_response_digest']!=digest(wire): raise ValueError('Old wire response changed')
