@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 from pastor_transcript_extractor import source_context_trial as t
 from pastor_transcript_extractor import source_context as c
 from pastor_transcript_extractor import evidence_requests as r
+from pastor_transcript_extractor import binding_retry as b
 from pastor_transcript_extractor.pastor_evidence import SourceWindow,digest
 from pastor_transcript_extractor.cli import app
 from test_learning_demo_five_windows import packet as five_packet
@@ -36,6 +37,59 @@ def fixture():
 
 
 class SourceContextTrialTests(unittest.TestCase):
+    def test_schema_transport_is_lossless_except_exact_duplicate(self):
+        _,_,value,_=fixture();body=deepcopy(value['cases'][0]['request']['body'])
+        original=deepcopy(body)
+        body['messages'][0]['content']+='\nOutput schema: '+r.wire(c.schema())
+        self.assertEqual(c.without_duplicate_schema(body),original)
+        self.assertEqual(c.without_duplicate_schema(original),original)
+        self.assertEqual(body['response_format'],original['response_format'])
+        self.assertTrue(body['messages'][0]['content'].endswith(r.wire(c.schema())))
+        body['messages'][0]['content']+=' other instructions'
+        self.assertEqual(c.without_duplicate_schema(body),body)
+        body['response_format']['json_schema']['schema']={}
+        with self.assertRaises(ValueError): c.without_duplicate_schema(body)
+
+    def test_halted_paid_revision_is_reported_and_continuation_bills_only_remaining_calls(self):
+        _,_,value,valid=fixture();old_case=deepcopy(value['cases'][0])
+        old_case['request']['body']['messages'][0]['content']+='\nOutput schema: '+r.wire(c.schema())
+        bad=deepcopy(valid);bad['claims'][0]['qualifications']=[dict(node_id='missing-q',
+            applies_to=bad['claims'][0]['proposition']['node_id'],reading='Synthetic qualification')]
+        sent=[]
+        def flash(spec): sent.append(spec);return wire_response(spec,json.dumps(valid if len(sent)==1 else bad))
+        def uncertain(spec):
+            return dict(model='jev-1.13.0',complete=True,usage=dict(input_tokens=100,output_tokens=100),
+                output={k:dict(type='noul',noul=.5) for k in spec.body['questions']})
+        with TemporaryDirectory() as directory:
+            old_root=Path(directory)/'old'
+            with patch.object(b,'retry_request',side_effect=ValueError('synthetic fit stop')):
+                stopped=b.run_case(value,old_case,old_root,flash,uncertain)
+            self.assertEqual(stopped['halt'],'synthetic fit stop')
+            self.assertIsNotNone(stopped['revision']);self.assertTrue(stopped['revision']['mechanical']['errors'])
+            self.assertEqual(stopped['binding_stage_attempts']['review'],1)
+            self.assertEqual(stopped['revision']['halt'],'synthetic fit stop')
+            seed=dict(initial=t.five.load_seed(old_root/'initial',stopped['initial']),
+                before=t.five.load_seed(old_root/'before'),review=t.five.load_seed(old_root/'revision/review'))
+            for name in ('initial','review'): seed[name]['body_compatibility']=c.SCHEMA_TRANSPORT_VERSION
+            seed['review']['raw_response_ref']='revision/review/receipts/'+r.RequestSpec(**seed['review']['receipt']['request']).fingerprint+'.json'
+            new_case=deepcopy(value['cases'][0]);new_case['seeds']=seed
+            old_hashes={str(p):t.demo.file_hash(p) for p in old_root.rglob('*.json')}
+            calls=[];verifier=[]
+            def resumed_flash(spec): calls.append(spec);return wire_response(spec,json.dumps(valid))
+            def resumed_typesafe(spec):
+                verifier.append(spec)
+                return dict(model='jev-1.13.0',complete=True,usage=dict(input_tokens=100,output_tokens=100),
+                    output={k:dict(type='noul',noul=.99) for k in spec.body['questions']})
+            new_root=Path(directory)/'new'
+            resumed=b.run_case(value,new_case,new_root,resumed_flash,resumed_typesafe)
+            self.assertIsNone(resumed['halt']);self.assertEqual(len(calls),1);self.assertEqual(len(verifier),1)
+            self.assertEqual(resumed['initial']['observations'],stopped['initial']['observations'])
+            self.assertEqual(resumed['before']['findings'],stopped['before']['findings'])
+            self.assertEqual(sorted(resumed['before']['feedback'],key=r.wire),sorted(stopped['before']['feedback'],key=r.wire))
+            self.assertEqual(sum(len(r.ReceiptStore(new_root/stage).attempts()) for stage in ('initial','before','revision/review','revision/after')),2)
+            self.assertEqual({str(p):t.demo.file_hash(p) for p in old_root.rglob('*.json')},old_hashes)
+            self.assertNotIn('Output schema:',calls[0].body['messages'][0]['content'])
+
     def test_sources_geometry_order_model_preserved_without_old_outputs_or_seeds(self):
         prior,_,value,_=fixture()
         for old,new in zip(prior['cases'],value['cases'],strict=True):

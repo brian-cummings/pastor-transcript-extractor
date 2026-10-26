@@ -2,6 +2,7 @@
 from copy import deepcopy
 from dataclasses import asdict,replace
 from pathlib import Path
+import json
 from httpx import HTTPError
 
 from . import evidence_requests as requests
@@ -41,6 +42,16 @@ def import_receipt(store,seed):
     store.write_immutable('reuse-'+key+'.json',dict(origin=seed['path'],receipt_digest=digest(receipt)))
 
 
+def retry_request(spec,response,errors,*,contextual=False):
+    content=response['output'] if isinstance(response['output'],str) else requests.wire(response['output'])
+    task=(spec.body['messages'][-1]['content']+'\n\n') if len(spec.body['messages'])>2 else ''
+    extra=('\nPreserve IDs across claims and abstentions. If context is insufficient, explicitly abstain for that ID.\n' if contextual else '')
+    return replace(spec,body={**deepcopy(spec.body),'messages':deepcopy(spec.body['messages'][:2])+[
+        dict(role='assistant',content=content),dict(role='user',content=task+TEMPLATE+extra+requests.wire(errors))]},
+        source_identity={**spec.source_identity,'binding_retry_of':spec.fingerprint,
+            'failed_output_digest':digest(content),'binding_errors_digest':digest(errors)})
+
+
 def read(spec,window,schema,store,transport,*,response_prefix='',progress=None,seed=None):
     """At most two sends; invalid JSON/schema, status or transport never retries."""
     if spec.version!=requests.DEEPINFRA_BINDING_VERSION:
@@ -52,11 +63,13 @@ def read(spec,window,schema,store,transport,*,response_prefix='',progress=None,s
         reused=seed is not None and index==0
         if reused:
             old=requests.RequestSpec(**seed['receipt']['request'])
-            if old.body!=spec.body: raise ValueError('Seed producer/source body differs')
+            compatible=(context.without_duplicate_schema(old.body)==spec.body
+                if contextual and seed.get('body_compatibility')==context.SCHEMA_TRANSPORT_VERSION else old.body==spec.body)
+            if not compatible: raise ValueError('Seed producer/source body differs')
             if progress: progress('Reusing saved Flash response; no generation call')
             import_receipt(store,seed);response=seed['receipt']['response']
         else: response=requests.execute(spec,ledger,store,transport)
-        provenance=dict(model=spec.body['model'],prompt_digest=digest(spec.body['messages']),
+        provenance=dict(model=spec.body['model'],prompt_digest=digest(old.body['messages'] if reused else spec.body['messages']),
             raw_response_ref=(seed['raw_response_ref'] if reused else response_prefix+'receipts/'+spec.fingerprint+'.json'))
         checked=(context.inspect(response['output'],window,**provenance) if contextual else
             diagnostics.inspect(response['output'],schema,window,**provenance))
@@ -75,14 +88,8 @@ def read(spec,window,schema,store,transport,*,response_prefix='',progress=None,s
         store.write_immutable(f'binding-validation/attempt-{index+1}.json',record);attempts.append(record)
         eligible=schema_valid and checked['errors'] and all(e['path']!='$.status' for e in checked['errors'])
         if not eligible or index==1: break
-        if progress: progress('Binding failed; requesting one replacement with exact validation errors')
-        content=response['output'] if isinstance(response['output'],str) else requests.wire(response['output'])
-        task=(spec.body['messages'][-1]['content']+'\n\n') if len(spec.body['messages'])>2 else ''
-        abstention_instruction=('\nPreserve IDs across claims and abstentions. If context is insufficient, explicitly abstain for that ID.\n' if contextual else '')
-        retry=replace(spec,body={**deepcopy(spec.body),'messages':deepcopy(spec.body['messages'][:2])+[
-            dict(role='assistant',content=content),dict(role='user',content=task+TEMPLATE+abstention_instruction+requests.wire(checked['errors']))]},
-            source_identity={**spec.source_identity,'binding_retry_of':spec.fingerprint,
-                'failed_output_digest':digest(content),'binding_errors_digest':digest(checked['errors'])})
+        if progress: progress('Binding failed; preparing one replacement with exact validation errors')
+        retry=retry_request(spec,response,checked['errors'],contextual=contextual)
         retry.preflight()  # Never truncate a transcript or feedback to make it fit.
         store.write_immutable('binding-retry-request.json',asdict(retry));spec=retry
     store.write_immutable('binding-result.json',dict(final_request_fingerprint=attempts[-1]['request_fingerprint'],
@@ -156,7 +163,18 @@ def run_case(packet,case,root,flash_transport,typesafe_transport,*,progress=None
                             p=after['findings'][item['id']][field]['probability'];key=(item['binding']['binding_id'],field)
                             comparisons.append(dict(binding_id=key[0],field=field,previous_probability_correct=prior.get(key),
                                 probability_correct=p,outcome='PASS' if p>=fields.PASS else 'FAIL' if p<=fields.FAIL else 'INCONCLUSIVE'))
-    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: halt=str(error)
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:
+        halt=str(error)
+        # A completed model response remains review evidence even when its next
+        # request cannot fit. Do not erase the paid revision from the summary.
+        if revision is None and (root/'revision-input.json').exists():
+            attempts=[json.loads(p.read_text()) for p in sorted((root/'revision/review/binding-validation').glob('attempt-*.json'))]
+            mechanical=({k:attempts[-1][k] for k in ('reading','errors','observations')} if attempts else
+                dict(reading=None,errors=[],observations=[]))
+            if context.enabled(packet): mechanical['abstentions']=attempts[-1].get('abstentions',[]) if attempts else []
+            revision=dict(mechanical=mechanical,after=None,changed_fields=[],field_comparisons=[],halt=halt,
+                binding_retries=max(0,len(attempts)-1),binding_attempts=attempts)
+        elif revision is not None: revision['halt']=halt
     failed=halt or (initial is not None and initial['errors']) or (revision is not None and revision['mechanical']['errors'])
     if progress and failed and halt is None:
         progress(case['case_id']+': TypeSafe stage skipped because binding/schema did not pass within its limit')

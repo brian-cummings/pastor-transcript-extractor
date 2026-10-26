@@ -17,6 +17,7 @@ from .pastor_evidence import EvidenceArtifactStore,SourceWindow,digest
 
 VERSION='learning-demo-source-context-v1'
 PRIOR='e833b447eac9d341bb5c2e5191f35ff0743e64e141929c778e111e6b951eb658'
+STOPPED='44f9c346c738da535f729cdac43c559cea14306b5e07f3f4b0ec276dfc4735f3'
 
 
 def directory(base_dir,fingerprint):
@@ -43,7 +44,7 @@ def build(prior,result,contract_packet):
         if requests.wire(json.loads(old.body['messages'][1]['content']))!=requests.wire(expected):
             raise ValueError('Saved source message differs from the complete frozen window')
         body=deepcopy(old.body)
-        body['messages']=[dict(role='system',content=contract_packet['reader_prompt']+'\nOutput schema: '+requests.wire(context.schema())),
+        body['messages']=[dict(role='system',content=contract_packet['reader_prompt']),
                           deepcopy(old.body['messages'][1])]
         body['response_format']['json_schema']['schema']=context.schema()
         spec=replace(old,body=body,version=requests.DEEPINFRA_BINDING_VERSION,
@@ -60,6 +61,7 @@ def build(prior,result,contract_packet):
     return dict(schema_version=VERSION,cases=cases,schema=context.schema(),code_identity=identity(),
         contract_fingerprint=contract_packet['contract_fingerprint'],published_model_metadata=prior['published_model_metadata'],
         policy=dict(source_context_version=context.VERSION,binding_retries=1,
+            schema_transport_version=context.SCHEMA_TRANSPORT_VERSION,
             initial_prompt=cases[0]['request']['body']['messages'][0]['content'],review_template=context.REVIEW_TEMPLATE,
             binding_retry_template=binding_retry.TEMPLATE,verifier_fields=list(context.FIELDS),
             pass_at_least=context.fields.PASS,fail_at_most=context.fields.FAIL,max_reviews_per_window=1,
@@ -82,6 +84,8 @@ def build(prior,result,contract_packet):
 
 def prepare(prior_input,base_dir=None,*,check_only=False):
     path=Path(prior_input).resolve()
+    if path==(directory(base_dir,STOPPED)/'input.json').resolve():
+        return prepare_continuation(path,base_dir,check_only=check_only)
     if path!=(five.directory(base_dir,PRIOR)/'input.json').resolve(): raise ValueError('Requires the completed five-window binding-retry input')
     prior=json.loads(path.read_text());root=path.parent/'execution';result=json.loads((root/'results.json').read_text())
     if prior['input_fingerprint']!=PRIOR or digest({k:v for k,v in prior.items() if k!='input_fingerprint'})!=PRIOR:
@@ -130,6 +134,93 @@ def prepare(prior_input,base_dir=None,*,check_only=False):
             'Explicit abstentions remain audit records. No manual answers or review labels enter requests. '
             'Maximum 30 new paid attempts; reservation $'+packet['budget']['reserved_usd']+', ceiling $1.02. '
             'Cumulative maximum 62 paid attempts and reserved plus prior list-price usage below $2.\n\n```sh\n'+command(out,packet,base_dir)+'\n```\n')
+    return packet,out
+
+
+def prepare_continuation(path,base_dir=None,*,check_only=False):
+    """Resume only the demonstrated unsent retry; import all three completed calls."""
+    path=Path(path);prior=json.loads(path.read_text());root=path.parent/'execution'
+    result=json.loads((root/'results.json').read_text())
+    if prior['input_fingerprint']!=STOPPED or digest({k:v for k,v in prior.items() if k!='input_fingerprint'})!=STOPPED:
+        raise ValueError('Stopped input identity changed')
+    if (result['input_fingerprint']!=STOPPED or result['processed_windows']!=1 or result['completed_windows']!=0
+        or result['cases'][0]['halt']!='DeepInfra input exceeds reservation; no truncation'
+        or result['accounting']['attempts']!=3 or result['accounting']['unknown_usage_attempts']!=0
+        or result['accounting']['cumulative_paid_attempts']!=35 or five.accounting(root,prior)!=result['accounting']):
+        raise ValueError('Continuation requires the accounted three-call request-fit stop')
+    packet,_=prepare(prior['history']['prior_input'],base_dir,check_only=True)
+    if (prior['schema']!=context.schema() or prior['policy']['review_template']!=context.REVIEW_TEMPLATE
+        or prior['policy']['binding_retry_template']!=binding_retry.TEMPLATE
+        or prior['policy']['verifier_fields']!=list(context.FIELDS)
+        or prior['published_model_metadata']!=packet['published_model_metadata']):
+        raise ValueError('Stopped semantic/model policy differs')
+    for name in ('pastor_evidence','theological_binding','binding_evidence','learning_demo_contracts',
+                 'learning_demo_field_check','learning_demo_uncertainty','reading_diagnostics','deepinfra_requests'):
+        if prior['code_identity'][name]!=packet['code_identity'][name]: raise ValueError('Stopped evidence semantics changed')
+    for filename,sha in prior['history']['preserved_files'].items():
+        if demo.file_hash(Path(filename))!=sha: raise ValueError('Stopped history changed')
+    if len(prior['cases'])!=5: raise ValueError('Stopped case inventory changed')
+    for old,new in zip(prior['cases'],packet['cases'],strict=True):
+        if old['case_id']!=new['case_id'] or old['window']!=new['window'] or context.without_duplicate_schema(old['request']['body'])!=new['request']['body']:
+            raise ValueError('Continuation changes more than duplicated schema transport')
+    case=packet['cases'][0];case_root=root/case['case_id']
+    saved=json.loads((case_root/'results.json').read_text())
+    if saved['initial']['errors'] or not saved['initial']['observations'] or saved['before'] is None:
+        raise ValueError('Initial stages are not reusable')
+    seeds=dict(initial=five.load_seed(case_root/'initial',saved['initial']),before=five.load_seed(case_root/'before'),
+        review=five.load_seed(case_root/'revision/review'))
+    for name in ('initial','review'): seeds[name]['body_compatibility']=context.SCHEMA_TRANSPORT_VERSION
+    seeds['review']['raw_response_ref']='revision/review/receipts/'+requests.RequestSpec(**seeds['review']['receipt']['request']).fingerprint+'.json'
+    window=SourceWindow(**case['window']);old_initial=requests.RequestSpec(**seeds['initial']['receipt']['request'])
+    if asdict(old_initial)!=prior['cases'][0]['request']: raise ValueError('Initial receipt producer differs')
+    checked=context.inspect(seeds['initial']['receipt']['response']['output'],window,model=hosted.FLASH_MODEL,
+        prompt_digest=digest(old_initial.body['messages']),raw_response_ref=seeds['initial']['raw_response_ref'])
+    if checked!=saved['initial']: raise ValueError('Saved initial validation differs')
+    verify,candidates=context.verification(window,checked['observations'])
+    if asdict(verify)!=seeds['before']['receipt']['request']: raise ValueError('Verifier receipt is not exactly compatible')
+    verdict=five.feedback.judgments(seeds['before']['receipt']['response'],verify,candidates)
+    def ordered_verdict(value):
+        return {**value,'feedback':sorted(value['feedback'],key=lambda row:(row['binding_id'],row['field']))}
+    if ordered_verdict(verdict)!=ordered_verdict(saved['before']): raise ValueError('Saved verifier verdict differs')
+    scores=context.review_scores(verify,verdict)
+    spec=five.correction.corrective_request(dict(request=case['request'],correction=dict(template=context.REVIEW_TEMPLATE)),
+        seeds['initial']['receipt']['response']['output'],scores)
+    old_review=requests.RequestSpec(**seeds['review']['receipt']['request'])
+    if context.without_duplicate_schema(old_review.body)!=spec.body: raise ValueError('Saved revision task differs')
+    review_check=context.inspect(seeds['review']['receipt']['response']['output'],window,model=hosted.FLASH_MODEL,
+        prompt_digest=digest(old_review.body['messages']),raw_response_ref=seeds['review']['raw_response_ref'])
+    stored=json.loads((case_root/'revision/review/binding-validation/attempt-1.json').read_text())
+    if any(stored.get(k)!=review_check[k] for k in review_check): raise ValueError('Saved revision validation differs')
+    if not review_check['errors']: raise ValueError('No pending binding retry')
+    pending=binding_retry.retry_request(spec,seeds['review']['receipt']['response'],review_check['errors'],contextual=True)
+    packet['continuation_preflight']=dict(request=asdict(pending),token_account=pending.preflight())
+    case['seeds']=seeds
+    # First case needs its unsent binding retry and one verifier recheck; other
+    # four retain the original full per-case allowance. Imported calls cost zero.
+    flash=17;typesafe=9;reserved=flash*hosted.reserved_usd(requests.DEEPINFRA_BINDING_VERSION)+typesafe*requests.reservation('source_verification')
+    account=result['accounting']
+    packet['budget'].update(maximum_attempts=26,maximum_paid_attempts=26,flash_attempts=flash,typesafe_attempts=typesafe,
+        reserved_usd=str(reserved),cumulative_maximum_attempts=account['cumulative_attempts']+26,
+        cumulative_maximum_paid_attempts=account['cumulative_paid_attempts']+26)
+    if packet['budget']['cumulative_maximum_paid_attempts']>66 or Decimal(account['cumulative_known_list_price_usage_usd'])+reserved>2:
+        raise ValueError('Continuation exceeds cumulative attempt or dollar ceiling')
+    files=[path,*sorted(p for p in root.rglob('*.json') if p.name!='source-context-authorization.json')]
+    packet['history'].update(prior_input=str(path),prior_attempts=account['cumulative_attempts'],
+        prior_local_attempts=account['cumulative_local_attempts'],prior_paid_attempts=account['cumulative_paid_attempts'],
+        prior_known_list_price_usage_usd=account['cumulative_known_list_price_usage_usd'])
+    packet['history']['preserved_files'].update({str(p):demo.file_hash(p) for p in files})
+    packet['reuse_audit']['continuation']='Import original initial/review responses and exact TypeSafe receipt without rebilling; preserve original producer provenance. Only exact schema-text deduplication is compatible.'
+    packet['continuation_from']=str(path)
+    packet.pop('input_fingerprint',None);packet['input_fingerprint']=digest(packet)
+    out=directory(base_dir,packet['input_fingerprint'])
+    if not check_only:
+        context.export(base_dir)
+        EvidenceArtifactStore(out).write_immutable('input.json',packet)
+        (out/'preparation.md').write_text('# Request-fit continuation\n\nReuse all three completed calls from the stopped first case. '
+            'First new call is its binding retry, followed by TypeSafe recheck. Remaining four sources are unchanged. '
+            'Strict schema is retained once in response_format; only duplicated system schema text is removed. '
+            'No source, model, threshold, evidence or answer changes by code. Maximum 26 new paid calls; reservation $'+str(reserved)+
+            ', ceiling $1.02; cumulative maximum 61 paid calls and reserved plus prior usage below $2.\n\n```sh\n'+command(out,packet,base_dir)+'\n```\n')
     return packet,out
 
 

@@ -98,6 +98,20 @@ def validate_request(spec):
         raise ValueError('Context contract requires its exact schema and explicit reader instructions')
 
 
+SCHEMA_TRANSPORT_VERSION='source-schema-transport-dedup-v1'
+
+
+def without_duplicate_schema(body):
+    """Remove only the exact schema duplicated in the system text; retain strict format."""
+    if body['response_format']['json_schema']['schema']!=schema():
+        raise ValueError('Cannot deduplicate a different source schema')
+    result=deepcopy(body)
+    suffix='\nOutput schema: '+requests.wire(schema())
+    content=result['messages'][0]['content']
+    if content.endswith(suffix): result['messages'][0]['content']=content[:-len(suffix)]
+    return result
+
+
 def verification(window,observations):
     spec,candidates=fields.verification(window,observations)
     body=deepcopy(spec.body)

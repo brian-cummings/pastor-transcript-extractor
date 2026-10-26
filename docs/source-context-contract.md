@@ -72,6 +72,25 @@ confirmed prices and both provider credentials. Results and the source review
 packet expose context eligibility, withheld fields and abstention IDs. No additional
 trial is executed during preparation.
 
+For the three-call request-fit stop, pass that stopped source-context input to
+`source-context-prepare`. The continuation preserves the same five windows and
+imports the initial Flash answer, exact TypeSafe receipt and completed Flash revision
+without rebilling. It preserves their original request fingerprints and producer
+provenance. Only an exact duplicate of the strict response schema is removed from
+system text; the schema remains enforced through `response_format`. No source,
+criterion, answer, model or threshold is rewritten. The pending binding retry is
+preflighted during preparation. Maximum remaining requests are 17 Flash and nine
+TypeSafe, with a $0.860356608 reservation under the original $1.02 ceiling; the
+cumulative maximum is 61 paid requests. A later oversized request still stops without
+truncation. Revision validation and its halt remain visible when a subsequent retry
+cannot be sent.
+
+After this bounded continuation, review the saved initial and revised answers against
+the complete declared sources. Assess both correction of errors and preservation of
+correct content, including whether abstentions identify missing consequential context.
+Verifier score changes alone do not establish improvement or authorize full-workflow
+execution or production admission.
+
 Acceptance uses synthetic outputs only: mixed and all-abstention inventories,
 missing continuation/referent/condition/attribution/scope, literal locations across
 declared blocks, identity-preserving correction, unchanged complete bindings,
