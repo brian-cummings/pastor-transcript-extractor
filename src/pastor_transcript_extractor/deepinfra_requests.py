@@ -139,6 +139,26 @@ class BindingRetryLedger(OneRequestLedger):
         if 2*reserved_usd(self.request_version)>cap: raise ValueError('Reserve both binding attempts before starting')
 
 
+@dataclass(frozen=True)
+class GuidedBindingLedger(OneRequestLedger):
+    """Two guided requests per explicitly frozen binding stage; unchanged per-call cap."""
+    max_usd: str='0.04'
+    request_version: str=DEEPINFRA_GUIDED_VERSION
+
+    def check(self,attempts,phase):
+        try: cap=Decimal(self.max_usd)
+        except InvalidOperation as error: raise ValueError('Invalid guided binding ceiling') from error
+        if self.request_version!=DEEPINFRA_GUIDED_VERSION or not cap.is_finite() or not 0<cap<=Decimal('0.04'):
+            raise ValueError('Guided binding stage requires its frozen policy within $0.04')
+        if phase!='source_reading' or len(attempts)>=2: raise ValueError('One guided binding retry only')
+        if any(a.get('namespace')!=GUIDED_NAMESPACE or a.get('provider')!='DeepInfra' or
+               Decimal(a['reserved_usd'])!=reserved_usd(self.request_version) for a in attempts):
+            raise ValueError('Foreign guided binding reservation')
+        if (2*reserved_usd(self.request_version)>cap or
+            reserved_usd(self.request_version)>Decimal(GUIDED_POLICY['maximum_usd'])):
+            raise ValueError('Reserve both guided attempts without changing the per-call cap')
+
+
 def decode(raw,spec=None):
     policy=policy_for(spec.version if spec is not None else DEEPINFRA_VERSION)
     if raw.get('model')!=policy['model']: raise ValueError('Resolved DeepInfra model differs; no substitution')

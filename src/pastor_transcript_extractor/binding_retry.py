@@ -14,6 +14,7 @@ from . import learning_demo_field_check as fields
 from . import learning_demo_feedback as feedback
 from . import learning_demo_uncertainty as review
 from . import source_context as context
+from . import binding_feedback
 from .pastor_evidence import SourceWindow,digest
 
 VERSION='binding-retry-policy-v1'
@@ -52,13 +53,16 @@ def retry_request(spec,response,errors,*,contextual=False):
             'failed_output_digest':digest(content),'binding_errors_digest':digest(errors)})
 
 
-def read(spec,window,schema,store,transport,*,response_prefix='',progress=None,seed=None):
+def read(spec,window,schema,store,transport,*,response_prefix='',progress=None,seed=None,guided_retry=False):
     """At most two sends; invalid JSON/schema, status or transport never retries."""
-    if spec.version!=requests.DEEPINFRA_BINDING_VERSION:
+    if guided_retry and spec.version!=requests.DEEPINFRA_GUIDED_VERSION:
+        raise ValueError('Guided binding retry requires the guided request policy')
+    if spec.version!=requests.DEEPINFRA_BINDING_VERSION and not guided_retry:
         raise ValueError('Automatic binding retry requires a newly frozen request policy')
     contextual=schema==context.schema()
     if contextual: context.validate_request(spec)
-    ledger=hosted.BindingRetryLedger();attempts=[];original_ids=None
+    ledger=hosted.GuidedBindingLedger() if guided_retry else hosted.BindingRetryLedger()
+    attempts=[];original_ids=None
     for index in range(2):
         reused=seed is not None and index==0
         if reused:
@@ -89,7 +93,8 @@ def read(spec,window,schema,store,transport,*,response_prefix='',progress=None,s
         eligible=schema_valid and checked['errors'] and all(e['path']!='$.status' for e in checked['errors'])
         if not eligible or index==1: break
         if progress: progress('Binding failed; preparing one replacement with exact validation errors')
-        retry=retry_request(spec,response,checked['errors'],contextual=contextual)
+        errors=binding_feedback.enrich(checked['errors'],reading,window) if guided_retry else checked['errors']
+        retry=retry_request(spec,response,errors,contextual=contextual)
         retry.preflight()  # Never truncate a transcript or feedback to make it fit.
         store.write_immutable('binding-retry-request.json',asdict(retry));spec=retry
     store.write_immutable('binding-result.json',dict(final_request_fingerprint=attempts[-1]['request_fingerprint'],
@@ -111,9 +116,10 @@ def run_case(packet,case,root,flash_transport,typesafe_transport,*,progress=None
             raise ValueError('Context schema and versioned policy must agree')
         verifier=context if contextual else fields
         reviewer=context if contextual else review
+        guided_retry=packet.get('policy',{}).get('guided_binding_retries')==1
         if progress: progress(case['case_id']+': initial Flash reading with one binding retry available')
         initial_read=read(base,window,packet['schema'],requests.ReceiptStore(root/'initial'),flash_transport,
-            response_prefix='initial/',progress=progress,seed=case.get('seeds',{}).get('initial'))
+            response_prefix='initial/',progress=progress,seed=case.get('seeds',{}).get('initial'),guided_retry=guided_retry)
         initial=initial_read['validation'];initial_retries=initial_read['retries'];initial_attempts=initial_read['attempts']
         artifacts.write_immutable('initial-validation.json',initial)
         if contextual and not initial['errors'] and initial['abstentions'] and progress:
@@ -138,7 +144,7 @@ def run_case(packet,case,root,flash_transport,typesafe_transport,*,progress=None
                 artifacts.write_immutable('revision-input.json',dict(request=asdict(spec),scores=scores))
                 if progress: progress(case['case_id']+': Flash semantic re-review with one binding retry available')
                 rebuilt=read(spec,window,packet['schema'],requests.ReceiptStore(root/'revision/review'),flash_transport,
-                    response_prefix='revision/review/',progress=progress,seed=case.get('seeds',{}).get('review'))
+                    response_prefix='revision/review/',progress=progress,seed=case.get('seeds',{}).get('review'),guided_retry=guided_retry)
                 mechanical=rebuilt['validation'];after=None;diff=[];comparisons=[]
                 revision=dict(mechanical=mechanical,after=None,changed_fields=diff,field_comparisons=comparisons,
                     halt=None,binding_retries=rebuilt['retries'],binding_attempts=rebuilt['attempts'])

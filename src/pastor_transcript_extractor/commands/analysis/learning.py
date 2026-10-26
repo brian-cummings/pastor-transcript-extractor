@@ -10,8 +10,42 @@ from ... import ollama_conformance
 
 app=typer.Typer(help='Prepare V3 offline; paid execution requires a separate exact-input decision.')
 analysis_app.add_typer(app,name='learning-demo')
-fit_app=typer.Typer(help='Prepare and inspect a six-window, local-only source-reading model-fit trial.')
+fit_app=typer.Typer(help='Prepare frozen model-fit checks and bounded source-reading trials.')
 app.add_typer(fit_app,name='model-fit')
+
+
+@fit_app.command('attachment-prepare')
+def attachment_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),
+                       check_only:bool=typer.Option(False,'--check-only'),
+                       as_json:bool=typer.Option(False,'--json')):
+    """Freeze three existing full-schema windows with Flash 1017 and the TypeSafe loop."""
+    from ... import attachment_trial as trial
+    try:
+        packet,out=trial.prepare(base_dir,check_only=check_only)
+        emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',
+            model=packet['model'],input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],
+            budget=packet['budget'],selection=packet['selection'],execute_command=trial.command(out,packet,base_dir),
+            generation_calls=0,paid_calls=0),as_json)
+    except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@fit_app.command('attachment-run')
+def attachment_run(input_path:Path=typer.Option(...,'--input'),
+                   base_dir:Path|None=typer.Option(None,'--base-dir'),
+                   experimental:bool=typer.Option(False,'--experimental'),
+                   approve_input:str|None=typer.Option(None,'--approve-input'),
+                   max_usd:str=typer.Option('0.20','--max-usd'),
+                   confirm_prices:bool=typer.Option(False,'--confirm-prices'),
+                   check_only:bool=typer.Option(False,'--check-only'),
+                   as_json:bool=typer.Option(False,'--json')):
+    """Run the frozen three-window Flash 1017 reading, binding and TypeSafe correction plan."""
+    from ... import attachment_trial as trial
+    try:
+        result=trial.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,
+            confirm_prices=confirm_prices,check_only=check_only,progress=lambda message:typer.echo(message,err=True))
+        emit(result,as_json)
+        if result['status']=='FAIL(component)': raise typer.Exit(1)
+    except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
 
 
 @fit_app.command('guided-source-prepare')
