@@ -12,6 +12,7 @@ from . import learning_demo_correction as correction
 from . import learning_demo_field_check as fields
 from . import learning_demo_feedback as feedback
 from . import learning_demo_uncertainty as review
+from . import source_context as context
 from .pastor_evidence import SourceWindow,digest
 
 VERSION='binding-retry-policy-v1'
@@ -44,6 +45,8 @@ def read(spec,window,schema,store,transport,*,response_prefix='',progress=None,s
     """At most two sends; invalid JSON/schema, status or transport never retries."""
     if spec.version!=requests.DEEPINFRA_BINDING_VERSION:
         raise ValueError('Automatic binding retry requires a newly frozen request policy')
+    contextual=schema==context.schema()
+    if contextual: context.validate_request(spec)
     ledger=hosted.BindingRetryLedger();attempts=[];original_ids=None
     for index in range(2):
         reused=seed is not None and index==0
@@ -53,17 +56,21 @@ def read(spec,window,schema,store,transport,*,response_prefix='',progress=None,s
             if progress: progress('Reusing saved Flash response; no generation call')
             import_receipt(store,seed);response=seed['receipt']['response']
         else: response=requests.execute(spec,ledger,store,transport)
-        checked=diagnostics.inspect(response['output'],schema,window,model=spec.body['model'],
-            prompt_digest=digest(spec.body['messages']),raw_response_ref=(seed['raw_response_ref'] if reused else response_prefix+'receipts/'+spec.fingerprint+'.json'))
+        provenance=dict(model=spec.body['model'],prompt_digest=digest(spec.body['messages']),
+            raw_response_ref=(seed['raw_response_ref'] if reused else response_prefix+'receipts/'+spec.fingerprint+'.json'))
+        checked=(context.inspect(response['output'],window,**provenance) if contextual else
+            diagnostics.inspect(response['output'],schema,window,**provenance))
         reading=checked['reading']
         schema_valid=reading is not None and not diagnostics.shape_errors(reading,schema)
         if index==0 and schema_valid:
-            ids=[c['binding_id'] for c in reading['claims']]
+            ids=context.inventory(reading) if contextual else [c['binding_id'] for c in reading['claims']]
             if len(ids)==len(set(ids)): original_ids=set(ids)
         if index==1 and schema_valid and original_ids is not None:
-            if {c['binding_id'] for c in reading['claims']}!=original_ids:
+            ids=set(context.inventory(reading)) if contextual else {c['binding_id'] for c in reading['claims']}
+            if ids!=original_ids:
                 checked['errors'].append(dict(path='$.claims',code='identity',message='Binding retry changed unique claim identity/coverage'))
                 checked['observations']=[]
+                if contextual: checked['abstentions']=[]
         record=dict(request_fingerprint=old.fingerprint if reused else spec.fingerprint,reused=reused,**checked)
         store.write_immutable(f'binding-validation/attempt-{index+1}.json',record);attempts.append(record)
         eligible=schema_valid and checked['errors'] and all(e['path']!='$.status' for e in checked['errors'])
@@ -71,8 +78,9 @@ def read(spec,window,schema,store,transport,*,response_prefix='',progress=None,s
         if progress: progress('Binding failed; requesting one replacement with exact validation errors')
         content=response['output'] if isinstance(response['output'],str) else requests.wire(response['output'])
         task=(spec.body['messages'][-1]['content']+'\n\n') if len(spec.body['messages'])>2 else ''
+        abstention_instruction=('\nPreserve IDs across claims and abstentions. If context is insufficient, explicitly abstain for that ID.\n' if contextual else '')
         retry=replace(spec,body={**deepcopy(spec.body),'messages':deepcopy(spec.body['messages'][:2])+[
-            dict(role='assistant',content=content),dict(role='user',content=task+TEMPLATE+requests.wire(checked['errors']))]},
+            dict(role='assistant',content=content),dict(role='user',content=task+TEMPLATE+abstention_instruction+requests.wire(checked['errors']))]},
             source_identity={**spec.source_identity,'binding_retry_of':spec.fingerprint,
                 'failed_output_digest':digest(content),'binding_errors_digest':digest(checked['errors'])})
         retry.preflight()  # Never truncate a transcript or feedback to make it fit.
@@ -89,13 +97,22 @@ def run_case(packet,case,root,flash_transport,typesafe_transport,*,progress=None
     initial=before=revision=None;halt=None;initial_retries=0;initial_attempts=[]
     try:
         base=requests.RequestSpec(**case['request']);window=SourceWindow(**case['window'])
+        contextual=context.enabled(packet)
+        if packet.get('policy',{}).get('source_context_version') not in (None,context.VERSION):
+            raise ValueError('Unsupported source context contract version')
+        if (packet['schema']==context.schema())!=contextual:
+            raise ValueError('Context schema and versioned policy must agree')
+        verifier=context if contextual else fields
+        reviewer=context if contextual else review
         if progress: progress(case['case_id']+': initial Flash reading with one binding retry available')
         initial_read=read(base,window,packet['schema'],requests.ReceiptStore(root/'initial'),flash_transport,
             response_prefix='initial/',progress=progress,seed=case.get('seeds',{}).get('initial'))
         initial=initial_read['validation'];initial_retries=initial_read['retries'];initial_attempts=initial_read['attempts']
         artifacts.write_immutable('initial-validation.json',initial)
+        if contextual and not initial['errors'] and initial['abstentions'] and progress:
+            progress(case['case_id']+': '+str(len(initial['abstentions']))+' context-insufficient point(s) abstained; only complete claims go to TypeSafe')
         if not initial['errors'] and initial['observations']:
-            verify,candidates=fields.verification(window,initial['observations'])
+            verify,candidates=verifier.verification(window,initial['observations'])
             artifacts.write_immutable('before-request.json',asdict(verify))
             if progress: progress(case['case_id']+': TypeSafe initial check (binding passed)')
             if 'before' in case.get('seeds',{}):
@@ -105,11 +122,11 @@ def run_case(packet,case,root,flash_transport,typesafe_transport,*,progress=None
             response=requests.execute(verify,requests.BudgetLedger(max_attempts=1,max_usd='0.003'),
                 requests.ReceiptStore(root/'before'),typesafe_transport)
             before=feedback.judgments(response,verify,candidates);artifacts.write_immutable('before-judgments.json',before)
-            scores=review.review_scores(verify,before)
+            scores=reviewer.review_scores(verify,before)
             if any(s['review_requested'] for s in scores):
                 # Start the semantic review from the original source prefix and final
                 # valid answer; earlier invalid attempts remain durable receipts.
-                spec=correction.corrective_request(dict(request=asdict(base),correction=dict(template=review.TEMPLATE)),
+                spec=correction.corrective_request(dict(request=asdict(base),correction=dict(template=context.REVIEW_TEMPLATE if contextual else review.TEMPLATE)),
                     initial_read['response']['output'],scores)
                 artifacts.write_immutable('revision-input.json',dict(request=asdict(spec),scores=scores))
                 if progress: progress(case['case_id']+': Flash semantic re-review with one binding retry available')
@@ -119,8 +136,11 @@ def run_case(packet,case,root,flash_transport,typesafe_transport,*,progress=None
                 revision=dict(mechanical=mechanical,after=None,changed_fields=diff,field_comparisons=comparisons,
                     halt=None,binding_retries=rebuilt['retries'],binding_attempts=rebuilt['attempts'])
                 if not mechanical['errors']:
-                    diff.extend(review.changes(initial_read['response']['output'],mechanical['reading']))
-                    verify,candidates=fields.verification(window,mechanical['observations'])
+                    diff.extend(reviewer.changes(initial_read['response']['output'],mechanical['reading']))
+                    if contextual and not mechanical['observations'] and progress:
+                        progress(case['case_id']+': all points abstained; no empty TypeSafe recheck')
+                if not mechanical['errors'] and mechanical['observations']:
+                    verify,candidates=verifier.verification(window,mechanical['observations'])
                     artifacts.write_immutable('after-request.json',asdict(verify))
                     if progress: progress(case['case_id']+': TypeSafe recheck (binding passed)')
                     if 'after' in case.get('seeds',{}):
@@ -132,9 +152,9 @@ def run_case(packet,case,root,flash_transport,typesafe_transport,*,progress=None
                     after=feedback.judgments(response,verify,candidates);revision['after']=after
                     prior={(s['binding_id'],s['field']):s['probability_correct'] for s in scores}
                     for item in verify.body['state']['items']:
-                        for field in fields.FIELDS:
+                        for field in (context.FIELDS if contextual else fields.FIELDS):
                             p=after['findings'][item['id']][field]['probability'];key=(item['binding']['binding_id'],field)
-                            comparisons.append(dict(binding_id=key[0],field=field,previous_probability_correct=prior[key],
+                            comparisons.append(dict(binding_id=key[0],field=field,previous_probability_correct=prior.get(key),
                                 probability_correct=p,outcome='PASS' if p>=fields.PASS else 'FAIL' if p<=fields.FAIL else 'INCONCLUSIVE'))
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: halt=str(error)
     failed=halt or (initial is not None and initial['errors']) or (revision is not None and revision['mechanical']['errors'])
@@ -145,5 +165,9 @@ def run_case(packet,case,root,flash_transport,typesafe_transport,*,progress=None
         initial_binding_attempts=initial_attempts,binding_stage_attempts={
             'initial':len(requests.ReceiptStore(root/'initial').attempts()),
             'review':len(requests.ReceiptStore(root/'revision/review').attempts())},production_admission=False)
+    if context.enabled(packet) and initial is not None:
+        final=revision['mechanical'] if revision else initial
+        result['context_eligibility']=dict(initial=context.eligibility(initial,before),
+            final=context.eligibility(final,revision['after'] if revision else before))
     artifacts.write_immutable('results.json',result)
     return result

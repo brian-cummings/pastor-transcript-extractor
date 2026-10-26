@@ -14,6 +14,15 @@ fit_app=typer.Typer(help='Prepare and inspect a six-window, local-only source-re
 app.add_typer(fit_app,name='model-fit')
 
 
+@fit_app.command('source-context-contract')
+def source_context_contract(base_dir:Path|None=typer.Option(None,'--base-dir'),
+                            as_json:bool=typer.Option(False,'--json')):
+    """Export the versioned abstention/context contract offline; no experiment execution."""
+    from ... import source_context
+    try: emit(source_context.export(base_dir),as_json)
+    except (ValueError,OSError) as error: raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('remaining-five-prepare')
 def remaining_five_prepare(prior_input:Path=typer.Option(...,'--from-input'),
                            base_dir:Path|None=typer.Option(None,'--base-dir'),
