@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 import math
 import os
 
-from .evidence_requests import DEEPINFRA_VERSION, WireResponse, wire
+from .evidence_requests import DEEPINFRA_VERSION, DEEPINFRA_EXPANDED_VERSION, WireResponse, wire
 
 NAMESPACE='learning-demo-deepinfra-fit-v1'
 MODEL='deepseek-ai/DeepSeek-V4-Pro-0813'
@@ -19,18 +19,31 @@ POLICY=dict(provider='DeepInfra',model=MODEL,endpoint=ENDPOINT,input_cap=INPUT_C
     reasoning_effort='medium',service_tier='standard',
     timeout_policy='120s_plus_input_bound_at_100tps_plus_output_at_20tps_rounded_to_minute_max_1800s',
     model_pin_limitation='Hosted dated model ID, not a verifiable weight hash; no substitution accepted')
+EXPANDED_NAMESPACE='learning-demo-deepinfra-expanded-v1'
+EXPANDED_POLICY={**POLICY,'input_cap':49152,'output_cap':65536,
+    'timeout_policy':'120s_plus_input_bound_at_100tps_plus_output_at_20tps_rounded_to_minute_max_7200s'}
 
 
-def reserved_usd():
-    return (Decimal(INPUT_CAP)*Decimal(INPUT_PRICE)+Decimal(OUTPUT_CAP)*Decimal(OUTPUT_PRICE))/Decimal(1000000)
+def policy_for(version):
+    if version==DEEPINFRA_VERSION: return POLICY
+    if version==DEEPINFRA_EXPANDED_VERSION: return EXPANDED_POLICY
+    raise ValueError('Unknown DeepInfra request policy')
+
+
+def reserved_usd(version=DEEPINFRA_VERSION):
+    policy=policy_for(version)
+    return (Decimal(policy['input_cap'])*Decimal(INPUT_PRICE)+Decimal(policy['output_cap'])*Decimal(OUTPUT_PRICE))/Decimal(1000000)
 
 
 def preflight(spec):
     body=spec.body
-    if (spec.version!=DEEPINFRA_VERSION or spec.namespace!=NAMESPACE or spec.phase!='source_reading'
-        or spec.runtime_identity!=POLICY or body.get('model')!=MODEL
+    policy=policy_for(spec.version)
+    expanded=spec.version==DEEPINFRA_EXPANDED_VERSION
+    input_cap,output_cap=policy['input_cap'],policy['output_cap']
+    if (spec.namespace!=(EXPANDED_NAMESPACE if expanded else NAMESPACE) or spec.phase!='source_reading'
+        or spec.runtime_identity!=policy or body.get('model')!=MODEL
         or set(body)!={'model','messages','max_tokens','response_format','temperature','top_p','stream','n','reasoning_effort'}
-        or body.get('max_tokens')!=OUTPUT_CAP or body.get('temperature')!=0 or body.get('top_p')!=1
+        or body.get('max_tokens')!=output_cap or body.get('temperature')!=0 or body.get('top_p')!=1
         or body.get('stream') is not False or type(body.get('n')) is not int or body['n']!=1
         or body.get('reasoning_effort')!='medium'):
         raise ValueError('Frozen DeepInfra model, endpoint, scope or generation policy differs')
@@ -44,19 +57,20 @@ def preflight(spec):
         or any(set(m)!={'role','content'} or not isinstance(m['content'],str) for m in body['messages'])):
         raise ValueError('DeepInfra requires exactly the frozen system/source messages')
     bound=len(wire(body).encode())+4096
-    if bound>INPUT_CAP: raise ValueError('DeepInfra input exceeds reservation; no truncation')
-    timeout=math.ceil((120+bound/100+OUTPUT_CAP/20)/60)*60
-    if timeout>1800: raise ValueError('DeepInfra timeout exceeds bounded policy')
+    if bound>input_cap: raise ValueError('DeepInfra input exceeds reservation; no truncation')
+    timeout=math.ceil((120+bound/100+output_cap/20)/60)*60
+    if timeout>(7200 if expanded else 1800): raise ValueError('DeepInfra timeout exceeds bounded policy')
     return dict(method='utf8_byte_upper_bound_plus_4096_framing',request_upper_bound=bound,
-        reserved_input=INPUT_CAP,output_cap=OUTPUT_CAP,timeout_seconds=timeout,
-        reserved_usd=str(reserved_usd()),maximum_usd=MAX_USD,
-        execution_policy=dict(provider='DeepInfra',reasoning_effort='medium',output_cap=OUTPUT_CAP,timeout_seconds=timeout),
+        reserved_input=input_cap,output_cap=output_cap,timeout_seconds=timeout,
+        reserved_usd=str(reserved_usd(spec.version)),maximum_usd=MAX_USD,
+        execution_policy=dict(provider='DeepInfra',reasoning_effort='medium',output_cap=output_cap,timeout_seconds=timeout),
         output_accounting='completion_tokens includes billed reasoning; no cached-input discount assumed')
 
 
 @dataclass(frozen=True)
 class OneRequestLedger:
     max_usd: str=MAX_USD
+    request_version: str=DEEPINFRA_VERSION
 
     def check(self,attempts,phase):
         try: cap=Decimal(self.max_usd)
@@ -64,7 +78,7 @@ class OneRequestLedger:
         if not cap.is_finite() or cap<=0 or cap>Decimal(MAX_USD):
             raise ValueError('DeepInfra maximum ceiling is $0.25')
         if phase!='source_reading' or attempts: raise ValueError('One DeepInfra attempt only; no retry')
-        if reserved_usd()>cap: raise ValueError('DeepInfra reservation exceeds approved dollar ceiling')
+        if reserved_usd(self.request_version)>cap: raise ValueError('DeepInfra reservation exceeds approved dollar ceiling')
 
 
 def decode(raw):
@@ -87,13 +101,28 @@ def decode(raw):
         usage=dict(input_tokens=usage['prompt_tokens'],output_tokens=usage['completion_tokens']),raw=raw)
 
 
-def validate(response):
+def validate(response,spec=None):
     if response['model']!=MODEL or response.get('complete') is not True:
         raise ValueError('Incomplete or substituted DeepInfra response')
     usage=response['usage']
-    for field,cap in (('input_tokens',INPUT_CAP),('output_tokens',OUTPUT_CAP)):
+    policy=policy_for(spec.version if spec is not None else DEEPINFRA_VERSION)
+    for field,cap in (('input_tokens',policy['input_cap']),('output_tokens',policy['output_cap'])):
         if type(usage[field]) is not int or not 0<=usage[field]<=cap:
             raise ValueError('DeepInfra usage outside reservation')
+
+
+def public_model_metadata():
+    """Public GET only; no authentication, source text or inference."""
+    import httpx
+    with httpx.Client(timeout=15,follow_redirects=False,trust_env=False,
+                      transport=httpx.HTTPTransport(retries=0)) as client:
+        response=client.get('https://api.deepinfra.com/models/'+MODEL)
+    response.raise_for_status()
+    raw=response.json()
+    return dict(model=raw['model_name'],deployment_version=raw['version'],
+        native_output_schema_maximum=raw['in_schema']['properties']['max_new_tokens']['maximum'],
+        context=raw['max_tokens'],input_cents_per_token=str(raw['pricing']['cents_per_input_token']),
+        output_cents_per_token=str(raw['pricing']['cents_per_output_token']))
 
 
 def credential_present():

@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import typer
+from httpx import HTTPError
 from ..apps import analysis_app
 from ... import learning_demo
 from ... import learning_demo_model_fit as model_fit
@@ -16,17 +17,19 @@ app.add_typer(fit_app,name='model-fit')
 @fit_app.command('deepinfra-prepare')
 def deepinfra_prepare(prior_input:Path=typer.Option(...,'--from-input'),
                      base_dir:Path|None=typer.Option(None,'--base-dir'),
+                     expanded_output:bool=typer.Option(False,'--expanded-output',help='Prepare one generous-output request after the reviewed hosted length stop.'),
                      check_only:bool=typer.Option(False,'--check-only'),
                      as_json:bool=typer.Option(False,'--json')):
     """Prepare one hosted DeepSeek source check without provider calls."""
     from ... import learning_demo_deepinfra_fit as hosted
     try:
-        packet,out=hosted.prepare(prior_input,base_dir,check_only=check_only)
+        packet,out=hosted.prepare(prior_input,base_dir,check_only=check_only,expanded_output=expanded_output)
         emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',
             input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],
-            model=packet['request']['body']['model'],budget=packet['budget'],provider_calls=0,
+            model=packet['request']['body']['model'],budget=packet['budget'],provider_calls=int(expanded_output),
+            metadata_requests=int(expanded_output),generation_calls=0,paid_calls=0,
             credentials=packet['credentials']),as_json)
-    except (ValueError,OSError,KeyError) as error: raise typer.BadParameter(str(error)) from error
+    except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
 
 
 @fit_app.command('deepinfra-run')
@@ -46,7 +49,7 @@ def deepinfra_run(input_path:Path=typer.Option(...,'--input'),
             progress=lambda message:typer.echo(message,err=True))
         emit(result,as_json)
         if result['status']=='FAIL(component)': raise typer.Exit(1)
-    except (ValueError,OSError,KeyError) as error: raise typer.BadParameter(str(error)) from error
+    except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
 
 
 @fit_app.command('thinking-prepare')

@@ -29,6 +29,7 @@ OLLAMA_INPUT_CAP = 122880
 THINKING_CHECK_VERSION = 'evidence-request-thinking-check-v1'
 THINKING_CHECK_NAMESPACE = 'learning-demo-thinking-check-v1'
 DEEPINFRA_VERSION = 'evidence-request-deepinfra-fit-v1'
+DEEPINFRA_EXPANDED_VERSION = 'evidence-request-deepinfra-expanded-v1'
 THINKING_CHECK_POLICY = dict(thinking=True, output_cap=4096,
     timeout_policy='input-output-budget-v1', startup_seconds=120,
     input_tokens_per_second=100, output_tokens_per_second=8, maximum_seconds=1800)
@@ -124,13 +125,13 @@ def request_model(spec):
 
 
 def request_provider(spec):
-    return 'DeepInfra' if spec.version==DEEPINFRA_VERSION else PHASES[spec.phase][0]
+    return 'DeepInfra' if spec.version in (DEEPINFRA_VERSION,DEEPINFRA_EXPANDED_VERSION) else PHASES[spec.phase][0]
 
 
 def request_reservation(spec):
     if request_provider(spec)=='DeepInfra':
         from .deepinfra_requests import reserved_usd
-        return reserved_usd()
+        return reserved_usd(spec.version)
     return reservation(spec.phase)
 
 
@@ -292,7 +293,8 @@ def execute(spec, ledger, store, transport, *, encoding=None):
     account=spec.preflight(encoding)
     if request_provider(spec)=='DeepInfra':
         from .deepinfra_requests import OneRequestLedger
-        if not isinstance(ledger,OneRequestLedger): raise ValueError('DeepInfra requires its explicit paid reservation ledger')
+        if not isinstance(ledger,OneRequestLedger) or ledger.request_version!=spec.version:
+            raise ValueError('DeepInfra requires its explicit paid reservation ledger')
     key=spec.fingerprint
     with store.exclusive():
         attempts=store.attempts()
@@ -337,7 +339,7 @@ def execute(spec, ledger, store, transport, *, encoding=None):
 def validate_response(spec,response):
     if request_provider(spec)=='DeepInfra':
         from .deepinfra_requests import validate
-        return validate(response)
+        return validate(response,spec)
     provider,_,_,i,o,_,_=PHASES[spec.phase]
     model=request_model(spec)
     if provider=='Ollama':

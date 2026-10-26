@@ -194,3 +194,57 @@ class DeepInfraTests(unittest.TestCase):
                 with self.subTest(flags=flags),self.assertRaises(ValueError):hosted.run(Path(directory)/'input.json',**flags)
             send.assert_not_called()
             self.assertFalse((Path(directory)/'marker.json').exists())
+
+    def test_expanded_policy_reserves_full_cost_and_requires_matching_ledger(self):
+        _,old=specimen()
+        spec=replace(old,body={**old.body,'max_tokens':65536},namespace=provider.EXPANDED_NAMESPACE,
+            version=requests.DEEPINFRA_EXPANDED_VERSION,runtime_identity=deepcopy(provider.EXPANDED_POLICY))
+        self.assertEqual(provider.reserved_usd(spec.version),Decimal('.2342912'))
+        self.assertLess(provider.reserved_usd(spec.version),Decimal('.25'))
+        self.assertGreater(spec.preflight()['timeout_seconds'],old.preflight()['timeout_seconds'])
+        self.assertLessEqual(spec.preflight()['timeout_seconds'],7200)
+        self.assertEqual({k:v for k,v in spec.body.items() if k!='max_tokens'},
+                         {k:v for k,v in old.body.items() if k!='max_tokens'})
+        with TemporaryDirectory() as directory:
+            store=requests.ReceiptStore(Path(directory))
+            with self.assertRaisesRegex(ValueError,'explicit paid'):
+                requests.execute(spec,provider.OneRequestLedger(),store,lambda s:self.fail('no call'))
+            self.assertFalse(store.attempts())
+            got=requests.execute(spec,provider.OneRequestLedger('.25',spec.version),store,
+                lambda s:response(s,usage=dict(prompt_tokens=100,completion_tokens=20000)))
+            self.assertEqual(got['usage']['output_tokens'],20000)
+            self.assertEqual(Decimal(store.attempts()[0]['reserved_usd']),Decimal('.2342912'))
+        provider.validate(got,spec)
+        with self.assertRaisesRegex(ValueError,'outside reservation'):provider.validate(got,old)
+
+    def test_expanded_complete_result_preserves_prior_paid_accounting(self):
+        value,old=specimen()
+        spec=replace(old,body={**old.body,'max_tokens':65536},namespace=provider.EXPANDED_NAMESPACE,
+            version=requests.DEEPINFRA_EXPANDED_VERSION,runtime_identity=deepcopy(provider.EXPANDED_POLICY))
+        value.update(request=asdict(spec),history=dict(prior_attempts=29,prior_local_attempts=28,prior_paid_attempts=1,
+            prior_source_attempts=25,prior_known_list_price_usage_usd='0.0490698'))
+        value['input_fingerprint']=digest(value)
+        fake=FakeProvider()
+        with TemporaryDirectory() as directory:
+            store=requests.ReceiptStore(Path(directory)/'execution')
+            result=thinking.run_recipe(value,store,lambda s:response(s,json.dumps(fake(s)['output']),
+                usage=dict(prompt_tokens=100,completion_tokens=20000)),ledger=provider.OneRequestLedger('.25',spec.version))
+            self.assertEqual(result['contract_fit'],'PASS')
+            self.assertEqual(result['accounting']['cumulative_attempts'],30)
+            self.assertEqual(result['accounting']['cumulative_paid_attempts'],2)
+            self.assertEqual(result['accounting']['cumulative_local_attempts'],28)
+            self.assertEqual(Decimal(result['accounting']['cumulative_known_list_price_usage_usd']),Decimal('.1011998'))
+
+    def test_public_model_metadata_is_read_only_and_projects_cap_and_prices(self):
+        raw=dict(model_name=provider.MODEL,version='deployment-snapshot',max_tokens=1048576,
+            in_schema=dict(properties=dict(max_new_tokens=dict(maximum=1000000))),
+            pricing=dict(cents_per_input_token=.00013,cents_per_output_token=.00026))
+        with patch('httpx.Client') as factory:
+            client=factory.return_value.__enter__.return_value
+            client.get.return_value.json.return_value=raw
+            metadata=provider.public_model_metadata()
+            self.assertEqual(metadata['native_output_schema_maximum'],1000000)
+            self.assertEqual(metadata['deployment_version'],'deployment-snapshot')
+            client.post.assert_not_called()
+            self.assertNotIn('headers',client.get.call_args.kwargs)
+            self.assertFalse(factory.call_args.kwargs['trust_env'])

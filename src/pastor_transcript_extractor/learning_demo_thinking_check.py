@@ -2,6 +2,7 @@
 from copy import deepcopy
 from dataclasses import asdict, replace
 import json
+from decimal import Decimal
 from pathlib import Path
 
 from httpx import HTTPError
@@ -149,8 +150,12 @@ def run_recipe(packet,store,transport,*,ledger=None):
     history=packet.get('history',{})
     prior=history.get('prior_attempts',27)
     account.update(prior_attempts=prior,prior_source_attempts=history.get('prior_source_attempts',23),prior_synthetic_attempts=4,
-        cumulative_attempts=prior+account['attempts'],cumulative_local_attempts=prior+account['local_attempts'],
-        cumulative_paid_attempts=account['paid_attempts'])
+        cumulative_attempts=prior+account['attempts'],
+        cumulative_local_attempts=history.get('prior_local_attempts',prior)+account['local_attempts'],
+        cumulative_paid_attempts=history.get('prior_paid_attempts',0)+account['paid_attempts'])
+    if 'prior_known_list_price_usage_usd' in history:
+        account['prior_known_list_price_usage_usd']=history['prior_known_list_price_usage_usd']
+        account['cumulative_known_list_price_usage_usd']=str(Decimal(history['prior_known_list_price_usage_usd'])+Decimal(account['known_list_price_usage_usd']))
     fit='FAIL(component)' if halt or failures else ('PASS' if observations else 'INCONCLUSIVE')
     result=dict(input_fingerprint=packet['input_fingerprint'],status='FAIL(component)' if fit=='FAIL(component)' else 'INCONCLUSIVE',
         contract_fit=fit,semantic_outcome='INCONCLUSIVE: requires independent review of saved source/output',

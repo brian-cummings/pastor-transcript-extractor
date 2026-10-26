@@ -101,3 +101,48 @@ Provider references checked October 25, 2026:
 [strict schema](https://docs.deepinfra.com/chat/structured-outputs),
 [reasoning and output billing](https://docs.deepinfra.com/chat/reasoning),
 [privacy](https://docs.deepinfra.com/account/data-privacy).
+
+## Generous-output completion baseline
+
+After the first hosted request spent 16,212 tokens on reasoning and stopped at
+16,384 total output tokens with partial JSON, Brian authorized one generous-output
+request before considering smaller budgets. The API still uses a finite allowance:
+65,536 generated tokens, the same medium reasoning, same dated model, identical
+source/system messages, same strict schema and at most two qualified claims.
+
+Prepare this explicitly with `deepinfra-prepare --expanded-output --from-input`
+pointing to the preserved `583b37a73580f24e234c57a1233effe71f3d60403eeb9d0e1bad97870f424c1e/input.json`.
+It writes under `<base>/evaluation/learning-demo-deepinfra-expanded/` and uses the
+same `deepinfra-run` CLI, with a distinct request version, namespace and one-attempt
+authorization marker on the stopped hosted run. It cannot use the original paid
+ledger by accident; version and ledger must match before reservation or send.
+
+The [public model metadata endpoint](https://api.deepinfra.com/models/deepseek-ai/DeepSeek-V4-Pro-0813)
+exposes a native `max_new_tokens` schema maximum of 1,000,000, while the general
+chat documentation describes 16,384 as the limit for most models. The exact hosted
+chat acceptance of 65,536 remains unvalidated until execution. Preparation and
+frozen-input verification use one unauthenticated metadata GET to pin the published
+deployment version, output capability and uncached prices. No source text or key
+is sent in that GET. A metadata/price/deployment change blocks execution. Metadata
+requests are reported separately from generation and paid calls. No paid capability
+probe or automatic parameter substitution is permitted.
+
+The input reservation is 49,152 tokens, which still exceeds the complete serialized
+request's conservative input bound. The new attempt reserves **$0.2342912** under
+its **$0.25** ceiling. The prior provider-estimated **$0.0490698** remains separately
+recorded and is included in cumulative known list-price usage; $0.25 is the new
+attempt's ceiling, not a claim about total historical spend. Maximum one additional
+paid attempt; cumulative maximum 30 attempts (28 local, two paid). Unknown spend
+still retains its reservation.
+
+The existing budget-aware timeout formula is retained, with a 7,200-second maximum
+for this explicit expanded policy. For this source request the calculated HTTP
+inactivity allowance is 3,780 seconds (63 minutes), not an expected duration or
+an inference-speed guarantee. Earlier versions retain their original timeouts and
+limits. Only the generated-token allowance and associated reservation/time budget
+change; source text, claim cap, reasoning effort and evidence requirements do not.
+
+First review whether a complete, faithful answer was delivered. Smaller output or
+reasoning budgets are future decisions, not an automatic search following this
+attempt. The assistant does not execute or monitor the paid source run. No partial
+answer is repaired or admitted, and no full-workflow advancement follows.
