@@ -28,6 +28,7 @@ OLLAMA_CONTEXT = 131072
 OLLAMA_INPUT_CAP = 122880
 THINKING_CHECK_VERSION = 'evidence-request-thinking-check-v1'
 THINKING_CHECK_NAMESPACE = 'learning-demo-thinking-check-v1'
+DEEPINFRA_VERSION = 'evidence-request-deepinfra-fit-v1'
 THINKING_CHECK_POLICY = dict(thinking=True, output_cap=4096,
     timeout_policy='input-output-budget-v1', startup_seconds=120,
     input_tokens_per_second=100, output_tokens_per_second=8, maximum_seconds=1800)
@@ -114,9 +115,23 @@ def ollama_runtime_identity(model=None):
 
 def request_model(spec):
     """The request's frozen selection, independent of mutable process defaults."""
+    if request_provider(spec)=='DeepInfra':
+        from .deepinfra_requests import MODEL
+        return MODEL
     provider,default,*_=PHASES[spec.phase]
     if provider!='Ollama': return default
     return ollama_model_name(spec.runtime_identity.get('model',default))
+
+
+def request_provider(spec):
+    return 'DeepInfra' if spec.version==DEEPINFRA_VERSION else PHASES[spec.phase][0]
+
+
+def request_reservation(spec):
+    if request_provider(spec)=='DeepInfra':
+        from .deepinfra_requests import reserved_usd
+        return reserved_usd()
+    return reservation(spec.phase)
 
 
 def wire(value):
@@ -166,6 +181,9 @@ class RequestSpec:
     def fingerprint(self): return digest(asdict(self))
 
     def preflight(self, encoding=None):
+        if request_provider(self)=='DeepInfra':
+            from .deepinfra_requests import preflight
+            return preflight(self)
         provider,_,_,input_cap,output_cap,_,_=PHASES[self.phase]
         model=request_model(self)
         if self.body.get('model') != model:
@@ -248,11 +266,14 @@ class WireResponse:
 
 
 def decode_response(spec, response):
-    provider=PHASES[spec.phase][0]
+    provider=request_provider(spec)
     if response.status_code!=200:
         raise ValueError(f'{provider} HTTP {response.status_code}; no retry')
     raw=strict_json(response.text)
     if not isinstance(raw,dict): raise ValueError('Provider response must be an object')
+    if provider=='DeepInfra':
+        from .deepinfra_requests import decode
+        return decode(raw)
     if provider=='Ollama':
         if raw.get('done') is not True or raw.get('done_reason')!='stop':
             raise ValueError(f"Incomplete Ollama response (done={raw.get('done')!r}, done_reason={raw.get('done_reason')!r}); no repair/retry")
@@ -269,6 +290,9 @@ def decode_response(spec, response):
 def execute(spec, ledger, store, transport, *, encoding=None):
     """Transport is supplied explicitly. A lost response consumes its reservation forever."""
     account=spec.preflight(encoding)
+    if request_provider(spec)=='DeepInfra':
+        from .deepinfra_requests import OneRequestLedger
+        if not isinstance(ledger,OneRequestLedger): raise ValueError('DeepInfra requires its explicit paid reservation ledger')
     key=spec.fingerprint
     with store.exclusive():
         attempts=store.attempts()
@@ -288,8 +312,10 @@ def execute(spec, ledger, store, transport, *, encoding=None):
             if receipt['response_digest']!=digest(receipt['response']): raise ValueError('Corrupt cached response')
             return receipt['response']
         ledger.check(attempts,spec.phase)
-        store.write_immutable('attempts/'+key+'.json',dict(request_fingerprint=key,
-            phase=spec.phase,reserved_usd=str(reservation(spec.phase)),namespace=spec.namespace))
+        attempt=dict(request_fingerprint=key,phase=spec.phase,
+                     reserved_usd=str(request_reservation(spec)),namespace=spec.namespace)
+        if request_provider(spec)=='DeepInfra': attempt['provider']='DeepInfra'
+        store.write_immutable('attempts/'+key+'.json',attempt)
         # Any exception leaves durable uncertain-spend reservation; caller cannot retry.
         response=transport(spec)
         halt=None
@@ -309,6 +335,9 @@ def execute(spec, ledger, store, transport, *, encoding=None):
 
 
 def validate_response(spec,response):
+    if request_provider(spec)=='DeepInfra':
+        from .deepinfra_requests import validate
+        return validate(response)
     provider,_,_,i,o,_,_=PHASES[spec.phase]
     model=request_model(spec)
     if provider=='Ollama':

@@ -114,7 +114,7 @@ def verify(input_path,base_dir):
     return value,marker
 
 
-def run_recipe(packet,store,transport):
+def run_recipe(packet,store,transport,*,ledger=None):
     path=store.root/'results.json'
     if path.exists():
         saved=json.loads(path.read_text())
@@ -123,8 +123,11 @@ def run_recipe(packet,store,transport):
     spec=requests.RequestSpec(**packet['request'])
     failures=[];observations=[];reading=None;halt=None;thinking_emitted=None
     try:
-        response=requests.execute(spec,requests.BudgetLedger(max_attempts=1,max_usd='0'),store,transport)
-        thinking_emitted=bool(response.get('raw',{}).get('message',{}).get('thinking'))
+        response=requests.execute(spec,ledger or requests.BudgetLedger(max_attempts=1,max_usd='0'),store,transport)
+        raw=response.get('raw',{})
+        message=(raw.get('choices',[{}])[0].get('message',{}) if requests.request_provider(spec)=='DeepInfra'
+                 else raw.get('message',{}))
+        thinking_emitted=bool(message.get('thinking') or message.get('reasoning_content'))
         reading=contract.validate_shape(contract.strict_json(response['output']),packet['schema'])
         if (reading['status']=='none' and reading['claims']) or (reading['status']=='proposed' and not reading['claims']):
             raise ValueError('Inconsistent reading status')
@@ -136,15 +139,17 @@ def run_recipe(packet,store,transport):
                 if claim['binding_id'] in ids: raise ValueError('Duplicate claim identity')
                 ids.add(claim['binding_id'])
                 observations.append(compile_machine_binding(window,claim,model=spec.body['model'],
-                    prompt_digest=digest(dict(system=spec.body['messages'][0]['content'],schema=spec.body['format'])),
+                    prompt_digest=digest(dict(system=spec.body['messages'][0]['content'],schema=packet['schema'])),
                     raw_response_ref='receipts/'+spec.fingerprint+'.json',locate_quotes=True))
             except (ValueError,KeyError,TypeError) as error:
                 failures.append(dict(component='literal_binding',binding_id=claim.get('binding_id'),reason=str(error)))
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:
         halt=str(error)
     account=demo.usage_account(store)
-    account.update(prior_attempts=27,prior_source_attempts=23,prior_synthetic_attempts=4,
-        cumulative_attempts=27+account['attempts'],cumulative_local_attempts=27+account['local_attempts'],
+    history=packet.get('history',{})
+    prior=history.get('prior_attempts',27)
+    account.update(prior_attempts=prior,prior_source_attempts=history.get('prior_source_attempts',23),prior_synthetic_attempts=4,
+        cumulative_attempts=prior+account['attempts'],cumulative_local_attempts=prior+account['local_attempts'],
         cumulative_paid_attempts=account['paid_attempts'])
     fit='FAIL(component)' if halt or failures else ('PASS' if observations else 'INCONCLUSIVE')
     result=dict(input_fingerprint=packet['input_fingerprint'],status='FAIL(component)' if fit=='FAIL(component)' else 'INCONCLUSIVE',

@@ -13,6 +13,42 @@ fit_app=typer.Typer(help='Prepare and inspect a six-window, local-only source-re
 app.add_typer(fit_app,name='model-fit')
 
 
+@fit_app.command('deepinfra-prepare')
+def deepinfra_prepare(prior_input:Path=typer.Option(...,'--from-input'),
+                     base_dir:Path|None=typer.Option(None,'--base-dir'),
+                     check_only:bool=typer.Option(False,'--check-only'),
+                     as_json:bool=typer.Option(False,'--json')):
+    """Prepare one hosted DeepSeek source check without provider calls."""
+    from ... import learning_demo_deepinfra_fit as hosted
+    try:
+        packet,out=hosted.prepare(prior_input,base_dir,check_only=check_only)
+        emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',
+            input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],
+            model=packet['request']['body']['model'],budget=packet['budget'],provider_calls=0,
+            credentials=packet['credentials']),as_json)
+    except (ValueError,OSError,KeyError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@fit_app.command('deepinfra-run')
+def deepinfra_run(input_path:Path=typer.Option(...,'--input'),
+                 base_dir:Path|None=typer.Option(None,'--base-dir'),
+                 experimental:bool=typer.Option(False,'--experimental'),
+                 approve_input:str|None=typer.Option(None,'--approve-input'),
+                 max_usd:str=typer.Option('0.25','--max-usd'),
+                 confirm_prices:bool=typer.Option(False,'--confirm-prices'),
+                 check_only:bool=typer.Option(False,'--check-only'),
+                 as_json:bool=typer.Option(False,'--json')):
+    """Execute exactly one frozen paid request; no fallback or retries."""
+    from ... import learning_demo_deepinfra_fit as hosted
+    try:
+        result=hosted.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,
+            max_usd=max_usd,confirm_prices=confirm_prices,check_only=check_only,
+            progress=lambda message:typer.echo(message,err=True))
+        emit(result,as_json)
+        if result['status']=='FAIL(component)': raise typer.Exit(1)
+    except (ValueError,OSError,KeyError) as error: raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('thinking-prepare')
 def thinking_prepare(prior_input:Path=typer.Option(...,'--from-input'),
                      base_dir:Path|None=typer.Option(None,'--base-dir'),

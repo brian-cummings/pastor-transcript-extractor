@@ -473,27 +473,34 @@ def dependency_entries(entries, ids):
 def usage_account(store):
     attempts=store.attempts(); known_input=0;known_output=0;known_cost=Decimal(0);unknown=0
     for attempt in attempts:
+        provider=attempt.get('provider',PHASES[attempt['phase']][0])
         path=store.root/'receipts'/(attempt['request_fingerprint']+'.json')
         if not path.exists(): unknown+=1;continue
         receipt=json.loads(path.read_text()); usage=(receipt['response'] or {}).get('usage',{})
         # A rejected local output can still carry genuine measured usage. Do not
         # confuse unknown output validity with unknown token counts or invent zeros.
         raw_path=store.root/'wire-responses'/(attempt['request_fingerprint']+'.json')
-        if not usage and PHASES[attempt['phase']][0]=='Ollama' and raw_path.exists():
+        if not usage and provider in ('Ollama','DeepInfra') and raw_path.exists():
             wire=json.loads(raw_path.read_text())
             if digest(wire)!=receipt.get('wire_response_digest'): raise ValueError('Corrupt raw usage evidence')
             try: raw=json.loads(wire['text']) if wire['status_code']==200 else {}
             except (ValueError,TypeError): raw={}
             if not isinstance(raw,dict): raw={}
             if raw.get('model')==request_model(RequestSpec(**receipt['request'])):
-                usage=dict(input_tokens=raw.get('prompt_eval_count'),output_tokens=raw.get('eval_count'))
+                usage=(dict(input_tokens=raw.get('prompt_eval_count'),output_tokens=raw.get('eval_count'))
+                       if provider=='Ollama' else dict(input_tokens=raw.get('usage',{}).get('prompt_tokens'),
+                                                     output_tokens=raw.get('usage',{}).get('completion_tokens')))
         if type(usage.get('input_tokens')) is not int or type(usage.get('output_tokens')) is not int:
             unknown+=1;continue
         i,o=usage['input_tokens'],usage['output_tokens'];known_input+=i;known_output+=o
         phase=PHASES[attempt['phase']]
-        known_cost+=(Decimal(i)*Decimal(phase[5])+Decimal(o)*Decimal(phase[6]))/Decimal(1000000)
-    return dict(attempts=len(attempts),local_attempts=sum(PHASES[a['phase']][0]=='Ollama' for a in attempts),
-        paid_attempts=sum(PHASES[a['phase']][0]=='TypeSafe' for a in attempts),openai_calls=0,reserved_usd=str(sum((Decimal(a['reserved_usd']) for a in attempts),Decimal(0))),
+        if provider=='DeepInfra':
+            from .deepinfra_requests import INPUT_PRICE,OUTPUT_PRICE
+            ip,op=INPUT_PRICE,OUTPUT_PRICE
+        else: ip,op=phase[5],phase[6]
+        known_cost+=(Decimal(i)*Decimal(ip)+Decimal(o)*Decimal(op))/Decimal(1000000)
+    return dict(attempts=len(attempts),local_attempts=sum(a.get('provider',PHASES[a['phase']][0])=='Ollama' for a in attempts),
+        paid_attempts=sum(a.get('provider',PHASES[a['phase']][0]) in ('TypeSafe','DeepInfra') for a in attempts),openai_calls=0,reserved_usd=str(sum((Decimal(a['reserved_usd']) for a in attempts),Decimal(0))),
         known_input_tokens=known_input,known_output_tokens=known_output,known_list_price_usage_usd=str(known_cost),
         unknown_usage_attempts=unknown,runtime_repairs=0,runtime_approvals=0,reference_inputs=0)
 

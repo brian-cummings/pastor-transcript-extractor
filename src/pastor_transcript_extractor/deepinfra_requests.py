@@ -1,0 +1,112 @@
+"""Explicit hosted diagnostic policy over the shared immutable request executor."""
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
+import math
+import os
+
+from .evidence_requests import DEEPINFRA_VERSION, WireResponse, wire
+
+NAMESPACE='learning-demo-deepinfra-fit-v1'
+MODEL='deepseek-ai/DeepSeek-V4-Pro-0813'
+ENDPOINT='https://api.deepinfra.com/v1/openai/chat/completions'
+INPUT_CAP=65536
+OUTPUT_CAP=16384
+INPUT_PRICE='1.30'
+OUTPUT_PRICE='2.60'
+MAX_USD='0.25'
+POLICY=dict(provider='DeepInfra',model=MODEL,endpoint=ENDPOINT,input_cap=INPUT_CAP,
+    output_cap=OUTPUT_CAP,input_usd_per_million=INPUT_PRICE,output_usd_per_million=OUTPUT_PRICE,
+    reasoning_effort='medium',service_tier='standard',
+    timeout_policy='120s_plus_input_bound_at_100tps_plus_output_at_20tps_rounded_to_minute_max_1800s',
+    model_pin_limitation='Hosted dated model ID, not a verifiable weight hash; no substitution accepted')
+
+
+def reserved_usd():
+    return (Decimal(INPUT_CAP)*Decimal(INPUT_PRICE)+Decimal(OUTPUT_CAP)*Decimal(OUTPUT_PRICE))/Decimal(1000000)
+
+
+def preflight(spec):
+    body=spec.body
+    if (spec.version!=DEEPINFRA_VERSION or spec.namespace!=NAMESPACE or spec.phase!='source_reading'
+        or spec.runtime_identity!=POLICY or body.get('model')!=MODEL
+        or set(body)!={'model','messages','max_tokens','response_format','temperature','top_p','stream','n','reasoning_effort'}
+        or body.get('max_tokens')!=OUTPUT_CAP or body.get('temperature')!=0 or body.get('top_p')!=1
+        or body.get('stream') is not False or type(body.get('n')) is not int or body['n']!=1
+        or body.get('reasoning_effort')!='medium'):
+        raise ValueError('Frozen DeepInfra model, endpoint, scope or generation policy differs')
+    fmt=body['response_format']
+    if (not isinstance(fmt,dict) or set(fmt)!={'type','json_schema'} or fmt['type']!='json_schema'
+        or set(fmt['json_schema'])!={'name','strict','schema'} or fmt['json_schema']['name']!='qualified_source_reading'
+        or fmt['json_schema']['strict'] is not True or not isinstance(fmt['json_schema']['schema'],dict)):
+        raise ValueError('DeepInfra requires the explicit strict JSON schema')
+    if (not isinstance(body['messages'],list) or len(body['messages'])!=2
+        or [m.get('role') for m in body['messages']]!=['system','user']
+        or any(set(m)!={'role','content'} or not isinstance(m['content'],str) for m in body['messages'])):
+        raise ValueError('DeepInfra requires exactly the frozen system/source messages')
+    bound=len(wire(body).encode())+4096
+    if bound>INPUT_CAP: raise ValueError('DeepInfra input exceeds reservation; no truncation')
+    timeout=math.ceil((120+bound/100+OUTPUT_CAP/20)/60)*60
+    if timeout>1800: raise ValueError('DeepInfra timeout exceeds bounded policy')
+    return dict(method='utf8_byte_upper_bound_plus_4096_framing',request_upper_bound=bound,
+        reserved_input=INPUT_CAP,output_cap=OUTPUT_CAP,timeout_seconds=timeout,
+        reserved_usd=str(reserved_usd()),maximum_usd=MAX_USD,
+        execution_policy=dict(provider='DeepInfra',reasoning_effort='medium',output_cap=OUTPUT_CAP,timeout_seconds=timeout),
+        output_accounting='completion_tokens includes billed reasoning; no cached-input discount assumed')
+
+
+@dataclass(frozen=True)
+class OneRequestLedger:
+    max_usd: str=MAX_USD
+
+    def check(self,attempts,phase):
+        try: cap=Decimal(self.max_usd)
+        except InvalidOperation as error: raise ValueError('Invalid DeepInfra dollar ceiling') from error
+        if not cap.is_finite() or cap<=0 or cap>Decimal(MAX_USD):
+            raise ValueError('DeepInfra maximum ceiling is $0.25')
+        if phase!='source_reading' or attempts: raise ValueError('One DeepInfra attempt only; no retry')
+        if reserved_usd()>cap: raise ValueError('DeepInfra reservation exceeds approved dollar ceiling')
+
+
+def decode(raw):
+    if raw.get('model')!=MODEL: raise ValueError('Resolved DeepInfra model differs; no substitution')
+    if raw.get('service_tier','standard') not in ('standard','default'):
+        raise ValueError('Unexpected DeepInfra service tier')
+    choices=raw.get('choices')
+    if not isinstance(choices,list) or len(choices)!=1: raise ValueError('DeepInfra completion inventory differs')
+    choice=choices[0]
+    if not isinstance(choice,dict): raise ValueError('Invalid DeepInfra choice')
+    if choice.get('finish_reason')!='stop':
+        raise ValueError(f"Incomplete DeepInfra response (finish_reason={choice.get('finish_reason')!r}); no repair/retry")
+    message=choice['message']
+    if not isinstance(message,dict): raise ValueError('Invalid DeepInfra message')
+    if message.get('refusal') or message.get('tool_calls') or not isinstance(message.get('content'),str) or not message['content'].strip():
+        raise ValueError('DeepInfra refused or returned no final JSON')
+    usage=raw['usage']
+    if not isinstance(usage,dict): raise ValueError('Invalid DeepInfra usage')
+    return dict(model=raw['model'],complete=True,output=message['content'],
+        usage=dict(input_tokens=usage['prompt_tokens'],output_tokens=usage['completion_tokens']),raw=raw)
+
+
+def validate(response):
+    if response['model']!=MODEL or response.get('complete') is not True:
+        raise ValueError('Incomplete or substituted DeepInfra response')
+    usage=response['usage']
+    for field,cap in (('input_tokens',INPUT_CAP),('output_tokens',OUTPUT_CAP)):
+        if type(usage[field]) is not int or not 0<=usage[field]<=cap:
+            raise ValueError('DeepInfra usage outside reservation')
+
+
+def credential_present():
+    return bool(os.environ.get('DEEPINFRA_API_KEY','').strip())
+
+
+def transport(spec):
+    import httpx
+    account=spec.preflight()
+    key=os.environ.get('DEEPINFRA_API_KEY','').strip()
+    if not key: raise ValueError('Set DEEPINFRA_API_KEY before execution')
+    # Fixed TLS endpoint. Headers/credentials never enter bodies, manifests or receipts.
+    with httpx.Client(timeout=account['timeout_seconds'],follow_redirects=False,trust_env=False,
+                      transport=httpx.HTTPTransport(retries=0)) as client:
+        response=client.post(ENDPOINT,headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},json=spec.body)
+    return WireResponse(response.status_code,response.text)

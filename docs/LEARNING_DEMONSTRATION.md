@@ -5,6 +5,8 @@ For a synthetic check of the installed serving runtime's schema enforcement, see
 the closed source model-fit trial and does not authorize another source run.
 The later [one-window thinking diagnostic](LEARNING_DEMONSTRATION_THINKING_CHECK.md)
 documents the separately requested smaller test and budget-aware timeout policy.
+The [bounded DeepInfra check](LEARNING_DEMONSTRATION_DEEPINFRA.md) adds the separately
+authorized one-request hosted model adapter and API-key setup.
 
 `pte analysis learning-demo` is the user-approved Ollama revision of the V3 adapter over `pastor_evidence`,
 `pastor_fingerprint`, `pastor_similarity` and `evidence_requests`. It preserves the
