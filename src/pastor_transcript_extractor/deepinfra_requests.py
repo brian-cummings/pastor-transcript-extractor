@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 import math
 import os
 
-from .evidence_requests import DEEPINFRA_VERSION, DEEPINFRA_EXPANDED_VERSION, DEEPINFRA_DIRECT_VERSION, DEEPINFRA_CORRECTION_VERSION, DEEPINFRA_BINDING_VERSION, WireResponse, wire
+from .evidence_requests import DEEPINFRA_VERSION, DEEPINFRA_EXPANDED_VERSION, DEEPINFRA_DIRECT_VERSION, DEEPINFRA_CORRECTION_VERSION, DEEPINFRA_BINDING_VERSION, DEEPINFRA_ENUM_VERSION, WireResponse, wire
 
 NAMESPACE='learning-demo-deepinfra-fit-v1'
 MODEL='deepseek-ai/DeepSeek-V4-Pro-0813'
@@ -30,6 +30,8 @@ CORRECTION_NAMESPACE='learning-demo-deepinfra-correction-v1'
 CORRECTION_POLICY={**DIRECT_POLICY,'maximum_usd':'0.10'}
 BINDING_NAMESPACE='learning-demo-binding-retry-v1'
 BINDING_POLICY={**CORRECTION_POLICY}
+ENUM_NAMESPACE='learning-demo-deepinfra-enum-check-v1'
+ENUM_POLICY={**DIRECT_POLICY,'input_cap':8192,'output_cap':1024,'maximum_usd':'0.003','timeout_policy':POLICY['timeout_policy']}
 
 
 def policy_for(version):
@@ -38,6 +40,7 @@ def policy_for(version):
     if version==DEEPINFRA_DIRECT_VERSION: return DIRECT_POLICY
     if version==DEEPINFRA_CORRECTION_VERSION: return CORRECTION_POLICY
     if version==DEEPINFRA_BINDING_VERSION: return BINDING_POLICY
+    if version==DEEPINFRA_ENUM_VERSION: return ENUM_POLICY
     raise ValueError('Unknown DeepInfra request policy')
 
 
@@ -53,7 +56,7 @@ def preflight(spec):
     binding=spec.version==DEEPINFRA_BINDING_VERSION
     corrective=spec.version==DEEPINFRA_CORRECTION_VERSION or binding
     expanded=spec.version in (DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION)
-    namespace=(BINDING_NAMESPACE if binding else CORRECTION_NAMESPACE if corrective else DIRECT_NAMESPACE if spec.version==DEEPINFRA_DIRECT_VERSION else EXPANDED_NAMESPACE if expanded else NAMESPACE)
+    namespace=(ENUM_NAMESPACE if spec.version==DEEPINFRA_ENUM_VERSION else BINDING_NAMESPACE if binding else CORRECTION_NAMESPACE if corrective else DIRECT_NAMESPACE if spec.version==DEEPINFRA_DIRECT_VERSION else EXPANDED_NAMESPACE if expanded else NAMESPACE)
     input_cap,output_cap=policy['input_cap'],policy['output_cap']
     if (spec.namespace!=namespace or spec.phase!='source_reading'
         or spec.runtime_identity!=policy or body.get('model')!=policy['model']
@@ -150,7 +153,7 @@ def decode(raw,spec=None):
         raise ValueError('DeepInfra refused or returned no final JSON')
     usage=raw['usage']
     if not isinstance(usage,dict): raise ValueError('Invalid DeepInfra usage')
-    if spec is not None and spec.version in (DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION):
+    if spec is not None and spec.version in (DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION,DEEPINFRA_ENUM_VERSION):
         details=usage.get('completion_tokens_details') or {}
         if not isinstance(details,dict): raise ValueError('Invalid DeepInfra token details')
         if (message.get('reasoning_content') or message.get('thinking') or message.get('reasoning')
