@@ -13,6 +13,20 @@ from .pastor_evidence import EvidenceArtifactStore, digest, locate_literal_spans
 
 VERSION='qualified-source-context-attachment-v2'
 FIELDS=fields.FIELDS+('context_sufficiency','conditions')
+
+
+def passage_candidates(window):
+    """Shared upstream source inventory; no assertion of semantic completeness."""
+    from .source_passages import inventory
+    return inventory(window)
+
+
+def resolve_passage(window,selection):
+    """Copy a selected contiguous range with compiler-compatible exact coordinates."""
+    from .source_passages import resolve
+    return resolve(window,selection)
+
+
 ATTACHMENT_RULE='''
 For each claim, conditions lists conditions and exceptions on that exact bound
 proposition, including when the proposition quotation already contains the

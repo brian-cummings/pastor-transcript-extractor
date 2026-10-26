@@ -43,12 +43,13 @@ def import_receipt(store,seed):
     store.write_immutable('reuse-'+key+'.json',dict(origin=seed['path'],receipt_digest=digest(receipt)))
 
 
-def retry_request(spec,response,errors,*,contextual=False):
+def retry_request(spec,response,errors,*,contextual=False,feedback_template=None):
+    if feedback_template is None: feedback_template=TEMPLATE
     content=response['output'] if isinstance(response['output'],str) else requests.wire(response['output'])
     task=(spec.body['messages'][-1]['content']+'\n\n') if len(spec.body['messages'])>2 else ''
     extra=('\nPreserve IDs across claims and abstentions. If context is insufficient, explicitly abstain for that ID.\n' if contextual else '')
     return replace(spec,body={**deepcopy(spec.body),'messages':deepcopy(spec.body['messages'][:2])+[
-        dict(role='assistant',content=content),dict(role='user',content=task+TEMPLATE+extra+requests.wire(errors))]},
+        dict(role='assistant',content=content),dict(role='user',content=task+feedback_template+extra+requests.wire(errors))]},
         source_identity={**spec.source_identity,'binding_retry_of':spec.fingerprint,
             'failed_output_digest':digest(content),'binding_errors_digest':digest(errors)})
 
