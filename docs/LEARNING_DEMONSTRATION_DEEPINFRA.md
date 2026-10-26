@@ -189,3 +189,67 @@ Maximum one new paid attempt. All 28 local and two paid attempts remain preserve
 cumulative maximum 31. The 63-minute HTTP inactivity allowance is a budget-derived
 waiting allowance, not an expected runtime. Semantic accuracy remains INCONCLUSIVE
 until saved source and output are independently reviewed.
+
+## One bounded contract correction
+
+Flash 1017's completed direct response passed the schema, but neither claim bound.
+Independent mechanical gaps included ambiguous literal evidence, an invalid
+own_assertion/discourse_use pairing, missing evidence for resolved not_stated
+findings, and an undefined qualification node. Existing source observations and
+the unchanged shared binding compiler cannot repair these producer omissions.
+Brian authorized clearer generic instructions and at most one model-authored
+correction after a new initial response. Historical outputs remain immutable.
+
+New CLI commands:
+
+```sh
+pte analysis learning-demo model-fit corrective-prepare --base-dir /Users/briancummings/Documents/PastorSearchData --from-input /Users/briancummings/Documents/PastorSearchData/evaluation/learning-demo-deepinfra-direct/a0947eb365c5ba0d13b01747075756f47882ec0ce1827c9a9bbd252284144c7c/input.json --json
+```
+
+The preparation manifest and exact `corrective-run` command are written under
+`<base>/evaluation/learning-demo-deepinfra-correction/<fingerprint>/`. Use that
+command with `--check-only` to verify the frozen preparation without generation.
+Preparation/checking read public model metadata, verify source/history hashes,
+and freeze implementation identity, schema, initial messages and correction
+construction. An implementation, metadata or historical-evidence change blocks
+execution. An immutable authorization marker prevents assigning a second variant
+to the same reviewed predecessor.
+
+This workflow retains the complete P318-R3973-theology window and strict two-claim
+schema. It adds explicit compiler rules to the model-facing instructions and
+non-repairing field-path diagnostics. The unchanged shared compiler is always
+the final mechanical gate. No pastor-specific propositions or warrants are
+authored by the preparation code. Mechanical validity does not establish semantic
+accuracy; reported viewpoints, adoption, qualifications and interpretations still
+need independent review.
+
+The exact model remains `deepseek-ai/DeepSeek-V4.1-Flash-1017`, reasoning disabled.
+Each request reserves 49,152 input and 65,536 output tokens at full uncached list
+prices. **Both reservations total $0.098304 under the $0.10 ceiling**, regardless
+of promotion or cache hits. There are at most two new paid attempts (cumulative
+maximum 33: 28 local, five paid). The dynamic HTTP inactivity allowance follows
+the existing input/output budget formula; it is not an expected runtime.
+
+A complete response with JSON/schema or literal-binding errors permits exactly
+one correction. The original system/source messages remain an identical prefix;
+the unchanged failed assistant output and a user message containing frozen
+instructions plus all collected diagnostics are appended. The second answer is
+a complete model-authored replacement, never a merged or manually repaired answer.
+If feedback exceeds the input cap, execution stops without truncation. Timeout,
+uncertain spend, refusal, wrong model, unexpected reasoning, transport or length
+failures never trigger correction. Empty valid inventories also stop.
+
+Both raw wire responses, exact requests, validation reports and accounting are
+preserved. Exact PTE response-cache replay recovers a completed request without
+new billing; it cannot create a new answer. DeepInfra prefix caching is automatic
+and best effort ([provider documentation](https://docs.deepinfra.com/chat/prompt-caching));
+the original prefix is retained but a discount is never assumed. No paid cache
+retention option is enabled.
+
+The output separately reports each attempt and final contract fit. Only the final
+complete, error-free answer can supply proposed observations. A mechanical PASS
+leaves overall semantic outcome INCONCLUSIVE pending source review. A second
+validation failure is a component FAIL; there is no third attempt, fallback,
+verification call, full-workflow advancement or production admission.
+Existing `deepinfra-run`, local model-fit, V8/P1 and Scripture benchmark behavior
+is unchanged; old request versions retain their one-attempt policies.

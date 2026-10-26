@@ -38,11 +38,11 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(result['observations'],[])
         self.assertEqual(self.inspect('not json')['errors'][0]['code'],'json')
 
-    def test_compiler_still_rejects_constraints_not_expanded_in_diagnostics(self):
+    def test_adoption_frame_rule_has_field_path_and_compiler_gate(self):
         row=self.output['claims'][0]
         row['adoption'].update(status='adopted',basis='discourse_use',evidence=[deepcopy(row['proposition']['span'])])
         result=self.inspect(self.output)
-        self.assertTrue(any(e['code']=='compiler' for e in result['errors']))
+        self.assertTrue(any(e['code']=='frame' for e in result['errors']))
 
     def test_repeated_quote_never_selects_first_match(self):
         self.window=SourceWindow(**{**asdict(self.window),'blocks':(

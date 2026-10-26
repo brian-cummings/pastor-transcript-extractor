@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 import math
 import os
 
-from .evidence_requests import DEEPINFRA_VERSION, DEEPINFRA_EXPANDED_VERSION, DEEPINFRA_DIRECT_VERSION, WireResponse, wire
+from .evidence_requests import DEEPINFRA_VERSION, DEEPINFRA_EXPANDED_VERSION, DEEPINFRA_DIRECT_VERSION, DEEPINFRA_CORRECTION_VERSION, WireResponse, wire
 
 NAMESPACE='learning-demo-deepinfra-fit-v1'
 MODEL='deepseek-ai/DeepSeek-V4-Pro-0813'
@@ -26,12 +26,15 @@ EXPANDED_POLICY={**POLICY,'input_cap':49152,'output_cap':65536,
 DIRECT_NAMESPACE='learning-demo-deepinfra-direct-v1'
 DIRECT_POLICY={**EXPANDED_POLICY,'model':FLASH_MODEL,'reasoning_effort':'none',
     'input_usd_per_million':'0.20','output_usd_per_million':'0.60','maximum_usd':'0.05'}
+CORRECTION_NAMESPACE='learning-demo-deepinfra-correction-v1'
+CORRECTION_POLICY={**DIRECT_POLICY,'maximum_usd':'0.10'}
 
 
 def policy_for(version):
     if version==DEEPINFRA_VERSION: return POLICY
     if version==DEEPINFRA_EXPANDED_VERSION: return EXPANDED_POLICY
     if version==DEEPINFRA_DIRECT_VERSION: return DIRECT_POLICY
+    if version==DEEPINFRA_CORRECTION_VERSION: return CORRECTION_POLICY
     raise ValueError('Unknown DeepInfra request policy')
 
 
@@ -44,8 +47,9 @@ def reserved_usd(version=DEEPINFRA_VERSION):
 def preflight(spec):
     body=spec.body
     policy=policy_for(spec.version)
-    expanded=spec.version in (DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION)
-    namespace=(DIRECT_NAMESPACE if spec.version==DEEPINFRA_DIRECT_VERSION else EXPANDED_NAMESPACE if expanded else NAMESPACE)
+    corrective=spec.version==DEEPINFRA_CORRECTION_VERSION
+    expanded=spec.version in (DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION)
+    namespace=(CORRECTION_NAMESPACE if corrective else DIRECT_NAMESPACE if spec.version==DEEPINFRA_DIRECT_VERSION else EXPANDED_NAMESPACE if expanded else NAMESPACE)
     input_cap,output_cap=policy['input_cap'],policy['output_cap']
     if (spec.namespace!=namespace or spec.phase!='source_reading'
         or spec.runtime_identity!=policy or body.get('model')!=policy['model']
@@ -59,8 +63,8 @@ def preflight(spec):
         or set(fmt['json_schema'])!={'name','strict','schema'} or fmt['json_schema']['name']!='qualified_source_reading'
         or fmt['json_schema']['strict'] is not True or not isinstance(fmt['json_schema']['schema'],dict)):
         raise ValueError('DeepInfra requires the explicit strict JSON schema')
-    if (not isinstance(body['messages'],list) or len(body['messages'])!=2
-        or [m.get('role') for m in body['messages']]!=['system','user']
+    roles=[m.get('role') for m in body['messages']] if isinstance(body['messages'],list) and all(isinstance(m,dict) for m in body['messages']) else None
+    if (roles not in ([['system','user'],['system','user','assistant','user']] if corrective else [['system','user']])
         or any(set(m)!={'role','content'} or not isinstance(m['content'],str) for m in body['messages'])):
         raise ValueError('DeepInfra requires exactly the frozen system/source messages')
     bound=len(wire(body).encode())+4096
@@ -89,6 +93,24 @@ class OneRequestLedger:
         if reserved_usd(self.request_version)>cap: raise ValueError('DeepInfra reservation exceeds approved dollar ceiling')
 
 
+@dataclass(frozen=True)
+class CorrectionLedger(OneRequestLedger):
+    max_usd: str='0.10'
+    request_version: str=DEEPINFRA_CORRECTION_VERSION
+
+    def check(self,attempts,phase):
+        try: cap=Decimal(self.max_usd)
+        except InvalidOperation as error: raise ValueError('Invalid DeepInfra dollar ceiling') from error
+        if self.request_version!=DEEPINFRA_CORRECTION_VERSION or not cap.is_finite() or not 0<cap<=Decimal('0.10'):
+            raise ValueError('Corrective workflow requires its frozen policy and at most $0.10')
+        if phase!='source_reading' or len(attempts)>=2: raise ValueError('At most two attempts; no further retry')
+        if any(a.get('namespace')!=CORRECTION_NAMESPACE or a.get('provider')!='DeepInfra'
+               or Decimal(a['reserved_usd'])!=reserved_usd(self.request_version) for a in attempts):
+            raise ValueError('Foreign corrective reservation')
+        # Reserve both full uncached requests before starting, regardless of cache or promotion.
+        if 2*reserved_usd(self.request_version)>cap: raise ValueError('Both request reservations exceed approved ceiling')
+
+
 def decode(raw,spec=None):
     policy=policy_for(spec.version if spec is not None else DEEPINFRA_VERSION)
     if raw.get('model')!=policy['model']: raise ValueError('Resolved DeepInfra model differs; no substitution')
@@ -106,7 +128,7 @@ def decode(raw,spec=None):
         raise ValueError('DeepInfra refused or returned no final JSON')
     usage=raw['usage']
     if not isinstance(usage,dict): raise ValueError('Invalid DeepInfra usage')
-    if spec is not None and spec.version==DEEPINFRA_DIRECT_VERSION:
+    if spec is not None and spec.version in (DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION):
         details=usage.get('completion_tokens_details') or {}
         if not isinstance(details,dict): raise ValueError('Invalid DeepInfra token details')
         if (message.get('reasoning_content') or message.get('thinking') or message.get('reasoning')

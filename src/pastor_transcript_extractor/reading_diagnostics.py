@@ -87,6 +87,12 @@ def inspect(output,schema,window,*,model,prompt_digest,raw_response_ref):
             add(path+'.adoption','pairing','own_assertion requires preacher, actual and own_speech together')
         if row['adoption']['status']=='adopted' and row['adoption']['basis'] not in ('explicit_endorsement','discourse_use'):
             add(path+'.adoption.basis','pairing','adopted requires explicit_endorsement or discourse_use')
+        if row['adoption']['status']=='adopted':
+            quote=row['proposition']['span']['text'];start=text.find(quote);end=start+len(quote)
+            evidence=row['adoption']['evidence']
+            if text.count(quote)==1 and all(text.count(s['text'])==1 for s in evidence) and all(
+                text.find(s['text'])>=start and text.find(s['text'])+len(s['text'])<=end for s in evidence):
+                add(path+'.adoption.evidence','frame','Adoption needs an endorsement/use frame extending beyond proposition quotation')
         for field in ('voice','adoption','polarity','expression','epistemic_status'):
             finding=row[field]
             if not finding['rationale'].strip(): add(path+'.'+field+'.rationale','required','Source decision needs rationale')
