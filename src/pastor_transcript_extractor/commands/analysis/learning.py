@@ -14,11 +14,19 @@ fit_app=typer.Typer(help='Prepare frozen model-fit checks and bounded source-rea
 app.add_typer(fit_app,name='model-fit')
 
 
+@fit_app.command('passage-selection-contract')
+def passage_selection_contract(base_dir:Path|None=typer.Option(None,'--base-dir'),as_json:bool=typer.Option(False,'--json')):
+    """Export revised passage contract and neutral verifier specimen; no execution."""
+    from ... import passage_selection_check as check
+    try: emit(check.export_contract(base_dir),as_json)
+    except (ValueError,OSError,KeyError,TypeError) as error: raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('passage-selection-prepare')
 def passage_selection_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),
                                check_only:bool=typer.Option(False,'--check-only'),
                                as_json:bool=typer.Option(False,'--json')):
-    """Freeze six saved candidates for ID-only complete-passage selection and verification."""
+    """Historical trial preparation is closed; use passage-selection-contract for offline review."""
     from ... import passage_selection_check as check
     try:
         packet,out=check.prepare(base_dir,check_only=check_only)
@@ -32,7 +40,7 @@ def passage_selection_run(input_path:Path=typer.Option(...,'--input'),base_dir:P
                            experimental:bool=typer.Option(False,'--experimental'),approve_input:str|None=typer.Option(None,'--approve-input'),
                            max_usd:str=typer.Option('0.04','--max-usd'),confirm_prices:bool=typer.Option(False,'--confirm-prices'),
                            check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
-    """Select contiguous source unit IDs with Flash 1017, then assess completeness with TypeSafe."""
+    """Read a completed passage trial; new execution is held pending a separate decision."""
     from ... import passage_selection_check as check
     try:
         result=check.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,

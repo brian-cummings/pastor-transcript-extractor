@@ -42,8 +42,43 @@ class SourcePassageTests(unittest.TestCase):
             self.assertEqual(p.inventory(w),p.inventory(w));self.assertEqual(''.join(u['text'] for u in units),text)
             self.assertEqual(len({u['id'] for u in units}),len(units))
             for u in units:
-                self.assertEqual(text[u['start']:u['end']],u['text']);self.assertLessEqual(len(u['text'].split()),40)
+                self.assertEqual(text[u['start']:u['end']],u['text'])
             for left,right in zip(units,units[1:]): self.assertEqual(left['end'],right['start'])
+            if len(text.split())==137: self.assertEqual(len(units),1)
+
+    def test_verifier_view_keeps_unselected_context_separate_and_rejects_old_ids(self):
+        window=window_with('Before. Selected. After.');source=p.inventory(window)
+        view=p.evidence_view(source,dict(start_unit='u0001',end_unit='u0001'))
+        self.assertEqual(view['selected_span']['text'],' Selected.')
+        self.assertEqual(view['unselected_context']['before']['text'],'Before.')
+        self.assertEqual(view['unselected_context']['after']['text'],' After.')
+        self.assertEqual(view['selected_span']['text'],window.target()[0]['target_text'][view['selected_span']['start']:view['selected_span']['end']])
+        old=deepcopy(source);old['version']='source-unit-ranges-v1'
+        with self.assertRaisesRegex(ValueError,'historical IDs'): p.evidence_view(old,dict(start_unit='u0000',end_unit='u0000'))
+        changed=deepcopy(source);changed['units'][0]['text']='changed'
+        with self.assertRaises(ValueError): p.evidence_view(changed,dict(start_unit='u0000',end_unit='u0000'))
+
+    def test_verifier_receives_exact_copied_text_and_stops_on_oversized_input(self):
+        value=packet();reading=selected(value['state']);spec=c.verification(value['state'],reading)
+        for item in spec.body['state']['items']:
+            src=value['state']['sources'][item['source_id']];text=''.join(u['text'] for u in src['units'])
+            self.assertEqual(item['evidence']['proposition']['selected_span']['text'],text)
+            self.assertEqual(spec.body['state']['sources'][item['source_id']]['target_text'],text)
+        oversized=window_with('word '*15000);source_state,_=c.state([dict(window=asdict(oversized),reading=fixture()[2])])
+        before=deepcopy(source_state)
+        with self.assertRaisesRegex(ValueError,'no truncation'): c.verification(source_state,selected(source_state))
+        self.assertEqual(source_state,before)
+
+    def test_offline_contract_export_and_execution_hold(self):
+        with TemporaryDirectory() as folder:
+            result=c.export_contract(Path(folder));data=json.loads(Path(result['contract']).read_text())
+            self.assertFalse(data['execution_prepared']);self.assertEqual(data['paid_calls'],0)
+            self.assertEqual(data['inventory_version'],p.VERSION)
+            self.assertEqual(data['example_request']['body']['state']['items'][0]['evidence']['proposition']['selected_span']['text'],' If it rains, use the covered path.')
+        with self.assertRaisesRegex(ValueError,'offline-only'): c.prepare(check_only=True)
+        with patch.object(c,'export_contract',return_value=dict(status='OFFLINE_CONTRACT_EXPORTED')):
+            result=CliRunner().invoke(app,['analysis','learning-demo','model-fit','passage-selection-contract','--base-dir','/tmp/example','--json'])
+            self.assertEqual(result.exit_code,0,result.output)
 
     def test_repeated_text_has_distinct_coordinates_and_cross_block_provenance(self):
         w=window_with('Same. Same.',' If rain, stay.');units=p.inventory(w)['units']
@@ -123,3 +158,8 @@ class SourcePassageTests(unittest.TestCase):
                 with self.assertRaises(ValueError): c.run(path,Path(folder))
                 for cap in ('0.001','.03','.05','NaN'):
                     with self.assertRaises(ValueError): c.run(path,Path(folder),max_usd=cap,check_only=True)
+            root=path.parent/'execution';root.mkdir()
+            saved=dict(input_fingerprint=value['input_fingerprint'],status='INCONCLUSIVE',production_admission=False)
+            (root/'results.json').write_text(json.dumps(saved))
+            with patch.object(c,'prepare',side_effect=AssertionError('Do not rebuild historical unit IDs')):
+                self.assertEqual(c.run(path,Path(folder))['status'],'INCONCLUSIVE')
