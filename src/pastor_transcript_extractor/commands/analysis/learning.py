@@ -104,6 +104,39 @@ def condition_contract_check(base_dir:Path|None=typer.Option(None,'--base-dir'),
     except (ValueError,OSError) as error: raise typer.BadParameter(str(error)) from error
 
 
+@fit_app.command('condition-model-prepare')
+def condition_model_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),
+                            check_only:bool=typer.Option(False,'--check-only'),
+                            as_json:bool=typer.Option(False,'--json')):
+    """Freeze five synthetic attachment cases and a two-call budget; no inference."""
+    from ... import condition_model_check as check
+    try:
+        packet,root=check.prepare(base_dir,check_only=check_only)
+        emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',
+            input=str(root/'input.json'),input_fingerprint=packet['input_fingerprint'],budget=packet['budget'],
+            generation_calls=0,paid_calls=0),as_json)
+    except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@fit_app.command('condition-model-run')
+def condition_model_run(input_path:Path=typer.Option(...,'--input'),
+                        base_dir:Path|None=typer.Option(None,'--base-dir'),
+                        experimental:bool=typer.Option(False,'--experimental'),
+                        approve_input:str|None=typer.Option(None,'--approve-input'),
+                        max_usd:str=typer.Option('0.02','--max-usd'),
+                        confirm_prices:bool=typer.Option(False,'--confirm-prices'),
+                        check_only:bool=typer.Option(False,'--check-only'),
+                        as_json:bool=typer.Option(False,'--json')):
+    """Run one frozen synthetic Flash check and conditional TypeSafe assessment; no retries."""
+    from ... import condition_model_check as check
+    try:
+        result=check.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,
+            confirm_prices=confirm_prices,check_only=check_only,progress=lambda text:typer.echo(text,err=True))
+        emit(result,as_json)
+        if result['status']=='FAIL(component)': raise typer.Exit(1)
+    except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('source-context-prepare')
 def source_context_prepare(prior_input:Path=typer.Option(...,'--from-input'),
                            base_dir:Path|None=typer.Option(None,'--base-dir'),
