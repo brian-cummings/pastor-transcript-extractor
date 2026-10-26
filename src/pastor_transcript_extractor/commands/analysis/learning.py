@@ -93,6 +93,17 @@ def source_context_contract(base_dir:Path|None=typer.Option(None,'--base-dir'),
     except (ValueError,OSError) as error: raise typer.BadParameter(str(error)) from error
 
 
+@fit_app.command('condition-contract-check')
+def condition_contract_check(base_dir:Path|None=typer.Option(None,'--base-dir'),
+                             as_json:bool=typer.Option(False,'--json')):
+    """Check condition/qualification attachment with synthetic inputs offline; no model calls."""
+    from ... import condition_contract_check as check
+    try:
+        result=check.export(base_dir);emit(result,as_json)
+        if result['status']=='FAIL(component)': raise typer.Exit(1)
+    except (ValueError,OSError) as error: raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('source-context-prepare')
 def source_context_prepare(prior_input:Path=typer.Option(...,'--from-input'),
                            base_dir:Path|None=typer.Option(None,'--base-dir'),
