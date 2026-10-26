@@ -14,6 +14,15 @@ fit_app=typer.Typer(help='Prepare frozen model-fit checks and bounded source-rea
 app.add_typer(fit_app,name='model-fit')
 
 
+@fit_app.command('polarity-producer-materialize')
+def polarity_producer_materialize(base_dir:Path|None=typer.Option(None,'--base-dir'),
+                                  as_json:bool=typer.Option(False,'--json')):
+    """Build unadmitted shadow observations from saved polarity decisions; no provider calls."""
+    from ... import polarity_producer
+    try: emit(polarity_producer.materialize(base_dir),as_json)
+    except (ValueError,OSError,KeyError,TypeError) as error: raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('polarity-choice-prepare')
 def polarity_choice_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),
                             check_only:bool=typer.Option(False,'--check-only'),
