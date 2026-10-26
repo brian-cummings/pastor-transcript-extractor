@@ -41,3 +41,22 @@ retention option of five minutes or one hour. PTE's immutable exact-response cac
 has no TTL and skips the provider entirely when compatible receipts are reused.
 Reservations never assume provider cache discounts. See DeepInfra's
 [retention policy](https://deepinfra.com/blog/prompt-cache-retention).
+
+## One full-schema source follow-up
+
+After the synthetic PASS, `guided-source-prepare` freezes the previously failed
+P318-R281 application window with the unchanged full reader schema and the same
+mechanically derived guide, now covering all full-schema fields. It preserves the
+complete frozen source message and geometry. Flash 1017 remains reasoning-disabled;
+this small follow-up caps output at 8,192 tokens. A single TypeSafe check of
+qualifications, polarity and context follows only after schema and binding pass.
+There is no binding retry or semantic correction in this follow-up. The two-request
+reservation is $0.017498112 under a $0.02 ceiling, and cumulative paid attempts remain
+at most 41. `guided-source-run --check-only` validates the freeze without inference.
+
+The schema guide and output cap both change relative to the stalled request, so
+this is a feasibility follow-up, not an isolated causal experiment. Binding PASS
+remains separate from semantic accuracy and production admission. Brian explicitly
+authorized Codex to execute this small follow-up, overriding the normal command-only
+handoff for these two requests; that authorization does not launch the remaining
+windows or the full demonstration workflow.
