@@ -24,6 +24,50 @@ def packet():
 
 
 class GuidedSourceTests(unittest.TestCase):
+    def test_semantic_review_reuses_source_latest_answer_and_scores_without_stale_feedback(self):
+        value,valid=packet();old=g.requests.RequestSpec(**value['request'])
+        old=replace(old,body={**old.body,'messages':old.body['messages']+[
+            dict(role='assistant',content='stale answer'),dict(role='user',content='stale feedback')]})
+        scores=[dict(binding_id=valid['claims'][0]['binding_id'],field='qualifications',
+            probability_correct=.5,review_requested=True,criterion='Synthetic criterion')]
+        spec=g.semantic_request(old,json.dumps(valid),scores)
+        self.assertEqual(len(spec.body['messages']),4)
+        self.assertEqual(spec.body['messages'][:2],old.body['messages'][:2])
+        self.assertEqual(json.loads(spec.body['messages'][2]['content']),valid)
+        self.assertEqual(spec.body['messages'][3]['content'],g.context.REVIEW_TEMPLATE+g.requests.wire(scores))
+        self.assertEqual(spec.source_identity['correction_of'],old.fingerprint)
+        self.assertEqual(spec.body['response_format'],old.body['response_format'])
+        self.assertEqual(spec.body['max_tokens'],8192);spec.preflight()
+
+    def test_semantic_review_reports_changes_rechecks_and_never_retries(self):
+        from test_source_context import abstain
+        for kind in ('retained','abstention','dropped','unbound'):
+            value,valid=packet();output=deepcopy(valid)
+            if kind=='abstention': output=abstain(output)
+            if kind=='dropped': output['claims'].pop()
+            if kind=='unbound': output['claims'][0]['proposition']['span']['text']='absent'
+            value.update(original_output=json.dumps(valid),scores=[dict(field='qualifications',probability_correct=.5)])
+            value['policy']=dict(semantic_review=True,binding_ids=g.context.inventory(valid))
+            calls=[];verifiers=[]
+            def flash(spec): calls.append(spec);return wire_response(spec,json.dumps(output))
+            def typesafe(spec):
+                verifiers.append(spec)
+                return dict(model='jev-1.13.0',complete=True,usage=dict(input_tokens=100,output_tokens=100),
+                    output={k:dict(type='noul',noul=.5) for k in spec.body['questions']})
+            with self.subTest(kind=kind),TemporaryDirectory() as directory:
+                result=g.run_recipe(value,Path(directory)/'execution',flash,typesafe)
+                self.assertEqual(len(calls),1)
+                self.assertEqual(len(verifiers),0 if kind in ('dropped','unbound') else 1)
+                self.assertFalse(result['production_admission'])
+                self.assertEqual(result['previous_scores'],value['scores'])
+                if kind in ('dropped','unbound'):
+                    self.assertEqual(result['status'],'FAIL(component)');self.assertEqual(result['revised_scores'],[])
+                else:
+                    self.assertEqual(result['status'],'INCONCLUSIVE');self.assertTrue(result['revised_scores'])
+                    self.assertEqual(len(result['changes']),len(valid['claims']))
+                    if kind=='retained': self.assertTrue(all(not r['changed_fields'] for r in result['changes']))
+                    else: self.assertIn('abstentions',[r['to_collection'] for r in result['changes']])
+
     def test_one_saved_answer_binding_replacement_preserves_source_and_checks_coverage(self):
         from pastor_transcript_extractor import binding_retry
         value,valid=packet();old=g.requests.RequestSpec(**value['request'])

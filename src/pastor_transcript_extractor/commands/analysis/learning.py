@@ -19,7 +19,7 @@ def guided_source_prepare(prior_input:Path=typer.Option(...,'--from-input'),
                           base_dir:Path|None=typer.Option(None,'--base-dir'),
                           check_only:bool=typer.Option(False,'--check-only'),
                           as_json:bool=typer.Option(False,'--json')):
-    """Prepare a guided source reading or one saved-answer binding correction."""
+    """Prepare a guided reading or one saved-answer binding/semantic correction."""
     from ... import guided_source_check as check
     try:
         packet,out=check.prepare(prior_input,base_dir,check_only=check_only)
