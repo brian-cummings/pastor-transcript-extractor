@@ -19,7 +19,7 @@ def guided_source_prepare(prior_input:Path=typer.Option(...,'--from-input'),
                           base_dir:Path|None=typer.Option(None,'--base-dir'),
                           check_only:bool=typer.Option(False,'--check-only'),
                           as_json:bool=typer.Option(False,'--json')):
-    """Prepare one full-schema source reading with the generated vocabulary guide."""
+    """Prepare a guided source reading or one saved-answer binding correction."""
     from ... import guided_source_check as check
     try:
         packet,out=check.prepare(prior_input,base_dir,check_only=check_only)
@@ -38,7 +38,7 @@ def guided_source_run(input_path:Path=typer.Option(...,'--input'),
                       confirm_prices:bool=typer.Option(False,'--confirm-prices'),
                       check_only:bool=typer.Option(False,'--check-only'),
                       as_json:bool=typer.Option(False,'--json')):
-    """Execute one guided reading and conditional TypeSafe check; no retry or correction."""
+    """Execute the frozen guided response and conditional TypeSafe check; no further retry."""
     from ... import guided_source_check as check
     try:
         result=check.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,
