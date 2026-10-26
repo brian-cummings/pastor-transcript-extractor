@@ -3,6 +3,8 @@
 For a synthetic check of the installed serving runtime's schema enforcement, see
 [Ollama schema conformance](OLLAMA_SCHEMA_CONFORMANCE.md). This is separate from
 the closed source model-fit trial and does not authorize another source run.
+The later [one-window thinking diagnostic](LEARNING_DEMONSTRATION_THINKING_CHECK.md)
+documents the separately requested smaller test and budget-aware timeout policy.
 
 `pte analysis learning-demo` is the user-approved Ollama revision of the V3 adapter over `pastor_evidence`,
 `pastor_fingerprint`, `pastor_similarity` and `evidence_requests`. It preserves the

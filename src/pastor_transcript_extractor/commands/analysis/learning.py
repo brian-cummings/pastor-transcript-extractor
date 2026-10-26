@@ -13,6 +13,40 @@ fit_app=typer.Typer(help='Prepare and inspect a six-window, local-only source-re
 app.add_typer(fit_app,name='model-fit')
 
 
+@fit_app.command('thinking-prepare')
+def thinking_prepare(prior_input:Path=typer.Option(...,'--from-input'),
+                     base_dir:Path|None=typer.Option(None,'--base-dir'),
+                     check_only:bool=typer.Option(False,'--check-only'),
+                     as_json:bool=typer.Option(False,'--json')):
+    """Freeze one complete reviewed window with thinking enabled and two claims."""
+    from ... import learning_demo_thinking_check as thinking
+    from httpx import HTTPError
+    try:
+        packet,out=thinking.prepare(prior_input,base_dir,check_only=check_only)
+        emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',
+            input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],
+            budget=packet['budget'],execution_policy=packet['token_account']['execution_policy'],model_calls=0),as_json)
+    except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@fit_app.command('thinking-run')
+def thinking_run(input_path:Path=typer.Option(...,'--input'),
+                 base_dir:Path|None=typer.Option(None,'--base-dir'),
+                 experimental:bool=typer.Option(False,'--experimental'),
+                 approve_input:str|None=typer.Option(None,'--approve-input'),
+                 check_only:bool=typer.Option(False,'--check-only'),
+                 as_json:bool=typer.Option(False,'--json')):
+    """Execute the frozen one-request thinking diagnostic; no paid calls or retries."""
+    from ... import learning_demo_thinking_check as thinking
+    from httpx import HTTPError
+    try:
+        result=thinking.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,
+            check_only=check_only,progress=lambda message:typer.echo(message,err=True))
+        emit(result,as_json)
+        if result['status']=='FAIL(component)': raise typer.Exit(1)
+    except (ValueError,OSError,KeyError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
 def emit(value,as_json):
     typer.echo(json.dumps(value,indent=2,ensure_ascii=False) if as_json else str(value))
 

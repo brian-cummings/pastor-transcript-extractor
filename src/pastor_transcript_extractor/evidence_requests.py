@@ -8,6 +8,7 @@ import json
 import hashlib
 import os
 import re
+import math
 from pathlib import Path
 
 from .pastor_evidence import EvidenceArtifactStore, digest
@@ -25,6 +26,11 @@ V3_PHASES = {
 OLLAMA_MODEL = 'gemma3:4b'
 OLLAMA_CONTEXT = 131072
 OLLAMA_INPUT_CAP = 122880
+THINKING_CHECK_VERSION = 'evidence-request-thinking-check-v1'
+THINKING_CHECK_NAMESPACE = 'learning-demo-thinking-check-v1'
+THINKING_CHECK_POLICY = dict(thinking=True, output_cap=4096,
+    timeout_policy='input-output-budget-v1', startup_seconds=120,
+    input_tokens_per_second=100, output_tokens_per_second=8, maximum_seconds=1800)
 # User-approved provider revision. The original V3 proposal remains immutable.
 PHASES = {key: (('Ollama', OLLAMA_MODEL, value[2], OLLAMA_INPUT_CAP, value[4], '0', '0')
                 if value[0]=='OpenAI' else value) for key,value in V3_PHASES.items()}
@@ -125,6 +131,23 @@ def ollama_context_for(body,context_limit=OLLAMA_CONTEXT):
     return min(context_limit,max(4096,((needed+1023)//1024)*1024))
 
 
+def local_execution_settings(spec):
+    """Explicit opt-in diagnostic policy; historical request behavior is unchanged."""
+    policy=spec.runtime_identity.get('local_request_policy')
+    if spec.version!=THINKING_CHECK_VERSION:
+        if policy is not None: raise ValueError('Local diagnostic policy requires its pinned request version')
+        return dict(thinking=False,output_cap=PHASES[spec.phase][4],timeout_seconds=600)
+    if (spec.namespace!=THINKING_CHECK_NAMESPACE or spec.phase!='source_reading'
+        or policy!=THINKING_CHECK_POLICY or not spec.runtime_identity.get('thinking_supported')
+        or spec.runtime_identity.get('thinking') is not True):
+        raise ValueError('Thinking check policy or scope differs')
+    input_bound=len(wire(spec.body).encode())+4096
+    seconds=policy['startup_seconds']+input_bound/policy['input_tokens_per_second']+policy['output_cap']/policy['output_tokens_per_second']
+    timeout=max(300,math.ceil(seconds/60)*60)
+    if timeout>policy['maximum_seconds']: raise ValueError('Required timeout exceeds diagnostic ceiling')
+    return dict(thinking=True,output_cap=policy['output_cap'],timeout_seconds=timeout)
+
+
 def reservation(phase, phases=PHASES):
     _,_,_,i,o,ip,op=phases[phase]
     return (Decimal(i)*Decimal(ip)+Decimal(o)*Decimal(op))/Decimal(1000000)
@@ -149,6 +172,8 @@ class RequestSpec:
             raise ValueError('Pinned model differs; no fallback')
         serialized=wire(self.body)
         if provider=='Ollama':
+            settings=local_execution_settings(self)
+            output_cap=settings['output_cap']
             options=self.body.get('options',{})
             runtime=self.runtime_identity
             context_limit=min(OLLAMA_CONTEXT,runtime.get('num_ctx',OLLAMA_CONTEXT))
@@ -157,8 +182,8 @@ class RequestSpec:
             if runtime.get('thinking_supported'): fields.add('think')
             if (options!={'num_ctx':ollama_context_for(self.body,context_limit),'num_predict':output_cap,'temperature':0,'seed':0,'top_k':1,'top_p':1}
                 or self.body.get('stream') is not False or not isinstance(self.body.get('format'),dict)
-                or set(self.body)!=fields or ('think' in fields and self.body.get('think') is not False)
-                or runtime.get('thinking',False) is not False):
+                or set(self.body)!=fields or ('think' in fields and self.body.get('think') is not settings['thinking'])
+                or runtime.get('thinking',False) is not settings['thinking']):
                 raise ValueError('Ollama decoding/context/output limits differ')
             if self.runtime_identity:
                 if self.runtime_identity['model']!=model: raise ValueError('Runtime model identity differs')
@@ -166,9 +191,11 @@ class RequestSpec:
             reserved=len(serialized.encode())+4096
             if reserved>input_cap or reserved+output_cap>options['num_ctx']:
                 raise ValueError(f'Input token fit failure: byte upper bound {reserved}>{input_cap} in {self.phase}; no truncation or additional batches')
-            return dict(method='utf8_byte_upper_bound_plus_4096_template_and_schema_framing',
+            account=dict(method='utf8_byte_upper_bound_plus_4096_template_and_schema_framing',
                 request_upper_bound=reserved,reserved_input=reserved,cap=input_cap,
                 output_cap=output_cap,num_ctx=options['num_ctx'],exact_token_count_known=False)
+            if self.version==THINKING_CHECK_VERSION: account['execution_policy']=settings
+            return account
         # Conservative byte upper bound; no tokenizer/API call and no long-context opt-in.
         state=wire(self.body['state']).encode()
         sizes={key:len(state)+len(wire(q).encode())+1024 for key,q in self.body['questions'].items()}
@@ -231,7 +258,8 @@ def decode_response(spec, response):
             raise ValueError(f"Incomplete Ollama response (done={raw.get('done')!r}, done_reason={raw.get('done_reason')!r}); no repair/retry")
         for name in ('prompt_eval_count','eval_count'):
             if name not in raw: raise ValueError(f'Completed Ollama response missing {name}; no retry')
-        if spec.runtime_identity.get('thinking_supported') and raw.get('message',{}).get('thinking'):
+        settings=local_execution_settings(spec)
+        if spec.runtime_identity.get('thinking_supported') and not settings['thinking'] and raw.get('message',{}).get('thinking'):
             raise ValueError('Provider emitted thinking despite frozen disabled policy; no retry')
         return dict(model=raw['model'],usage=dict(input_tokens=raw['prompt_eval_count'],output_tokens=raw['eval_count']),
             complete=True,output=raw['message']['content'],raw=raw)
@@ -283,7 +311,9 @@ def execute(spec, ledger, store, transport, *, encoding=None):
 def validate_response(spec,response):
     provider,_,_,i,o,_,_=PHASES[spec.phase]
     model=request_model(spec)
-    if provider=='Ollama': i=min(i,spec.runtime_identity.get('input_cap',i))
+    if provider=='Ollama':
+        i=min(i,spec.runtime_identity.get('input_cap',i))
+        o=local_execution_settings(spec)['output_cap']
     if response['model']!=model: raise ValueError('Resolved model differs')
     if response.get('complete') is not True: raise ValueError('Incomplete/refused response; no repair/retry')
     usage=response['usage']
@@ -313,7 +343,7 @@ def ollama_transport(spec):
         raise ValueError('Ollama tag changed after freeze; no substitution')
     endpoint=local_ollama_url(runtime['base_url'])+'/api/chat'
     # Local only, no API key, proxy, redirects, auto-pull, retry or OpenAI fallback.
-    with httpx.Client(timeout=600,follow_redirects=False,trust_env=False,
+    with httpx.Client(timeout=local_execution_settings(spec)['timeout_seconds'],follow_redirects=False,trust_env=False,
                       transport=httpx.HTTPTransport(retries=0)) as client:
         response=client.post(endpoint,json=spec.body)
     return WireResponse(response.status_code,response.text)
