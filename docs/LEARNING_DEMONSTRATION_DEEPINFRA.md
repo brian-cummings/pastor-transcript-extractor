@@ -298,6 +298,50 @@ accuracy. Any later validation must freeze this question policy before using
 existing unseen cases; no additional variant or held-out execution is authorized
 by this preparation.
 
+## Re-review from uncertainty alone
+
+Brian authorized one Flash re-review after the explicit-field check remained
+uncertain. This tests whether uncertain field scores can prompt a useful source
+re-reading without an authoritative critique or supplied correction.
+
+`pte analysis learning-demo model-fit uncertainty-prepare --from-input <completed-field-check-input> --base-dir <base> --json`
+freezes the request under `<base>/evaluation/learning-demo-uncertainty-review/`.
+The exact `uncertainty-run` command is in `preparation.md`; `--check-only` verifies
+the frozen source, history, implementation, provider metadata and budget without
+inference. Preparation/preflight read Flash public metadata once, never source
+generation. Both provider credentials are required for execution.
+
+The initial two Flash messages and exact saved assistant answer are preserved.
+The appended user message contains all four machine field scores with binding ID,
+field, existing criterion, probability of correctness, and review_requested for
+fields below the existing pass threshold. It explicitly states that uncertainty
+does not prove an error, allows an unchanged answer, and asks to preserve supported
+content and both underlying points. There are no selected-passage hints, hand-authored
+repairs, known-error labels or expected answers. The complete original source
+remains available. Flash 1017 uses the existing reasoning-disabled request policy.
+
+After one complete, mechanically valid re-review preserving the two claim IDs,
+the exact same explicit-field verification builder checks the revised proposals.
+Question wording, field meanings, model, thresholds and full source-block selection
+policy are unchanged; the proposed values being checked necessarily change.
+There is no extra verifier question or prompt variant selected from the outcome.
+A missing claim, schema/binding failure, overflow, timeout, length stop or transport
+failure stops without a second re-review or manual repair.
+
+Both original/revised outputs, section-level changes, raw judgments, source references
+and accounting are preserved. Changes to previously confident fields are reported
+alongside changes to uncertain ones. Source review must examine error correction
+AND preservation of correct content. A higher score, unchanged claim ID, or an
+unchanged answer cannot establish either. Only qualifications and polarity are
+rechecked in this diagnostic; it is not full semantic verification or admission.
+
+Maximum two new paid requests: one Flash re-review and one TypeSafe recheck.
+Full uncached reservation **$0.051904512**; ceiling **$0.06**. Cumulative maximum
+36 attempts (28 local, eight paid). No new initial extraction, retry, second revision,
+automatic expansion or production admission. Overall semantic result remains
+INCONCLUSIVE pending review even if all field judgments pass. This reviewed case
+does not establish general accuracy, calibration or suitability of a correction loop.
+
 ## TypeSafe feedback experiment on the saved Flash answer
 
 The completed `37c64e52...` run bound two claims on its first attempt. Offline
