@@ -87,7 +87,7 @@ def deepinfra_enum_run(input_path:Path=typer.Option(...,'--input'),
 @fit_app.command('source-context-contract')
 def source_context_contract(base_dir:Path|None=typer.Option(None,'--base-dir'),
                             as_json:bool=typer.Option(False,'--json')):
-    """Export the versioned abstention/context contract offline; no experiment execution."""
+    """Export the versioned abstention, condition-attachment and context contract offline."""
     from ... import source_context
     try: emit(source_context.export(base_dir),as_json)
     except (ValueError,OSError) as error: raise typer.BadParameter(str(error)) from error

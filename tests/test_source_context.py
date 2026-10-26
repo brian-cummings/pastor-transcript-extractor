@@ -114,11 +114,82 @@ class SourceContextTests(unittest.TestCase):
         outcome=c.eligibility(checked,judgment)
         self.assertEqual(outcome['eligible_observation_ids'],[])
         self.assertTrue(all(x['unresolved_fields']==['context_sufficiency'] for x in outcome['withheld']))
-        self.assertEqual(len(c.review_scores(spec,judgment)),6)
+        self.assertEqual(len(c.review_scores(spec,judgment)),8)
         self.assertEqual(c.eligibility(checked,None)['eligible_observation_ids'],[])
         for findings in judgment['findings'].values(): findings['context_sufficiency'].update(probability=.99,resolved=True)
         self.assertEqual(len(c.eligibility(checked,judgment)['eligible_observation_ids']),2)
         self.assertFalse(outcome['production_admission'])
+
+    def test_dedicated_conditions_question_reuses_meaning_state_and_criteria(self):
+        window,_,valid=fixture();checked=inspect(valid,window)
+        spec,candidates=c.verification(window,checked['observations'])
+        full=c.contract.verification_request('source_verification',spec.body['state'],spec.body['state']['items'],
+            spec.source_identity,source=True)
+        for item in spec.body['state']['items']:
+            key=item['id']+':conditions';question=spec.body['questions'][key]
+            self.assertEqual(question['criteria'],full.body['questions'][key]['criteria'])
+            self.assertEqual(question['instructions']['check'],c.contract.CHECK_MEANINGS['conditions'])
+            self.assertEqual(question['instructions']['returned_value'],item['binding']['conditions'])
+            self.assertEqual(question['instructions']['attachment_rule'],c.ATTACHMENT_RULE)
+        self.assertEqual(spec.version,c.VERSION);self.assertEqual(spec.namespace,c.VERSION)
+        self.assertEqual(c.fields.PASS,.90);self.assertEqual(c.fields.FAIL,.10)
+        spec.preflight()
+
+    def test_old_three_field_verdicts_and_uncertain_conditions_do_not_satisfy_new_gate(self):
+        window,_,valid=fixture();checked=inspect(valid,window)
+        spec,candidates=c.verification(window,checked['observations'])
+        answers={k:dict(type='noul',noul=.99) for k in spec.body['questions']}
+        judgment=feedback.judgments(dict(output=answers),spec,candidates)
+        for mode in ('missing','uncertain','false'):
+            prior=deepcopy(judgment)
+            for finding in prior['findings'].values():
+                if mode=='missing': finding.pop('conditions')
+                else: finding['conditions'].update(probability=.5 if mode=='uncertain' else .05,resolved=False)
+            outcome=c.eligibility(checked,prior)
+            self.assertEqual(outcome['eligible_observation_ids'],[])
+            self.assertTrue(all(row['unresolved_fields']==['conditions'] for row in outcome['withheld']))
+        self.assertEqual(len(c.eligibility(checked,judgment)['eligible_observation_ids']),2)
+        self.assertFalse(c.eligibility(checked,judgment)['production_admission'])
+
+    def test_attachment_rule_is_required_without_a_schema_or_compiler_change(self):
+        window,spec,valid=fixture();before=deepcopy(valid)
+        c.validate_request(spec)
+        packet=c.contract_packet()
+        self.assertIn(c.ATTACHMENT_RULE,packet['reader_prompt'])
+        self.assertEqual(packet['fields'],['qualifications','polarity','context_sufficiency','conditions'])
+        self.assertEqual(packet['version'],'qualified-source-context-attachment-v2')
+        self.assertEqual(inspect(valid,window)['errors'],[]);self.assertEqual(valid,before)
+        spec.body['messages'][0]['content']=spec.body['messages'][0]['content'].replace(c.ATTACHMENT_RULE,'')
+        with self.assertRaisesRegex(ValueError,'explicit reader'): c.validate_request(spec)
+
+    def test_old_contract_version_cannot_silently_run_under_new_attachment_policy(self):
+        window,spec,valid=fixture()
+        with TemporaryDirectory() as directory:
+            result=b.run_case(dict(input_fingerprint='historical-version-control',schema=c.schema(),
+                policy=dict(source_context_version='qualified-source-context-v1')),
+                dict(case_id='synthetic',window=asdict(window),request=asdict(spec)),Path(directory),
+                lambda s:self.fail('old policy must stop before send'),lambda s:self.fail('no verifier'))
+            self.assertIn('Unsupported source context contract version',result['halt'])
+            self.assertEqual(result['status'],'FAIL(component)')
+
+    def test_uncertain_conditions_enter_same_correction_loop_and_are_rechecked(self):
+        window,spec,valid=fixture();calls=[];verifiers=[]
+        def flash(request): calls.append(request);return wire_response(request,json.dumps(valid))
+        def typesafe(request):
+            verifiers.append(request)
+            return dict(model='jev-1.13.0',complete=True,usage=dict(input_tokens=100,output_tokens=100),
+                output={k:dict(type='noul',noul=.05 if len(verifiers)==1 and k.endswith(':conditions') else .99)
+                    for k in request.body['questions']})
+        with TemporaryDirectory() as directory:
+            result=b.run_case(dict(input_fingerprint='synthetic',schema=c.schema(),policy=dict(source_context_version=c.VERSION)),
+                dict(case_id='synthetic',window=asdict(window),request=asdict(spec)),Path(directory),flash,typesafe)
+            self.assertIsNone(result['halt']);self.assertEqual(len(calls),2);self.assertEqual(len(verifiers),2)
+            self.assertIn('"field":"conditions"',calls[1].body['messages'][-1]['content'])
+            self.assertTrue(all(k['unresolved_fields']==['conditions'] for k in result['context_eligibility']['initial']['withheld']))
+            comparisons=[x for x in result['revision']['field_comparisons'] if x['field']=='conditions']
+            self.assertEqual(len(comparisons),2)
+            self.assertTrue(all(x['previous_probability_correct']==.05 and x['probability_correct']==.99 for x in comparisons))
+            self.assertFalse(result['production_admission'])
 
     def test_abstention_transition_preserves_coverage_and_reports_changes(self):
         _,_,valid=fixture();mixed=abstain(valid)
