@@ -148,8 +148,8 @@ def changes(original_output,reading):
         changed_fields=sorted(k for k in set(old[key][1])|set(new[key][1]) if old[key][1].get(k)!=new[key][1].get(k))) for key in old]
 
 
-def export(base_dir=None):
-    """Offline contract handoff; no experiment sources, reference answers or calls."""
+def contract_packet():
+    """Pure contract construction for preparation and read-only freeze checks."""
     from . import learning_demo as demo
     from . import binding_retry
     reader_prompt=(thinking.PROMPT+diagnostics.PROMPT+PROMPT).replace(
@@ -163,6 +163,13 @@ def export(base_dir=None):
         generation_calls=0,paid_calls=0,production_admission=False,
         limitation='Contract preparation only. A new source trial requires a separately frozen source, model, code and budget packet.')
     packet['contract_fingerprint']=digest(packet)
+    return packet
+
+
+def export(base_dir=None):
+    """Offline contract handoff; no experiment sources, reference answers or calls."""
+    from . import learning_demo as demo
+    packet=contract_packet()
     root=demo.build_paths(base_dir).evaluation/'source-context-contract'/packet['contract_fingerprint']
     if root.resolve().is_relative_to(Path(__file__).parents[2].resolve()): raise ValueError('Artifacts must be outside repository')
     EvidenceArtifactStore(root).write_immutable('contract.json',packet)

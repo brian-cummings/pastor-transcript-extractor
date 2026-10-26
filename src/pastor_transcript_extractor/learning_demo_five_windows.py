@@ -337,6 +337,9 @@ def run_recipe(packet,root,flash_transport,typesafe_transport,*,progress=None):
             revised=(revised['mechanical']['reading'] if revised and revised['mechanical'] else None),
             review_required=['errors corrected','correct content damaged','unsupported new content','retained errors','abstentions'],
             outcome=outcome['status']))
+        if 'context_eligibility' in outcome:
+            case_summaries[-1]['context_eligibility']=outcome['context_eligibility']
+            review_cases[-1]['context_eligibility']=outcome['context_eligibility']
     artifacts.write_immutable('source-review-packet.json',dict(input_fingerprint=packet['input_fingerprint'],cases=review_cases,
         semantic_audit='PENDING; no accuracy counts inferred from model scores'))
     component_fail=any(c['status']=='FAIL(component)' for c in results)

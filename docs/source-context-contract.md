@@ -53,9 +53,24 @@ The immutable contract goes under the application base's
 `evaluation/source-context-contract/<fingerprint>/contract.json`. This is a contract
 handoff, not an executable experiment input. Existing `remaining-five-*` commands
 continue to represent their historical frozen policies; they do not adopt this
-contract implicitly. A source trial requires a separate preparation and execution
-decision with exact sources, request/model identity, compatibility audit and budget.
-No additional trial is launched by this change.
+contract implicitly.
+
+`source-context-prepare --from-input <completed-five-window-input> --base-dir <base>
+--json` freezes those same five sources under the new contract and returns an exact
+`source-context-run` command. Preparation validates source lineage, previous attempt
+accounting, published deployment/prices and receipt compatibility without inference.
+The prepared maximum is 30 new paid requests (20 Flash including binding retries,
+10 TypeSafe), a $1.010565120 reservation and $1.02 execution ceiling. Including the
+completed history, at most 62 paid requests and less than $2 in prior list-price
+usage plus the new reservation are allowed. Historical local calls remain separately
+accounted. No model, source collection, threshold or production admission changes.
+
+`source-context-run --input <new-frozen-input> --check-only --base-dir <base> --json`
+validates the freeze without writes or inference. Paid execution additionally
+requires the exact input approval, experimental flag, explicit dollar ceiling,
+confirmed prices and both provider credentials. Results and the source review
+packet expose context eligibility, withheld fields and abstention IDs. No additional
+trial is executed during preparation.
 
 Acceptance uses synthetic outputs only: mixed and all-abstention inventories,
 missing continuation/referent/condition/attribution/scope, literal locations across
