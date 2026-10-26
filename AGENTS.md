@@ -12,6 +12,7 @@
 - Assume Brian's virtual environment is already active when providing copy-paste commands. Use `pte` or `python` directly; do not prefix commands with `.venv/bin/` or include venv activation steps.
 - Brian's handoff role is to execute commands, approve/reject concrete results, and make minor edits. Prepare the cases, defaults, inputs, and proposed changes for him; do not assign open-ended selection, experimental design, JSON authoring, or annotation work.
 - Own interpretation and next-step recommendations after Brian reviews the prepared results. Ask only for decisions that cannot reasonably be resolved from the available evidence, with a concrete proposal ready for approval.
+- For current supervised learning-demo work, cumulative attempt counts are reporting only: Brian superseded the original V3 66-attempt ceiling. Prevent runaway spending with an explicitly approved frozen run, a per-run dollar/attempt ceiling, bounded retries and no automatic expansion or next experiment. Preserve historical budgets and receipts unchanged.
 
 ## Reuse and responsibility in the evidence pipeline
 

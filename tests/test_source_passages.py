@@ -69,16 +69,42 @@ class SourcePassageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'no truncation'): c.verification(source_state,selected(source_state))
         self.assertEqual(source_state,before)
 
-    def test_offline_contract_export_and_execution_hold(self):
+    def test_offline_contract_export_does_not_authorize_execution(self):
         with TemporaryDirectory() as folder:
             result=c.export_contract(Path(folder));data=json.loads(Path(result['contract']).read_text())
             self.assertFalse(data['execution_prepared']);self.assertEqual(data['paid_calls'],0)
             self.assertEqual(data['inventory_version'],p.VERSION)
             self.assertEqual(data['example_request']['body']['state']['items'][0]['evidence']['proposition']['selected_span']['text'],' If it rains, use the covered path.')
-        with self.assertRaisesRegex(ValueError,'offline-only'): c.prepare(check_only=True)
+            self.assertIsNone(data['cumulative_attempt_limit'])
         with patch.object(c,'export_contract',return_value=dict(status='OFFLINE_CONTRACT_EXPORTED')):
             result=CliRunner().invoke(app,['analysis','learning-demo','model-fit','passage-selection-contract','--base-dir','/tmp/example','--json'])
             self.assertEqual(result.exit_code,0,result.output)
+
+    def test_supervised_preparation_reports_cumulative_usage_without_expanding_run(self):
+        from test_attachment_trial import packet as attachment_packet
+        base,reading=attachment_packet()
+        cases=[dict(window=row['window'],reading=deepcopy(reading)) for row in base['cases']]
+        source_state,windows=c.state(cases);spec=c.reader_request(source_state)
+        old=dict(input_fingerprint='0665a54c91a8cdd265928a01d0886cb25551be30de91f31a99b7713dda317977',
+            request=asdict(spec),state=source_state,windows={k:asdict(v) for k,v in windows.items()},
+            candidate_index=[dict(item_id=i['item_id'],binding_id='synthetic') for i in source_state['items']],coverage={},
+            history=dict(preserved_files={},prior_accounting=dict(cumulative_attempts=91,cumulative_local_attempts=28,
+                cumulative_paid_attempts=63,cumulative_known_list_price_usage_usd='.35')))
+        def flash(spec):
+            return dict(model=c.hosted.FLASH_MODEL,complete=True,usage=dict(input_tokens=100,output_tokens=100),output=json.dumps(selected(source_state)))
+        def verifier(spec):
+            return dict(model='jev-1.13.0',complete=True,usage=dict(input_tokens=100,output_tokens=100),output={key:dict(type='noul',noul=.99) for key in spec.body['questions']})
+        with TemporaryDirectory() as folder:
+            path=c.directory(Path(folder),old['input_fingerprint'])/'input.json';path.parent.mkdir(parents=True);path.write_text(json.dumps(old))
+            c.run_recipe(old,path.parent/'execution',flash,verifier)
+            with patch.object(c.prior.previous.trial,'frozen',return_value=old):
+                frozen,out=c.prepare(Path(folder),check_only=True)
+            self.assertFalse(out.exists());self.assertIsNone(frozen['policy']['cumulative_attempt_limit'])
+            self.assertEqual(frozen['budget']['cumulative_paid_attempts_before'],65)
+            self.assertEqual(frozen['budget']['cumulative_paid_attempts_if_all_used'],68)
+            self.assertEqual(frozen['budget']['maximum_paid_attempts'],3)
+            self.assertEqual(frozen['budget']['max_usd'],'.04')
+            self.assertFalse(frozen['policy']['automatic_advancement'])
 
     def test_repeated_text_has_distinct_coordinates_and_cross_block_provenance(self):
         w=window_with('Same. Same.',' If rain, stay.');units=p.inventory(w)['units']

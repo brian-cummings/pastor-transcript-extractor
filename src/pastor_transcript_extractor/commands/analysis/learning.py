@@ -26,7 +26,7 @@ def passage_selection_contract(base_dir:Path|None=typer.Option(None,'--base-dir'
 def passage_selection_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),
                                check_only:bool=typer.Option(False,'--check-only'),
                                as_json:bool=typer.Option(False,'--json')):
-    """Historical trial preparation is closed; use passage-selection-contract for offline review."""
+    """Freeze the supervised complete-sentence selection check with a bounded per-run budget."""
     from ... import passage_selection_check as check
     try:
         packet,out=check.prepare(base_dir,check_only=check_only)
@@ -40,7 +40,7 @@ def passage_selection_run(input_path:Path=typer.Option(...,'--input'),base_dir:P
                            experimental:bool=typer.Option(False,'--experimental'),approve_input:str|None=typer.Option(None,'--approve-input'),
                            max_usd:str=typer.Option('0.04','--max-usd'),confirm_prices:bool=typer.Option(False,'--confirm-prices'),
                            check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
-    """Read a completed passage trial; new execution is held pending a separate decision."""
+    """Execute an approved frozen passage check or return its completed result; no automatic expansion."""
     from ... import passage_selection_check as check
     try:
         result=check.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,
