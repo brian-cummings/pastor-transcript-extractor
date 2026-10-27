@@ -13,6 +13,10 @@ from .theological_binding import VERSION as COMPILER_VERSION, bind
 
 VERSION = 'pastor-evidence-v1'
 PARTIAL_VERSION = 'pastor-evidence-partial-v1'
+CONSTITUENT_VERSION = 'pastor-evidence-constituents-v1'
+PARTIAL_CONTRACTS = (PARTIAL_VERSION, CONSTITUENT_VERSION)
+CONSTITUENT_FIELDS = ('polarity', 'conditions', 'qualifications', 'proposition',
+    'speaker', 'adoption_basis', 'scope', 'expression', 'epistemic_status')
 ROLE_OPTIONS = dict(voice={'preacher', 'quoted_or_reported', 'unresolved'},
     occurrence={'actual', 'projected', 'unresolved'},
     adoption={'own_assertion', 'adopted', 'reported_not_adopted', 'rejected', 'undetermined'})
@@ -78,7 +82,7 @@ class EvidencePolicy:
             return False, 'namespace_mismatch'
         if self.require_production_admission and envelope['production_admission'] != 'admitted':
             return False, 'not_production_admitted'
-        if envelope.get('contract_version') == PARTIAL_VERSION:
+        if envelope.get('contract_version') in PARTIAL_CONTRACTS:
             return False, 'partial_observation'
         checks = envelope['field_judgments']
         if set(checks) != set(REQUIRED_CHECKS):
@@ -91,10 +95,12 @@ class EvidencePolicy:
 
 
 def observation_identity(row):
-    if row['contract_version'] == PARTIAL_VERSION:
-        return digest({k:row[k] for k in ('contract_version', 'namespace', 'source_refs',
-            'producer', 'model', 'prompt_digest', 'raw_response_ref', 'origin',
-            'binding', 'partial_binding', 'field_decisions')})
+    if row['contract_version'] in PARTIAL_CONTRACTS:
+        keys = ('contract_version', 'namespace', 'source_refs', 'producer', 'model',
+            'prompt_digest', 'raw_response_ref', 'origin', 'binding', 'partial_binding', 'field_decisions')
+        if row['contract_version'] == CONSTITUENT_VERSION:
+            keys += ('constituent_fields', 'derivation')
+        return digest({k:row[k] for k in keys})
     return digest({k:row[k] for k in ('contract_version','namespace','source_refs','producer',
         'model','prompt_digest','raw_response_ref','origin','binding')})
 
@@ -110,7 +116,7 @@ class ObservationEnvelope:
                     'experimental_eligibility', 'production_admission', 'uncertainty', 'namespace'):
             if key not in row:
                 raise ValueError(f'Missing envelope field: {key}')
-        if row['contract_version'] == PARTIAL_VERSION:
+        if row['contract_version'] in PARTIAL_CONTRACTS:
             if row.get('binding') is not None or row['production_admission'] != 'not_admitted':
                 raise ValueError('Partial observations cannot contain full bindings or admission')
             partial = row['partial_binding']
@@ -119,7 +125,11 @@ class ObservationEnvelope:
                 raise ValueError('Partial values or masks differ from raw decisions')
             if row['experimental_eligibility'] != 'partial_only':
                 raise ValueError('Partial observation cannot be eligible as a complete binding')
-        if (row.get('binding') is not None or row['contract_version'] == PARTIAL_VERSION) and row['id'] != observation_identity(row):
+        if row['contract_version'] == CONSTITUENT_VERSION:
+            values, masks = constituent_values(row['constituent_fields'])
+            if row['partial_binding']['semantic_values'] != values or row['partial_binding']['semantic_masks'] != masks:
+                raise ValueError('Constituent values or masks differ from saved assessments')
+        if (row.get('binding') is not None or row['contract_version'] in PARTIAL_CONTRACTS) and row['id'] != observation_identity(row):
             raise ValueError('Observation source/model/question identity changed')
         if row['origin'] == 'machine_generated' and row['production_admission'] != 'not_admitted':
             raise ValueError('Machine adapter cannot confer production authority')
@@ -249,6 +259,90 @@ def compile_partial_observation(window, proposition, evidence, decisions, *, evi
             unassessed=['speaker', 'adoption_basis', 'polarity', 'expression', 'epistemic_status',
                 'conditions', 'scope', 'qualifications', 'development_relations', 'address_acts', 'alignment'],
             evidence_sufficiency='Not established by full-source label choices'), field_decisions=deepcopy(decisions))
+    row['id'] = observation_identity(row)
+    ObservationEnvelope(row)
+    return row
+
+
+def constituent_values(fields):
+    """Field-local checks do not certify an entire binding or replace other judgments."""
+    if not isinstance(fields, dict) or not fields or not set(fields) <= set(CONSTITUENT_FIELDS):
+        raise ValueError('Unknown or empty constituent field inventory')
+    values, masks = {}, {}
+    for field, entry in fields.items():
+        proposal = entry['proposal']; answer = entry['answer']; proof = entry['judgment_provenance']
+        for provenance in (proof, entry['proposal_provenance']):
+            for key in ('model', 'prompt_digest', 'raw_response_ref', 'request_fingerprint', 'response_digest'):
+                if not isinstance(provenance.get(key), str) or not provenance[key]:
+                    raise ValueError('Missing constituent provenance: '+key)
+        if not isinstance(proof.get('question_id'), str) or not proof['question_id']:
+            raise ValueError('Missing constituent question identity')
+        if answer.get('type') == 'noul':
+            probability = answer.get('noul')
+            if type(probability) not in (int,float) or not math.isfinite(probability) or not 0 <= probability <= 1:
+                raise ValueError('Invalid constituent Noul probability')
+            known = probability >= .90
+        elif answer.get('type') == 'choice' and field == 'polarity':
+            # The existing direct polarity producer supplies this closed-set meaning.
+            options = {'affirmed','denied','unsettled','insufficient_evidence'}
+            probs = answer.get('probabilities'); choice = answer.get('choice'); confidence = answer.get('confidence')
+            if (not isinstance(probs, dict) or set(probs) != options or choice not in options
+                    or any(type(v) not in (int,float) or not math.isfinite(v) or not 0 <= v <= 1 for v in probs.values())
+                    or abs(sum(probs.values())-1) > .025 or probs[choice] < max(probs.values())-1e-9
+                    or type(confidence) not in (int,float) or not math.isfinite(confidence) or not 0 <= confidence <= 1
+                    or proposal != choice):
+                raise ValueError('Invalid constituent polarity Choice')
+            known = probs[choice] >= .90 and confidence >= .90
+        else:
+            raise ValueError('Unsupported constituent assessment')
+        if field == 'polarity' and proposal not in {'affirmed','denied','unsettled','unresolved','insufficient_evidence'}:
+            raise ValueError('Unknown constituent polarity')
+        if field == 'adoption_basis' and proposal not in {'own_speech','explicit_endorsement','discourse_use','explicit_rejection','quotation_only','unresolved'}:
+            raise ValueError('Unknown constituent adoption basis')
+        if field == 'expression' and proposal not in {'assertion','question','open_issue','unresolved'}:
+            raise ValueError('Unknown constituent expression')
+        if field == 'epistemic_status' and proposal not in {'expressed_uncertainty','not_stated','unresolved'}:
+            raise ValueError('Unknown expressed uncertainty')
+        if field in ('speaker','scope','proposition') and (not isinstance(proposal, str) or not proposal.strip()):
+            raise ValueError('Empty constituent semantic reading')
+        if field in ('conditions','qualifications') and not isinstance(proposal, list):
+            raise ValueError('Constituent collection must be a list')
+        if isinstance(proposal, str) and proposal in ('unresolved','undetermined','insufficient_evidence'):
+            known = False
+        masks[field] = known
+        values[field] = deepcopy(proposal) if known else None
+    return values, masks
+
+
+def extend_partial_observation(window, parent, fields):
+    """Add compatible constituent assessments without fabricating a full binding."""
+    from .binding_evidence import target_span
+    ObservationEnvelope(parent)
+    if parent['contract_version'] != PARTIAL_VERSION:
+        raise ValueError('Constituent extension requires the original partial role envelope')
+    if any(ref['window_id'] != window.id or ref['video_id'] != window.video_id or ref['source_sha256'] != window.source_sha256 for ref in parent['source_refs']):
+        raise ValueError('Constituent source does not match parent')
+    texts, _ = window.target()
+    if parent['producer']['source_context_digest'] != context_digest(texts):
+        raise ValueError('Constituent source context changed')
+    values, masks = constituent_values(fields)
+    if 'proposition' in fields and fields['proposition']['proposal'] != parent['partial_binding']['proposition']['reading']:
+        raise ValueError('Constituent proposition changed the qualified reading')
+    for field, entry in fields.items():
+        for span in entry['evidence']:
+            target_span(span, texts)
+        if field == 'conditions':
+            for condition in entry['proposal']:
+                if condition['kind'] not in ('condition','exception') or not condition['rationale'].strip():
+                    raise ValueError('Invalid attached condition')
+                target_span(condition['span'], texts)
+        # Qualification node links remain raw producer data; this adapter invents no nodes.
+    row = deepcopy(parent)
+    row.update(contract_version=CONSTITUENT_VERSION, constituent_fields=deepcopy(fields),
+        derivation=dict(parent_observation_id=parent['id'], validation='Compatible field-local assessments only; no complete binding or inherited full verification.'))
+    row['producer']['constituent_adapter'] = CONSTITUENT_VERSION
+    row['partial_binding'].update(semantic_values=values, semantic_masks=masks)
+    row['partial_binding']['unassessed'] = [field for field in row['partial_binding']['unassessed'] if not masks.get(field,False)]
     row['id'] = observation_identity(row)
     ObservationEnvelope(row)
     return row
