@@ -94,3 +94,75 @@ class ReferenceFieldTests(unittest.TestCase):
                     with self.assertRaises(ValueError):v.run(path,Path(folder),max_usd=amount,check_only=True)
             changed=deepcopy(value);changed['version']='foreign'
             with patch.object(v,'prepare',return_value=(changed,path.parent)),self.assertRaises(ValueError):v.run(path,Path(folder),check_only=True)
+
+
+class PairedWordingTests(unittest.TestCase):
+    def fixture(self):
+        spec,index=v.paired_request(v.pair_controls())
+        trial=dict(name='controls',request=asdict(spec),audit_index=index)
+        return dict(input_fingerprint='paired-synthetic',rounds=[trial,dict(deepcopy(trial),name='transfer')],budget=dict(spend_root='unused'))
+
+    def answers(self,spec,mode='correct'):
+        output={}
+        for key in spec.body['questions']:
+            n=key.split('_',1)[0]
+            # Expected values belong only to the audit, never provider state.
+            item=int(n[1:]);field='adoption_basis' if 'adoption_basis' in key else 'qualifications'
+            expected=v.pair_controls()[item]['expected'][field]
+            p=.99 if expected else .01
+            if mode=='wrong':p=1-p
+            if mode=='uncertain':p=.5
+            output[key]=dict(type='noul',noul=p)
+        return dict(model='jev-1.13.0',complete=True,usage=dict(input_tokens=100,output_tokens=10),output=output)
+
+    def test_same_targets_both_arms_no_expected_labels_and_balanced_controls(self):
+        packet=self.fixture();spec=v.requests.RequestSpec(**packet['rounds'][0]['request'])
+        self.assertNotIn('expected',v.requests.wire(spec.body));self.assertEqual(len(spec.body['questions']),32)
+        for n,item in enumerate(spec.body['state']['items']):
+            for field in ('adoption_basis','qualifications'):
+                for arm in ('current','narrow'):
+                    question=spec.body['questions'][f'q{n}_{field}_{arm}']
+                    self.assertIn(f'items[{n}].proposition',question['instructions'])
+                    self.assertIn(f'sources.w{n}',question['instructions'])
+        for field in ('adoption_basis','qualifications'):
+            self.assertEqual({c['expected'][field] for c in v.pair_controls()},{False,True})
+
+    def test_confident_wrong_scores_worse_and_unknown_not_counted_correct(self):
+        trial=self.fixture()['rounds'][0];spec=v.requests.RequestSpec(**trial['request'])
+        for mode in ('correct','wrong','uncertain'):
+            result=v.paired_assess(trial,self.answers(spec,mode))
+            for arm in result['summary'].values():
+                self.assertEqual(arm['adjudicable'],16)
+                self.assertEqual(arm['correct'],16 if mode=='correct' else 0)
+                self.assertEqual(arm['wrong'],16 if mode=='wrong' else 0)
+                self.assertEqual(arm['withheld'],16 if mode=='uncertain' else 0)
+
+    def test_two_frozen_calls_no_retry_no_replay_and_unknown_spend_stops(self):
+        for lost in (False,True):
+            packet=self.fixture();sent=[]
+            # Distinct provenance avoids an identical-request cache hit in this fixture.
+            packet['rounds'][1]['request']['source_identity']['round']='transfer'
+            def transport(spec):
+                sent.append(spec)
+                if lost: raise OSError('response lost')
+                return self.answers(spec)
+            with TemporaryDirectory() as folder:
+                packet['budget']['spend_root']=folder
+                result=v.pair_recipe(packet,Path(folder)/'run',transport)
+                self.assertEqual(len(sent),1 if lost else 2)
+                self.assertFalse(result['production_admission'])
+                self.assertEqual(result['status'],'FAIL(component)' if lost else 'INCONCLUSIVE')
+                self.assertEqual(result,v.pair_recipe(packet,Path(folder)/'run',lambda s:self.fail('replay')))
+                if lost:self.assertEqual(result['accounting']['cumulative_budget_charge_usd'],str(v.integration.BASELINE_SPEND+Decimal('.002752512')))
+
+    def test_cumulative_cap_blocks_transport_and_cli_tie_in(self):
+        from contextlib import contextmanager
+        @contextmanager
+        def near_cap(packet,root):yield [(None,Decimal('.635'))]
+        with TemporaryDirectory() as folder,patch.object(v.integration,'cumulative_history',near_cap):
+            result=v.pair_recipe(self.fixture(),Path(folder),lambda s:self.fail('budget must block'))
+            self.assertEqual(result['accounting']['attempts'],0)
+            self.assertIn('below $1',result['halt'])
+        with patch.object(v,'pair_run',return_value=dict(status='PREPARED_NO_EXECUTION')) as run:
+            result=CliRunner().invoke(app,['analysis','learning-demo','model-fit','question-pair-run','--input','/tmp/input.json','--check-only','--json'])
+            self.assertEqual(result.exit_code,0,result.output);self.assertTrue(run.call_args.kwargs['check_only'])

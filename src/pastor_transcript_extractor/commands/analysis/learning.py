@@ -14,6 +14,31 @@ fit_app=typer.Typer(help='Prepare frozen model-fit checks and bounded source-rea
 app.add_typer(fit_app,name='model-fit')
 
 
+@fit_app.command('question-pair-prepare')
+def question_pair_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Freeze two fixed paired wording rounds; no adaptive tuning or model changes."""
+    from ... import reference_field_validation as validation
+    try:
+        packet,out=validation.pair_prepare(base_dir,check_only=check_only)
+        emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],budget=packet['budget'],paid_calls=0),as_json)
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@fit_app.command('question-pair-run')
+def question_pair_run(input_path:Path=typer.Option(...,'--input'),base_dir:Path|None=typer.Option(None,'--base-dir'),
+                      experimental:bool=typer.Option(False,'--experimental'),approve_input:str|None=typer.Option(None,'--approve-input'),
+                      max_usd:str=typer.Option('0.006','--max-usd'),confirm_prices:bool=typer.Option(False,'--confirm-prices'),
+                      check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Run only the two frozen current/narrow question comparisons; no admission."""
+    from ... import reference_field_validation as validation
+    try:
+        if not check_only: typer.echo('TypeSafe: two fixed paired wording rounds; same model and targets; no retries or tuning',err=True)
+        result=validation.pair_run(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,confirm_prices=confirm_prices,check_only=check_only)
+        emit(result,as_json)
+        if result['status']=='FAIL(component)': raise typer.Exit(1)
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('reference-fields-prepare')
 def reference_fields_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
     """Freeze a provisional historical-reference check with verdicts excluded from provider state."""
