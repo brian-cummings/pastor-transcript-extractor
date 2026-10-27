@@ -14,6 +14,31 @@ fit_app=typer.Typer(help='Prepare frozen model-fit checks and bounded source-rea
 app.add_typer(fit_app,name='model-fit')
 
 
+@fit_app.command('passage-review-prepare')
+def passage_review_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Freeze one semantic reconsideration of saved passages using TypeSafe uncertainty feedback."""
+    from ... import passage_selection_review as review
+    try:
+        packet,out=review.prepare(base_dir,check_only=check_only)
+        emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],budget=packet['budget'],generation_calls=0,paid_calls=0),as_json)
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@fit_app.command('passage-review-run')
+def passage_review_run(input_path:Path=typer.Option(...,'--input'),base_dir:Path|None=typer.Option(None,'--base-dir'),
+                        experimental:bool=typer.Option(False,'--experimental'),approve_input:str|None=typer.Option(None,'--approve-input'),
+                        max_usd:str=typer.Option('0.04','--max-usd'),confirm_prices:bool=typer.Option(False,'--confirm-prices'),
+                        check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Run the frozen single passage reconsideration, bounded mechanical retry and TypeSafe recheck."""
+    from ... import passage_selection_review as review
+    try:
+        result=review.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,
+            confirm_prices=confirm_prices,check_only=check_only,progress=lambda message:typer.echo(message,err=True))
+        emit(result,as_json)
+        if result['status']=='FAIL(component)': raise typer.Exit(1)
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('passage-selection-contract')
 def passage_selection_contract(base_dir:Path|None=typer.Option(None,'--base-dir'),as_json:bool=typer.Option(False,'--json')):
     """Export revised passage contract and neutral verifier specimen; no execution."""
