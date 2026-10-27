@@ -65,6 +65,9 @@ def build_fingerprint(sample, evidence_view, dimension_policy=DIMENSION_POLICY, 
     for row in sorted(evidence_view.observations, key=lambda r:r['id']):
         if any(ref['video_id'] not in sample.video_ids for ref in row['source_refs']):
             raise ValueError('Evidence outside sample')
+        if row.get('binding') is None:
+            unknown.append(dict(id=row['id'], reason='partial_observation'))
+            continue
         key, paths, verified = _aligned(row)
         if key is None:
             unknown.append(dict(id=row['id'], reason='unresolved_canonicalization'))
@@ -137,7 +140,7 @@ def build_fingerprint(sample, evidence_view, dimension_policy=DIMENSION_POLICY, 
         evidence_policy=asdict(evidence_view.policy), dimension_policy=dimension_policy,
         claim_frames=frames, evidence_observations=list(evidence_view.observations),
         evidence_relations=[dict(observation_id=r['id'],relations=r['binding']['development_relations'],
-            address_acts=r['binding']['address_acts']) for r in evidence_view.observations], features={op:{r['id']:r for r in features.values() if r['operator']==op}
+            address_acts=r['binding']['address_acts']) for r in evidence_view.observations if r.get('binding') is not None], features={op:{r['id']:r for r in features.values() if r['operator']==op}
             for op in ('emphasis','relation','form')}, dimension_views=assignments,
         source_coverage=dict(video_ids=list(sample.video_ids), observed_occurrences=aggregate_occurrences(
             [ref for row in evidence_view.observations for ref in row['source_refs']])),
