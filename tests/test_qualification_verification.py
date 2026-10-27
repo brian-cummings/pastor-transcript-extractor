@@ -94,6 +94,7 @@ class SourceFirstQualifierTests(unittest.TestCase):
         for token in ('expected_kinds','qualifier_ids','proposed'):
             self.assertNotIn(token,v.requests.wire(state))
         self.assertEqual(len(state),6)  # List variants share one source/point input.
+        self.assertEqual(packet['native_trial'],json.loads(json.dumps(packet['native_trial'])))
         for key,item in state.items():
             window=v.evidence.SourceWindow(**packet['native_trial']['windows'][key])
             self.assertEqual(item,source_context.qualifier_source_item(window,item['proposition']))

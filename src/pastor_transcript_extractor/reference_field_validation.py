@@ -464,7 +464,7 @@ def source_first_trial():
     for n,(case,roles) in enumerate(zip(rows,expected,strict=True)):
         key='q'+str(n);text=case['source']
         window=evidence.SourceWindow(key,0,0,digest(text),0,(dict(block_id=0,target_text=text,start_seconds=0,end_seconds=60,segment_indexes=[0]),),'synthetic_control')
-        state[key]=qfields.selection_item(window,case['proposition']);windows[key]=asdict(window)
+        state[key]=qfields.selection_item(window,case['proposition']);windows[key]=json.loads(requests.wire(asdict(window)))
         ids=[u['id'] for u in state[key]['source']['units']]
         selection=dict(type='object',properties=dict(start_unit=dict(type='string',enum=ids),end_unit=dict(type='string',enum=ids),kind=dict(type='string',enum=['concession','expressed_uncertainty'])),required=['start_unit','end_unit','kind'],additionalProperties=False)
         properties[key]=dict(type='object',properties=dict(status=dict(type='string',enum=['inspected','unresolved']),qualifiers=dict(type='array',items=selection,maxItems=8),rationale=dict(type='string',minLength=1,maxLength=512)),required=['status','qualifiers','rationale'],additionalProperties=False)
