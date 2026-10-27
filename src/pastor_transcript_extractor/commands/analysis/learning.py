@@ -15,11 +15,12 @@ app.add_typer(fit_app,name='model-fit')
 
 
 @fit_app.command('question-pair-prepare')
-def question_pair_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json'),isolate_round:str|None=typer.Option(None,'--isolate-round',help='One qualification-only state check: neutral_controls or saved_machine_candidates.')):
+def question_pair_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json'),isolate_round:str|None=typer.Option(None,'--isolate-round',help='One qualification-only state check: neutral_controls or saved_machine_candidates.'),qwen_instant:bool=typer.Option(False,'--qwen-instant',help='Qwen3.8-27B, thinking disabled, eight frozen controls only.')):
     """Freeze two fixed paired wording rounds; no adaptive tuning or model changes."""
     from ... import reference_field_validation as validation
     try:
-        packet,out=validation.pair_prepare(base_dir,check_only=check_only,isolate_round=isolate_round)
+        if qwen_instant and isolate_round not in (None,'neutral_controls'): raise ValueError('Qwen instant is limited to neutral_controls')
+        packet,out=validation.qwen_prepare(base_dir,check_only=check_only) if qwen_instant else validation.pair_prepare(base_dir,check_only=check_only,isolate_round=isolate_round)
         emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],budget=packet['budget'],paid_calls=0),as_json)
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
 
@@ -29,12 +30,14 @@ def question_pair_run(input_path:Path=typer.Option(...,'--input'),base_dir:Path|
                       experimental:bool=typer.Option(False,'--experimental'),approve_input:str|None=typer.Option(None,'--approve-input'),
                       max_usd:str=typer.Option('0.006','--max-usd'),confirm_prices:bool=typer.Option(False,'--confirm-prices'),
                       check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json'),
-                      isolate_round:str|None=typer.Option(None,'--isolate-round',help='Match the frozen qualification-only round.')):
+                      isolate_round:str|None=typer.Option(None,'--isolate-round',help='Match the frozen qualification-only round.'),
+                      qwen_instant:bool=typer.Option(False,'--qwen-instant',help='Run the frozen Qwen3.8-27B instant check; use --max-usd 0.02.')):
     """Run only the two frozen current/narrow question comparisons; no admission."""
     from ... import reference_field_validation as validation
     try:
-        if not check_only: typer.echo('TypeSafe: '+('one field-isolation round' if isolate_round else 'two fixed paired wording rounds')+'; same model and targets; no retries or tuning',err=True)
-        result=validation.pair_run(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,confirm_prices=confirm_prices,check_only=check_only,isolate_round=isolate_round)
+        if not check_only: typer.echo(('Qwen3.8-27B instant: ' if qwen_instant else 'TypeSafe: ')+('one qualification-control call' if qwen_instant else 'one field-isolation round' if isolate_round else 'two fixed paired wording rounds')+'; same model and targets; no retries or tuning',err=True)
+        runner=validation.qwen_run if qwen_instant else validation.pair_run
+        result=runner(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,confirm_prices=confirm_prices,check_only=check_only,isolate_round=isolate_round)
         emit(result,as_json)
         if result['status']=='FAIL(component)': raise typer.Exit(1)
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: raise typer.BadParameter(str(error)) from error

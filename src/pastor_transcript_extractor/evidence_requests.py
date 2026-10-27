@@ -35,6 +35,7 @@ DEEPINFRA_CORRECTION_VERSION = 'evidence-request-deepinfra-correction-v1'
 DEEPINFRA_BINDING_VERSION = 'evidence-request-deepinfra-binding-retry-v1'
 DEEPINFRA_ENUM_VERSION = 'evidence-request-deepinfra-enum-check-v1'
 DEEPINFRA_GUIDED_VERSION = 'evidence-request-deepinfra-guided-source-v1'
+DEEPINFRA_QWEN_VERIFY_VERSION = 'evidence-request-qwen-instant-verifier-v1'
 THINKING_CHECK_POLICY = dict(thinking=True, output_cap=4096,
     timeout_policy='input-output-budget-v1', startup_seconds=120,
     input_tokens_per_second=100, output_tokens_per_second=8, maximum_seconds=1800)
@@ -130,7 +131,7 @@ def request_model(spec):
 
 
 def request_provider(spec):
-    return 'DeepInfra' if spec.version in (DEEPINFRA_VERSION,DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION,DEEPINFRA_ENUM_VERSION,DEEPINFRA_GUIDED_VERSION) else PHASES[spec.phase][0]
+    return 'DeepInfra' if spec.version in (DEEPINFRA_VERSION,DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION,DEEPINFRA_ENUM_VERSION,DEEPINFRA_GUIDED_VERSION,DEEPINFRA_QWEN_VERIFY_VERSION) else PHASES[spec.phase][0]
 
 
 def request_reservation(spec):

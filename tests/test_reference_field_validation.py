@@ -205,3 +205,70 @@ class FieldIsolationTests(unittest.TestCase):
             out=CliRunner().invoke(app,['analysis','learning-demo','model-fit','question-pair-run','--input','/tmp/input.json','--isolate-round','neutral_controls','--max-usd','.003','--check-only','--json'])
             self.assertEqual(out.exit_code,0,out.output)
             self.assertEqual(run.call_args.kwargs['isolate_round'],'neutral_controls')
+
+
+class QwenInstantTests(unittest.TestCase):
+    def fixture(self):
+        from pastor_transcript_extractor import deepinfra_requests as hosted
+        trial=v.isolate_qualifications(PairedWordingTests().fixture()['rounds'][0]);spec=v.qwen_request(trial)
+        packet=dict(input_fingerprint='synthetic-qwen',request=asdict(spec),native_trial=trial,baseline={},policy=dict(reasoning_effort='none'),limitation='synthetic',budget=dict(max_usd='.02',spend_root='unused'))
+        return packet,spec,hosted
+
+    def wire(self,spec,trial,*,reasoning=False):
+        output={}
+        for key,meta in trial['audit_index'].items():
+            item=trial['request']['body']['state']['items'][meta['item']];source=trial['request']['body']['state']['sources'][item['source_id']]
+            output[key]=dict(verdict=meta['expected'],rationale='Synthetic source supports this test verdict.',source_quote=source)
+        return v.requests.WireResponse(200,json.dumps(dict(model=spec.body['model'],choices=[dict(finish_reason='stop',message=dict(content=json.dumps(output),reasoning_content='forbidden trace' if reasoning else ''))],usage=dict(prompt_tokens=100,completion_tokens=200))))
+
+    def test_exact_questions_and_targets_retained_no_expected_or_probabilities_in_prompt(self):
+        packet,spec,hosted=self.fixture();payload=json.loads(spec.body['messages'][1]['content'])
+        native=packet['native_trial']['request']['body']
+        self.assertEqual(payload,dict(state=native['state'],questions=native['questions']))
+        self.assertEqual(spec.body['reasoning_effort'],'none');self.assertEqual(v.requests.request_provider(spec),'DeepInfra')
+        self.assertEqual(v.requests.request_model(spec),'Qwen/Qwen3.8-27B')
+        self.assertEqual(spec.preflight()['reserved_usd'],'0.0135168')
+        self.assertNotIn('expected',spec.body['messages'][1]['content'])
+        self.assertNotIn('probabilities',spec.body['messages'][1]['content'])
+        self.assertEqual(hosted.POLICY['model'],'deepseek-ai/DeepSeek-V4-Pro-0813')
+
+    def test_thinking_or_model_substitution_rejected_and_usage_preserved(self):
+        from dataclasses import replace
+        packet,spec,hosted=self.fixture()
+        for changed in (replace(spec,body=dict(spec.body,reasoning_effort='low')),replace(spec,body=dict(spec.body,model=hosted.FLASH_MODEL))):
+            with self.assertRaises(ValueError):changed.preflight()
+        with TemporaryDirectory() as folder:
+            store=v.requests.ReceiptStore(Path(folder))
+            with self.assertRaisesRegex(ValueError,'emitted reasoning'):
+                v.requests.execute(spec,hosted.OneRequestLedger('.02',spec.version),store,lambda s:self.wire(s,packet['native_trial'],reasoning=True))
+            self.assertEqual(v.check.demo.usage_account(store)['known_output_tokens'],200)
+
+    def test_one_call_replay_mixed_provider_ledger_and_literal_quote_validation(self):
+        packet,spec,hosted=self.fixture()
+        with TemporaryDirectory() as folder:
+            packet['budget']['spend_root']=folder;calls=[]
+            def send(s):calls.append(s);return self.wire(s,packet['native_trial'])
+            root=Path(folder)/'qwen/execution';result=v.qwen_recipe(packet,root,send)
+            self.assertEqual(result['assessment']['summary']['correct'],8)
+            self.assertEqual(len(calls),1);self.assertFalse(result['production_admission'])
+            self.assertEqual(v.qwen_recipe(packet,root,lambda s:self.fail('replay')),result)
+            with v.integration.cumulative_history(packet,Path(folder)/'other/execution') as history:
+                self.assertEqual(len(history),1);self.assertEqual(history[0][1],Decimal('.00052'))
+            response=json.loads((root/'receipts'/f'{spec.fingerprint}.json').read_text())['response']
+            output=json.loads(response['output']);output[next(iter(output))]['source_quote']='fabricated quotation'
+            response['output']=json.dumps(output)
+            with self.assertRaisesRegex(ValueError,'not literal'):v.qwen_assess(packet,response)
+            output[next(iter(output))]['verdict']=.99;response['output']=json.dumps(output)
+            with self.assertRaisesRegex(ValueError,'contract differs'):v.qwen_assess(packet,response)
+
+    def test_unknown_spend_and_qwen_cli_routing(self):
+        packet,spec,hosted=self.fixture()
+        with TemporaryDirectory() as folder:
+            packet['budget']['spend_root']=folder
+            def lost(s):raise OSError('lost response')
+            result=v.qwen_recipe(packet,Path(folder)/'qwen/execution',lost)
+            self.assertEqual(result['accounting']['cumulative_budget_charge_usd'],str(v.integration.BASELINE_SPEND+Decimal('.0135168')))
+            self.assertEqual(result['status'],'FAIL(component)')
+        with patch.object(v,'qwen_run',return_value=dict(status='PREPARED_NO_EXECUTION')) as run:
+            out=CliRunner().invoke(app,['analysis','learning-demo','model-fit','question-pair-run','--input','/tmp/input.json','--qwen-instant','--max-usd','.02','--check-only','--json'])
+            self.assertEqual(out.exit_code,0,out.output);self.assertTrue(run.call_args.kwargs['check_only'])
