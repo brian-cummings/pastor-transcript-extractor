@@ -153,3 +153,72 @@ class SourceFirstQualifierTests(unittest.TestCase):
             self.assertEqual(result.exit_code,0,result.output);self.assertTrue(run.call_args.kwargs['source_first'])
         result=CliRunner().invoke(app,['analysis','learning-demo','model-fit','question-pair-prepare','--source-first','--check-only'])
         self.assertNotEqual(result.exit_code,0);self.assertIn('requires --qwen-instant',result.output)
+
+
+class IndependentQualifierTests(unittest.TestCase):
+    def fixture(self):
+        spec,trial=v.source_first_trial(atomic=True);answers={}
+        for key,item in trial['state'].items():
+            units=item['source']['units']
+            answers[key]={role:([dict(start_unit=units[0]['id'],end_unit=units[-1]['id'])] if role in trial['audit_index'][key]['expected_kinds'] else []) for role in ('concession','expressed_uncertainty')}
+        return dict(request=asdict(spec),native_trial=trial,qualifier_selection_version=q.SELECTION_VERSION,qualifier_decision_version=q.ATOMIC_VERSION),spec,answers
+
+    def test_fixed_regression_points_terse_input_and_no_evaluator_hints(self):
+        import json
+        packet,spec,_=self.fixture();_,old=v.source_first_trial()
+        for key,value in old['state'].items():self.assertEqual(value,packet['native_trial']['state'][key])
+        state=json.loads(spec.body['messages'][1]['content'])
+        for token in ('expected_markers','expected_kinds','qualifier_ids','proposed'):
+            self.assertNotIn(token,v.requests.wire(state))
+        self.assertEqual(spec.body['reasoning_effort'],'none');self.assertEqual(len(state),8)
+        schema=spec.body['response_format']['json_schema']['schema']
+        self.assertNotIn('rationale',v.requests.wire(schema))
+        self.assertNotIn('confidence',v.requests.wire(schema))
+        self.assertEqual(packet['native_trial'],json.loads(json.dumps(packet['native_trial'])))
+
+    def test_independent_roles_can_cooccur_without_model_label_selection(self):
+        import json
+        packet,spec,answers=self.fixture()
+        response=dict(model=spec.body['model'],complete=True,usage=dict(input_tokens=100,output_tokens=100),output=json.dumps(answers))
+        result=v.qwen_assess(packet,response)
+        self.assertEqual(result['summary'],dict(total=8,correct=8,wrong=0,withheld=0))
+        self.assertEqual(len(result['rows'][-1]['catalog']['nodes']),2)
+        self.assertEqual({n['kind'] for n in result['rows'][-1]['catalog']['nodes']},{'concession','expressed_uncertainty'})
+        self.assertEqual(sum(len(r['per_role']) for r in result['rows']),16)
+        for row in result['rows']:
+            self.assertTrue(all(p['evaluation_marker_covered'] is not False for p in row['per_role']))
+
+    def test_unknown_and_wrong_evidence_do_not_gain_semantic_support(self):
+        import json
+        packet,spec,answers=self.fixture();answers['q1']['concession']=None
+        response=dict(model=spec.body['model'],complete=True,usage=dict(input_tokens=100,output_tokens=100),output=json.dumps(answers))
+        result=v.qwen_assess(packet,response)
+        self.assertEqual(result['summary']['withheld'],1)
+        self.assertIsNone(result['rows'][1]['synthetic_retention_probes']['all_ids_retained']['complete'])
+        # Correct role, unrelated unit: coverage must fail the evaluation.
+        answers['q1']['concession']=[dict(start_unit='u0000',end_unit='u0000')]
+        answers['q6']['concession']=[dict(start_unit='u0001',end_unit='u0001')]
+        response['output']=json.dumps(answers);result=v.qwen_assess(packet,response)
+        self.assertEqual(result['summary']['wrong'],1)
+        self.assertFalse(result['rows'][6]['per_role'][0]['evaluation_marker_covered'])
+        window=v.evidence.SourceWindow(**packet['native_trial']['windows']['q1']);point=packet['native_trial']['state']['q1']['proposition']
+        with self.assertRaises(ValueError):q.compile_atomic_selection(window,point,dict(concession=True,expressed_uncertainty=[]))
+        with self.assertRaises(ValueError):q.compile_atomic_selection(window,point,dict(concession=[],expressed_uncertainty=[],rationale='Do not infer from me'))
+
+    def test_one_paid_recipe_boundary_replay_and_explicit_cli(self):
+        import json
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        packet,spec,answers=self.fixture();packet.update(input_fingerprint='synthetic-independent',baseline={},policy=dict(reasoning_effort='none'),limitation='synthetic',budget=dict(max_usd='.02',spend_root='unused'))
+        with TemporaryDirectory() as folder:
+            packet['budget']['spend_root']=folder;calls=[]
+            def transport(s):
+                calls.append(s)
+                return v.requests.WireResponse(200,json.dumps(dict(model=s.body['model'],choices=[dict(finish_reason='stop',message=dict(content=json.dumps(answers)))],usage=dict(prompt_tokens=100,completion_tokens=100))))
+            result=v.qwen_recipe(packet,Path(folder)/'run/execution',transport)
+            self.assertEqual(result['assessment']['summary']['correct'],8)
+            self.assertFalse(result['production_admission']);self.assertEqual(len(calls),1)
+            self.assertEqual(result,v.qwen_recipe(packet,Path(folder)/'run/execution',lambda s:self.fail('no replay')))
+        with patch.object(v,'qwen_run',return_value=dict(status='PREPARED_NO_EXECUTION')) as run:
+            result=CliRunner().invoke(app,['analysis','learning-demo','model-fit','question-pair-run','--input','/tmp/frozen.json','--qwen-instant','--source-first','--atomic-qualifiers','--max-usd','.02','--check-only','--json'])
+            self.assertEqual(result.exit_code,0,result.output);self.assertTrue(run.call_args.kwargs['atomic_qualifiers'])

@@ -15,14 +15,15 @@ app.add_typer(fit_app,name='model-fit')
 
 
 @fit_app.command('question-pair-prepare')
-def question_pair_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json'),isolate_round:str|None=typer.Option(None,'--isolate-round',help='One qualification-only state check: neutral_controls or saved_machine_candidates.'),qwen_instant:bool=typer.Option(False,'--qwen-instant',help='Qwen3.8-27B, thinking disabled, frozen synthetic controls only.'),field_boundaries:bool=typer.Option(False,'--field-boundaries',help='Use the revised field contract and fresh neutral controls with --qwen-instant.'),source_first:bool=typer.Option(False,'--source-first',help='Select qualifier unit IDs from sources without proposed lists; requires --qwen-instant.')):
+def question_pair_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json'),isolate_round:str|None=typer.Option(None,'--isolate-round',help='One qualification-only state check: neutral_controls or saved_machine_candidates.'),qwen_instant:bool=typer.Option(False,'--qwen-instant',help='Qwen3.8-27B, thinking disabled, frozen synthetic controls only.'),field_boundaries:bool=typer.Option(False,'--field-boundaries',help='Use the revised field contract and fresh neutral controls with --qwen-instant.'),source_first:bool=typer.Option(False,'--source-first',help='Select qualifier unit IDs from sources without proposed lists; requires --qwen-instant.'),atomic_qualifiers:bool=typer.Option(False,'--atomic-qualifiers',help='Two independent terse role questions; requires --qwen-instant --source-first.')):
     """Freeze two fixed paired wording rounds; no adaptive tuning or model changes."""
     from ... import reference_field_validation as validation
     try:
         if qwen_instant and isolate_round not in (None,'neutral_controls'): raise ValueError('Qwen instant is limited to neutral_controls')
+        if atomic_qualifiers and not (qwen_instant and source_first): raise ValueError('--atomic-qualifiers requires --qwen-instant --source-first')
         if source_first and not qwen_instant: raise ValueError('--source-first requires --qwen-instant')
         if field_boundaries and not qwen_instant: raise ValueError('--field-boundaries requires --qwen-instant')
-        packet,out=validation.qwen_prepare(base_dir,check_only=check_only,field_boundaries=field_boundaries,source_first=source_first) if qwen_instant else validation.pair_prepare(base_dir,check_only=check_only,isolate_round=isolate_round)
+        packet,out=validation.qwen_prepare(base_dir,check_only=check_only,field_boundaries=field_boundaries,source_first=source_first,atomic_qualifiers=atomic_qualifiers) if qwen_instant else validation.pair_prepare(base_dir,check_only=check_only,isolate_round=isolate_round)
         emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],budget=packet['budget'],paid_calls=0),as_json)
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
 
@@ -35,16 +36,19 @@ def question_pair_run(input_path:Path=typer.Option(...,'--input'),base_dir:Path|
                       isolate_round:str|None=typer.Option(None,'--isolate-round',help='Match the frozen qualification-only round.'),
                       qwen_instant:bool=typer.Option(False,'--qwen-instant',help='Run the frozen Qwen3.8-27B instant check; use --max-usd 0.02.'),
                       field_boundaries:bool=typer.Option(False,'--field-boundaries',help='Match the revised verifier contract input.'),
-                      source_first:bool=typer.Option(False,'--source-first',help='Match the frozen source-first qualifier selection input.')):
+                      source_first:bool=typer.Option(False,'--source-first',help='Match the frozen source-first qualifier selection input.'),
+                      atomic_qualifiers:bool=typer.Option(False,'--atomic-qualifiers',help='Match the frozen independent qualifier questions.')):
     """Run only the two frozen current/narrow question comparisons; no admission."""
     from ... import reference_field_validation as validation
     try:
         if not check_only: typer.echo(('Qwen3.8-27B instant: ' if qwen_instant else 'TypeSafe: ')+('one qualification-control call' if qwen_instant else 'one field-isolation round' if isolate_round else 'two fixed paired wording rounds')+'; same model and targets; no retries or tuning',err=True)
+        if atomic_qualifiers and not (qwen_instant and source_first): raise ValueError('--atomic-qualifiers requires --qwen-instant --source-first')
         if source_first and not qwen_instant: raise ValueError('--source-first requires --qwen-instant')
         if field_boundaries and not qwen_instant: raise ValueError('--field-boundaries requires --qwen-instant')
         runner=validation.qwen_run if qwen_instant else validation.pair_run
         options=dict(field_boundaries=True) if field_boundaries else {}
         if source_first:options['source_first']=True
+        if atomic_qualifiers:options['atomic_qualifiers']=True
         result=runner(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,confirm_prices=confirm_prices,check_only=check_only,isolate_round=isolate_round,**options)
         emit(result,as_json)
         if result['status']=='FAIL(component)': raise typer.Exit(1)
