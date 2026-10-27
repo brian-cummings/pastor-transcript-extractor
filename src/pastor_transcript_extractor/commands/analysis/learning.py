@@ -14,6 +14,30 @@ fit_app=typer.Typer(help='Prepare frozen model-fit checks and bounded source-rea
 app.add_typer(fit_app,name='model-fit')
 
 
+@fit_app.command('voice-context-prepare')
+def voice_context_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Freeze separate speaker-context evidence selection for six fixed saved propositions."""
+    from ... import passage_voice_context as context
+    try:
+        packet,out=context.prepare(base_dir,check_only=check_only)
+        emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],budget=packet['budget'],generation_calls=0,paid_calls=0),as_json)
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
+@fit_app.command('voice-context-run')
+def voice_context_run(input_path:Path=typer.Option(...,'--input'),base_dir:Path|None=typer.Option(None,'--base-dir'),
+                       experimental:bool=typer.Option(False,'--experimental'),approve_input:str|None=typer.Option(None,'--approve-input'),
+                       max_usd:str=typer.Option('0.04','--max-usd'),confirm_prices:bool=typer.Option(False,'--confirm-prices'),
+                       check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Select and assess speaker-context evidence without changing proposition or adoption evidence."""
+    from ... import passage_voice_context as context
+    try:
+        result=context.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,confirm_prices=confirm_prices,check_only=check_only,progress=lambda message:typer.echo(message,err=True))
+        emit(result,as_json)
+        if result['status']=='FAIL(component)': raise typer.Exit(1)
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('passage-audit-prepare')
 def passage_audit_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
     """Freeze a source-cited diagnosis/action audit of six uncertain saved selections."""

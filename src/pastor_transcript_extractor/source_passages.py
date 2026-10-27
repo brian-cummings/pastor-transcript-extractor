@@ -65,3 +65,21 @@ def evidence_view(source,selection):
     return dict(selected_range=dict(selection),selected_span=dict(source_field='target_text',start=start,end=end,text=text[start:end]),
         unselected_context=dict(before=dict(units[first-1]) if first else None,after=dict(units[last+1]) if last+1<len(units) else None),
         context_policy='Unselected context reveals omissions; it does not repair or enlarge the selected evidence.')
+
+
+def bind_evidence_roles(window,proposition_range,*,voice_context_ranges=(),adoption_ranges=()):
+    """Literal, partial binding evidence using existing proposition/voice/adoption roles.
+
+    This assigns no speaker, occurrence or adoption label and carries no semantic
+    verification. Context never alters the proposition excerpt or crosses roles.
+    """
+    proposition=resolve(window,proposition_range)
+    voice=[resolve(window,r) for r in voice_context_ranges]
+    adoption=[resolve(window,r) for r in adoption_ranges]
+    for role,rows in (('voice',voice),('adoption',adoption)):
+        if len({digest(r['selection']) for r in rows})!=len(rows): raise ValueError('Duplicate '+role+' evidence range')
+    return dict(version='source-binding-evidence-roles-v1',proposition=proposition,voice_context=voice,adoption_context=adoption,
+        binding_evidence=dict(proposition=dict(span=dict(proposition['span'])),voice=dict(evidence=[dict(proposition['span'])]+[dict(r['span']) for r in voice]),
+            adoption=dict(evidence=[dict(r['span']) for r in adoption])),
+        partial_binding=True,semantic_validation='pending; literal role separation is not semantic role correctness',
+        production_admission=False)
