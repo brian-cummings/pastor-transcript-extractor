@@ -14,6 +14,16 @@ fit_app=typer.Typer(help='Prepare frozen model-fit checks and bounded source-rea
 app.add_typer(fit_app,name='model-fit')
 
 
+@fit_app.command('role-observations-build')
+def role_observations_build(base_dir:Path|None=typer.Option(None,'--base-dir'),input_path:Path|None=typer.Option(None,'--input'),
+                            check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Materialize saved role decisions as experimental partial observations offline; no model calls."""
+    from ... import role_observations as observations
+    try:
+        emit(observations.build(base_dir,input_path=input_path,check_only=check_only),as_json)
+    except (ValueError,OSError,KeyError,TypeError) as error: raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('role-decisions-prepare')
 def role_decisions_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
     """Freeze unresolved direct choices with explicit role evidence; reuse compatible resolved choices."""
