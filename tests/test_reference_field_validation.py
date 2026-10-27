@@ -166,3 +166,42 @@ class PairedWordingTests(unittest.TestCase):
         with patch.object(v,'pair_run',return_value=dict(status='PREPARED_NO_EXECUTION')) as run:
             result=CliRunner().invoke(app,['analysis','learning-demo','model-fit','question-pair-run','--input','/tmp/input.json','--check-only','--json'])
             self.assertEqual(result.exit_code,0,result.output);self.assertTrue(run.call_args.kwargs['check_only'])
+
+
+class FieldIsolationTests(unittest.TestCase):
+    def test_only_other_field_values_and_unused_questions_change(self):
+        original=PairedWordingTests().fixture()['rounds'][0]
+        isolated=v.isolate_qualifications(original)
+        before=original['request']['body'];after=isolated['request']['body']
+        self.assertEqual(after['model'],before['model'])
+        self.assertEqual(after['state']['sources'],before['state']['sources'])
+        self.assertEqual(len(after['questions']),8)
+        for a,b in zip(after['state']['items'],before['state']['items'],strict=True):
+            self.assertEqual(a['proposition'],b['proposition'])
+            self.assertEqual(a['source_id'],b['source_id'])
+            self.assertEqual(a['proposed'],dict(qualifications=b['proposed']['qualifications']))
+        for key,question in after['questions'].items():
+            self.assertEqual(question,before['questions'][key])
+            self.assertEqual(isolated['audit_index'][key],original['audit_index'][key])
+        self.assertNotIn('expected',v.requests.wire(after))
+        self.assertNotIn('own_speech',v.requests.wire(after))
+        self.assertEqual(original,PairedWordingTests().fixture()['rounds'][0])
+
+    def test_one_call_policy_and_cli_selects_exact_isolation_round(self):
+        fixture=PairedWordingTests();packet=fixture.fixture()
+        packet['rounds']=[v.isolate_qualifications(packet['rounds'][0])]
+        packet['baseline']=dict(rows=[]);packet['limitation']='Synthetic field isolation'
+        packet['budget'].update(maximum_paid_attempts=1,max_usd='.003')
+        with TemporaryDirectory() as folder:
+            packet['budget']['spend_root']=folder;calls=[]
+            def transport(spec):calls.append(spec);return fixture.answers(spec)
+            result=v.pair_recipe(packet,Path(folder)/'run',transport)
+            self.assertEqual(len(calls),1)
+            self.assertEqual(result['accounting']['attempts'],1)
+            self.assertEqual(result['baseline'],packet['baseline'])
+            self.assertEqual(result['limitation'],packet['limitation'])
+            self.assertFalse(result['production_admission'])
+        with patch.object(v,'pair_run',return_value=dict(status='PREPARED_NO_EXECUTION')) as run:
+            out=CliRunner().invoke(app,['analysis','learning-demo','model-fit','question-pair-run','--input','/tmp/input.json','--isolate-round','neutral_controls','--max-usd','.003','--check-only','--json'])
+            self.assertEqual(out.exit_code,0,out.output)
+            self.assertEqual(run.call_args.kwargs['isolate_round'],'neutral_controls')

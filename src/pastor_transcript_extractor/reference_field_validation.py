@@ -189,7 +189,8 @@ def paired_request(cases):
     spec.preflight();return spec,index
 
 
-def pair_prepare(base_dir=None,*,check_only=False):
+def pair_prepare(base_dir=None,*,check_only=False,isolate_round=None):
+    if isolate_round is not None: return isolation_prepare(base_dir,isolate_round,check_only=check_only)
     source=directory(base_dir,PAIR_SOURCE)/'input.json';prior=integration.polarity.trial.frozen(source)
     cases=[]
     for identity,item in zip(prior['candidate_index'],prior['items'],strict=True):
@@ -238,28 +239,70 @@ def pair_recipe(packet,root,transport):
                 charged=check.demo.usage_account(store);spent=Decimal(charged['reserved_usd'] if charged['unknown_usage_attempts'] else charged['known_list_price_usage_usd'])
                 reserve=requests.reservation('source_verification')
                 if prior+spent+reserve>=1: raise ValueError('Cumulative spend must remain below $1')
-                response=requests.execute(requests.RequestSpec(**trial['request']),requests.BudgetLedger(max_attempts=2,max_usd='.006'),store,transport)
+                response=requests.execute(requests.RequestSpec(**trial['request']),requests.BudgetLedger(max_attempts=packet['budget'].get('maximum_paid_attempts',2),max_usd=packet['budget'].get('max_usd','.006')),store,transport)
                 results.append(paired_assess(trial,response))
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: halt=str(error)
     account=check.demo.usage_account(store);charge=Decimal(account['reserved_usd'] if account['unknown_usage_attempts'] else account['known_list_price_usage_usd'])
     account['cumulative_budget_charge_usd']=str(prior+charge) if prior is not None else None
     result=dict(input_fingerprint=packet['input_fingerprint'],status='FAIL(component)' if halt else 'INCONCLUSIVE',halt=halt,rounds=results,accounting=account,production_admission=False,
         limitation='Two predeclared paired wording rounds, same model and targets. Neutral controls have authored expected labels; real candidates have no independent reference labels. Paired questions share state and are not an isolated deployment or calibrated accuracy benchmark. No prompt tuning between rounds, retries, repairs, observations or admission.',next_step='Assess correctness and false acceptance on controls before interpreting real-case confidence changes. Stop after two calls; no automatic expansion.')
+    if 'baseline' in packet:
+        result['baseline']=packet['baseline']
+        result['limitation']=packet['limitation']
+        result['next_step']='Compare against the exact saved narrow-question baseline; stop after this one field-isolation call. No automatic follow-on or admission.'
     store.write_immutable('results.json',result)
     (root.parent/'report.md').write_text('# Fixed paired question diagnostic\n\n'+result['limitation']+'\n\n'+json.dumps([dict(name=r['name'],summary=r['summary']) for r in results],indent=2)+'\n\nBudget charge: '+str(account['cumulative_budget_charge_usd'])+'\n\n'+result['next_step']+'\n')
     return result
 
 
-def pair_run(input_path,base_dir=None,*,experimental=False,approve_input=None,max_usd='.006',confirm_prices=False,check_only=False):
+def pair_run(input_path,base_dir=None,*,experimental=False,approve_input=None,max_usd='.006',confirm_prices=False,check_only=False,isolate_round=None):
     path=Path(input_path);packet=integration.polarity.trial.frozen(path);fp=packet['input_fingerprint']
-    expected,_=pair_prepare(base_dir,check_only=True)
+    expected,_=pair_prepare(base_dir,check_only=True,isolate_round=isolate_round)
     if path.resolve()!=(directory(base_dir,fp)/'input.json').resolve() or packet!=expected: raise ValueError('Frozen paired questions, source, code or location changed')
     try: cap=Decimal(max_usd)
     except InvalidOperation as error: raise ValueError('Invalid budget') from error
-    if not cap.is_finite() or not Decimal(packet['budget']['reserved_usd'])<=cap<=Decimal('.006'): raise ValueError('Reserve both calls within $0.006')
+    if not cap.is_finite() or not Decimal(packet['budget']['reserved_usd'])<=cap<=Decimal(packet['budget']['max_usd']): raise ValueError('Reserve the frozen calls within the input budget ceiling')
     if check_only:return dict(status='PREPARED_NO_EXECUTION',paid_calls=0,budget=packet['budget'])
     if not experimental or approve_input!=fp or not confirm_prices: raise ValueError('Exact input approval, --experimental and --confirm-prices required')
     root=path.parent/'execution'
     if not (root/'results.json').exists() and not os.environ.get('TYPESAFE_API_KEY','').strip():raise ValueError('TYPESAFE_API_KEY required; no attempts started')
     Store(root).write_immutable('authorization.json',dict(input_fingerprint=fp,max_usd=str(cap),cumulative_max_usd='1'))
     return pair_recipe(packet,root,requests.typesafe_transport)|dict(results=str(root/'results.json'))
+
+
+ISOLATION_SOURCE='d4f65c6d091d3f9fc919c27906a98c7a9e4885ee518fbc15b2c456ab0c157a22'
+
+
+def isolate_qualifications(trial):
+    """Same questions and exact targets; remove only unrelated proposed fields."""
+    original=requests.RequestSpec(**trial['request']);body=deepcopy(original.body)
+    keys={k for k,row in trial['audit_index'].items() if row['arm']=='narrow' and row['field']=='qualifications'}
+    body['questions']={k:v for k,v in body['questions'].items() if k in keys}
+    if not keys or set(body['questions'])!=keys: raise ValueError('Qualification question inventory differs')
+    for item in body['state']['items']:
+        item['proposed']={'qualifications':item['proposed']['qualifications']}
+    spec=replace(original,body=body,namespace='isolated-qualification-state-v1',version='isolated-qualification-state-v1',source_identity=dict(original.source_identity,parent_request=original.fingerprint))
+    spec.preflight()
+    return dict(name=trial['name'],request=asdict(spec),audit_index={k:v for k,v in trial['audit_index'].items() if k in keys},token_account=spec.preflight())
+
+
+def isolation_prepare(base_dir,round_name,*,check_only=False):
+    if round_name not in ('neutral_controls','saved_machine_candidates'): raise ValueError('Use neutral_controls or saved_machine_candidates')
+    parent=directory(base_dir,ISOLATION_SOURCE);input_path=parent/'input.json';saved=integration.polarity.trial.frozen(input_path)
+    trial=next(r for r in saved['rounds'] if r['name']==round_name);spec=requests.RequestSpec(**trial['request'])
+    receipt_path=parent/'execution/receipts'/f'{spec.fingerprint}.json';receipt=json.loads(receipt_path.read_text())
+    result_path=parent/'execution/results.json';result=json.loads(result_path.read_text())
+    if result['input_fingerprint']!=saved['input_fingerprint'] or result['halt'] or receipt['request']!=trial['request'] or receipt['halt'] or receipt['response_digest']!=digest(receipt['response']): raise ValueError('Saved baseline receipt differs')
+    baseline=paired_assess(trial,receipt['response'])
+    if baseline!=next(r for r in result['rounds'] if r['name']==round_name): raise ValueError('Saved baseline judgments differ')
+    baseline['rows']=[r for r in baseline['rows'] if r['arm']=='narrow' and r['field']=='qualifications']
+    baseline.pop('summary')
+    packet=dict(version='isolated-qualification-state-v1',rounds=[isolate_qualifications(trial)],baseline=baseline,
+        history=dict(preserved_files={str(p):check.demo.file_hash(p) for p in (input_path,receipt_path,result_path)}),
+        budget=dict(max_usd='.003',maximum_paid_attempts=1,reserved_usd=str(requests.reservation('source_verification')),spend_root=str(check.demo.build_paths(base_dir).evaluation/'qualified-observations'),cumulative_ceiling_usd='1'),
+        policy=dict(retries=0,model='jev-1.13.0',pass_at_least=.90,fail_at_most=.10,production_admission=False,reference_answers_in_requests=0,automatic_advancement=False),
+        limitation='One field-isolation call compared with exact cached narrow-question answers. Model, questions, targets, proposed qualification lists and complete sources are unchanged. Only unrelated proposed fields and unused questions are removed. Other items remain in shared state. Historical control exposure, service variation and lack of independent real-case labels limit causal and accuracy claims. No threshold tuning, repairs, retries or admission.',
+        adapter_sha256=check.demo.file_hash(Path(__file__)),executor_sha256=check.demo.file_hash(Path(requests.__file__)))
+    packet['input_fingerprint']=digest(packet);out=directory(base_dir,packet['input_fingerprint'])
+    if not check_only: Store(out).write_immutable('input.json',packet)
+    return packet,out

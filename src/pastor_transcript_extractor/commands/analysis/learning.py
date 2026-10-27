@@ -15,11 +15,11 @@ app.add_typer(fit_app,name='model-fit')
 
 
 @fit_app.command('question-pair-prepare')
-def question_pair_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+def question_pair_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json'),isolate_round:str|None=typer.Option(None,'--isolate-round',help='One qualification-only state check: neutral_controls or saved_machine_candidates.')):
     """Freeze two fixed paired wording rounds; no adaptive tuning or model changes."""
     from ... import reference_field_validation as validation
     try:
-        packet,out=validation.pair_prepare(base_dir,check_only=check_only)
+        packet,out=validation.pair_prepare(base_dir,check_only=check_only,isolate_round=isolate_round)
         emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],budget=packet['budget'],paid_calls=0),as_json)
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
 
@@ -28,12 +28,13 @@ def question_pair_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),che
 def question_pair_run(input_path:Path=typer.Option(...,'--input'),base_dir:Path|None=typer.Option(None,'--base-dir'),
                       experimental:bool=typer.Option(False,'--experimental'),approve_input:str|None=typer.Option(None,'--approve-input'),
                       max_usd:str=typer.Option('0.006','--max-usd'),confirm_prices:bool=typer.Option(False,'--confirm-prices'),
-                      check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+                      check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json'),
+                      isolate_round:str|None=typer.Option(None,'--isolate-round',help='Match the frozen qualification-only round.')):
     """Run only the two frozen current/narrow question comparisons; no admission."""
     from ... import reference_field_validation as validation
     try:
-        if not check_only: typer.echo('TypeSafe: two fixed paired wording rounds; same model and targets; no retries or tuning',err=True)
-        result=validation.pair_run(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,confirm_prices=confirm_prices,check_only=check_only)
+        if not check_only: typer.echo('TypeSafe: '+('one field-isolation round' if isolate_round else 'two fixed paired wording rounds')+'; same model and targets; no retries or tuning',err=True)
+        result=validation.pair_run(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,confirm_prices=confirm_prices,check_only=check_only,isolate_round=isolate_round)
         emit(result,as_json)
         if result['status']=='FAIL(component)': raise typer.Exit(1)
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error: raise typer.BadParameter(str(error)) from error
