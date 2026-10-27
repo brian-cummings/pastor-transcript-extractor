@@ -241,3 +241,9 @@ def qualification_verification(window,observations):
     cases=[dict(source=texts['target_text'],proposition=obs['binding']['proposition'],qualifications=obs['binding']['qualifications']) for obs in observations]
     spec,index,deterministic=qualifications.request(cases,source_identity=dict(window_digest=digest(window.__dict__),contract=qualifications.VERSION))
     return spec,index,deterministic
+
+
+def qualifier_source_item(window,proposition):
+    """Source-first ID-selection input, independent of any proposed qualification list."""
+    from .qualification_verification import selection_item
+    return selection_item(window,proposition)

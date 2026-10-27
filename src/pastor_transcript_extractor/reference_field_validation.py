@@ -322,16 +322,19 @@ def qwen_request(native_trial):
     spec.preflight();return spec
 
 
-def qwen_prepare(base_dir=None,*,check_only=False,field_boundaries=False):
+def qwen_prepare(base_dir=None,*,check_only=False,field_boundaries=False,source_first=False):
     from . import deepinfra_requests as hosted
     parent=directory(base_dir,QWEN_BASELINE);path=parent/'input.json';saved=integration.polarity.trial.frozen(path)
     native_trial=saved['rounds'][0];native=requests.RequestSpec(**native_trial['request'])
     receipt_path=parent/'execution/receipts'/f'{native.fingerprint}.json';receipt=json.loads(receipt_path.read_text())
     if receipt['request']!=native_trial['request'] or receipt['halt'] or receipt['response_digest']!=digest(receipt['response']): raise ValueError('Qwen comparison requires exact saved isolated-field receipt')
     baseline=paired_assess(native_trial,receipt['response'])
+    if field_boundaries and source_first:raise ValueError('Choose field-boundaries or source-first, not both')
     if field_boundaries:
         native_trial=boundary_trial();baseline=dict(note='New synthetic constructions; no paired historical accuracy comparison')
-    spec=qwen_request(native_trial)
+    if source_first:
+        spec,native_trial=source_first_trial();baseline=dict(note='Source-first selection changes the task; compare known control roles, not historical accuracy rates')
+    else: spec=qwen_request(native_trial)
     metadata=hosted.public_model_metadata(spec.body['model'])
     if ('can-disable-reasoning' not in metadata['capabilities'] or 'structured-output' not in metadata['capabilities'] or
         Decimal(metadata['input_cents_per_token'])*10000>Decimal(hosted.QWEN_VERIFY_POLICY['input_usd_per_million']) or
@@ -347,12 +350,18 @@ def qwen_prepare(base_dir=None,*,check_only=False,field_boundaries=False):
         packet['qualification_contract_version']=qfields.VERSION
         packet['code_identity'][qfields.__name__]=check.demo.file_hash(Path(qfields.__file__))
         packet['limitation']='Five fresh neutral synthetic cases; source-supported list entries and list completeness are checked independently. Empty-list support is a deterministic identity, never completeness. Changed questions and fresh cases preclude a paired historical accuracy comparison. Qwen instant boolean/null verdicts are not TypeSafe probabilities. No pastor extraction, repairs, retries or production admission.'
+    if source_first:
+        from . import qualification_verification as qfields,source_passages
+        packet['qualifier_selection_version']=qfields.SELECTION_VERSION
+        for module in (qfields,source_passages):packet['code_identity'][module.__name__]=check.demo.file_hash(Path(module.__file__))
+        packet['limitation']='Six unique neutral source/point pairs, deduplicating identical prior controls and adding condition/other-voice confounders. Proposed lists and expected qualifier roles are excluded from selection input. Code binds IDs literally and tests retention relative to model-selected nodes. Model selection completeness and attachment are not independently guaranteed. No real-source transfer, repair, retry or production admission.'
     packet['input_fingerprint']=digest(packet);out=directory(base_dir,packet['input_fingerprint'])
     if not check_only: Store(out).write_immutable('input.json',packet)
     return packet,out
 
 
 def qwen_assess(packet,response):
+    if packet.get('qualifier_selection_version'):return source_first_assess(packet,response)
     spec=requests.RequestSpec(**packet['request']);requests.validate_response(spec,response)
     output=requests.strict_json(response['output'])
     native=packet['native_trial'];keys=set(native['audit_index'])
@@ -405,10 +414,10 @@ def qwen_recipe(packet,root,transport):
     return result
 
 
-def qwen_run(input_path,base_dir=None,*,experimental=False,approve_input=None,max_usd='.02',confirm_prices=False,check_only=False,isolate_round=None,field_boundaries=False):
+def qwen_run(input_path,base_dir=None,*,experimental=False,approve_input=None,max_usd='.02',confirm_prices=False,check_only=False,isolate_round=None,field_boundaries=False,source_first=False):
     from . import deepinfra_requests as hosted
     if isolate_round not in (None,'neutral_controls'):raise ValueError('Qwen instant is limited to the eight neutral controls')
-    path=Path(input_path);packet=integration.polarity.trial.frozen(path);expected,_=qwen_prepare(base_dir,check_only=True,field_boundaries=field_boundaries);fp=packet['input_fingerprint']
+    path=Path(input_path);packet=integration.polarity.trial.frozen(path);expected,_=qwen_prepare(base_dir,check_only=True,field_boundaries=field_boundaries,source_first=source_first);fp=packet['input_fingerprint']
     if packet!=expected or path.resolve()!=(directory(base_dir,fp)/'input.json').resolve():raise ValueError('Frozen Qwen request, source, code or location differs')
     try:cap=Decimal(max_usd)
     except InvalidOperation as error:raise ValueError('Invalid Qwen budget') from error
@@ -438,3 +447,45 @@ def boundary_trial():
     cases=boundary_controls();spec,index,deterministic=qfields.request(cases,source_identity=dict(contract=qfields.VERSION,fixture='fresh-neutral-field-boundaries-v1'))
     for meta in index.values():meta['expected']=cases[meta['item']]['expected'][meta['component']]
     return dict(name='fresh_neutral_boundaries',request=asdict(spec),audit_index=index,deterministic=deterministic,expected_cases=[qfields.combine(**c['expected']) for c in cases],token_account=spec.preflight())
+
+
+
+def source_first_trial():
+    from . import qualification_verification as qfields,deepinfra_requests as hosted
+    # Reuse prior neutral source/point pairs; list variants must share one selection.
+    unique={digest(dict(source=c['source'],proposition=c['proposition'])):dict(source=c['source'],proposition=c['proposition']) for c in boundary_controls()}
+    rows=list(unique.values())
+    expected=[[],['concession'],['expressed_uncertainty'],[]]
+    rows.extend([
+        dict(source='If the switch is on, the lamp lights.',proposition=dict(reading='If the switch is on, the lamp lights.')),
+        dict(source='I am unsure whether this witness is reliable. A witness said, "The bell rang."',proposition=dict(reading='The bell rang.')),
+    ]);expected.extend([[],[]])
+    state={};windows={};properties={};index={}
+    for n,(case,roles) in enumerate(zip(rows,expected,strict=True)):
+        key='q'+str(n);text=case['source']
+        window=evidence.SourceWindow(key,0,0,digest(text),0,(dict(block_id=0,target_text=text,start_seconds=0,end_seconds=60,segment_indexes=[0]),),'synthetic_control')
+        state[key]=qfields.selection_item(window,case['proposition']);windows[key]=asdict(window)
+        ids=[u['id'] for u in state[key]['source']['units']]
+        selection=dict(type='object',properties=dict(start_unit=dict(type='string',enum=ids),end_unit=dict(type='string',enum=ids),kind=dict(type='string',enum=['concession','expressed_uncertainty'])),required=['start_unit','end_unit','kind'],additionalProperties=False)
+        properties[key]=dict(type='object',properties=dict(status=dict(type='string',enum=['inspected','unresolved']),qualifiers=dict(type='array',items=selection,maxItems=8),rationale=dict(type='string',minLength=1,maxLength=512)),required=['status','qualifiers','rationale'],additionalProperties=False)
+        index[key]=dict(expected_kinds=roles)
+    body=dict(model=hosted.QWEN_VERIFY_POLICY['model'],messages=[dict(role='system',content=qfields.SELECTION_INSTRUCTION+' Return one JSON assessment for each supplied key. Return no confidence or thinking trace.'),dict(role='user',content=requests.wire(state))],temperature=0,top_p=1,n=1,stream=False,reasoning_effort='none',max_tokens=hosted.QWEN_VERIFY_POLICY['output_cap'],response_format=dict(type='json_schema',json_schema=dict(name='qualification_judgments',strict=True,schema=dict(type='object',properties=properties,required=list(properties),additionalProperties=False))))
+    spec=requests.RequestSpec('source_reading',body,dict(contract=qfields.SELECTION_VERSION,state_digest=digest(state)),namespace=hosted.QWEN_VERIFY_NAMESPACE,version=requests.DEEPINFRA_QWEN_VERIFY_VERSION,runtime_identity=deepcopy(hosted.QWEN_VERIFY_POLICY))
+    spec.preflight();return spec,dict(state=state,windows=windows,audit_index=index)
+
+
+def source_first_assess(packet,response):
+    from . import qualification_verification as qfields
+    spec=requests.RequestSpec(**packet['request']);requests.validate_response(spec,response);output=requests.strict_json(response['output']);trial=packet['native_trial']
+    if not isinstance(output,dict) or set(output)!=set(trial['state']):raise ValueError('Source-first assessment inventory differs')
+    rows=[]
+    for key,item in trial['state'].items():
+        catalog=qfields.compile_selection(evidence.SourceWindow(**trial['windows'][key]),item['proposition'],output[key])
+        if catalog['catalog_id']!=item['catalog_id']:raise ValueError('Source-first catalog identity changed')
+        expected=trial['audit_index'][key]['expected_kinds'];actual=sorted(n['kind'] for n in catalog['nodes'])
+        outcome='WITHHELD' if catalog['inspection']=='unresolved' else 'CORRECT' if actual==sorted(expected) else 'WRONG'
+        ids=[n['node_id'] for n in catalog['nodes']];proposal=dict(catalog_id=catalog['catalog_id'],qualifier_ids=ids)
+        # Synthetic metamorphic probes only, not a runtime-filled qualification list.
+        probes=dict(all_ids_retained=qfields.retention(catalog,proposal),each_omission=[qfields.retention(catalog,dict(proposal,qualifier_ids=[x for x in ids if x!=missing])) for missing in ids],foreign_id=qfields.retention(catalog,dict(proposal,qualifier_ids=ids+['qualifier:foreign'])))
+        rows.append(dict(key=key,expected_kinds=expected,actual_kinds=actual,outcome=outcome,catalog=catalog,synthetic_retention_probes=probes))
+    return dict(rows=rows,summary=dict(total=len(rows),correct=sum(r['outcome']=='CORRECT' for r in rows),wrong=sum(r['outcome']=='WRONG' for r in rows),withheld=sum(r['outcome']=='WITHHELD' for r in rows)),mechanical_retention='Relative catalog coverage only, never proof of semantic completeness')
