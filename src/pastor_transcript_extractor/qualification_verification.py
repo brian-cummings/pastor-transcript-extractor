@@ -108,14 +108,14 @@ def retention(catalog,proposal):
     return dict(complete=complete,reason='Coverage relative to model-selected catalog only; not semantic validation',missing_ids=missing,foreign_ids=foreign)
 
 
-ATOMIC_VERSION='independent-qualifier-decisions-v1'
+ATOMIC_VERSION='independent-qualifier-decisions-v2'
 ATOMIC_INSTRUCTION=(
     'For EACH item answer two independent questions about its exact voiced proposition, using the complete source units. '
     'concession: Does the source acknowledge a FACT that would count against the point, yet maintain the point despite that fact? '
     'Select the passage containing the acknowledged fact and its connection to the point. '
     'A prerequisite stating when a result holds is a condition, not this concession. Mere possible error is not an acknowledged countervailing fact. '
-    'expressed_uncertainty: Does the voice expressing the point hedge its truth or explicitly doubt its own knowledge of that point? '
-    'Select the passage expressing that uncertainty. Uncertainty alone is not a factual concession. '
+    'expressed_uncertainty: Is any substantive assertion within this qualified point hedged by its own voice, including doubt about its own correctness or knowledge? '
+    'Select that source hedge even if the proposition confidently reports the uncertainty as a fact. Uncertainty alone is not a factual concession. '
     'Both may be present; assess each independently. Preserve them even when the proposition already mentions them. '
     'Exclude a reporting speaker\'s nonendorsement and uncertainty about a different speaker or point. '
     'For each question return an array of complete contiguous source-unit ranges: nonempty if present, [] if inspected and absent, null if unresolved. '
