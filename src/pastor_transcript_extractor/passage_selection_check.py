@@ -192,13 +192,13 @@ def export_contract(base_dir=None):
         contract_fingerprint=fp,generation_calls=0,paid_calls=0,execution_prepared=False,production_admission=False)
 
 
-def run_recipe(packet,root,flash_transport,verifier_transport,*,progress=None):
+def run_recipe(packet,root,flash_transport,verifier_transport,*,progress=None,verifier_seed=None):
     root=Path(root);store=requests.ReceiptStore(root)
     if (root/'results.json').exists():
         saved=json.loads((root/'results.json').read_text())
         if saved['input_fingerprint']!=packet['input_fingerprint']: raise ValueError('Foreign selection result')
         return saved
-    halt=None;checked=None;scores=[];status='INCONCLUSIVE';mechanical_retries=0
+    halt=None;checked=None;scores=[];status='INCONCLUSIVE';mechanical_retries=0;verifier_reused=False
     try:
         spec=requests.RequestSpec(**packet['request'])
         windows={sid:SourceWindow(**window) for sid,window in packet['windows'].items()}
@@ -218,8 +218,12 @@ def run_recipe(packet,root,flash_transport,verifier_transport,*,progress=None):
             verify=verification(packet['state'],checked['reading'])
             if verify is not None:
                 store.write_immutable('verifier-request.json',asdict(verify))
-                if progress: progress('TypeSafe 1/1: assess selected complete thoughts, attribution context and adoption evidence; no correction')
-                judged=requests.execute(verify,requests.BudgetLedger(max_attempts=1,max_usd='.003'),requests.ReceiptStore(root/'verification'),verifier_transport)
+                verifier_store=requests.ReceiptStore(root/'verification')
+                if verifier_seed is not None and verifier_seed['receipt']['request']==asdict(verify):
+                    binding_retry.import_receipt(verifier_store,verifier_seed);verifier_reused=True
+                    if progress: progress('Reusing identical saved TypeSafe receipt; no verification call')
+                elif progress: progress('TypeSafe 1/1: assess selected complete thoughts, attribution context and adoption evidence; no correction')
+                judged=requests.execute(verify,requests.BudgetLedger(max_attempts=1,max_usd='.003'),verifier_store,verifier_transport)
                 if set(judged['output'])!=set(verify.body['questions']): raise ValueError('Verifier inventory changed')
                 for key,answer in judged['output'].items():
                     if not isinstance(answer,dict): raise ValueError('Verifier answer must be an object')
@@ -240,7 +244,7 @@ def run_recipe(packet,root,flash_transport,verifier_transport,*,progress=None):
         mechanical_fit='PASS' if checked is not None and not checked['errors'] else 'FAIL(component)',
         mechanical_retries=mechanical_retries,selected_passages=sum(r['status']=='selected' for r in checked['resolved']) if checked else 0,
         abstentions=sum(r['status']=='no_adequate_passage' for r in checked['resolved']) if checked else 0,
-        verifier_scores=scores,accounting=accounting,production_admission=False,
+        verifier_scores=scores,verifier_reused=verifier_reused,accounting=accounting,production_admission=False,
         semantic_outcome='Source review required; high verifier scores alone cannot establish completeness or attribution accuracy.',
         coverage=packet.get('coverage'),human_effort=dict(runtime_repairs=0,runtime_approvals=0,manual_pastor_annotations=0,source_review='Pending; review time unmeasured'),
         limitation=LIMITATION,next_step='Review copied passages against complete source and unchanged candidates; no further correction, retry or workflow advancement')

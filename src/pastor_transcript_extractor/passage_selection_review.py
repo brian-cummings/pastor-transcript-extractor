@@ -68,6 +68,7 @@ def prepare(base_dir=None,*,check_only=False):
     files.update({str(ref):demo.file_hash(ref) for ref in refs})
     packet=dict(version=VERSION,state=deepcopy(old['state']),windows=deepcopy(old['windows']),request=asdict(revised),
         before=checked['reading'],before_scores=result['verifier_scores'],candidate_index=old['candidate_index'],coverage=old['coverage'],
+        verifier_seed=dict(path=str(verify_ref),receipt=deepcopy(judgment)),
         token_account=fit,schema=selection.schema(),verifier_criteria=selection.CRITERIA,
         policy=dict(semantic_reconsiderations=1,mechanical_retries=1,verifier_rechecks=1,automatic_advancement=False,production_admission=False,reference_feedback=False),
         budget=dict(max_usd='.04',reserved_usd=str(2*hosted.reserved_usd(revised.version)+requests.reservation('source_verification')),maximum_paid_attempts=3,cumulative_attempts_reporting_only=True),
@@ -87,7 +88,7 @@ def run_recipe(packet,root,flash_transport,verifier_transport,*,progress=None):
         saved=json.loads((root/'results.json').read_text())
         if saved['input_fingerprint']!=packet['input_fingerprint']: raise ValueError('Foreign review result')
         return saved
-    revised=selection.run_recipe(packet,root/'reconsideration',flash_transport,verifier_transport,progress=progress)
+    revised=selection.run_recipe(packet,root/'reconsideration',flash_transport,verifier_transport,progress=progress,verifier_seed=packet.get('verifier_seed'))
     checked_path=root/'reconsideration/range-validation.json';changes=[]
     if checked_path.exists():
         checked=json.loads(checked_path.read_text())

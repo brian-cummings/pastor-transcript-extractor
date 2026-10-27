@@ -21,6 +21,27 @@ def specimen():
 
 
 class PassageReviewTests(unittest.TestCase):
+    def test_unchanged_verifier_request_reuses_receipt_but_changed_selection_rechecks(self):
+        for changed in (False,True):
+            value=specimen();spec=r.selection.verification(value['state'],value['before'])
+            def judgment(spec):
+                return dict(model='jev-1.13.0',complete=True,usage=dict(input_tokens=100,output_tokens=100),output={key:dict(type='noul',noul=.5) for key in spec.body['questions']})
+            with self.subTest(changed=changed),TemporaryDirectory() as folder:
+                baseline=r.requests.ReceiptStore(Path(folder)/'baseline')
+                r.requests.execute(spec,r.requests.BudgetLedger(max_attempts=1,max_usd='.003'),baseline,judgment)
+                ref=baseline.root/'receipts'/f'{spec.fingerprint}.json'
+                value['verifier_seed']=dict(path=str(ref),receipt=json.loads(ref.read_text()))
+                calls=[]
+                def flash(spec):
+                    calls.append('flash');out=deepcopy(value['before'])
+                    if changed: out['selections'][0]['proposition_range']['end_unit']=out['selections'][0]['proposition_range']['start_unit']
+                    return dict(model=r.hosted.FLASH_MODEL,complete=True,usage=dict(input_tokens=100,output_tokens=100),output=json.dumps(out))
+                def verifier(spec): calls.append('typesafe');return judgment(spec)
+                result=r.run_recipe(value,Path(folder)/'review',flash,verifier)
+                self.assertEqual(result['verifier_reused'],not changed)
+                self.assertEqual(calls,['flash','typesafe'] if changed else ['flash'])
+                self.assertEqual(result['accounting']['paid_attempts'],2 if changed else 1)
+
     def test_request_reuses_source_and_feedback_without_expected_corrections(self):
         value=specimen();spec=r.requests.RequestSpec(**value['request']);spec.preflight()
         self.assertEqual([m['role'] for m in spec.body['messages']],['system','user','assistant','user'])
