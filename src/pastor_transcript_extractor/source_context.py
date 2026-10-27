@@ -232,3 +232,12 @@ def export(base_dir=None):
     EvidenceArtifactStore(root).write_immutable('contract.json',packet)
     return dict(status='PREPARED_NO_EXECUTION',contract=str(root/'contract.json'),
         contract_fingerprint=packet['contract_fingerprint'],generation_calls=0,paid_calls=0,production_admission=False)
+
+
+def qualification_verification(window,observations):
+    """Opt-in field-boundary contract; does not replace pinned whole-binding checks."""
+    from . import qualification_verification as qualifications
+    texts,_=window.target()
+    cases=[dict(source=texts['target_text'],proposition=obs['binding']['proposition'],qualifications=obs['binding']['qualifications']) for obs in observations]
+    spec,index,deterministic=qualifications.request(cases,source_identity=dict(window_digest=digest(window.__dict__),contract=qualifications.VERSION))
+    return spec,index,deterministic

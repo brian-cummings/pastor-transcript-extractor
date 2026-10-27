@@ -322,13 +322,16 @@ def qwen_request(native_trial):
     spec.preflight();return spec
 
 
-def qwen_prepare(base_dir=None,*,check_only=False):
+def qwen_prepare(base_dir=None,*,check_only=False,field_boundaries=False):
     from . import deepinfra_requests as hosted
     parent=directory(base_dir,QWEN_BASELINE);path=parent/'input.json';saved=integration.polarity.trial.frozen(path)
     native_trial=saved['rounds'][0];native=requests.RequestSpec(**native_trial['request'])
     receipt_path=parent/'execution/receipts'/f'{native.fingerprint}.json';receipt=json.loads(receipt_path.read_text())
     if receipt['request']!=native_trial['request'] or receipt['halt'] or receipt['response_digest']!=digest(receipt['response']): raise ValueError('Qwen comparison requires exact saved isolated-field receipt')
-    baseline=paired_assess(native_trial,receipt['response']);spec=qwen_request(native_trial)
+    baseline=paired_assess(native_trial,receipt['response'])
+    if field_boundaries:
+        native_trial=boundary_trial();baseline=dict(note='New synthetic constructions; no paired historical accuracy comparison')
+    spec=qwen_request(native_trial)
     metadata=hosted.public_model_metadata(spec.body['model'])
     if ('can-disable-reasoning' not in metadata['capabilities'] or 'structured-output' not in metadata['capabilities'] or
         Decimal(metadata['input_cents_per_token'])*10000>Decimal(hosted.QWEN_VERIFY_POLICY['input_usd_per_million']) or
@@ -339,6 +342,11 @@ def qwen_prepare(base_dir=None,*,check_only=False):
         policy=dict(model=spec.body['model'],reasoning_effort='none',retries=0,production_admission=False,generated_confidence_used=False,reference_answers_in_requests=0),
         limitation='Eight previously exposed neutral controls. Exact questions, criteria, targets and state are retained inside a chat wrapper. Native TypeSafe probabilities and generated Qwen verdicts are different interfaces; this is not a model-only ablation or confidence calibration. No pastor extraction, real-source transfer or admission.',
         code_identity={m.__name__:check.demo.file_hash(Path(m.__file__)) for m in (requests,hosted,integration)},adapter_sha256=check.demo.file_hash(Path(__file__)))
+    if field_boundaries:
+        from . import qualification_verification as qfields
+        packet['qualification_contract_version']=qfields.VERSION
+        packet['code_identity'][qfields.__name__]=check.demo.file_hash(Path(qfields.__file__))
+        packet['limitation']='Five fresh neutral synthetic cases; source-supported list entries and list completeness are checked independently. Empty-list support is a deterministic identity, never completeness. Changed questions and fresh cases preclude a paired historical accuracy comparison. Qwen instant boolean/null verdicts are not TypeSafe probabilities. No pastor extraction, repairs, retries or production admission.'
     packet['input_fingerprint']=digest(packet);out=directory(base_dir,packet['input_fingerprint'])
     if not check_only: Store(out).write_immutable('input.json',packet)
     return packet,out
@@ -359,7 +367,19 @@ def qwen_assess(packet,response):
         if row['source_quote'] not in source: raise ValueError('Qwen evidence quotation is not literal in its declared source')
         expected=meta['expected'];prediction=row['verdict']
         rows.append(dict(meta,**row,outcome='UNREVIEWED' if expected is None else 'WITHHELD' if prediction is None else 'CORRECT' if prediction==expected else 'WRONG'))
-    return dict(rows=rows,summary=dict(total=len(rows),correct=sum(r['outcome']=='CORRECT' for r in rows),wrong=sum(r['outcome']=='WRONG' for r in rows),withheld=sum(r['verdict'] is None for r in rows),false_accept=sum(r['expected'] is False and r['verdict'] is True for r in rows),false_reject=sum(r['expected'] is True and r['verdict'] is False for r in rows)))
+    result=dict(rows=rows,summary=dict(total=len(rows),correct=sum(r['outcome']=='CORRECT' for r in rows),wrong=sum(r['outcome']=='WRONG' for r in rows),withheld=sum(r['verdict'] is None for r in rows),false_accept=sum(r['expected'] is False and r['verdict'] is True for r in rows),false_reject=sum(r['expected'] is True and r['verdict'] is False for r in rows)))
+    if packet.get('qualification_contract_version'):
+        from . import qualification_verification as qfields
+        cases=[]
+        for item,expected in enumerate(native['expected_cases']):
+            parts={r['component']:r['verdict'] for r in rows if r['item']==item}
+            fixed=native['deterministic'].get(str(item),{})
+            if 'supported' in fixed: parts['supported']=fixed['supported']
+            verdict=qfields.combine(parts['supported'],parts['complete'])
+            cases.append(dict(item=item,components=parts,deterministic=fixed,verdict=verdict,expected=expected,outcome='WITHHELD' if verdict is None else 'CORRECT' if verdict==expected else 'WRONG'))
+        result['cases']=cases
+        result['case_summary']=dict(total=len(cases),correct=sum(c['outcome']=='CORRECT' for c in cases),wrong=sum(c['outcome']=='WRONG' for c in cases),withheld=sum(c['verdict'] is None for c in cases))
+    return result
 
 
 def qwen_recipe(packet,root,transport):
@@ -385,10 +405,10 @@ def qwen_recipe(packet,root,transport):
     return result
 
 
-def qwen_run(input_path,base_dir=None,*,experimental=False,approve_input=None,max_usd='.02',confirm_prices=False,check_only=False,isolate_round=None):
+def qwen_run(input_path,base_dir=None,*,experimental=False,approve_input=None,max_usd='.02',confirm_prices=False,check_only=False,isolate_round=None,field_boundaries=False):
     from . import deepinfra_requests as hosted
     if isolate_round not in (None,'neutral_controls'):raise ValueError('Qwen instant is limited to the eight neutral controls')
-    path=Path(input_path);packet=integration.polarity.trial.frozen(path);expected,_=qwen_prepare(base_dir,check_only=True);fp=packet['input_fingerprint']
+    path=Path(input_path);packet=integration.polarity.trial.frozen(path);expected,_=qwen_prepare(base_dir,check_only=True,field_boundaries=field_boundaries);fp=packet['input_fingerprint']
     if packet!=expected or path.resolve()!=(directory(base_dir,fp)/'input.json').resolve():raise ValueError('Frozen Qwen request, source, code or location differs')
     try:cap=Decimal(max_usd)
     except InvalidOperation as error:raise ValueError('Invalid Qwen budget') from error
@@ -399,3 +419,22 @@ def qwen_run(input_path,base_dir=None,*,experimental=False,approve_input=None,ma
     if not (root/'results.json').exists() and not hosted.credential_present():raise ValueError('DEEPINFRA_API_KEY required; no attempts started')
     Store(root).write_immutable('authorization.json',dict(input_fingerprint=fp,max_usd=str(cap),cumulative_max_usd='1'))
     return qwen_recipe(packet,root,hosted.transport)|dict(results=str(root/'results.json'))
+
+
+
+def boundary_controls():
+    # New neutral constructions, fixed before inference; never runtime pastor warrants.
+    return [
+        dict(source='An inspector said, "The hatch is sealed." I neither endorse nor dispute that statement.',proposition=dict(reading='The hatch is sealed.'),qualifications=[],expected=dict(supported=True,complete=True)),
+        dict(source='A sailor said, "Although the sail is patched, it works." I am only reporting her words.',proposition=dict(reading='The sail works despite being patched.'),qualifications=[dict(reading='The patches do not prevent the sail from working.')],expected=dict(supported=True,complete=True)),
+        dict(source='A sailor said, "Although the sail is patched, it works." I am only reporting her words.',proposition=dict(reading='The sail works despite being patched.'),qualifications=[],expected=dict(supported=True,complete=False)),
+        dict(source='A hiker said, "I may be mistaken, but this trail reaches the lake." I quote his words without taking a position.',proposition=dict(reading='The trail reaches the lake, but the hiker may be mistaken.'),qualifications=[],expected=dict(supported=True,complete=False)),
+        dict(source='The elevator is working.',proposition=dict(reading='The elevator is working.'),qualifications=[dict(reading='The speaker is unsure whether the elevator is working.')],expected=dict(supported=False,complete=True)),
+    ]
+
+
+def boundary_trial():
+    from . import qualification_verification as qfields
+    cases=boundary_controls();spec,index,deterministic=qfields.request(cases,source_identity=dict(contract=qfields.VERSION,fixture='fresh-neutral-field-boundaries-v1'))
+    for meta in index.values():meta['expected']=cases[meta['item']]['expected'][meta['component']]
+    return dict(name='fresh_neutral_boundaries',request=asdict(spec),audit_index=index,deterministic=deterministic,expected_cases=[qfields.combine(**c['expected']) for c in cases],token_account=spec.preflight())
