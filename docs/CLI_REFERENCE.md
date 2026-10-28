@@ -1415,6 +1415,8 @@ pte identity review-speaker-pair [OPTIONS] VIDEO_A VIDEO_B
 | `--open-packet / --no-open-packet` | Open the local HTML review packet.  [default: open-packet] | no | True |
 | `--prepare-only` | Create the packet without prompting for adjudication. | no | False |
 | `--base-dir PATH` | Override app data directory. | no | — |
+| `--observation-fingerprint-a TEXT` | Pin observation A to this exact immutable fingerprint; requires B. | no | — |
+| `--observation-fingerprint-b TEXT` | Pin observation B to this exact immutable fingerprint; requires A. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
 ### `pte identity audit-speaker-negative-windows`
@@ -1924,7 +1926,7 @@ pte identity association-audit [OPTIONS]
 
 ### `pte identity consolidate-source-profiles`
 
-Plan or human-approve complete-link consolidation of anonymous profiles sharing a source.
+Plan or human-approve complete-link consolidation of named or anonymous profiles sharing a source.
 
 #### Usage
 
@@ -1936,13 +1938,15 @@ pte identity consolidate-source-profiles [OPTIONS]
 
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
-| `--source-id INTEGER RANGE` | Source whose anonymous profiles should be compared.  [x>=1] | no | — |
-| `--list-sources` | List sources with eligible anonymous profile cohorts. | no | False |
+| `--source-id INTEGER RANGE` | Source whose profiles should be compared, including confirmed names.  [x>=1] | no | — |
+| `--list-sources` | List sources with eligible named or anonymous profile cohorts. | no | False |
 | `--all-eligible` | Process each currently eligible source cohort in turn, instead of selecting one source. | no | False |
 | `--minimum-profiles INTEGER RANGE` | Minimum eligible profile count shown by --list-sources.  [default: 2; x>=1] | no | 2 |
 | `--plan-only` | Inventory the source cohort without acoustic execution or writes. | no | False |
 | `--apply` | Prompt for one human approval per complete-link cohort and merge it. | no | False |
 | `--reviewer TEXT` | Stable reviewer identifier; required with --apply. | no | — |
+| `--allow-confirmed-names` | Explicitly override confirmed identities or name variations at merge approval; never overrides different-speaker constraints. | no | False |
+| `--canonical-profile-id INTEGER RANGE` | With --apply and --source-id, retain this profile in its cohort; otherwise prefer a configured or confirmed identity.  [x>=1] | no | — |
 | `--exemplars-per-profile INTEGER RANGE` | Independent recording exemplars compared for each profile.  [default: 3; 2<=x<=5] | no | 3 |
 | `--jobs INTEGER RANGE` | [default: 2; x>=1] | no | 2 |
 | `--open-packet / --no-open-packet` | Open the weakest-edge review packet before an apply prompt.  [default: open-packet] | no | True |

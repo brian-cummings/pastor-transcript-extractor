@@ -1205,51 +1205,56 @@ class SpeakerPairReviewTests(unittest.TestCase):
                 "b": exact_b.input_fingerprint,
             },
         }
-        with (
-            patch(
-                "pastor_transcript_extractor.commands.identity.review.build_paths",
-                return_value=SimpleNamespace(
-                    database=self.root / "database.sqlite3"
+        for manifest_json in (json.dumps(manifest), None):
+            with (
+                patch(
+                    "pastor_transcript_extractor.commands.identity.review.build_paths",
+                    return_value=SimpleNamespace(
+                        database=self.root / "database.sqlite3"
+                    ),
                 ),
-            ),
-            patch(
-                "pastor_transcript_extractor.commands.identity.review.Path.exists",
-                return_value=True,
-            ),
-            patch(
-                "pastor_transcript_extractor.commands.identity.review.Database",
-                return_value=database,
-            ),
-            patch(
-                "pastor_transcript_extractor.commands.identity.review."
-                "get_registered_normalized_media_artifact",
-                return_value=None,
-            ),
-            patch(
-                "pastor_transcript_extractor.commands.identity.review.resolve_normalized_audio_path",
-                return_value=self.root / "audio.wav",
-            ),
-            patch(
-                "pastor_transcript_extractor.commands.identity.review.create_review_draft",
-                return_value=draft,
-            ) as create,
-        ):
-            review_speaker_pair(
-                "video-a",
-                "video-b",
-                reviewer="reviewer-1",
-                evaluation_root=self.evaluation_root,
-                cache_dir=self.root / "cache",
-                open_packet=False,
-                prepare_only=True,
-                base_dir=self.root,
-                selection_manifest_json=json.dumps(manifest),
-                observation_fingerprint_a=exact_a.input_fingerprint,
-                observation_fingerprint_b=exact_b.input_fingerprint,
-            )
+                patch(
+                    "pastor_transcript_extractor.commands.identity.review.Path.exists",
+                    return_value=True,
+                ),
+                patch(
+                    "pastor_transcript_extractor.commands.identity.review.Database",
+                    return_value=database,
+                ),
+                patch(
+                    "pastor_transcript_extractor.commands.identity.review."
+                    "get_registered_normalized_media_artifact",
+                    return_value=None,
+                ),
+                patch(
+                    "pastor_transcript_extractor.commands.identity.review.resolve_normalized_audio_path",
+                    return_value=self.root / "audio.wav",
+                ),
+                patch(
+                    "pastor_transcript_extractor.commands.identity.review.create_review_draft",
+                    return_value=draft,
+                ) as create,
+            ):
+                review_speaker_pair(
+                    "video-a",
+                    "video-b",
+                    reviewer="reviewer-1",
+                    evaluation_root=self.evaluation_root,
+                    cache_dir=self.root / "cache",
+                    open_packet=False,
+                    prepare_only=True,
+                    base_dir=self.root,
+                    selection_manifest_json=manifest_json,
+                    observation_fingerprint_a=exact_a.input_fingerprint,
+                    observation_fingerprint_b=exact_b.input_fingerprint,
+                )
 
-        self.assertIs(exact_a, create.call_args.kwargs["observation_a"])
-        self.assertIs(exact_b, create.call_args.kwargs["observation_b"])
+            self.assertIs(exact_a, create.call_args.kwargs["observation_a"])
+            self.assertIs(exact_b, create.call_args.kwargs["observation_b"])
+            self.assertEqual(
+                {"a": exact_a.input_fingerprint, "b": exact_b.input_fingerprint},
+                create.call_args.kwargs["selection_manifest"]["selected_observation_fingerprints"],
+            )
 
 
 if __name__ == "__main__":

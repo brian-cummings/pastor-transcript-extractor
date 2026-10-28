@@ -1392,7 +1392,7 @@ nomination to a canonical profile. Targeted selection does not depend on the
 global prewarmed pool; it scans eligible metadata and prepares only the selected
 pair on demand. Redirected profile IDs are resolved before selection.
 
-When one source contains several fractured anonymous profiles, preview the
+When one source contains several fractured profiles, preview the
 eligible source inventory first:
 
 ```bash
@@ -1402,7 +1402,7 @@ pte identity consolidate-source-profiles \
 ```
 
 The read-only table defaults to sources with at least two safe, canonical,
-anonymous profiles and reports profile, member, exemplar, excluded-profile, and
+named or anonymous profiles and reports profile, member, exemplar, excluded-profile, and
 maximum acoustic-comparison counts. Use `--minimum-profiles 1` to include
 single-profile sources. Select a source and preview its bounded cohort with:
 
@@ -1424,10 +1424,33 @@ members from that profile before excluding it. If neither verified canonical
 clips nor parent audio are available, the command reports the exact
 observation-level reason without invalidating membership. Source membership
 only retrieves the cohort and never counts as identity evidence. A profile pair
-qualifies only when every cross-exemplar comparison is `same_speaker`; missing,
-ambiguous, different-speaker, conflicting name, and reviewed-difference
-evidence fail closed. Multi-profile proposals are complete-link at the profile
+qualifies only when every cross-exemplar comparison is `same_speaker` or an
+exact, qualified human same-speaker review resolves an abstention. Missing,
+ambiguous and different-speaker evidence remains blocking; reviewed differences
+and conflicting human reviews cannot be overridden by name approval. Multi-profile proposals are complete-link at the profile
 level, so every profile pair must qualify.
+
+Confirmed names and configured pastor bindings remain merge candidates. They
+produce warnings, including differing name spellings, instead of disappearing
+from the plan. Merging them requires `--allow-confirmed-names` in addition to
+`--apply --reviewer REVIEWER_ID` and the cohort approval prompt. The command
+shows the canonical target before approval, preferring a configured identity,
+then a confirmed name. Use `--canonical-profile-id PROFILE_ID` with a single
+source apply run to retain a particular profile. Confirmed name claims are
+preserved as append-only attachments; original configured bindings remain
+recorded and resolve through profile redirects. This consolidates speaker
+profiles, not the underlying configured pastor records. Names alone never
+establish a vocal match.
+
+For every ambiguous comparison, the terminal output and the Markdown/JSON
+review report provide an exact `pte identity review-speaker-pair` command with
+both `--observation-fingerprint-a` and `--observation-fingerprint-b` pinned.
+These options preserve the original extraction windows even when the videos
+have newer observations, and also allow comparing two windows of the same
+video. Add `--prepare-only` to prepare without adjudicating. After reviewing,
+rerun the consolidation plan: it reuses qualified, non-conflicting exact pair
+judgments without rewriting the acoustic results or treating a pair review as
+approval of a whole cohort.
 
 To attempt every currently eligible source in one invocation, use
 `--all-eligible`. It snapshots the eligible sources first, then processes each
@@ -1460,7 +1483,7 @@ command explicitly prints `NO MERGE ACTION`; running `--apply` is unnecessary.
 Approval merges the whole coherent cohort through the existing append-only
 membership and redirect events and records the exact acoustic artifact hash in
 their reason. Deferral writes no registry mutation. The apply path revalidates
-canonical membership, anonymity, source overlap, attribution consistency, and
+canonical membership, source overlap, required name overrides, and
 reviewed different-speaker constraints immediately before merging.
 
 Profile-state experiments use an explicit before/after ledger. The

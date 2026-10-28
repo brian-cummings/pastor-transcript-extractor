@@ -629,6 +629,7 @@ def assess_profile_association_readiness(
     evidence: ReviewedSpeakerEvidence,
     *,
     minimum_members: int = 3,
+    include_configured_profiles: bool = False,
 ) -> tuple[ProfileAssociationReadiness, ...]:
     if minimum_members < 3:
         raise ValueError("profile readiness requires at least three members")
@@ -654,7 +655,8 @@ def assess_profile_association_readiness(
         profile
         for profile in database.list_speaker_profiles()
         if profile.created_reason
-        in {REVIEWED_PROFILE_REASON, DISCOVERY_PROFILE_REASON}
+        in ({REVIEWED_PROFILE_REASON, DISCOVERY_PROFILE_REASON}
+            | ({"configured_requested_identity"} if include_configured_profiles else set()))
     ]
     canonical_ids = {
         profile.id
@@ -760,7 +762,7 @@ def assess_profile_association_readiness(
         discovery_blockers: list[str] = []
         has_reviewed_constituent = False
         for constituent in constituents_by_profile[profile_id]:
-            if constituent.created_reason == REVIEWED_PROFILE_REASON:
+            if constituent.created_reason in {REVIEWED_PROFILE_REASON, "configured_requested_identity"}:
                 has_reviewed_constituent = True
                 continue
             promotion = database.get_speaker_profile_discovery_promotion(

@@ -700,6 +700,7 @@ def _merge_profiles(
     event_key: str,
     conflicts: list[str],
     preferred_profile_id: int | None = None,
+    allow_confirmed_names: bool = False,
 ) -> int | None:
     ordered_profile_ids = sorted(profile_ids)
     profiles_by_id = {
@@ -708,7 +709,10 @@ def _merge_profiles(
     }
     if any(
         profile is None
-        or profile.created_reason not in _MERGEABLE_PROFILE_REASONS
+        or profile.created_reason not in (
+            _MERGEABLE_PROFILE_REASONS
+            | ({"configured_requested_identity"} if allow_confirmed_names else set())
+        )
         for profile in profiles_by_id.values()
     ):
         conflicts.append(
@@ -733,7 +737,7 @@ def _merge_profiles(
         )
         in profile_ids
     }
-    if len(linked_profile_ids) > 1:
+    if len(linked_profile_ids) > 1 and not allow_confirmed_names:
         conflicts.append(
             "same component spans multiple configured pastor identities: "
             + ", ".join(
@@ -748,7 +752,9 @@ def _merge_profiles(
         and profile.created_reason == "reviewed_anonymous_speaker"
     }
     canonical_profile_id = (
-        next(iter(linked_profile_ids))
+        preferred_profile_id
+        if allow_confirmed_names and preferred_profile_id in profile_ids
+        else min(linked_profile_ids)
         if linked_profile_ids
         else preferred_profile_id
         if preferred_profile_id in profile_ids
@@ -800,7 +806,7 @@ def _merge_profiles(
         if (bound_id := database.get_pastor_speaker_profile_id(pastor.id)) is not None
         and database.resolve_speaker_profile_id(bound_id) in linked_profile_ids
     )
-    if len(reviewed_names) > 1:
+    if len(reviewed_names) > 1 and not allow_confirmed_names:
         conflicts.append(
             "reviewed profile merge is blocked by conflicting reviewed identities: "
             + ", ".join(sorted(reviewed_names))
@@ -835,6 +841,19 @@ def _merge_profiles(
         return None
 
     for profile_id in retired_profile_ids:
+        # Preserve confirmed aliases as append-only claim attachments. Configured
+        # pastor bindings retain their original IDs and resolve via redirects.
+        if allow_confirmed_names:
+            for claim_id in database.list_effective_name_claim_ids_for_profile(profile_id):
+                record_name_claim_review(
+                    database,
+                    claim_id=claim_id,
+                    profile_id=canonical_profile_id,
+                    attach=True,
+                    reviewer=reviewer,
+                    reason=reason,
+                    review_event_key=f"{event_namespace}-name:{event_key}:{claim_id}",
+                )
         for observation_id in members_by_profile[profile_id]:
             record_observation_review(
                 database,
@@ -888,6 +907,8 @@ def merge_reviewed_source_profile_cohort(
     reviewer: str,
     evidence_sha256: str,
     conflicts: list[str] | None = None,
+    allow_confirmed_names: bool = False,
+    canonical_profile_id: int | None = None,
 ) -> int | None:
     """Apply one human-approved, acoustically complete-link source cohort.
 
@@ -907,6 +928,8 @@ def merge_reviewed_source_profile_cohort(
         raise ValueError("source-profile cohort approval requires a SHA-256 artifact hash")
     if len(profile_ids) < 2:
         raise ValueError("source-profile cohort approval requires at least two profiles")
+    if canonical_profile_id is not None and canonical_profile_id not in profile_ids:
+        raise ValueError("canonical profile must belong to the approved cohort")
 
     videos = {video.id: video for video in database.list_videos()}
     claims_by_observation: dict[int, set[str]] = {}
@@ -934,22 +957,22 @@ def merge_reviewed_source_profile_cohort(
                 f"source cohort profile {profile_id} redirects to {resolved}"
             )
             return None
-        if (
+        member_ids = database.list_effective_observation_ids_for_profile(profile_id)
+        profile_names = {
+            name for observation_id in member_ids
+            for name in claims_by_observation.get(observation_id, ())
+        }
+        if not allow_confirmed_names and (
             profile_id in linked_profile_ids
             or database.list_effective_name_claim_ids_for_profile(profile_id)
+            or profile_names
         ):
             reported_conflicts.append(
-                f"source cohort profile {profile_id} is no longer anonymous"
+                f"source cohort profile {profile_id} has a confirmed identity; "
+                "requires --allow-confirmed-names"
             )
             return None
-        member_ids = database.list_effective_observation_ids_for_profile(
-            profile_id
-        )
-        cohort_names.update(
-            name
-            for observation_id in member_ids
-            for name in claims_by_observation.get(observation_id, ())
-        )
+        cohort_names.update(profile_names)
         has_source_member = any(
             observation is not None
             and observation.video_id in videos
@@ -966,7 +989,7 @@ def merge_reviewed_source_profile_cohort(
             return None
         resolved_profile_ids.add(resolved)
 
-    if len(cohort_names) > 1:
+    if len(cohort_names) > 1 and not allow_confirmed_names:
         reported_conflicts.append(
             "source cohort has conflicting explicit attributions: "
             + ", ".join(sorted(cohort_names))
@@ -980,22 +1003,38 @@ def merge_reviewed_source_profile_cohort(
             "profile_ids": sorted(resolved_profile_ids),
             "evidence_sha256": clean_sha256,
             "reviewer": clean_reviewer,
+            "allow_confirmed_names": allow_confirmed_names,
+            "canonical_profile_id": canonical_profile_id,
         }
     )
     reason = (
         "Human-approved source-local profile cohort after complete-link "
         f"multi-exemplar acoustic review; source={source_id}; "
         f"evidence_sha256={clean_sha256}"
+        f"; allow_confirmed_names={allow_confirmed_names}"
+        f"; reviewed_name_variants={','.join(sorted(cohort_names))}"
     )
-    canonical_id = _merge_profiles(
-        database,
-        profile_ids=resolved_profile_ids,
-        reviewer=clean_reviewer,
-        reason=reason,
-        event_namespace=SOURCE_PROFILE_COHORT_REVIEW_VERSION,
-        event_key=event_key,
-        conflicts=reported_conflicts,
-    )
+    if canonical_profile_id is None:
+        named_ids = {
+            profile_id for profile_id in profile_ids
+            if database.list_effective_name_claim_ids_for_profile(profile_id)
+            or any(claims_by_observation.get(member_id)
+                   for member_id in database.list_effective_observation_ids_for_profile(profile_id))
+        }
+        preferred_ids = (linked_profile_ids & profile_ids) or named_ids
+        canonical_profile_id = min(preferred_ids) if preferred_ids else None
+    with database.transaction():
+        canonical_id = _merge_profiles(
+            database,
+            profile_ids=resolved_profile_ids,
+            reviewer=clean_reviewer,
+            reason=reason,
+            event_namespace=SOURCE_PROFILE_COHORT_REVIEW_VERSION,
+            event_key=event_key,
+            conflicts=reported_conflicts,
+            preferred_profile_id=canonical_profile_id,
+            allow_confirmed_names=allow_confirmed_names,
+        )
     return canonical_id
 
 

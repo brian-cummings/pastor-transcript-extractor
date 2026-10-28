@@ -323,6 +323,10 @@ class CliContractTests(unittest.TestCase):
         )
         self.assertEqual(0, help_result.exit_code, msg=help_result.output)
         self.assertIn("--all-eligible", help_result.output)
+        command = self.root.commands["identity"].commands["consolidate-source-profiles"]
+        options = {option for parameter in command.params if not parameter.hidden for option in parameter.opts}
+        self.assertIn("--allow-confirmed-names", options)
+        self.assertIn("--canonical-profile-id", options)
 
         conflict_result = self.runner.invoke(
             app,
@@ -340,6 +344,14 @@ class CliContractTests(unittest.TestCase):
             conflict_result.output,
         )
         self.assertIn("--all-eligible", conflict_result.output)
+
+    def test_exact_pair_review_exposes_both_fingerprint_options(self) -> None:
+        result = self.runner.invoke(app, ["identity", "review-speaker-pair", "--help"])
+        self.assertEqual(0, result.exit_code, msg=result.output)
+        command = self.root.commands["identity"].commands["review-speaker-pair"]
+        options = {option for parameter in command.params if not parameter.hidden for option in parameter.opts}
+        self.assertIn("--observation-fingerprint-a", options)
+        self.assertIn("--observation-fingerprint-b", options)
 
     def test_topic_review_draft_exposes_fingerprint_bound_proposals(self) -> None:
         result = self.runner.invoke(

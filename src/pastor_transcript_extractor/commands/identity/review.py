@@ -270,8 +270,12 @@ def review_speaker_pair(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
     selection_manifest_json: str | None = typer.Option(None, hidden=True),
-    observation_fingerprint_a: str | None = typer.Option(None, hidden=True),
-    observation_fingerprint_b: str | None = typer.Option(None, hidden=True),
+    observation_fingerprint_a: str | None = typer.Option(
+        None, help="Pin observation A to this exact immutable fingerprint; requires B."
+    ),
+    observation_fingerprint_b: str | None = typer.Option(
+        None, help="Pin observation B to this exact immutable fingerprint; requires A."
+    ),
 ) -> ReviewSubmission | None:
     paths = build_paths(base_dir)
     cache_dir = cache_dir or paths.evaluation / "speaker-pairs/cache"
@@ -288,7 +292,7 @@ def review_speaker_pair(
     )
     if any(requested_fingerprints) and not all(requested_fingerprints):
         raise typer.BadParameter(
-            "automatic review requires both selected observation fingerprints"
+            "exact review requires both selected observation fingerprints"
         )
     observations = (
         [
@@ -347,6 +351,15 @@ def review_speaker_pair(
         if selection_manifest is not None and not isinstance(selection_manifest, dict):
             raise ValueError("selection manifest must be a JSON object")
         if all(requested_fingerprints):
+            if selection_manifest is None:
+                selection_manifest = {
+                    "selection_origin": "manual",
+                    "selection_objective": "manual_exact_pair_review",
+                    "selected_observation_fingerprints": {
+                        "a": observation_fingerprint_a,
+                        "b": observation_fingerprint_b,
+                    },
+                }
             selected = (
                 selection_manifest.get("selected_observation_fingerprints")
                 if selection_manifest is not None

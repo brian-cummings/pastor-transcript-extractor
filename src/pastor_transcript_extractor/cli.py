@@ -297,8 +297,10 @@ from pastor_transcript_extractor.source_profile_consolidation import (
     list_source_profile_cohorts,
     source_profile_candidates,
     source_profile_consolidation_payload,
+    source_profile_review_suggestions,
     write_source_profile_consolidation_artifact,
     write_source_profile_consolidation_packet,
+    write_source_profile_consolidation_review_report,
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
     SHADOW_ASSOCIATION_VERSION,
@@ -962,7 +964,7 @@ def association_audit_command(
 @identity_app.command(
     "consolidate-source-profiles",
     help=(
-        "Plan or human-approve complete-link consolidation of anonymous "
+        "Plan or human-approve complete-link consolidation of named or anonymous "
         "profiles sharing a source."
     ),
 )
@@ -971,12 +973,12 @@ def consolidate_source_profiles_command(
         None,
         "--source-id",
         min=1,
-        help="Source whose anonymous profiles should be compared.",
+        help="Source whose profiles should be compared, including confirmed names.",
     ),
     list_sources: bool = typer.Option(
         False,
         "--list-sources",
-        help="List sources with eligible anonymous profile cohorts.",
+        help="List sources with eligible named or anonymous profile cohorts.",
     ),
     all_eligible: bool = typer.Option(
         False,
@@ -1005,6 +1007,14 @@ def consolidate_source_profiles_command(
     reviewer: str | None = typer.Option(
         None,
         help="Stable reviewer identifier; required with --apply.",
+    ),
+    allow_confirmed_names: bool = typer.Option(
+        False, "--allow-confirmed-names",
+        help="Explicitly override confirmed identities or name variations at merge approval; never overrides different-speaker constraints.",
+    ),
+    canonical_profile_id: int | None = typer.Option(
+        None, "--canonical-profile-id", min=1,
+        help="With --apply and --source-id, retain this profile in its cohort; otherwise prefer a configured or confirmed identity.",
     ),
     exemplars_per_profile: int = typer.Option(
         3,
@@ -1051,6 +1061,8 @@ def consolidate_source_profiles_command(
         raise typer.BadParameter("--plan-only cannot be combined with --apply")
     if apply and not (reviewer or "").strip():
         raise typer.BadParameter("--apply requires --reviewer")
+    if canonical_profile_id is not None and (not apply or source_id is None):
+        raise typer.BadParameter("--canonical-profile-id requires --apply and --source-id")
     paths = config.build_paths(base_dir)
     model_path = runtime_option(
         model_path,
@@ -1112,6 +1124,8 @@ def consolidate_source_profiles_command(
                     plan_only=plan_only,
                     apply=apply,
                     reviewer=reviewer,
+                    allow_confirmed_names=allow_confirmed_names,
+                    canonical_profile_id=None,
                     exemplars_per_profile=exemplars_per_profile,
                     jobs=jobs,
                     open_packet=open_packet,
@@ -1155,7 +1169,7 @@ def consolidate_source_profiles_command(
                 exemplars_per_profile=exemplars_per_profile,
                 minimum_profiles=minimum_profiles,
             )
-            table = Table(title="Eligible anonymous profile cohorts by source")
+            table = Table(title="Eligible profile cohorts by source (including confirmed names)")
             table.add_column("Source", justify="right", no_wrap=True)
             table.add_column("Profiles", justify="right", no_wrap=True)
             table.add_column("Members", justify="right", no_wrap=True)
@@ -1210,6 +1224,12 @@ def consolidate_source_profiles_command(
             f"{candidate.recording_count} exemplars="
             f"{len(candidate.exemplar_observation_ids)} names={names}"
         )
+        if candidate.identity_warnings:
+            console.print(
+                f"WARNING profile {candidate.profile_id}: "
+                + ", ".join(candidate.identity_warnings)
+                + "; merging requires --allow-confirmed-names and approval."
+            )
     for profile_id, reason in excluded:
         console.print(f"- excluded profile {profile_id}: {reason}")
     if plan_only:
@@ -1467,10 +1487,15 @@ def consolidate_source_profiles_command(
         source_id=source_id,
         candidates=prepared_candidates,
         comparisons=comparisons,
+        reviewed_evidence=reviewed_evidence,
     )
     plan = replace(
         plan,
         excluded_profiles=excluded,
+    )
+    review_suggestions = source_profile_review_suggestions(
+        database, plan, comparisons=comparisons, base_dir=paths.root,
+        evaluation_root=evaluation_root, cache_dir=cache_dir,
     )
     payload = source_profile_consolidation_payload(
         plan,
@@ -1478,6 +1503,7 @@ def consolidate_source_profiles_command(
         model_fingerprint=backend.spec.fingerprint,
         policy_fingerprint=policy_spec.artifact_sha256,
         preparation_failures=preparation_failures,
+        review_suggestions=review_suggestions,
     )
     result_sha256 = str(payload["result_sha256"])
     artifact_path = write_source_profile_consolidation_artifact(
@@ -1491,7 +1517,25 @@ def consolidate_source_profiles_command(
         f"proposals={len(plan.proposals)} cache_hits={pair_diagnostic_cache.hits} "
         f"cache_misses={pair_diagnostic_cache.misses}."
     )
+    review_report = write_source_profile_consolidation_review_report(
+        artifact_path.with_suffix(".md"), payload
+    )
+    console.print(f"Review report: {review_report}")
+    for suggestion in review_suggestions:
+        console.print(
+            "EXACT PAIR REVIEW: profiles "
+            + ",".join(map(str, suggestion["profile_ids"]))
+            + "; observations " + ",".join(map(str, suggestion["observation_ids"]))
+            + "; " + suggestion["reason"]
+        )
+        console.print(suggestion["review_command"])
+    if canonical_profile_id is not None and not any(
+        canonical_profile_id in proposal.profile_ids for proposal in plan.proposals
+    ):
+        raise typer.BadParameter("Requested canonical profile is not in a supported merge proposal; see the review report")
     for index, proposal in enumerate(plan.proposals, start=1):
+        if canonical_profile_id is not None and canonical_profile_id not in proposal.profile_ids:
+            continue
         packet_path = write_source_profile_consolidation_packet(
             database,
             proposal,
@@ -1501,13 +1545,43 @@ def consolidate_source_profiles_command(
             f"MERGE PROPOSAL {index}: profiles "
             f"{','.join(str(value) for value in proposal.profile_ids)} would "
             "become one canonical profile after approval. "
-            f"All {proposal.comparison_count} required comparisons passed; "
+            f"All {proposal.comparison_count} required comparisons are supported "
+            "by acoustic results or exact qualified human judgments; "
             "review the weakest observation pair "
             f"{proposal.weakest_observation_pair[0]}-"
             f"{proposal.weakest_observation_pair[1]}."
         )
+        warnings = sorted({
+            warning for pair in plan.pair_evidence
+            if set(pair.profile_ids).issubset(proposal.profile_ids)
+            for warning in pair.identity_warnings
+        })
+        if warnings:
+            console.print("WARNING: " + ", ".join(warnings) + "; confirmed names and historical bindings will be preserved via the canonical profile.")
+        linked_ids = {
+            database.resolve_speaker_profile_id(bound_id)
+            for pastor in database.list_pastors()
+            if (bound_id := database.get_pastor_speaker_profile_id(pastor.id)) is not None
+        } & set(proposal.profile_ids)
+        named_ids = {
+            candidate.profile_id for candidate in plan.candidates
+            if candidate.profile_id in proposal.profile_ids
+            and (candidate.normalized_names or candidate.identity_warnings)
+        }
+        selected_canonical_id = canonical_profile_id or min(
+            linked_ids or named_ids or set(proposal.profile_ids)
+        )
+        retained_profile = database.get_speaker_profile(selected_canonical_id)
+        console.print(
+            f"Canonical target: profile {selected_canonical_id}"
+            + (f" ({retained_profile.display_label})" if retained_profile and retained_profile.display_label else "")
+            + ". Other profile IDs will redirect to this profile."
+        )
         console.print(f"Review packet: {packet_path}")
         if not apply:
+            continue
+        if warnings and not allow_confirmed_names:
+            console.print("Cohort requires --allow-confirmed-names; no merge approval requested.")
             continue
         if open_packet:
             webbrowser.open(packet_path.as_uri())
@@ -1525,6 +1599,8 @@ def consolidate_source_profiles_command(
             reviewer=(reviewer or "").strip(),
             artifact_sha256=result_sha256,
             conflicts=conflicts,
+            allow_confirmed_names=allow_confirmed_names,
+            canonical_profile_id=selected_canonical_id,
         )
         if canonical_id is None:
             console.print(
@@ -1573,6 +1649,8 @@ def consolidate_source_profiles_command(
                     str(paths.root),
                 ]
             )
+            if allow_confirmed_names:
+                apply_command += " --allow-confirmed-names"
             console.print(
                 "NEXT ACTION: No merge has occurred. Run the following command "
                 "to revalidate the proposal, open one weakest-edge review "
@@ -1591,6 +1669,8 @@ def consolidate_source_profiles_command(
                 "No registry mutations were made, and --apply has nothing to "
                 "review."
             )
+            if review_suggestions:
+                console.print("Review the exact ambiguous pairs above, then rerun this plan to reuse your qualified judgments.")
     elif not plan.proposals:
         console.print(
             "NO MERGE ACTION: Revalidation produced no proposals, so no "

@@ -5,6 +5,7 @@ import hashlib
 import html
 import itertools
 import json
+import shlex
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -20,7 +21,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
 from pastor_transcript_extractor.storage import Database
 
 
-SOURCE_PROFILE_CONSOLIDATION_VERSION = "source_profile_consolidation_v1"
+SOURCE_PROFILE_CONSOLIDATION_VERSION = "source_profile_consolidation_v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +31,7 @@ class SourceProfileCandidate:
     exemplar_observation_ids: tuple[int, ...]
     recording_count: int
     normalized_names: tuple[str, ...]
+    identity_warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +45,9 @@ class SourceProfilePairEvidence:
     weakest_score: float | None
     eligible: bool
     blockers: tuple[str, ...]
+    identity_warnings: tuple[str, ...] = ()
+    reviewed_same_pairs: tuple[tuple[int, int], ...] = ()
+    review_event_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,7 +84,7 @@ class _SourceProfileCandidateContext:
     videos_by_id: Mapping[int, Video]
     observations_by_id: Mapping[int, SpeakerObservation]
     readiness_by_id: Mapping[int, ProfileAssociationReadiness]
-    anonymous_profile_ids: frozenset[int]
+    identity_warnings_by_id: Mapping[int, tuple[str, ...]]
 
 
 def source_profile_candidates(
@@ -169,7 +174,9 @@ def _source_profile_candidate_context(
     }
     readiness_by_id = {
         item.profile_id: item
-        for item in assess_profile_association_readiness(database, evidence)
+        for item in assess_profile_association_readiness(
+            database, evidence, include_configured_profiles=True
+        )
     }
     linked_profile_ids = {
         database.resolve_speaker_profile_id(profile_id)
@@ -177,17 +184,22 @@ def _source_profile_candidate_context(
         if (profile_id := database.get_pastor_speaker_profile_id(pastor.id))
         is not None
     }
-    anonymous_profile_ids = frozenset(
-        profile_id
-        for profile_id in readiness_by_id
-        if profile_id not in linked_profile_ids
-        and not database.list_effective_name_claim_ids_for_profile(profile_id)
-    )
+    warnings_by_id = {}
+    for profile_id in readiness_by_id:
+        warnings = []
+        if profile_id in linked_profile_ids:
+            warnings.append("configured_pastor_identity")
+        if (database.list_effective_name_claim_ids_for_profile(profile_id)
+            or readiness_by_id[profile_id].normalized_names):
+            warnings.append("confirmed_name_claim")
+        if len(readiness_by_id[profile_id].normalized_names) > 1:
+            warnings.append("conflicting_explicit_attribution")
+        warnings_by_id[profile_id] = tuple(warnings)
     return _SourceProfileCandidateContext(
         videos_by_id=videos_by_id,
         observations_by_id=observations_by_id,
         readiness_by_id=readiness_by_id,
-        anonymous_profile_ids=anonymous_profile_ids,
+        identity_warnings_by_id=warnings_by_id,
     )
 
 
@@ -201,8 +213,6 @@ def _source_profile_candidates_from_context(
     candidates: list[SourceProfileCandidate] = []
     excluded: list[tuple[int, str]] = []
     for profile_id, readiness in sorted(context.readiness_by_id.items()):
-        if profile_id not in context.anonymous_profile_ids:
-            continue
         member_ids = tuple(readiness.member_observation_ids)
         source_member_ids = tuple(
             observation_id
@@ -224,6 +234,7 @@ def _source_profile_candidates_from_context(
             not in {
                 "fewer_than_three_profile_members",
                 "fewer_than_three_distinct_recordings",
+                "conflicting_explicit_attribution",
             }
         )
         if unsafe_blockers:
@@ -264,6 +275,7 @@ def _source_profile_candidates_from_context(
                 exemplar_observation_ids=tuple(selected),
                 recording_count=readiness.recording_count,
                 normalized_names=readiness.normalized_names,
+                identity_warnings=context.identity_warnings_by_id.get(profile_id, ()),
             )
         )
     return tuple(candidates), tuple(excluded)
@@ -276,13 +288,14 @@ def build_source_profile_consolidation_plan(
     candidates: Sequence[SourceProfileCandidate],
     comparisons: Mapping[tuple[int, int], Mapping[str, Any]],
     minimum_same_comparisons: int = 2,
+    reviewed_evidence: ReviewedSpeakerEvidence | None = None,
 ) -> SourceProfileConsolidationPlan:
     """Build non-overlapping complete-link profile cohorts.
 
-    A profile edge is admitted only when every supplied cross-profile exemplar
-    comparison says ``same_speaker``. A cohort is admitted only when every
-    profile pair in it has such an edge. Missing and ambiguous results therefore
-    fail closed.
+    Every cross-profile exemplar comparison must say ``same_speaker`` or have
+    its abstention resolved by a qualified, exact human same-speaker judgment.
+    Every profile pair in a cohort must have such an edge. Reviewed differences
+    and conflicting human reviews remain blockers, including unsampled members.
     """
     if minimum_same_comparisons < 2:
         raise ValueError("at least two same-speaker comparisons are required")
@@ -291,22 +304,78 @@ def build_source_profile_consolidation_plan(
         for pair in database.list_effective_observation_difference_pairs()
     }
     pair_evidence: list[SourceProfilePairEvidence] = []
+    observations_by_id = {
+        observation.id: observation for observation in database.list_speaker_observations()
+    } if reviewed_evidence is not None else {}
     eligible_profile_pairs: set[tuple[int, int]] = set()
     pair_by_profiles: dict[tuple[int, int], SourceProfilePairEvidence] = {}
     ordered_candidates = sorted(candidates, key=lambda item: item.profile_id)
     for left, right in itertools.combinations(ordered_candidates, 2):
         blockers: list[str] = []
         names = set(left.normalized_names) | set(right.normalized_names)
+        identity_warnings = list(dict.fromkeys((*left.identity_warnings, *right.identity_warnings)))
         if len(names) > 1:
-            blockers.append("conflicting_explicit_attribution")
+            identity_warnings.append("conflicting_explicit_attribution")
         cross_pairs = [
             tuple(sorted((left_id, right_id)))
             for left_id in left.exemplar_observation_ids
             for right_id in right.exemplar_observation_ids
         ]
-        if any(pair in different_pairs for pair in cross_pairs):
+        if any(
+            (a in left.member_observation_ids and b in right.member_observation_ids)
+            or (b in left.member_observation_ids and a in right.member_observation_ids)
+            for a, b in different_pairs
+        ):
             blockers.append("reviewed_different_speaker_constraint")
+        if reviewed_evidence is not None:
+            left_fingerprints = {
+                observations_by_id[value].input_fingerprint
+                for value in left.member_observation_ids if value in observations_by_id
+            }
+            right_fingerprints = {
+                observations_by_id[value].input_fingerprint
+                for value in right.member_observation_ids if value in observations_by_id
+            }
+            for relation in reviewed_evidence.pair_relations.values():
+                if (relation.outcome == "different_speaker"
+                    and relation.fingerprints & left_fingerprints
+                    and relation.fingerprints & right_fingerprints):
+                    blockers.append("reviewed_different_speaker_constraint")
+            if any(pair & left_fingerprints and pair & right_fingerprints
+                   for pair in reviewed_evidence.pair_conflicts):
+                blockers.append("conflicting_human_pair_reviews")
         results = [comparisons.get(pair) for pair in cross_pairs]
+        reviewed_same_pairs = []
+        review_event_ids: set[str] = set()
+        for index, pair in enumerate(cross_pairs):
+            if reviewed_evidence is None:
+                break
+            observations = [observations_by_id.get(value) for value in pair]
+            if any(observation is None for observation in observations):
+                continue
+            fingerprints = frozenset(observation.input_fingerprint for observation in observations)
+            if fingerprints in reviewed_evidence.pair_conflicts:
+                blockers.append("conflicting_human_pair_reviews")
+                continue
+            relation = reviewed_evidence.pair_relations.get(fingerprints)
+            if relation is None:
+                continue
+            if relation.outcome == "different_speaker":
+                blockers.append("reviewed_different_speaker_constraint")
+                continue
+            qualified = all(
+                fingerprint not in reviewed_evidence.qualification_conflicts
+                and (qualification := reviewed_evidence.qualifications.get(fingerprint)) is not None
+                and qualification.action == "qualified_single_speaker"
+                for fingerprint in fingerprints
+            )
+            result = results[index]
+            if qualified and relation.outcome == "same_speaker" and (
+                result is None or result.get("outcome") == "insufficient_evidence"
+            ):
+                results[index] = {**(result or {}), "outcome": "same_speaker"}
+                reviewed_same_pairs.append(pair)
+                review_event_ids.update(item.review_event_id for item in relation.provenance)
         same_count = sum(
             result is not None and result.get("outcome") == "same_speaker"
             for result in results
@@ -345,6 +414,9 @@ def build_source_profile_consolidation_plan(
             weakest_score=weakest_score,
             eligible=eligible,
             blockers=tuple(dict.fromkeys(blockers)),
+            identity_warnings=tuple(dict.fromkeys(identity_warnings)),
+            reviewed_same_pairs=tuple(reviewed_same_pairs),
+            review_event_ids=tuple(sorted(review_event_ids)),
         )
         pair_evidence.append(item)
         pair_by_profiles[profile_pair] = item
@@ -406,7 +478,11 @@ def apply_source_profile_consolidation(
     reviewer: str,
     artifact_sha256: str,
     conflicts: list[str] | None = None,
+    allow_confirmed_names: bool = False,
+    canonical_profile_id: int | None = None,
 ) -> int | None:
+    if proposal not in plan.proposals:
+        raise ValueError("Only a supported proposal from this plan may be approved")
     return merge_reviewed_source_profile_cohort(
         database,
         source_id=plan.source_id,
@@ -414,6 +490,8 @@ def apply_source_profile_consolidation(
         reviewer=reviewer,
         evidence_sha256=artifact_sha256,
         conflicts=conflicts,
+        allow_confirmed_names=allow_confirmed_names,
+        canonical_profile_id=canonical_profile_id,
     )
 
 
@@ -424,6 +502,7 @@ def source_profile_consolidation_payload(
     model_fingerprint: str,
     policy_fingerprint: str,
     preparation_failures: Sequence[tuple[int, str]] = (),
+    review_suggestions: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "artifact_kind": "source_profile_consolidation",
@@ -440,6 +519,7 @@ def source_profile_consolidation_payload(
                 "exemplar_observation_ids": list(item.exemplar_observation_ids),
                 "recording_count": item.recording_count,
                 "normalized_names": list(item.normalized_names),
+                "identity_warnings": list(item.identity_warnings),
             }
             for item in plan.candidates
         ],
@@ -458,6 +538,9 @@ def source_profile_consolidation_payload(
                 "weakest_score": item.weakest_score,
                 "eligible": item.eligible,
                 "blockers": list(item.blockers),
+                "identity_warnings": list(item.identity_warnings),
+                "reviewed_same_pairs": [list(pair) for pair in item.reviewed_same_pairs],
+                "review_event_ids": list(item.review_event_ids),
             }
             for item in plan.pair_evidence
         ],
@@ -485,9 +568,83 @@ def source_profile_consolidation_payload(
         ],
         "registry_mutation_allowed": False,
         "human_cohort_approval_required": True,
+        "review_suggestions": [dict(item) for item in review_suggestions],
     }
     payload["result_sha256"] = _sha256(payload)
     return payload
+
+
+def source_profile_review_suggestions(
+    database: Database,
+    plan: SourceProfileConsolidationPlan,
+    *,
+    comparisons: Mapping[tuple[int, int], Mapping[str, Any]],
+    base_dir: Path,
+    evaluation_root: Path,
+    cache_dir: Path,
+) -> list[dict[str, Any]]:
+    """Nominate the exact abstaining windows, without widening merge authority."""
+    candidates = {item.profile_id: item for item in plan.candidates}
+    suggestions = []
+    for evidence in plan.pair_evidence:
+        left, right = (candidates[value] for value in evidence.profile_ids)
+        resolved = set(evidence.reviewed_same_pairs)
+        for a, b in itertools.product(left.exemplar_observation_ids, right.exemplar_observation_ids):
+            pair = tuple(sorted((a, b)))
+            result = comparisons.get(pair)
+            if pair in resolved or (result is not None and result.get("outcome") != "insufficient_evidence"):
+                continue
+            observations = [database.get_speaker_observation(value) for value in pair]
+            if any(item is None for item in observations):
+                continue
+            videos = [database.get_video_by_id(item.video_id) for item in observations]
+            if any(item is None for item in videos):
+                continue
+            command = shlex.join([
+                "pte", "identity", "review-speaker-pair",
+                "--observation-fingerprint-a", observations[0].input_fingerprint,
+                "--observation-fingerprint-b", observations[1].input_fingerprint,
+                "--evaluation-root", str(evaluation_root.expanduser().resolve()),
+                "--cache-dir", str(cache_dir.expanduser().resolve()),
+                "--base-dir", str(base_dir.expanduser().resolve()),
+                "--", videos[0].youtube_video_id, videos[1].youtube_video_id,
+            ])
+            suggestions.append({
+                "profile_ids": list(evidence.profile_ids),
+                "observation_ids": list(pair),
+                "observation_fingerprints": [item.input_fingerprint for item in observations],
+                "windows": [{"start_seconds": item.start_seconds, "end_seconds": item.end_seconds} for item in observations],
+                "youtube_video_ids": [item.youtube_video_id for item in videos],
+                "reason": result.get("reason", "insufficient_evidence") if result else "comparison_missing",
+                "review_command": command,
+                "prepare_command": command.replace("review-speaker-pair", "review-speaker-pair --prepare-only", 1),
+            })
+    return suggestions
+
+
+def write_source_profile_consolidation_review_report(
+    destination: Path, payload: Mapping[str, Any]
+) -> Path:
+    lines = ["# Source-profile consolidation review", "",
+             "Shared source is retrieval context. Names warn; identity merges require human approval.", ""]
+    for item in payload["pair_evidence"]:
+        lines.extend([
+            "## Profiles " + " / ".join(map(str, item["profile_ids"])), "",
+            f"Same: {item['same_count']}; different: {item['different_count']}; unresolved: {item['insufficient_count']}.",
+            "Identity warnings: " + (", ".join(item["identity_warnings"]) or "none") + ".",
+            "Blockers: " + (", ".join(item["blockers"]) or "none") + ".", "",
+        ])
+    lines.extend(["## Exact ambiguous comparisons", "",
+                  "Review each pinned window pair. A same-speaker judgment resolves that exact abstention on the next plan; it does not approve a whole cohort or bypass different-speaker constraints.", ""])
+    for item in payload["review_suggestions"]:
+        lines.extend([
+            "### Observations " + " / ".join(map(str, item["observation_ids"])), "",
+            "Profiles " + " / ".join(map(str, item["profile_ids"])) + "; reason: " + item["reason"], "",
+            "```console", item["review_command"], "```", "",
+        ])
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return destination
 
 
 def write_source_profile_consolidation_artifact(
@@ -536,9 +693,9 @@ code{{background:#eee;padding:.1rem .3rem}}
 </style>
 </head><body><h1>Source-profile consolidation review</h1>
 <p>Proposed profiles: <code>{profile_labels}</code>.</p>
-<p>{proposal.comparison_count} independent exemplar comparisons across
-{proposal.profile_pair_count} profile pairs all passed the pinned same-speaker
-policy. Shared source was used only to retrieve the cohort. The weakest score
+<p>{proposal.comparison_count} exemplar comparisons across
+{proposal.profile_pair_count} profile pairs are supported by the pinned policy
+or exact qualified human judgments. Shared source was used only to retrieve the cohort. The weakest score
 is {score}.</p>
 <p>Approve the entire cohort only if these weakest-edge recordings contain the
 same principal speaker.</p>
@@ -550,6 +707,13 @@ same principal speaker.</p>
 
 
 def _comparison_score(result: Mapping[str, Any]) -> float | None:
+    metrics = result.get("metrics")
+    cross = metrics.get("cross", {}) if isinstance(metrics, Mapping) else {}
+    if isinstance(cross, Mapping):
+        for key in ("p10", "median"):
+            value = cross.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return float(value)
     for container in (result, result.get("metrics")):
         if not isinstance(container, Mapping):
             continue
