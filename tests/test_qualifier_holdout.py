@@ -105,6 +105,41 @@ class TwoModelHoldoutTests(unittest.TestCase):
             with h.existing.integration.cumulative_history(packet,out.parent/'other/execution') as history:
                 self.assertEqual(len(history),2)
 
+    def test_flash_reuses_exact_qwen_receipt_without_duplicate_spend(self):
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+        from decimal import Decimal
+        with TemporaryDirectory() as folder:
+            first,parent=self.packet(folder)
+            h.existing.Store(parent).write_immutable('input.json',first)
+            original=h.run_recipe(first,parent,lambda spec:self.wire(spec,first['selection']['trial']))
+            with patch.object(h,'SAVED_QWEN_COMPARISON',first['input_fingerprint']):
+                packet,out=self.packet(folder,'flash')
+            self.assertEqual(packet['budget']['maximum_paid_attempts'],1)
+            self.assertEqual(packet['budget']['reserved_usd'],'0.0090112')
+            sent=[]
+            def transport(spec):sent.append(spec);return self.wire(spec,packet['selection']['trial'])
+            result=h.run_recipe(packet,out,transport)
+            self.assertEqual([s.body['model'] for s in sent],['deepseek-ai/DeepSeek-V4.1-Flash-1017'])
+            self.assertTrue(result['runs'][0]['cache_reuse'])
+            self.assertEqual(result['runs'][0]['results'],original['runs'][1]['results'])
+            self.assertIsNone(result['runs'][0]['elapsed_seconds'])
+            self.assertEqual(result['runs'][0]['original_elapsed_seconds'],original['runs'][1]['elapsed_seconds'])
+            with h.existing.integration.cumulative_history(packet,out.parent/'other/execution') as history:
+                self.assertEqual(len(history),3)
+                expected=h.existing.integration.BASELINE_SPEND+sum((v for _,v in history),Decimal(0))
+            self.assertEqual(Decimal(result['runs'][1]['result']['accounting']['cumulative_budget_charge_usd']),expected)
+            reused=packet['runs'][0]['reuse']
+            receipt=next(p for p in reused['preserved_files'] if '/receipts/' in p)
+            saved=Path(receipt).read_text();Path(receipt).write_text(saved+' ')
+            with self.assertRaisesRegex(ValueError,'changed after freeze'):h.validate_reuse(reused)
+            Path(receipt).write_text(saved)
+            prior_path=Path(result['runs'][0]['results']).parent.parent/'input.json'
+            prior=json.loads(prior_path.read_text());prior['native_trial']['audit_index']['q0']['family']='tampered'
+            prior_path.write_text(json.dumps(prior))
+            with patch.object(h,'SAVED_QWEN_COMPARISON',first['input_fingerprint']),self.assertRaisesRegex(ValueError,'provenance'):
+                self.packet(folder,'flash')
+
     def test_thinking_failure_preserves_cost_and_other_frozen_model_still_runs(self):
         from tempfile import TemporaryDirectory
         with TemporaryDirectory() as folder:

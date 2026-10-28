@@ -10,6 +10,7 @@ from . import qualification_verification as qualifiers
 from . import source_passages
 
 VERSION='qualifier-transfer-holdout-v1'
+SAVED_QWEN_COMPARISON='2ea817b2445b19590758427495fd0528a4c7e16afcc666ffb26c8e978e0f575a'
 TEMPLATE='dc5946c16f201b83ff8d949528f22a8c67d4dd539e1936a4784693376fdaa6d4'
 
 
@@ -86,6 +87,47 @@ def selection(base_dir=None,*,check_only=False):
     return packet,out
 
 
+def saved_qwen_run(base_dir,spec,selected):
+    """Reuse the pinned comparison's exact constituent, preserving its original spend."""
+    parent=existing.directory(base_dir,SAVED_QWEN_COMPARISON)
+    path=parent/'input.json'
+    if not path.exists():return None
+    original=existing.integration.polarity.trial.frozen(path)
+    if original['selection']!=selected:raise ValueError('Saved holdout selection differs')
+    matches=[r for r in original['runs'] if r['request']==asdict(spec)]
+    if len(matches)!=1:raise ValueError('Saved holdout request differs')
+    comparison_path=parent/'comparison.json';comparison=json.loads(comparison_path.read_text())
+    if comparison['input_fingerprint']!=original['input_fingerprint']:raise ValueError('Foreign saved comparison')
+    fingerprint=existing.digest(dict(pair=original['input_fingerprint'],request=spec.fingerprint))
+    child=parent.parent/fingerprint;result_path=child/'execution/results.json'
+    record=next(r for r in comparison['runs'] if r['model']==spec.body['model'])
+    input_path=child/'input.json';prior=json.loads(input_path.read_text());result=json.loads(result_path.read_text())
+    receipt_path=child/'execution/receipts'/f'{spec.fingerprint}.json'
+    wire_path=child/'execution/wire-responses'/f'{spec.fingerprint}.json'
+    receipt=json.loads(receipt_path.read_text());wire=json.loads(wire_path.read_text())
+    if (prior['input_fingerprint']!=fingerprint or prior['request']!=asdict(spec) or prior['native_trial']!=selected['trial']
+        or result['input_fingerprint']!=fingerprint or record['result']!=result or record['results']!=str(result_path)
+        or result['halt'] or result['contract_fit']!='PASS' or result['production_admission']):
+        raise ValueError('Saved holdout result provenance differs')
+    if (receipt['request']!=asdict(spec) or receipt['halt'] or receipt['token_account']!=spec.preflight()
+        or receipt['response_digest']!=existing.digest(receipt['response']) or receipt['wire_response_digest']!=existing.digest(wire)
+        or existing.requests.decode_response(spec,existing.requests.WireResponse(**wire))!=receipt['response']):
+        raise ValueError('Saved holdout receipt differs')
+    rebuilt=assess(spec,prior['native_trial'],receipt['response'])
+    # JSON key ordering may reorder q10/q2; match case rows by their stable keys.
+    def canonical(value):return dict(value,rows=sorted(value['rows'],key=lambda row:row['key']))
+    if canonical(rebuilt)!=canonical(result['assessment']):raise ValueError('Saved holdout assessment differs')
+    usage=existing.check.demo.usage_account(existing.requests.ReceiptStore(child/'execution'))
+    if any(result['accounting'].get(k)!=v for k,v in usage.items()):raise ValueError('Saved holdout accounting differs')
+    return dict(record=record,preserved_files={str(p):existing.check.demo.file_hash(p) for p in (path,comparison_path,input_path,result_path,receipt_path,wire_path)})
+
+
+def validate_reuse(reuse):
+    if any(existing.check.demo.file_hash(existing.Path(p))!=sha for p,sha in reuse['preserved_files'].items()):
+        raise ValueError('Saved holdout reuse changed after freeze')
+    return dict(reuse['record'],cache_reuse=True,elapsed_seconds=None,original_elapsed_seconds=reuse['record']['elapsed_seconds'])
+
+
 def prepare(base_dir=None,*,pair,check_only=False):
     from dataclasses import asdict
     from . import deepinfra_requests as hosted
@@ -97,11 +139,15 @@ def prepare(base_dir=None,*,pair,check_only=False):
         metadata=hosted.public_model_metadata(policy['model'])
         if 'structured-output' not in metadata['capabilities'] or metadata['context']<policy['input_cap']+policy['output_cap']:raise ValueError('Selected model lacks required schema/context metadata')
         if (existing.Decimal(metadata['input_cents_per_token'])*10000>existing.Decimal(policy['input_usd_per_million']) or existing.Decimal(metadata['output_cents_per_token'])*10000>existing.Decimal(policy['output_usd_per_million'])):raise ValueError('Model price exceeds frozen non-promotional reservation')
-        runs.append(dict(request=asdict(spec),token_account=spec.preflight(),model_metadata=metadata))
+        run=dict(request=asdict(spec),token_account=spec.preflight(),model_metadata=metadata)
+        if pair=='flash' and version=='qualifier-holdout-qwen38-v1':
+            reuse=saved_qwen_run(base_dir,spec,selected)
+            if reuse is not None:run['reuse']=reuse
+        runs.append(run)
     common=[{k:v for k,v in r['request']['body'].items() if k!='model'} for r in runs]
     if common[0]!=common[1]:raise ValueError('Paired requests differ beyond model selection')
-    reserve=sum((hosted.reserved_usd(r['request']['version']) for r in runs),existing.Decimal(0))
-    packet=dict(version=VERSION,pair=pair,selection=selected,runs=runs,budget=dict(max_usd='.06',maximum_paid_attempts=2,reserved_usd=str(reserve),spend_root=str(existing.check.demo.build_paths(base_dir).evaluation/'qualified-observations'),cumulative_ceiling_usd='1'),
+    reserve=sum((hosted.reserved_usd(r['request']['version']) for r in runs if 'reuse' not in r),existing.Decimal(0))
+    packet=dict(version=VERSION,pair=pair,selection=selected,runs=runs,budget=dict(max_usd='.06',maximum_paid_attempts=sum('reuse' not in r for r in runs),reserved_usd=str(reserve),spend_root=str(existing.check.demo.build_paths(base_dir).evaluation/'qualified-observations'),cumulative_ceiling_usd='1'),
         policy=dict(reasoning_effort='none',retries=0,automatic_expansion=False,production_admission=False),common_body_digest=existing.digest(common[0]),
         code_identity={m.__name__:existing.check.demo.file_hash(existing.Path(m.__file__)) for m in (existing,existing.requests,hosted,existing.integration,qualifiers,source_passages)},adapter_sha256=existing.check.demo.file_hash(existing.Path(__file__)))
     packet['input_fingerprint']=existing.digest(packet);out=existing.directory(base_dir,packet['input_fingerprint'])
@@ -117,12 +163,17 @@ def run_recipe(packet,parent,transport,*,progress=None):
         saved=json.loads((parent/'comparison.json').read_text())
         if saved['input_fingerprint']!=packet['input_fingerprint']:raise ValueError('Foreign comparison result')
         return saved
-    # Reserve both planned requests against the shared cumulative ceiling before any send.
+    # Reserve all new planned requests against the shared cumulative ceiling before any send.
     with existing.integration.cumulative_history(packet,parent/'preflight') as history:
         prior=existing.integration.BASELINE_SPEND+sum((v for _,v in history),existing.Decimal(0))
         if prior+existing.Decimal(packet['budget']['reserved_usd'])>=1:raise ValueError('Both requests must fit under cumulative $1 ceiling')
     results=[]
     for run in packet['runs']:
+        if 'reuse' in run:
+            result=validate_reuse(run['reuse'])
+            if progress:progress('Reusing saved '+result['model']+': exact frozen request and receipt; no new call')
+            results.append(result)
+            continue
         spec=existing.requests.RequestSpec(**run['request']);fingerprint=existing.digest(dict(pair=packet['input_fingerprint'],request=spec.fingerprint))
         out=parent.parent/fingerprint
         child=dict(input_fingerprint=fingerprint,request=run['request'],native_trial=packet['selection']['trial'],baseline=dict(selection_fingerprint=packet['selection']['input_fingerprint']),budget=dict(packet['budget'],maximum_paid_attempts=1,max_usd=hosted.policy_for(spec.version)['maximum_usd'],reserved_usd=str(hosted.reserved_usd(spec.version))),policy=dict(packet['policy'],model=spec.body['model']),limitation='Fixed neutral holdout: identical prompt, input, schema and instant decoding across two models. References are evaluation-only; no post-result tuning or admission.')

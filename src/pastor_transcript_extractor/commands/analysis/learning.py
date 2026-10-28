@@ -16,7 +16,7 @@ app.add_typer(fit_app,name='model-fit')
 
 @fit_app.command('qualifier-validation-prepare')
 def qualifier_validation_prepare(pair:str=typer.Option(...,'--pair',help='qwen: Qwen3.5-397B versus Qwen3.8-27B; flash: Qwen3.8-27B versus Flash 1017.'),base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
-    """Freeze untouched neutral cases once and identical instant requests for two models."""
+    """Freeze identical instant requests; reuse an exact saved Qwen holdout when available."""
     from ... import qualifier_holdout as validation
     try:
         packet,out=validation.prepare(base_dir,pair=pair,check_only=check_only)
@@ -26,7 +26,7 @@ def qualifier_validation_prepare(pair:str=typer.Option(...,'--pair',help='qwen: 
 
 @fit_app.command('qualifier-validation-run')
 def qualifier_validation_run(input_path:Path=typer.Option(...,'--input'),base_dir:Path|None=typer.Option(None,'--base-dir'),experimental:bool=typer.Option(False,'--experimental'),approve_input:str|None=typer.Option(None,'--approve-input'),max_usd:str=typer.Option('.06','--max-usd'),confirm_prices:bool=typer.Option(False,'--confirm-prices'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
-    """Run exactly one frozen instant request per selected model; no retries or tuning."""
+    """Reuse frozen receipts or run one instant request per uncached model; no retries or tuning."""
     from ... import qualifier_holdout as validation
     try:
         if not check_only:typer.echo('Fixed holdout: two instant models; identical cases/questions/schema; no retries or tuning',err=True)
