@@ -156,7 +156,7 @@ def cumulative_history(packet,root):
                 prior_store=requests.ReceiptStore(folder)
                 for attempt in prior_store.attempts():
                     from . import deepinfra_requests as hosted
-                    version=({hosted.QWEN_VERIFY_NAMESPACE:requests.DEEPINFRA_QWEN_VERIFY_VERSION,requests.DEEPINFRA_PROFILE_SUPPORT_VERSION:requests.DEEPINFRA_PROFILE_SUPPORT_VERSION,**{v:v for v in hosted.HOLDOUT_POLICIES}}).get(attempt['namespace'])
+                    version=({hosted.QWEN_VERIFY_NAMESPACE:requests.DEEPINFRA_QWEN_VERIFY_VERSION,requests.DEEPINFRA_PROFILE_SUPPORT_VERSION:requests.DEEPINFRA_PROFILE_SUPPORT_VERSION,**{v:v for v in (*hosted.HOLDOUT_POLICIES,*hosted.ANALYSIS_SUPPORT_POLICIES)}}).get(attempt['namespace'])
                     qwen=attempt.get('provider')=='DeepInfra' and version is not None and attempt['phase']=='source_reading'
                     expected_reserve=hosted.reserved_usd(version) if qwen else requests.reservation('source_verification')
                     if (not qwen and (attempt['phase']!='source_verification' or attempt.get('provider','TypeSafe')!='TypeSafe')) or Decimal(attempt['reserved_usd'])!=expected_reserve: raise ValueError('Historical reservation differs')

@@ -6,3 +6,4 @@ This preserves fingerprint-pinned execution adapters and the root CLI bytes.
 from pastor_transcript_extractor.commands.analysis import content as _content
 from pastor_transcript_extractor.commands.analysis import context_design as _context_design
 from pastor_transcript_extractor.commands.analysis import learning as _learning
+from pastor_transcript_extractor.commands.analysis import profile_support as _profile_support

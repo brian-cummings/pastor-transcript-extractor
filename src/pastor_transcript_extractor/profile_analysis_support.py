@@ -73,6 +73,9 @@ def _inventory(window,texts):
 
 
 def _case(record,claim,reader,claims,points):
+    available=set(claims)|{c['id'] for c in record.get('claims',[])}|set(points)
+    if any(k not in available for k in claim.get('upstream_claim_ids',[])):raise ValueError('Missing upstream analytical claim')
+    if claim.get('description_point_id') and claim['description_point_id'] not in points:raise ValueError('Missing linked explanatory point')
     refs=list(dict.fromkeys(claim.get('observation_input_ids',[])+claim.get('evidence_ids',[])+claim.get('counterevidence_ids',[])))
     if not refs or not claim.get('evidence_ids'):raise ValueError('Statement lacks existing analytical evidence')
     for eid in refs:reader.get(eid)
@@ -117,28 +120,39 @@ def _case(record,claim,reader,claims,points):
         bound.append(dict(binding=deepcopy(b),origin_status=item['status'],authority='Existing upstream proposal; not independent truth or production admission'))
     missing=wanted-{b['binding']['binding_id'] for b in bound}
     if missing:raise ValueError('Missing linked qualified bindings: '+', '.join(sorted(missing)))
+    aggregates=[]
+    for eid in refs:
+        o,_=reader.get(eid)
+        if 'measurement' in o:
+            value=dict(video_id=o['video_id'],field=o['field'],measurement=deepcopy(o['measurement']))
+            if value not in aggregates:aggregates.append(value)
+    raw_claims={c['id']:c for c in record.get('claims',[])}
+    aggregate_claims=[{k:deepcopy(raw_claims[cid][k]) for k in ('id','wording','rule','scope','support_state','uncertainty','rule_version') if k in raw_claims[cid]} for cid in claim.get('upstream_claim_ids',[]) if cid in raw_claims]
     source_state=[]
     for pid,s in sorted(sources.items()):
         source_state.append(dict(passage_id=pid,video_id=s['window']['video_id'],block_id=s['window']['anchor_block_id'],fields={k:[dict(id=u['id'],text=u['text']) for u in v] for k,v in s['fields'].items()},support_input_ids=[aliases[e] for e,p in bindings.items() if p==pid and e in claim['evidence_ids']],counter_input_ids=[aliases[e] for e,p in bindings.items() if p==pid and e in claim.get('counterevidence_ids',[])]))
     dependencies=[k for k in claim.get('upstream_claim_ids',[]) if k in claims]
-    state=dict(candidate=dict(id=claim['id'],statement=claim['wording'],scope=deepcopy(claim.get('scope',{})),analytical_basis=claim.get('analytical_basis',claim.get('rule_id','existing_claim'))),
+    state=dict(candidate=dict(id=claim['id'],statement=claim['wording'],scope=deepcopy(claim.get('scope',{})),analytical_basis=claim.get('analytical_basis',claim.get('rule_id','existing_claim')),declared_caveats=deepcopy(claim.get('_support_caveats',{}))),
         sample=dict(profile_id=record['profile']['id'],video_ids=sorted(record['profile']['effective_member_video_ids']),coverage=deepcopy(record.get('coverage',{}))),
         measurement_ledger=dict(columns=['input_id','video_id','block_id','contract','value','state'],topic_value_columns=['score','confidence','probabilities_0_to_4'],contracts=contracts,rows=rows,meaning='Complete declared observation inputs, not semantic proof. Only linked supporting/contrary passages are reproduced below.'),
-        passages=source_state,upstream_points=upstream,bound_observations=bound)
+        passages=source_state,upstream_points=upstream,bound_observations=bound,stored_aggregates=aggregates,upstream_aggregate_claims=aggregate_claims,aggregation_contract=record['reader'].get('synthesis_rule','Not supplied; do not invent aggregation meanings.'))
     return dict(state=state,sources=sources,input_ids={str(v):k for k,v in aliases.items()},dependencies=dependencies,
         identity=dict(profile_id=record['profile']['id'],membership_fingerprint=record['profile']['membership_fingerprint'],inventory_fingerprint=record['inventory_fingerprint']))
 
 
 def build_plan(record,*,loader=None):
     """All assembled reader claims, with explicit per-claim evidence failures."""
-    reader=EvidenceReader(record,loader);claims=_unique(record['reader']['claims'],'id')
+    reader=EvidenceReader(record,loader);claims=_unique(deepcopy(record['reader']['claims']),'id')
+    portrait={p['id']:p for p in record['reader'].get('portrait',{}).get('entries',[])}
+    for cid,claim in claims.items():
+        claim['_support_caveats']={k:deepcopy(portrait[cid][k]) for k in ('limits','alternative') if k in portrait[cid]} if cid in portrait else {}
     points={p.get('claim_id',p['point_id']):p for p in record['reader'].get('explanatory_descriptions',{}).get('points',[])}
     items=[]
     for cid,claim in sorted(claims.items()):
         try:case=_case(record,claim,reader,claims,points);gap=None
         except (ValueError,KeyError,StopIteration,OSError,TypeError) as error:
             case=None;gap=dict(blocked_statement=claim['wording'],inspected_reuse=['Declared observation inputs','Linked source blocks/context','Linked upstream bound records'],missing_information=str(error) or type(error).__name__,responsible_producer='existing profile evidence assembly / relevant category-leaf producer',smallest_remedy='Restore compatible existing evidence or return this statement unresolved; do not reconstruct measurements here.',acceptance='Exact source, question, model, membership and context checks pass.',authorization_boundary='No new inference or upstream repair in analysis support')
-        items.append(dict(claim_id=cid,statement=claim['wording'],scope=deepcopy(claim.get('scope',{})),case=case,gap=gap))
+        items.append(dict(claim_id=cid,statement=claim['wording'],scope=deepcopy(claim.get('scope',{})),declared_caveats=claim['_support_caveats'],case=case,gap=gap))
     return dict(version=VERSION,profile=deepcopy(record['profile']),inventory_fingerprint=record['inventory_fingerprint'],items=items,
         known_gaps=[{k:deepcopy(g[k]) for k in ('id','withheld','cause','remedy') if k in g} for g in record.get('gaps',[])],source_files=reader.files,
         policy=dict(origin='machine_generated',namespace=VERSION,production_admission='not_admitted',upstream_repairs=False))
@@ -188,7 +202,7 @@ def document_input(plan,results,*,production=False):
     entries=[]
     for item in plan['items']:
         cid=item['claim_id'];row=indexed[cid]
-        entries.append(dict(claim_id=cid,statement=item['statement'],scope=item['scope'],support_status=state(cid),judgment=row.get('judgment'),receipt=row.get('receipt'),gap=item['gap'],failure=row.get('failure')))
+        entries.append(dict(claim_id=cid,statement=item['statement'],scope=item['scope'],declared_caveats=item.get('declared_caveats',{}),support_status=state(cid),judgment=row.get('judgment'),receipt=row.get('receipt'),gap=item['gap'],failure=row.get('failure')))
     counts={s:sum(e['support_status']==s for e in entries) for s in sorted({e['support_status'] for e in entries})}
     return dict(version=VERSION,stage='analysis_support_before_final_document',profile=plan['profile'],entries=entries,
         ready_claim_ids=[e['claim_id'] for e in entries if e['support_status']=='supported'],known_gaps=plan['known_gaps'],coverage=dict(total=len(entries),by_status=counts,meaning='All assembled analytical claims; not corpus completeness or independent accuracy'),
@@ -200,7 +214,10 @@ def render_handoff(document):
         'Experimental model assessments. Supported statements remain scoped to the supplied sample; no production admission.','',
         '## Statements available to the final document','']
     for e in document['entries']:
-        if e['support_status']=='supported':lines.extend([e['statement'],'',f"Support: {e['claim_id']} · {e['receipt']}",''])
+        if e['support_status']=='supported':
+            lines.extend([e['statement'],'','Scope: '+json.dumps(e['scope'],ensure_ascii=False),''])
+            if e.get('declared_caveats'):lines.extend(['Declared limitations and alternatives: '+json.dumps(e['declared_caveats'],ensure_ascii=False),''])
+            lines.extend([f"Support: {e['claim_id']} · {e['receipt']}",''])
     lines.extend(['## Unresolved, contradicted or withheld statements',''])
     for e in document['entries']:
         if e['support_status']!='supported':lines.extend([f"### {e['claim_id']} · {e['support_status']}",'',e['statement'],'',json.dumps(e.get('judgment') or e.get('gap') or e.get('failure'),ensure_ascii=False),''])

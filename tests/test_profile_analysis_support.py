@@ -84,6 +84,14 @@ class ProfileAnalysisSupportTests(unittest.TestCase):
         with self.assertRaises(ValueError):s.document_input(p,rows[:1])
         with self.assertRaisesRegex(ValueError,'not production admitted'):s.document_input(p,rows,production=True)
 
+    def test_reader_limits_and_alternatives_survive_into_final_handoff(self):
+        record,blob=fixture();record['reader']['portrait']=dict(entries=[dict(id='summary',limits='Only this selected sample.',alternative='Selection may overrepresent this example.')])
+        p=plan(record,blob);doc=s.document_input(p,results(p))
+        self.assertEqual(p['items'][1]['case']['state']['candidate']['declared_caveats']['limits'],'Only this selected sample.')
+        self.assertEqual(doc['entries'][1]['declared_caveats']['alternative'],'Selection may overrepresent this example.')
+        self.assertIn('Only this selected sample.',s.render_handoff(doc))
+        self.assertIn('Scope:',s.render_handoff(doc))
+
     def test_valid_unresolved_judgment_never_appears_ready(self):
         p=plan();rows=results(p);rows[0]['judgment']=s.validate_answer(p['items'][0]['case'],answer('unresolved'))
         self.assertEqual(s.document_input(p,rows)['coverage']['by_status'],dict(dependency_unresolved=1,unresolved=1))
