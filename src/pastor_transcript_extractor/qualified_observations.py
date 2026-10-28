@@ -156,13 +156,14 @@ def cumulative_history(packet,root):
                 prior_store=requests.ReceiptStore(folder)
                 for attempt in prior_store.attempts():
                     from . import deepinfra_requests as hosted
-                    qwen=attempt.get('provider')=='DeepInfra' and attempt['namespace']==hosted.QWEN_VERIFY_NAMESPACE and attempt['phase']=='source_reading'
-                    expected_reserve=hosted.reserved_usd(requests.DEEPINFRA_QWEN_VERIFY_VERSION) if qwen else requests.reservation('source_verification')
+                    version=({hosted.QWEN_VERIFY_NAMESPACE:requests.DEEPINFRA_QWEN_VERIFY_VERSION,**{v:v for v in hosted.HOLDOUT_POLICIES}}).get(attempt['namespace'])
+                    qwen=attempt.get('provider')=='DeepInfra' and version is not None and attempt['phase']=='source_reading'
+                    expected_reserve=hosted.reserved_usd(version) if qwen else requests.reservation('source_verification')
                     if (not qwen and (attempt['phase']!='source_verification' or attempt.get('provider','TypeSafe')!='TypeSafe')) or Decimal(attempt['reserved_usd'])!=expected_reserve: raise ValueError('Historical reservation differs')
                     receipt_path=folder/'receipts'/f'{attempt["request_fingerprint"]}.json'
                     if receipt_path.exists():
                         raw=json.loads(receipt_path.read_text());prior_spec=requests.RequestSpec(**raw['request'])
-                        if (qwen and prior_spec.version!=requests.DEEPINFRA_QWEN_VERIFY_VERSION) or prior_spec.fingerprint!=attempt['request_fingerprint'] or raw['response_digest']!=digest(raw['response']): raise ValueError('Historical budget receipt changed')
+                        if (qwen and prior_spec.version!=version) or prior_spec.fingerprint!=attempt['request_fingerprint'] or raw['response_digest']!=digest(raw['response']): raise ValueError('Historical budget receipt changed')
                         if raw['response'] is not None: requests.validate_response(prior_spec,raw['response'])
                 account=check.demo.usage_account(prior_store)
                 charge=account['reserved_usd'] if account['unknown_usage_attempts'] else account['known_list_price_usage_usd']

@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 import math
 import os
 
-from .evidence_requests import DEEPINFRA_VERSION, DEEPINFRA_EXPANDED_VERSION, DEEPINFRA_DIRECT_VERSION, DEEPINFRA_CORRECTION_VERSION, DEEPINFRA_BINDING_VERSION, DEEPINFRA_ENUM_VERSION, DEEPINFRA_GUIDED_VERSION, DEEPINFRA_QWEN_VERIFY_VERSION, WireResponse, wire
+from .evidence_requests import DEEPINFRA_VERSION, DEEPINFRA_EXPANDED_VERSION, DEEPINFRA_DIRECT_VERSION, DEEPINFRA_CORRECTION_VERSION, DEEPINFRA_BINDING_VERSION, DEEPINFRA_ENUM_VERSION, DEEPINFRA_GUIDED_VERSION, DEEPINFRA_QWEN_VERIFY_VERSION, DEEPINFRA_HOLDOUT_VERSIONS, WireResponse, wire
 
 NAMESPACE='learning-demo-deepinfra-fit-v1'
 MODEL='deepseek-ai/DeepSeek-V4-Pro-0813'
@@ -38,8 +38,15 @@ GUIDED_POLICY={**DIRECT_POLICY,'output_cap':8192,'maximum_usd':'0.02','timeout_p
 QWEN_VERIFY_NAMESPACE='qwen-instant-qualification-check-v1'
 QWEN_VERIFY_POLICY={**DIRECT_POLICY,'model':'Qwen/Qwen3.8-27B','input_cap':16384,'output_cap':4096,'input_usd_per_million':'0.20','output_usd_per_million':'2.50','maximum_usd':'0.02','timeout_policy':POLICY['timeout_policy']}
 
+HOLDOUT_POLICIES={
+    DEEPINFRA_HOLDOUT_VERSIONS[0]:{**QWEN_VERIFY_POLICY,'model':'Qwen/Qwen3.5-397B-A17B','input_cap':32768,'input_usd_per_million':'0.45','output_usd_per_million':'3.00','maximum_usd':'0.04'},
+    DEEPINFRA_HOLDOUT_VERSIONS[1]:{**QWEN_VERIFY_POLICY,'input_cap':32768},
+    DEEPINFRA_HOLDOUT_VERSIONS[2]:{**QWEN_VERIFY_POLICY,'model':FLASH_MODEL,'input_cap':32768,'output_usd_per_million':'0.60'},
+}
+
 
 def policy_for(version):
+    if version in HOLDOUT_POLICIES:return HOLDOUT_POLICIES[version]
     if version==DEEPINFRA_QWEN_VERIFY_VERSION: return QWEN_VERIFY_POLICY
     if version==DEEPINFRA_VERSION: return POLICY
     if version==DEEPINFRA_EXPANDED_VERSION: return EXPANDED_POLICY
@@ -63,7 +70,7 @@ def preflight(spec):
     binding=spec.version==DEEPINFRA_BINDING_VERSION
     corrective=spec.version in (DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_GUIDED_VERSION) or binding
     expanded=spec.version in (DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION)
-    namespace=(QWEN_VERIFY_NAMESPACE if spec.version==DEEPINFRA_QWEN_VERIFY_VERSION else GUIDED_NAMESPACE if spec.version==DEEPINFRA_GUIDED_VERSION else ENUM_NAMESPACE if spec.version==DEEPINFRA_ENUM_VERSION else BINDING_NAMESPACE if binding else CORRECTION_NAMESPACE if corrective else DIRECT_NAMESPACE if spec.version==DEEPINFRA_DIRECT_VERSION else EXPANDED_NAMESPACE if expanded else NAMESPACE)
+    namespace=(spec.version if spec.version in HOLDOUT_POLICIES else QWEN_VERIFY_NAMESPACE if spec.version==DEEPINFRA_QWEN_VERIFY_VERSION else GUIDED_NAMESPACE if spec.version==DEEPINFRA_GUIDED_VERSION else ENUM_NAMESPACE if spec.version==DEEPINFRA_ENUM_VERSION else BINDING_NAMESPACE if binding else CORRECTION_NAMESPACE if corrective else DIRECT_NAMESPACE if spec.version==DEEPINFRA_DIRECT_VERSION else EXPANDED_NAMESPACE if expanded else NAMESPACE)
     input_cap,output_cap=policy['input_cap'],policy['output_cap']
     if (spec.namespace!=namespace or spec.phase!='source_reading'
         or spec.runtime_identity!=policy or body.get('model')!=policy['model']
@@ -74,7 +81,7 @@ def preflight(spec):
         raise ValueError('Frozen DeepInfra model, endpoint, scope or generation policy differs')
     fmt=body['response_format']
     if (not isinstance(fmt,dict) or set(fmt)!={'type','json_schema'} or fmt['type']!='json_schema'
-        or set(fmt['json_schema'])!={'name','strict','schema'} or fmt['json_schema']['name']!=('qualification_judgments' if spec.version==DEEPINFRA_QWEN_VERIFY_VERSION else 'qualified_source_reading')
+        or set(fmt['json_schema'])!={'name','strict','schema'} or fmt['json_schema']['name']!=('qualification_judgments' if spec.version==DEEPINFRA_QWEN_VERIFY_VERSION or spec.version in HOLDOUT_POLICIES else 'qualified_source_reading')
         or fmt['json_schema']['strict'] is not True or not isinstance(fmt['json_schema']['schema'],dict)):
         raise ValueError('DeepInfra requires the explicit strict JSON schema')
     roles=[m.get('role') for m in body['messages']] if isinstance(body['messages'],list) and all(isinstance(m,dict) for m in body['messages']) else None
@@ -180,7 +187,7 @@ def decode(raw,spec=None):
         raise ValueError('DeepInfra refused or returned no final JSON')
     usage=raw['usage']
     if not isinstance(usage,dict): raise ValueError('Invalid DeepInfra usage')
-    if spec is not None and spec.version in (DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION,DEEPINFRA_ENUM_VERSION,DEEPINFRA_GUIDED_VERSION,DEEPINFRA_QWEN_VERIFY_VERSION):
+    if spec is not None and spec.version in (DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION,DEEPINFRA_ENUM_VERSION,DEEPINFRA_GUIDED_VERSION,DEEPINFRA_QWEN_VERIFY_VERSION,*DEEPINFRA_HOLDOUT_VERSIONS):
         details=usage.get('completion_tokens_details') or {}
         if not isinstance(details,dict): raise ValueError('Invalid DeepInfra token details')
         if (message.get('reasoning_content') or message.get('thinking') or message.get('reasoning')
@@ -203,7 +210,7 @@ def validate(response,spec=None):
 def public_model_metadata(model=MODEL):
     """Public GET only; no authentication, source text or inference."""
     import httpx
-    if model not in (MODEL,FLASH_MODEL,QWEN_VERIFY_POLICY['model']): raise ValueError('Unsupported pinned DeepInfra model')
+    if model not in (MODEL,FLASH_MODEL,QWEN_VERIFY_POLICY['model'],'Qwen/Qwen3.5-397B-A17B'): raise ValueError('Unsupported pinned DeepInfra model')
     with httpx.Client(timeout=15,follow_redirects=False,trust_env=False,
                       transport=httpx.HTTPTransport(retries=0)) as client:
         response=client.get('https://api.deepinfra.com/models/'+model)
@@ -213,7 +220,7 @@ def public_model_metadata(model=MODEL):
         native_output_schema_maximum=raw['in_schema']['properties']['max_new_tokens']['maximum'],
         context=raw['max_tokens'],input_cents_per_token=str(raw['pricing']['cents_per_input_token']),
         output_cents_per_token=str(raw['pricing']['cents_per_output_token']))
-    if model in (FLASH_MODEL,QWEN_VERIFY_POLICY['model']):
+    if model in (FLASH_MODEL,QWEN_VERIFY_POLICY['model'],'Qwen/Qwen3.5-397B-A17B'):
         result.update(discount=raw['pricing']['discount'],discount_ends_at=raw['pricing']['discount_ends_at'],
                       capabilities=sorted(raw['tags']))
     return result

@@ -14,6 +14,28 @@ fit_app=typer.Typer(help='Prepare frozen model-fit checks and bounded source-rea
 app.add_typer(fit_app,name='model-fit')
 
 
+@fit_app.command('qualifier-validation-prepare')
+def qualifier_validation_prepare(pair:str=typer.Option(...,'--pair',help='qwen: Qwen3.5-397B versus Qwen3.8-27B; flash: Qwen3.8-27B versus Flash 1017.'),base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Freeze untouched neutral cases once and identical instant requests for two models."""
+    from ... import qualifier_holdout as validation
+    try:
+        packet,out=validation.prepare(base_dir,pair=pair,check_only=check_only)
+        emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],selection_fingerprint=packet['selection']['input_fingerprint'],models=[r['request']['body']['model'] for r in packet['runs']],budget=packet['budget'],paid_calls=0),as_json)
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@fit_app.command('qualifier-validation-run')
+def qualifier_validation_run(input_path:Path=typer.Option(...,'--input'),base_dir:Path|None=typer.Option(None,'--base-dir'),experimental:bool=typer.Option(False,'--experimental'),approve_input:str|None=typer.Option(None,'--approve-input'),max_usd:str=typer.Option('.06','--max-usd'),confirm_prices:bool=typer.Option(False,'--confirm-prices'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Run exactly one frozen instant request per selected model; no retries or tuning."""
+    from ... import qualifier_holdout as validation
+    try:
+        if not check_only:typer.echo('Fixed holdout: two instant models; identical cases/questions/schema; no retries or tuning',err=True)
+        result=validation.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,confirm_prices=confirm_prices,check_only=check_only)
+        emit(result,as_json)
+        if result['status']=='FAIL(component)':raise typer.Exit(1)
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('question-pair-prepare')
 def question_pair_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json'),isolate_round:str|None=typer.Option(None,'--isolate-round',help='One qualification-only state check: neutral_controls or saved_machine_candidates.'),qwen_instant:bool=typer.Option(False,'--qwen-instant',help='Qwen3.8-27B, thinking disabled, frozen synthetic controls only.'),field_boundaries:bool=typer.Option(False,'--field-boundaries',help='Use the revised field contract and fresh neutral controls with --qwen-instant.'),source_first:bool=typer.Option(False,'--source-first',help='Select qualifier unit IDs from sources without proposed lists; requires --qwen-instant.'),atomic_qualifiers:bool=typer.Option(False,'--atomic-qualifiers',help='Two independent terse role questions; requires --qwen-instant --source-first.')):
     """Freeze two fixed paired wording rounds; no adaptive tuning or model changes."""

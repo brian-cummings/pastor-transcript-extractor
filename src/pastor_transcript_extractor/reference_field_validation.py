@@ -395,7 +395,7 @@ def qwen_assess(packet,response):
     return result
 
 
-def qwen_recipe(packet,root,transport):
+def qwen_recipe(packet,root,transport,*,assessor=None):
     from . import deepinfra_requests as hosted
     root=Path(root);store=requests.ReceiptStore(root)
     if (root/'results.json').exists():
@@ -408,13 +408,13 @@ def qwen_recipe(packet,root,transport):
             prior=integration.BASELINE_SPEND+sum((v for _,v in history),Decimal(0));spec=requests.RequestSpec(**packet['request'])
             if prior+requests.request_reservation(spec)>=1: raise ValueError('Cumulative spend must remain below $1')
             response=requests.execute(spec,hosted.OneRequestLedger(packet['budget']['max_usd'],spec.version),store,transport)
-            assessment=qwen_assess(packet,response)
+            assessment=(assessor or qwen_assess)(packet,response)
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:halt=str(error)
     account=check.demo.usage_account(store);charge=Decimal(account['reserved_usd'] if account['unknown_usage_attempts'] else account['known_list_price_usage_usd'])
     account['cumulative_budget_charge_usd']=str(prior+charge) if prior is not None else None
     result=dict(input_fingerprint=packet['input_fingerprint'],status='FAIL(component)' if halt or (assessment and assessment['summary']['wrong']) else 'INCONCLUSIVE',contract_fit='FAIL(component)' if halt else 'PASS',halt=halt,assessment=assessment,baseline=packet['baseline'],accounting=account,production_admission=False,execution_policy=packet['policy'],limitation=packet['limitation'],next_step='Review verdict correctness and literal supporting quotations; no retry, automatic transfer or admission.')
     store.write_immutable('results.json',result)
-    (root.parent/'report.md').write_text('# Qwen instant qualification controls\n\n'+result['limitation']+'\n\n'+json.dumps(assessment,indent=2)+'\n\nCumulative charge: '+str(account['cumulative_budget_charge_usd'])+'\n')
+    (root.parent/'report.md').write_text('# Instant qualification controls\n\n'+result['limitation']+'\n\n'+json.dumps(assessment,indent=2)+'\n\nCumulative charge: '+str(account['cumulative_budget_charge_usd'])+'\n')
     return result
 
 
