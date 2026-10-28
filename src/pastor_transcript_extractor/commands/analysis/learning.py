@@ -14,6 +14,27 @@ fit_app=typer.Typer(help='Prepare frozen model-fit checks and bounded source-rea
 app.add_typer(fit_app,name='model-fit')
 
 
+@app.command('profile-support-prepare')
+def profile_support_prepare(base_dir:Path|None=typer.Option(None,'--base-dir'),profile_path:Path|None=typer.Option(None,'--profile-record'),point_id:str=typer.Option('reader-description-style-ab63f704f8d88f24','--point-id'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Freeze one final-profile statement and existing evidence for Qwen instant support."""
+    from ... import final_profile_support as support
+    try:
+        packet,out=support.prepare(base_dir,profile_path=profile_path,point_id=point_id,check_only=check_only)
+        emit(dict(status='CHECKED_NO_WRITES' if check_only else 'FROZEN_NO_EXECUTION',input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],candidate=packet['case']['state']['candidate'],model=packet['request']['body']['model'],token_account=packet['token_account'],budget=packet['budget'],generation_calls=0),as_json)
+    except (ValueError,OSError,KeyError,TypeError,StopIteration,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('profile-support-run')
+def profile_support_run(input_path:Path=typer.Option(...,'--input'),base_dir:Path|None=typer.Option(None,'--base-dir'),experimental:bool=typer.Option(False,'--experimental'),approve_input:str|None=typer.Option(None,'--approve-input'),max_usd:str=typer.Option('.01','--max-usd'),confirm_prices:bool=typer.Option(False,'--confirm-prices'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Judge one frozen final-profile statement; no extraction or profile changes."""
+    from ... import final_profile_support as support
+    try:
+        result=support.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,confirm_prices=confirm_prices,check_only=check_only)
+        emit(result,as_json)
+        if result['status']=='FAIL(component)':raise typer.Exit(1)
+    except (ValueError,OSError,KeyError,TypeError,StopIteration,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
 @fit_app.command('qualifier-validation-prepare')
 def qualifier_validation_prepare(pair:str=typer.Option(...,'--pair',help='qwen: Qwen3.5-397B versus Qwen3.8-27B; flash: Qwen3.8-27B versus Flash 1017.'),base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
     """Freeze identical instant requests; reuse an exact saved Qwen holdout when available."""

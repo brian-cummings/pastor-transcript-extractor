@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 import math
 import os
 
-from .evidence_requests import DEEPINFRA_VERSION, DEEPINFRA_EXPANDED_VERSION, DEEPINFRA_DIRECT_VERSION, DEEPINFRA_CORRECTION_VERSION, DEEPINFRA_BINDING_VERSION, DEEPINFRA_ENUM_VERSION, DEEPINFRA_GUIDED_VERSION, DEEPINFRA_QWEN_VERIFY_VERSION, DEEPINFRA_HOLDOUT_VERSIONS, WireResponse, wire
+from .evidence_requests import DEEPINFRA_VERSION, DEEPINFRA_EXPANDED_VERSION, DEEPINFRA_DIRECT_VERSION, DEEPINFRA_CORRECTION_VERSION, DEEPINFRA_BINDING_VERSION, DEEPINFRA_ENUM_VERSION, DEEPINFRA_GUIDED_VERSION, DEEPINFRA_QWEN_VERIFY_VERSION, DEEPINFRA_HOLDOUT_VERSIONS, DEEPINFRA_PROFILE_SUPPORT_VERSION, WireResponse, wire
 
 NAMESPACE='learning-demo-deepinfra-fit-v1'
 MODEL='deepseek-ai/DeepSeek-V4-Pro-0813'
@@ -38,6 +38,8 @@ GUIDED_POLICY={**DIRECT_POLICY,'output_cap':8192,'maximum_usd':'0.02','timeout_p
 QWEN_VERIFY_NAMESPACE='qwen-instant-qualification-check-v1'
 QWEN_VERIFY_POLICY={**DIRECT_POLICY,'model':'Qwen/Qwen3.8-27B','input_cap':16384,'output_cap':4096,'input_usd_per_million':'0.20','output_usd_per_million':'2.50','maximum_usd':'0.02','timeout_policy':POLICY['timeout_policy']}
 
+PROFILE_SUPPORT_POLICY={**QWEN_VERIFY_POLICY,'output_cap':2048,'maximum_usd':'0.01'}
+
 HOLDOUT_POLICIES={
     DEEPINFRA_HOLDOUT_VERSIONS[0]:{**QWEN_VERIFY_POLICY,'model':'Qwen/Qwen3.5-397B-A17B','input_cap':32768,'input_usd_per_million':'0.45','output_usd_per_million':'3.00','maximum_usd':'0.04'},
     DEEPINFRA_HOLDOUT_VERSIONS[1]:{**QWEN_VERIFY_POLICY,'input_cap':32768},
@@ -46,6 +48,7 @@ HOLDOUT_POLICIES={
 
 
 def policy_for(version):
+    if version==DEEPINFRA_PROFILE_SUPPORT_VERSION:return PROFILE_SUPPORT_POLICY
     if version in HOLDOUT_POLICIES:return HOLDOUT_POLICIES[version]
     if version==DEEPINFRA_QWEN_VERIFY_VERSION: return QWEN_VERIFY_POLICY
     if version==DEEPINFRA_VERSION: return POLICY
@@ -70,7 +73,7 @@ def preflight(spec):
     binding=spec.version==DEEPINFRA_BINDING_VERSION
     corrective=spec.version in (DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_GUIDED_VERSION) or binding
     expanded=spec.version in (DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION)
-    namespace=(spec.version if spec.version in HOLDOUT_POLICIES else QWEN_VERIFY_NAMESPACE if spec.version==DEEPINFRA_QWEN_VERIFY_VERSION else GUIDED_NAMESPACE if spec.version==DEEPINFRA_GUIDED_VERSION else ENUM_NAMESPACE if spec.version==DEEPINFRA_ENUM_VERSION else BINDING_NAMESPACE if binding else CORRECTION_NAMESPACE if corrective else DIRECT_NAMESPACE if spec.version==DEEPINFRA_DIRECT_VERSION else EXPANDED_NAMESPACE if expanded else NAMESPACE)
+    namespace=(spec.version if spec.version in HOLDOUT_POLICIES or spec.version==DEEPINFRA_PROFILE_SUPPORT_VERSION else QWEN_VERIFY_NAMESPACE if spec.version==DEEPINFRA_QWEN_VERIFY_VERSION else GUIDED_NAMESPACE if spec.version==DEEPINFRA_GUIDED_VERSION else ENUM_NAMESPACE if spec.version==DEEPINFRA_ENUM_VERSION else BINDING_NAMESPACE if binding else CORRECTION_NAMESPACE if corrective else DIRECT_NAMESPACE if spec.version==DEEPINFRA_DIRECT_VERSION else EXPANDED_NAMESPACE if expanded else NAMESPACE)
     input_cap,output_cap=policy['input_cap'],policy['output_cap']
     if (spec.namespace!=namespace or spec.phase!='source_reading'
         or spec.runtime_identity!=policy or body.get('model')!=policy['model']
@@ -81,7 +84,7 @@ def preflight(spec):
         raise ValueError('Frozen DeepInfra model, endpoint, scope or generation policy differs')
     fmt=body['response_format']
     if (not isinstance(fmt,dict) or set(fmt)!={'type','json_schema'} or fmt['type']!='json_schema'
-        or set(fmt['json_schema'])!={'name','strict','schema'} or fmt['json_schema']['name']!=('qualification_judgments' if spec.version==DEEPINFRA_QWEN_VERIFY_VERSION or spec.version in HOLDOUT_POLICIES else 'qualified_source_reading')
+        or set(fmt['json_schema'])!={'name','strict','schema'} or fmt['json_schema']['name']!=('final_profile_support' if spec.version==DEEPINFRA_PROFILE_SUPPORT_VERSION else 'qualification_judgments' if spec.version==DEEPINFRA_QWEN_VERIFY_VERSION or spec.version in HOLDOUT_POLICIES else 'qualified_source_reading')
         or fmt['json_schema']['strict'] is not True or not isinstance(fmt['json_schema']['schema'],dict)):
         raise ValueError('DeepInfra requires the explicit strict JSON schema')
     roles=[m.get('role') for m in body['messages']] if isinstance(body['messages'],list) and all(isinstance(m,dict) for m in body['messages']) else None
