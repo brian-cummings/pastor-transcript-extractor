@@ -73,15 +73,17 @@ cover both attempts, cancellation still works but recovery is disabled.
 The frozen run enumerates its exact maximum attempts and total reservation before
 execution. The current supervised adapter allows at most $0.55 per run and strictly
 less than the previously authorized $1 cumulative conservative charge. Unknown
-usage retains its reservation and existing batch stopping rules remain unchanged. No corpus collection,
+usage retains its full reservation. A closed whitespace cancellation followed by a
+complete recovery may continue within that reservation; other unknown usage halts
+the batch. No corpus collection,
 classification, reclassification, pastor comparison, ranking or admission occurs.
 
 ## CLI
 
 Use `pte docs cli --output <base>/docs/CLI_REFERENCE.md` for the exact current options.
 The production-facing group is `pte analysis profile-support` with `prepare`, `run`
-and read-only `report`. `prepare` requires `--profile-record`; no user-authored
-cases or JSON are required. It emits the exact input path, fingerprint and budget
+and read-only `report`. `prepare` accepts `--profile-record` or
+`--validation-from <saved-run-directory>`; no user-authored cases or JSON are required. It emits the exact input path, fingerprint and budget
 for `run`. `run --check-only` verifies frozen identities without generation.
 
 The older `pte analysis learning-demo profile-support-*` one-statement diagnostic
@@ -135,3 +137,31 @@ Inspect settings without network or generation with
 `pte analysis profile-support transport-info --json`.
 
 Protocol reference: [DeepInfra streaming](https://docs.deepinfra.com/chat/streaming).
+
+## Citation and qualification contract V2
+
+Each complete source unit receives one opaque `citation_id`, resolving to exactly
+one passage, field and unit. The model selects those IDs instead of independently
+selecting passage/field/start/end combinations. All necessary units can be cited;
+no source sentence is shortened to satisfy a word limit. Supported and contradicted
+answers require evidence in both the JSON schema and the local validator.
+
+Source-backed qualifications distinguish `already_preserved`, `missing_required`
+and `unresolved`. `already_preserved` requires a literal excerpt from the supplied
+statement, scope or declared caveats; code preserves every matching offset. This
+proves the excerpt exists, not that the model's entailment judgment is correct.
+Only qualifications judged already preserved can leave an otherwise supported
+statement available. Missing requirements, uncertainty and unassessed dependencies
+remain withheld. Legacy answers with qualifications keep their original withholding
+behavior; old results and receipts are never silently upgraded.
+
+`prepare --validation-from` freezes four previously exposed cases selected by a
+fixed mechanical policy: first lexical saved whitespace-loop failure, invalid
+citation combination, supported style example with qualifications, and unresolved
+answer. It retains original cases, complete evidence and dependencies, with hashes
+of the prior input, results and selected receipt/wire pairs. No expected semantic
+answers or corrected pastor wording enter requests. Unselected dependencies remain
+unevaluated. The report labels selected versus assembled counts; this is contract
+regression validation, not a full-profile run or independent accuracy benchmark.
+The bounded packet has a $0.12 run ceiling, at most eight physical attempts, and
+the same strict cumulative $1 limit. It does not automatically advance the workflow.

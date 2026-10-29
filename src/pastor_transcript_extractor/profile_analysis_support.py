@@ -263,12 +263,12 @@ def document_input(plan,results,*,production=False):
         entries.append(dict(claim_id=cid,statement=item['statement'],scope=item['scope'],declared_caveats=item.get('declared_caveats',{}),support_status=state(cid),judgment=row.get('judgment'),receipt=row.get('receipt'),gap=item['gap'],failure=row.get('failure')))
     counts={s:sum(e['support_status']==s for e in entries) for s in sorted({e['support_status'] for e in entries})}
     return dict(version=VERSION,stage='analysis_support_before_final_document',profile=plan['profile'],entries=entries,
-        ready_claim_ids=[e['claim_id'] for e in entries if e['support_status']=='supported'],known_gaps=plan['known_gaps'],coverage=dict(total=len(entries),assembled_total=plan.get('selection',{}).get('assembled_total',len(entries)),selection_mode=plan.get('selection',{}).get('mode','complete_profile'),by_status=counts,meaning='All assembled analytical claims; not corpus completeness or independent accuracy'),
+        ready_claim_ids=[e['claim_id'] for e in entries if e['support_status']=='supported'],known_gaps=plan['known_gaps'],coverage=dict(total=len(entries),assembled_total=plan.get('selection',{}).get('assembled_total',len(entries)),selection_mode=plan.get('selection',{}).get('mode','complete_profile'),by_status=counts,meaning='Declared selection of assembled analytical claims; not corpus completeness or independent accuracy'),
         origin='machine_generated',namespace=VERSION,production_admission='not_admitted')
 
 
 def render_handoff(document):
-    lines=['# Profile analysis support','',f"Profile {document['profile']['id']} · {document['coverage']['total']} analytical statements",'',
+    lines=['# Profile analysis support','',f"Profile {document['profile']['id']} · {document['coverage']['total']} of {document['coverage'].get('assembled_total',document['coverage']['total'])} analytical statements · {document['coverage'].get('selection_mode','complete_profile')}",'',
         'Experimental model assessments. Supported statements remain scoped to the supplied sample; no production admission.','',
         '## Statements available to the final document','']
     for e in document['entries']:

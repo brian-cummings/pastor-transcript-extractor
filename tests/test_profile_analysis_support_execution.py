@@ -57,6 +57,27 @@ class ProfileSupportExecutionTests(unittest.TestCase):
             self.assertEqual(replay['accounting']['cumulative_conservative_charge_usd'],report['accounting']['cumulative_conservative_charge_usd'])
             self.assertIn('Statements available',(out/'analysis-support.md').read_text())
 
+    def test_reserved_stream_recovery_continues_and_counts_physical_calls(self):
+        from test_deepinfra_streaming import Harness,loop,normal
+        with TemporaryDirectory() as folder:
+            p,out=packet(folder);harnesses=[]
+            def send(spec,**kwargs):
+                content=json.loads(wire(spec).text)['choices'][0]['message']['content']
+                bodies=([loop(spec)] if not harnesses else [])+[normal(spec,content)]
+                harness=Harness(spec,bodies);harnesses.append(harness)
+                return harness.run(**kwargs)
+            send.supports_stream_callbacks=True
+            report=x.recipe(p,out,send)
+            self.assertEqual(report['execution_status'],'COMPLETE')
+            self.assertEqual(report['accounting']['new_paid_attempts'],3)
+            self.assertEqual(report['coverage']['by_status'],dict(supported=2))
+            self.assertEqual(sum(len(h.requests) for h in harnesses),3)
+            first=x.requests.RequestSpec(**p['tasks'][0]['request']);usage=x.supervised.check.demo.usage_account(x._store(p,first))
+            self.assertEqual(usage['unknown_usage_attempts'],1)
+            self.assertEqual(usage['reserved_cancelled_usage_attempts'],1)
+            self.assertGreaterEqual(Decimal(report['accounting']['new_conservative_charge_usd']),x.requests.request_reservation(first))
+            self.assertEqual(x.recipe(p,out,lambda s:self.fail('no replay')),report)
+
     def test_partial_process_recovery_reuses_previous_receipt_and_progress(self):
         with TemporaryDirectory() as folder:
             p,out=packet(folder);sent=[]

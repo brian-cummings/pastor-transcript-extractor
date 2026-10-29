@@ -472,7 +472,7 @@ def dependency_entries(entries, ids):
 
 def usage_account(store):
     attempts=store.attempts(); known_input=0;known_output=0;known_cost=Decimal(0);unknown=0
-    provider_estimated=Decimal(0);estimated_count=0;extra_physical_attempts=0
+    provider_estimated=Decimal(0);estimated_count=0;extra_physical_attempts=0;reserved_cancelled=0
     for attempt in attempts:
         provider=attempt.get('provider',PHASES[attempt['phase']][0])
         path=store.root/'receipts'/(attempt['request_fingerprint']+'.json')
@@ -486,7 +486,11 @@ def usage_account(store):
                 policy=policy_for(version);extra_physical_attempts+=len(physical)-1
                 for event in physical:
                     usage=event['usage'];i=usage.get('prompt_tokens');o=usage.get('completion_tokens')
-                    if not event.get('usage_final') or type(i) is not int or type(o) is not int:unknown+=1;continue
+                    if not event.get('usage_final') or type(i) is not int or type(o) is not int:
+                        unknown+=1
+                        if (receipt and not receipt.get('halt') and (receipt.get('response') or {}).get('complete')
+                            and event.get('outcome')=='cancelled_whitespace_loop' and event.get('connection_closed') is True):reserved_cancelled+=1
+                        continue
                     if not 0<=i<=policy['input_cap'] or not 0<=o<=policy['output_cap']:raise ValueError('Stream usage outside reservation')
                     known_input+=i;known_output+=o
                     known_cost+=(Decimal(i)*Decimal(policy['input_usd_per_million'])+Decimal(o)*Decimal(policy['output_usd_per_million']))/Decimal(1000000)
@@ -534,7 +538,7 @@ def usage_account(store):
     result=dict(attempts=len(attempts)+extra_physical_attempts,local_attempts=sum(a.get('provider',PHASES[a['phase']][0])=='Ollama' for a in attempts),
         paid_attempts=sum(a.get('provider',PHASES[a['phase']][0]) in ('TypeSafe','DeepInfra') for a in attempts)+extra_physical_attempts,openai_calls=0,reserved_usd=str(sum((Decimal(a['reserved_usd']) for a in attempts),Decimal(0))),
         known_input_tokens=known_input,known_output_tokens=known_output,known_list_price_usage_usd=str(known_cost),
-        unknown_usage_attempts=unknown,runtime_repairs=0,runtime_approvals=0,reference_inputs=0)
+        unknown_usage_attempts=unknown,reserved_cancelled_usage_attempts=reserved_cancelled,runtime_repairs=0,runtime_approvals=0,reference_inputs=0)
     if estimated_count:
         result.update(known_provider_estimated_usage_usd=str(provider_estimated),provider_estimated_usage_attempts=estimated_count)
     return result

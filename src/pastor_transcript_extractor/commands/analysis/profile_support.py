@@ -11,10 +11,10 @@ analysis_app.add_typer(app,name='profile-support')
 
 
 @app.command('prepare')
-def prepare(profile_record:Path=typer.Option(...,'--profile-record'),base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
-    """Freeze every analytical statement in an assembled profile; no generation."""
+def prepare(profile_record:Path|None=typer.Option(None,'--profile-record'),validation_from:Path|None=typer.Option(None,'--validation-from',help='Freeze four saved contract regression cases from this run directory; no generation.'),base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Freeze an assembled profile or four saved regression cases; no generation."""
     try:
-        packet,out=execution.prepare(base_dir,profile_record,check_only=check_only)
+        packet,out=execution.prepare(base_dir,profile_record,validation_from=validation_from,check_only=check_only)
         result=execution.summary(packet,out)
         if check_only:result['status']='CHECKED_NO_WRITES'
         typer.echo(json.dumps(result,indent=2) if as_json else str(result))
@@ -23,7 +23,7 @@ def prepare(profile_record:Path=typer.Option(...,'--profile-record'),base_dir:Pa
 
 @app.command('run')
 def run(input_path:Path=typer.Option(...,'--input'),base_dir:Path|None=typer.Option(None,'--base-dir'),experimental:bool=typer.Option(False,'--experimental'),approve_input:str|None=typer.Option(None,'--approve-input'),max_usd:str=typer.Option('.55','--max-usd'),confirm_prices:bool=typer.Option(False,'--confirm-prices'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
-    """Run the frozen support stage with exact caches and no retries or expansion."""
+    """Run the frozen support stage with exact caches, bounded stream recovery and no expansion."""
     try:
         result=execution.run(input_path,base_dir,experimental=experimental,approve_input=approve_input,max_usd=max_usd,confirm_prices=confirm_prices,check_only=check_only,progress=lambda message:typer.echo(message,err=True))
         # Full per-statement judgments remain in immutable results/document input.

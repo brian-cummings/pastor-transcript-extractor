@@ -13,6 +13,8 @@ from . import profile_analysis_support as core
 from . import evidence_requests as requests
 from . import deepinfra_requests as provider
 from . import qualified_observations as supervised
+from . import profile_support_validation as validation
+from . import deepinfra_streaming as streaming
 from .config import build_paths
 from .pastor_evidence import EvidenceArtifactStore as Store, digest
 
@@ -54,8 +56,12 @@ def make_request(case):
     raise ValueError('Complete linked evidence exceeds maximum context; no truncation or automatic chunking')
 
 
-def prepare(base_dir,profile_path,*,check_only=False):
-    profile_path=Path(profile_path).resolve();record=core.read_record(profile_path);plan=core.build_plan(record);tasks=[]
+def prepare(base_dir,profile_path=None,*,validation_from=None,check_only=False):
+    if profile_path is None and validation_from is not None:profile_path=validation.source_packet(validation_from)['profile_input']['path']
+    if profile_path is None:raise ValueError('--profile-record or --validation-from required')
+    profile_path=Path(profile_path).resolve();record=core.read_record(profile_path);plan=core.build_plan(record);tasks=[];lineage=None
+    if validation_from is not None:plan,lineage=validation.select(validation_from,plan,profile_path)
+    run_cap=Decimal('.12') if lineage else MAX_RUN_USD
     for item in plan['items']:
         if item['case'] is None:continue
         try:spec=make_request(item['case'])
@@ -63,7 +69,7 @@ def prepare(base_dir,profile_path,*,check_only=False):
             item['gap']=dict(blocked_statement=item['statement'],inspected_reuse=['Complete declared measurement ledger and all linked supporting/contrary passages'],missing_information=str(error),responsible_producer='profile evidence assembly / request context policy',smallest_remedy='Keep unresolved; propose a bounded evidence representation change separately.',acceptance='Complete context fits without dropping counterevidence or denominators.',authorization_boundary='No automatic extra calls or context loss');continue
         tasks.append(dict(claim_id=item['claim_id'],request=asdict(spec),token_account=spec.preflight()))
     reserve=sum((requests.request_reservation(requests.RequestSpec(**t['request'])) for t in tasks),Decimal(0))
-    if reserve>MAX_RUN_USD:raise ValueError(f'Full profile reservation ${reserve} exceeds $0.55; no execution prepared')
+    if reserve>run_cap:raise ValueError(f'Planned reservation ${reserve} exceeds ${run_cap}; no execution prepared')
     metadata=provider.public_model_metadata(provider.QWEN_VERIFY_POLICY['model']) if tasks else None
     for task in tasks:
         policy=task['request']['runtime_identity']
@@ -71,19 +77,20 @@ def prepare(base_dir,profile_path,*,check_only=False):
             or Decimal(metadata['input_cents_per_token'])*10000>Decimal(policy['input_usd_per_million'])
             or Decimal(metadata['output_cents_per_token'])*10000>Decimal(policy['output_usd_per_million'])):raise ValueError('Model metadata exceeds request policy')
     packet=dict(version=core.VERSION,plan=plan,tasks=tasks,model_metadata=metadata,profile_input=dict(path=str(profile_path),sha256=supervised.check.demo.file_hash(profile_path)),
-        budget=dict(max_usd=str(MAX_RUN_USD),reserved_usd=str(reserve),maximum_paid_attempts=sum(t['token_account'].get('stream_recovery',{}).get('maximum_attempts',1) for t in tasks),cumulative_ceiling_usd='1',spend_root=str(build_paths(base_dir).evaluation/'qualified-observations')),
+        budget=dict(max_usd=str(run_cap),reserved_usd=str(reserve),maximum_paid_attempts=sum(t['token_account'].get('stream_recovery',{}).get('maximum_attempts',1) for t in tasks),cumulative_ceiling_usd='1',spend_root=str(build_paths(base_dir).evaluation/'qualified-observations')),
         policy=dict(retries=0,stream_whitespace_retries=1,thinking=False,automatic_expansion=False,production_admission='not_admitted'),
-        code_identity={m.__name__:supervised.check.demo.file_hash(Path(m.__file__)) for m in (core,requests,provider,supervised)},adapter_sha256=supervised.check.demo.file_hash(Path(__file__)))
+        code_identity={m.__name__:supervised.check.demo.file_hash(Path(m.__file__)) for m in (core,requests,provider,supervised,validation,streaming,supervised.check.demo)},adapter_sha256=supervised.check.demo.file_hash(Path(__file__)))
+    if lineage:packet['validation']=lineage
     packet['input_fingerprint']=digest(packet);out=build_paths(base_dir).evaluation/core.VERSION/packet['input_fingerprint']
     if not check_only:
         Store(out).write_immutable('input.json',packet)
-        (out/'preparation.md').write_text('# Profile analysis support preparation\n\n'+json.dumps(summary(packet,out),indent=2)+'\n\nAll assembled statements are enumerated. Missing/incompatible evidence and context overflow remain explicit gaps. Per-claim requests use compatible exact caches; no truncation, retries, model fallback or production admission. No generation executed.\n')
+        (out/'preparation.md').write_text('# Profile analysis support preparation\n\n'+json.dumps(summary(packet,out),indent=2)+'\n\nSelection scope is recorded above. Missing/incompatible evidence and context overflow remain explicit gaps. Exact constituent caches and at most one fully reserved whitespace cancellation retry; no truncation, model fallback or production admission. No generation executed.\n')
     return packet,out
 
 
 def summary(packet,out):
     tiers={str(cap):sum(t['request']['runtime_identity']['input_cap']==cap for t in packet['tasks']) for cap in (16384,32768,65536,131072)}
-    return dict(status='FROZEN_NO_EXECUTION',input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],profile_id=packet['plan']['profile']['id'],claims=len(packet['plan']['items']),requests=len(packet['tasks']),blocked_claims=len(packet['plan']['items'])-len(packet['tasks']),input_reservation_tiers=tiers,budget=packet['budget'],generation_calls=0)
+    return dict(status='FROZEN_NO_EXECUTION',input=str(out/'input.json'),input_fingerprint=packet['input_fingerprint'],profile_id=packet['plan']['profile']['id'],claims=len(packet['plan']['items']),requests=len(packet['tasks']),blocked_claims=len(packet['plan']['items'])-len(packet['tasks']),selection=packet['plan'].get('selection',dict(mode='complete_profile')),input_reservation_tiers=tiers,budget=packet['budget'],generation_calls=0)
 
 
 def _store(packet,spec):
@@ -150,9 +157,10 @@ def recipe(packet,out,transport,*,progress=None):
                     # halts the batch and never becomes a fresh generation attempt.
                     halt=str(error)
                 if target.attempts():
-                    new_attempts+=1;usage=supervised.check.demo.usage_account(target)
+                    usage=supervised.check.demo.usage_account(target);new_attempts+=usage['paid_attempts']
                     new_charge+=Decimal(usage['reserved_usd'] if usage['unknown_usage_attempts'] else usage['known_list_price_usage_usd'])
-                    uncertain=usage['unknown_usage_attempts']>0
+                    uncertain=usage['unknown_usage_attempts']>usage.get('reserved_cancelled_usage_attempts',0)
+                    if uncertain and halt is None:halt='Unknown response usage; remaining calls halted'
                 try:receipt=_cached(spec,target)
                 except (ValueError,KeyError,TypeError,OSError) as error:
                     halt=str(error);receipt=None
@@ -181,11 +189,11 @@ def recipe(packet,out,transport,*,progress=None):
 
 def run(input_path,base_dir,*,experimental=False,approve_input=None,max_usd='.55',confirm_prices=False,check_only=False,progress=None):
     path=Path(input_path);packet=supervised.polarity.trial.frozen(path)
-    expected,out=prepare(base_dir,packet['profile_input']['path'],check_only=True)
+    expected,out=prepare(base_dir,packet['profile_input']['path'],validation_from=packet.get('validation',{}).get('source_run'),check_only=True)
     if expected!=packet or path.resolve()!=(out/'input.json').resolve():raise ValueError('Frozen profile, evidence, model, prompt or implementation changed')
     try:cap=Decimal(max_usd)
     except InvalidOperation as error:raise ValueError('Invalid analysis support budget') from error
-    if not cap.is_finite() or not Decimal(packet['budget']['reserved_usd'])<=cap<=MAX_RUN_USD:raise ValueError('Reserve all planned requests within $0.55')
+    if not cap.is_finite() or not Decimal(packet['budget']['reserved_usd'])<=cap<=Decimal(packet['budget']['max_usd']):raise ValueError('Reserve all planned requests within the frozen run ceiling')
     if check_only:return summary(packet,out)|dict(status='CHECKED_NO_EXECUTION')
     if not experimental or approve_input!=packet['input_fingerprint'] or not confirm_prices:raise ValueError('Exact input approval, --experimental and --confirm-prices required')
     # Cached-only execution does not require credentials; uncached tasks always do.
