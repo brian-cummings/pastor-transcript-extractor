@@ -99,3 +99,15 @@ def acceptance_sources(plan:Path=typer.Option(...,'--plan'),canonical:bool=typer
         result=review.sources(execution.core.read_record(packet['profile_input']['path']),root/('source-review-canonical' if canonical else 'source-review'),canonical=canonical)
         typer.echo(json.dumps(result,indent=2) if as_json else str(result))
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('acceptance-report')
+def acceptance_report(plan:Path=typer.Option(...,'--plan'),as_json:bool=typer.Option(False,'--json')):
+    """Read the saved whole-profile acceptance decision without inference."""
+    from ... import profile_support_acceptance as acceptance
+    try:
+        packet,root=acceptance.load(plan)
+        result=json.loads((root/'acceptance-report.json').read_text())
+        if result['plan_fingerprint']!=packet['input_fingerprint']:raise ValueError('Foreign acceptance report')
+        typer.echo(json.dumps(result,indent=2) if as_json else (root/'acceptance-report.md').read_text())
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
