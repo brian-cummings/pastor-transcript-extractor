@@ -13,6 +13,7 @@ from .binding_evidence import context_digest, validate_span, text_digest
 from .sermon_topics import resolve_topic_analysis_artifact, resolve_topic_block_context
 
 VERSION='profile-analysis-support-v1'
+ANSWER_V2='profile-analysis-support-answer-v2'
 LAYERS={'topic':'topic_analysis','treatment':'semantic_analysis','salvation':'salvation_relationship_analysis'}
 
 
@@ -158,11 +159,11 @@ def build_plan(record,*,loader=None):
         policy=dict(origin='machine_generated',namespace=VERSION,production_admission='not_admitted',upstream_repairs=False))
 
 
-def validate_answer(case,answer):
+def validate_answer(case,answer,*,maximum_citations=16):
     if not isinstance(answer,dict) or set(answer)!={'judgment','evidence','qualifications','reason'} or answer['judgment'] not in ('supported','contradicted','unresolved'):raise ValueError('Invalid analysis support answer')
     if not isinstance(answer['reason'],str) or not 0<len(answer['reason'].strip())<=800:raise ValueError('Invalid reason')
     def bind(rows):
-        if not isinstance(rows,list) or len(rows)>16:raise ValueError('Invalid citations')
+        if not isinstance(rows,list) or len(rows)>maximum_citations:raise ValueError('Invalid citations')
         if len({evidence.digest(r) for r in rows})!=len(rows):raise ValueError('Duplicate citations')
         result=[]
         for row in rows:
@@ -185,6 +186,59 @@ def validate_answer(case,answer):
     return dict(answer=deepcopy(answer),bound_evidence=citations,qualifications=qualifications,origin='machine_generated',namespace=VERSION,production_admission='not_admitted',semantic_validation='Model judgment; independent accuracy not established')
 
 
+def citation_catalog(case):
+    """One identifier per complete source unit; no passage/unit cross product."""
+    result={}
+    for pid,source in sorted(case['sources'].items()):
+        for field,units in sorted(source['fields'].items()):
+            for unit in units:
+                result[f'c{len(result):04d}']=dict(passage_id=pid,field=field,start_unit=unit['id'],end_unit=unit['id'])
+    return result
+
+
+def citation_state(case):
+    state=deepcopy(case['state']);catalog=citation_catalog(case)
+    reverse={(v['passage_id'],v['field'],v['start_unit']):k for k,v in catalog.items()}
+    for passage in state['passages']:
+        for field,units in passage['fields'].items():
+            for unit in units:unit['citation_id']=reverse[(passage['passage_id'],field,unit['id'])]
+    return state
+
+
+def validate_answer_v2(case,answer):
+    """Bind model judgments and literal preservation evidence without semantic repair."""
+    if not isinstance(answer,dict) or set(answer)!={'judgment','evidence','qualifications','reason'}:raise ValueError('Invalid v2 support answer')
+    catalog=citation_catalog(case)
+    def selections(ids):
+        if not isinstance(ids,list) or len(ids)>64 or any(not isinstance(cid,str) or cid not in catalog for cid in ids):raise ValueError('Unknown source citation ID')
+        if len(set(ids))!=len(ids):raise ValueError('Duplicate source citation IDs')
+        return [deepcopy(catalog[cid]) for cid in ids]
+    candidate=case['state']['candidate'];fields=dict(statement=candidate['statement'],scope=json.dumps(candidate.get('scope',{}),sort_keys=True,ensure_ascii=False),declared_caveats=json.dumps(candidate.get('declared_caveats',{}),sort_keys=True,ensure_ascii=False))
+    qualities=answer['qualifications']
+    if not isinstance(qualities,list) or len(qualities)>8:raise ValueError('Invalid qualifications')
+    legacy=[];preservation=[]
+    for q in qualities:
+        if not isinstance(q,dict) or set(q)!={'reading','evidence','status','preservation_evidence'} or q['status'] not in ('already_preserved','missing_required','unresolved'):raise ValueError('Explicit qualification preservation status required')
+        proof=q['preservation_evidence']
+        if not isinstance(proof,list) or len(proof)>3:raise ValueError('Invalid preservation evidence')
+        if (q['status']=='already_preserved')!=bool(proof):raise ValueError('Preserved qualification requires literal candidate evidence; other statuses require none')
+        bound=[]
+        for part in proof:
+            if (not isinstance(part,dict) or set(part)!={'field','text'} or part['field'] not in fields
+                or not isinstance(part['text'],str) or not 0<len(part['text'].strip())<=300 or part['text'] not in fields[part['field']]):raise ValueError('Preservation excerpt is not literal supplied candidate text')
+            text=fields[part['field']];needle=part['text'];starts=[i for i in range(len(text)) if text.startswith(needle,i)]
+            bound.append(dict(field=part['field'],text=needle,occurrences=starts))
+        legacy.append(dict(reading=q['reading'],evidence=selections(q['evidence'])))
+        preservation.append(dict(status=q['status'],preservation_evidence=bound))
+    # The established binder continues to own literal/source checks. The v2
+    # inventory permits more individual units instead of sixteen arbitrary ranges.
+    old=dict(judgment=answer['judgment'],reason=answer['reason'],evidence=selections(answer['evidence']),qualifications=legacy)
+    result=validate_answer(case,old,maximum_citations=64)
+    for q,p in zip(result['qualifications'],preservation):q.update(p)
+    result.update(answer=deepcopy(answer),contract_version=ANSWER_V2,citation_catalog_digest=evidence.digest(catalog))
+    return result
+
+
 def document_input(plan,results,*,production=False):
     """Final presentation consumes only supported, unchanged, dependency-safe text."""
     if production:raise ValueError('Analysis support is not production admitted')
@@ -192,11 +246,15 @@ def document_input(plan,results,*,production=False):
     if set(indexed)!={i['claim_id'] for i in plan['items']}:raise ValueError('Incomplete support result inventory')
     states={};by_id={i['claim_id']:i for i in plan['items']}
     def state(cid,path=()):
+        if cid not in indexed:return 'not_evaluated'
         if cid in states:return states[cid]
         if cid in path:return 'dependency_unresolved'
         row=indexed[cid];judgment=row.get('judgment')
         status=judgment['answer']['judgment'] if judgment else row.get('status','unresolved')
-        if status=='supported' and judgment['qualifications']:status='requires_qualification'
+        if status=='supported' and judgment['qualifications']:
+            if judgment.get('contract_version')!=ANSWER_V2:status='requires_qualification'
+            elif any(q.get('status')=='missing_required' for q in judgment['qualifications']):status='requires_qualification'
+            elif any(q.get('status')!='already_preserved' for q in judgment['qualifications']):status='qualification_unresolved'
         if status=='supported' and any(state(k,path+(cid,))!='supported' for k in (by_id[cid]['case'] or {}).get('dependencies',[])):status='dependency_unresolved'
         states[cid]=status;return status
     entries=[]
@@ -205,7 +263,7 @@ def document_input(plan,results,*,production=False):
         entries.append(dict(claim_id=cid,statement=item['statement'],scope=item['scope'],declared_caveats=item.get('declared_caveats',{}),support_status=state(cid),judgment=row.get('judgment'),receipt=row.get('receipt'),gap=item['gap'],failure=row.get('failure')))
     counts={s:sum(e['support_status']==s for e in entries) for s in sorted({e['support_status'] for e in entries})}
     return dict(version=VERSION,stage='analysis_support_before_final_document',profile=plan['profile'],entries=entries,
-        ready_claim_ids=[e['claim_id'] for e in entries if e['support_status']=='supported'],known_gaps=plan['known_gaps'],coverage=dict(total=len(entries),by_status=counts,meaning='All assembled analytical claims; not corpus completeness or independent accuracy'),
+        ready_claim_ids=[e['claim_id'] for e in entries if e['support_status']=='supported'],known_gaps=plan['known_gaps'],coverage=dict(total=len(entries),assembled_total=plan.get('selection',{}).get('assembled_total',len(entries)),selection_mode=plan.get('selection',{}).get('mode','complete_profile'),by_status=counts,meaning='All assembled analytical claims; not corpus completeness or independent accuracy'),
         origin='machine_generated',namespace=VERSION,production_admission='not_admitted')
 
 

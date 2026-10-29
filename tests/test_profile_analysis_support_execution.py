@@ -20,7 +20,10 @@ def packet(folder):
 
 
 def wire(spec,output=None,*,thinking=''):
-    return x.requests.WireResponse(200,json.dumps(dict(model=spec.body['model'],choices=[dict(finish_reason='stop',message=dict(content=json.dumps(answer()) if output is None else output,reasoning_content=thinking))],usage=dict(prompt_tokens=100,completion_tokens=100))))
+    value=answer()
+    if spec.source_identity.get('answer_contract')==x.core.ANSWER_V2:
+        state=json.loads(spec.body['messages'][1]['content']);value['evidence']=[state['passages'][0]['fields']['target_text'][0]['citation_id']]
+    return x.requests.WireResponse(200,json.dumps(dict(model=spec.body['model'],choices=[dict(finish_reason='stop',message=dict(content=json.dumps(value) if output is None else output,reasoning_content=thinking))],usage=dict(prompt_tokens=100,completion_tokens=100))))
 
 
 class ProfileSupportExecutionTests(unittest.TestCase):
