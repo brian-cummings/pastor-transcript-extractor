@@ -87,3 +87,15 @@ def acceptance_assemble(plan:Path=typer.Option(...,'--plan'),as_json:bool=typer.
         result=acceptance.assemble(plan)
         typer.echo(json.dumps(result,indent=2) if as_json else str(result))
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('acceptance-sources')
+def acceptance_sources(plan:Path=typer.Option(...,'--plan'),as_json:bool=typer.Option(False,'--json')):
+    """Prepare complete declared-sermon text for reverse omission review; no inference."""
+    from ... import profile_support_acceptance as acceptance
+    from ... import profile_support_review as review
+    try:
+        packet,root=acceptance.load(plan)
+        result=review.sources(execution.core.read_record(packet['profile_input']['path']),root/'source-review')
+        typer.echo(json.dumps(result,indent=2) if as_json else str(result))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
