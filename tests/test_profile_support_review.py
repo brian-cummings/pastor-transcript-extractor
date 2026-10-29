@@ -20,3 +20,14 @@ class ReviewPacketTests(unittest.TestCase):
             saved=json.loads((Path(folder)/'review/video-8-part-01.json').read_text());self.assertEqual([s['index'] for s in saved['segments']],[1,2]);self.assertFalse(saved['runtime_evidence'])
             path.write_text('{}')
             with self.assertRaisesRegex(ValueError,'changed'):r.sources(record,Path(folder)/'other')
+
+    def test_canonical_review_includes_projection_exclusions_inside_declared_window(self):
+        with TemporaryDirectory() as folder:
+            path=Path(folder)/'source.json';raw=dict(sermon_window=dict(start_seconds=10,end_seconds=90),segments=[],classification={});path.write_text(json.dumps(raw))
+            source=dict(video_id=8,title='Synthetic sermon',source_path=str(path),source_sha256=hashlib.sha256(path.read_bytes()).hexdigest());record=dict(source_identity=[source],observations=[])
+            blocks=[dict(block_id=3,start_seconds=0,end_seconds=30,projection_eligibility=dict(eligible=False)),dict(block_id=4,start_seconds=30,end_seconds=90,projection_eligibility=dict(eligible=True)),dict(block_id=5,start_seconds=90,end_seconds=100,projection_eligibility=dict(eligible=True))]
+            with patch.object(r.core,'resolve_topic_analysis_artifact',return_value=dict(blocks=blocks)),patch.object(r.core,'resolve_topic_block_context',side_effect=lambda b:dict(target_text='Source block '+str(b['block_id']))):
+                report=r.sources(record,Path(folder)/'review',canonical=True)
+            text=Path(report['sources'][0]['review_files'][0]['path']).read_text()
+            self.assertIn('Source block 3',text);self.assertIn('Source block 4',text);self.assertNotIn('Source block 5',text)
+            self.assertEqual(report['unit_kind'],'canonical_target_block');self.assertEqual(report['sources'][0]['segment_count'],2)
