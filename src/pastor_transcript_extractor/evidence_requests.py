@@ -1,6 +1,7 @@
 """One injectable, no-retry request executor with durable pre-send reservations."""
 from __future__ import annotations
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
+from copy import deepcopy
 from decimal import Decimal
 from contextlib import contextmanager
 import fcntl
@@ -143,6 +144,22 @@ def request_reservation(spec):
         from .deepinfra_requests import reserved_usd
         return reserved_usd(spec.version)
     return reservation(spec.phase)
+
+
+def corrective_request(original,output,errors,template):
+    """Preserve the original prefix and append model output plus mechanical feedback.
+
+    Shared with the bounded extraction experiments. This constructs a new request,
+    never edits an answer or relaxes its contract; caller owns retry authorization.
+    """
+    content=output if isinstance(output,str) else wire(output)
+    messages=deepcopy(original.body['messages'])+[
+        dict(role='assistant',content=content),dict(role='user',content=template+wire(errors))]
+    spec=replace(original,body={**deepcopy(original.body),'messages':messages},
+        source_identity={**original.source_identity,'correction_of':original.fingerprint,
+            'failed_output_digest':digest(content),'diagnostics_digest':digest(errors)})
+    spec.preflight()
+    return spec
 
 
 def wire(value):

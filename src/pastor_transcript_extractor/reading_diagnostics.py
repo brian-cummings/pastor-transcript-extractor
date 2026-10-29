@@ -45,6 +45,7 @@ def shape_errors(value,schema,path='$'):
         for key in schema['properties']:
             if key in value: errors.extend(shape_errors(value[key],schema['properties'][key],path+'.'+key))
     if typ=='array':
+        if len(value)<schema.get('minItems',0): add('required','Array has fewer than required items')
         if len(value)>schema['maxItems']: add('overflow','Array exceeds frozen limit; no truncation')
         for i,row in enumerate(value): errors.extend(shape_errors(row,schema['items'],f'{path}[{i}]'))
     if typ=='string' and not schema.get('minLength',0)<=len(value)<=schema.get('maxLength',float('inf')):

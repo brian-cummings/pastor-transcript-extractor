@@ -102,15 +102,7 @@ def command(out,packet,base_dir):
 
 
 def corrective_request(packet,output,errors):
-    original=requests.RequestSpec(**packet['request'])
-    content=output if isinstance(output,str) else requests.wire(output)
-    messages=deepcopy(original.body['messages'])+[
-        dict(role='assistant',content=content),dict(role='user',content=packet['correction']['template']+requests.wire(errors))]
-    spec=replace(original,body={**deepcopy(original.body),'messages':messages},
-        source_identity={**original.source_identity,'correction_of':original.fingerprint,
-            'failed_output_digest':digest(content),'diagnostics_digest':digest(errors)})
-    spec.preflight()  # Never truncate feedback or source to fit.
-    return spec
+    return requests.corrective_request(requests.RequestSpec(**packet['request']),output,errors,packet['correction']['template'])
 
 
 def run_recipe(packet,store,transport,*,ledger=None,progress=None):

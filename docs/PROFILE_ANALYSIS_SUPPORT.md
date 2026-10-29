@@ -163,5 +163,33 @@ of the prior input, results and selected receipt/wire pairs. No expected semanti
 answers or corrected pastor wording enter requests. Unselected dependencies remain
 unevaluated. The report labels selected versus assembled counts; this is contract
 regression validation, not a full-profile run or independent accuracy benchmark.
-The bounded packet has a $0.12 run ceiling, at most eight physical attempts, and
+The corrected bounded packet has a $0.24 run ceiling, at most sixteen physical attempts, and
 the same strict cumulative $1 limit. It does not automatically advance the workflow.
+
+## Bounded validator feedback
+
+Newly frozen profile-support tasks include one contract correction. The shared
+`evidence_requests.corrective_request` builder is the same builder used by the
+experimental correction runner. It preserves the exact original message prefix,
+appends the rejected assistant answer and field-path diagnostics, and pins both
+output and diagnostic digests in the corrective request identity. The provider
+schema is a single required object; conditional evidence requirements remain in
+the local gate. This avoids the demonstrated judgment-only output from the earlier
+root-alternative schema without weakening acceptance.
+
+Complete, accounted JSON/schema/literal validation failures permit one model-authored
+replacement. Valid unresolved answers and missing semantic requirements do not
+trigger retries. TypeSafe extraction judgments are not automatically transplanted
+into this end-stage Qwen support task. Incomplete/length/transport failures cannot
+trigger a contract correction; only the separate existing whitespace recovery
+policy can repeat a transport request. Feedback never supplies expected theological
+answers or rewrites the candidate. The full replacement passes the same validator.
+
+Both generation reservations are frozen before execution, including their existing
+whitespace-recovery allowances. Corrections retain the same model, request tier,
+schema, output cap and generation settings; added context must pass preflight or
+stop without truncation. Every initial/corrective receipt and validation round is
+retained, with visible correction progress and accounting. Exact cached responses
+are revalidated and reused; a failed or unreceipted correction cannot be silently
+resent. A failed second answer stays withheld. Historical packets/results are not
+upgraded or overwritten.

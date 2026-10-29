@@ -15,6 +15,8 @@ from . import deepinfra_requests as provider
 from . import qualified_observations as supervised
 from . import profile_support_validation as validation
 from . import deepinfra_streaming as streaming
+from . import reading_diagnostics as diagnostics
+from . import profile_support_correction as correction
 from .config import build_paths
 from .pastor_evidence import EvidenceArtifactStore as Store, digest
 
@@ -41,8 +43,7 @@ def schema(case):
     citations=dict(type='array',items=dict(type='string',enum=list(core.citation_catalog(case))),maxItems=64)
     proof=dict(type='object',properties=dict(field=dict(type='string',enum=['statement','scope','declared_caveats']),text=dict(type='string',minLength=1,maxLength=300)),required=['field','text'],additionalProperties=False)
     qualification=dict(type='object',properties=dict(reading=dict(type='string',minLength=1,maxLength=300),evidence=dict(deepcopy(citations),minItems=1),status=dict(type='string',enum=['already_preserved','missing_required','unresolved']),preservation_evidence=dict(type='array',items=proof,maxItems=3)),required=['reading','evidence','status','preservation_evidence'],additionalProperties=False)
-    return dict(type='object',properties=dict(judgment=dict(type='string',enum=['supported','contradicted','unresolved']),evidence=citations,qualifications=dict(type='array',items=qualification,maxItems=8),reason=dict(type='string',minLength=1,maxLength=800)),required=['judgment','evidence','qualifications','reason'],additionalProperties=False,
-        anyOf=[dict(properties=dict(judgment=dict(enum=['supported','contradicted']),evidence=dict(minItems=1))),dict(properties=dict(judgment=dict(enum=['unresolved'])))])
+    return dict(type='object',properties=dict(judgment=dict(type='string',enum=['supported','contradicted','unresolved']),evidence=citations,qualifications=dict(type='array',items=qualification,maxItems=8),reason=dict(type='string',minLength=1,maxLength=800)),required=['judgment','evidence','qualifications','reason'],additionalProperties=False)
 
 
 def make_request(case):
@@ -50,7 +51,7 @@ def make_request(case):
         body=dict(model=policy['model'],messages=[dict(role='system',content=INSTRUCTION),dict(role='user',content=requests.wire(core.citation_state(case)))],max_tokens=policy['output_cap'],temperature=0,top_p=1,stream=False,n=1,reasoning_effort='none',response_format=dict(type='json_schema',json_schema=dict(name='profile_analysis_support',strict=True,schema=schema(case))))
         bound=len(requests.wire(body).encode())+4096
         if bound<=policy['input_cap']:
-            spec=requests.RequestSpec('source_reading',body,dict(stage=core.VERSION,case_digest=digest(case),answer_contract=core.ANSWER_V2,citation_catalog_digest=digest(core.citation_catalog(case))),namespace=version,version=version,runtime_identity=deepcopy(policy))
+            spec=requests.RequestSpec('source_reading',body,dict(stage=core.VERSION,case_digest=digest(case),answer_contract=core.ANSWER_V2,contract_correction_policy=correction.VERSION,citation_catalog_digest=digest(core.citation_catalog(case))),namespace=version,version=version,runtime_identity=deepcopy(policy))
             spec=provider.streaming_request(spec)
             spec.preflight();return spec
     raise ValueError('Complete linked evidence exceeds maximum context; no truncation or automatic chunking')
@@ -61,14 +62,14 @@ def prepare(base_dir,profile_path=None,*,validation_from=None,check_only=False):
     if profile_path is None:raise ValueError('--profile-record or --validation-from required')
     profile_path=Path(profile_path).resolve();record=core.read_record(profile_path);plan=core.build_plan(record);tasks=[];lineage=None
     if validation_from is not None:plan,lineage=validation.select(validation_from,plan,profile_path)
-    run_cap=Decimal('.12') if lineage else MAX_RUN_USD
+    run_cap=Decimal('.24') if lineage else MAX_RUN_USD
     for item in plan['items']:
         if item['case'] is None:continue
         try:spec=make_request(item['case'])
         except ValueError as error:
             item['gap']=dict(blocked_statement=item['statement'],inspected_reuse=['Complete declared measurement ledger and all linked supporting/contrary passages'],missing_information=str(error),responsible_producer='profile evidence assembly / request context policy',smallest_remedy='Keep unresolved; propose a bounded evidence representation change separately.',acceptance='Complete context fits without dropping counterevidence or denominators.',authorization_boundary='No automatic extra calls or context loss');continue
-        tasks.append(dict(claim_id=item['claim_id'],request=asdict(spec),token_account=spec.preflight()))
-    reserve=sum((requests.request_reservation(requests.RequestSpec(**t['request'])) for t in tasks),Decimal(0))
+        tasks.append(dict(claim_id=item['claim_id'],request=asdict(spec),token_account=spec.preflight(),correction=correction.policy(spec)))
+    reserve=sum((requests.request_reservation(requests.RequestSpec(**t['request']))+Decimal(t['correction']['reserved_usd']) for t in tasks),Decimal(0))
     if reserve>run_cap:raise ValueError(f'Planned reservation ${reserve} exceeds ${run_cap}; no execution prepared')
     metadata=provider.public_model_metadata(provider.QWEN_VERIFY_POLICY['model']) if tasks else None
     for task in tasks:
@@ -77,14 +78,14 @@ def prepare(base_dir,profile_path=None,*,validation_from=None,check_only=False):
             or Decimal(metadata['input_cents_per_token'])*10000>Decimal(policy['input_usd_per_million'])
             or Decimal(metadata['output_cents_per_token'])*10000>Decimal(policy['output_usd_per_million'])):raise ValueError('Model metadata exceeds request policy')
     packet=dict(version=core.VERSION,plan=plan,tasks=tasks,model_metadata=metadata,profile_input=dict(path=str(profile_path),sha256=supervised.check.demo.file_hash(profile_path)),
-        budget=dict(max_usd=str(run_cap),reserved_usd=str(reserve),maximum_paid_attempts=sum(t['token_account'].get('stream_recovery',{}).get('maximum_attempts',1) for t in tasks),cumulative_ceiling_usd='1',spend_root=str(build_paths(base_dir).evaluation/'qualified-observations')),
-        policy=dict(retries=0,stream_whitespace_retries=1,thinking=False,automatic_expansion=False,production_admission='not_admitted'),
-        code_identity={m.__name__:supervised.check.demo.file_hash(Path(m.__file__)) for m in (core,requests,provider,supervised,validation,streaming,supervised.check.demo)},adapter_sha256=supervised.check.demo.file_hash(Path(__file__)))
+        budget=dict(max_usd=str(run_cap),reserved_usd=str(reserve),maximum_paid_attempts=sum(2*t['token_account'].get('stream_recovery',{}).get('maximum_attempts',1) for t in tasks),cumulative_ceiling_usd='1',spend_root=str(build_paths(base_dir).evaluation/'qualified-observations')),
+        policy=dict(retries=0,contract_corrections=1,stream_whitespace_retries=1,thinking=False,automatic_expansion=False,production_admission='not_admitted'),
+        code_identity={m.__name__:supervised.check.demo.file_hash(Path(m.__file__)) for m in (core,requests,provider,supervised,validation,streaming,supervised.check.demo,correction,diagnostics)},adapter_sha256=supervised.check.demo.file_hash(Path(__file__)))
     if lineage:packet['validation']=lineage
     packet['input_fingerprint']=digest(packet);out=build_paths(base_dir).evaluation/core.VERSION/packet['input_fingerprint']
     if not check_only:
         Store(out).write_immutable('input.json',packet)
-        (out/'preparation.md').write_text('# Profile analysis support preparation\n\n'+json.dumps(summary(packet,out),indent=2)+'\n\nSelection scope is recorded above. Missing/incompatible evidence and context overflow remain explicit gaps. Exact constituent caches and at most one fully reserved whitespace cancellation retry; no truncation, model fallback or production admission. No generation executed.\n')
+        (out/'preparation.md').write_text('# Profile analysis support preparation\n\n'+json.dumps(summary(packet,out),indent=2)+'\n\nSelection scope is recorded above. Missing/incompatible evidence and context overflow remain explicit gaps. Exact constituent caches, one mechanical contract correction and at most one fully reserved whitespace retry per generation; no truncation, model fallback or production admission. No generation executed.\n')
     return packet,out
 
 
@@ -117,8 +118,10 @@ def _row(item,spec,receipt,store,*,cached):
     try:
         if receipt['halt']:raise ValueError(receipt['halt'])
         requests.validate_response(spec,receipt['response'])
-        validator=core.validate_answer_v2 if spec.source_identity.get('answer_contract')==core.ANSWER_V2 else core.validate_answer
-        judgment=validator(item['case'],requests.strict_json(receipt['response']['output']))
+        if spec.source_identity.get('answer_contract')==core.ANSWER_V2:
+            judgment,errors=correction.inspect(item['case'],receipt['response']['output'],schema(item['case']))
+            if errors:return dict(claim_id=item['claim_id'],status='component_failure',judgment=None,receipt=ref,cache_reuse=cached,validation_errors=errors,failure='; '.join(e['path']+': '+e['message'] for e in errors))
+        else:judgment=core.validate_answer(item['case'],requests.strict_json(receipt['response']['output']))
         return dict(claim_id=item['claim_id'],status='complete',judgment=judgment,receipt=ref,cache_reuse=cached)
     except (ValueError,KeyError,TypeError) as error:
         return dict(claim_id=item['claim_id'],status='component_failure',judgment=None,receipt=ref,cache_reuse=cached,failure=str(error))
@@ -132,45 +135,89 @@ def recipe(packet,out,transport,*,progress=None):
             saved=requests.strict_json((out/'results.json').read_text())
             if saved['input_fingerprint']!=packet['input_fingerprint']:raise ValueError('Foreign profile support result')
             return saved
-        items={i['claim_id']:i for i in packet['plan']['items']};cached={};remaining=Decimal(0)
+        items={i['claim_id']:i for i in packet['plan']['items']};remaining=Decimal(0)
         for task in packet['tasks']:
-            spec=requests.RequestSpec(**task['request']);receipt=_cached(spec,_store(packet,spec));cached[spec.fingerprint]=receipt
+            spec=requests.RequestSpec(**task['request']);receipt=_cached(spec,_store(packet,spec))
             if receipt is not None and receipt['response'] is None:raise ValueError('Cached request has unknown usage; no further calls')
             if receipt is None:remaining+=requests.request_reservation(spec)
+            if task.get('correction'):
+                correction_cached=False
+                if receipt is not None and not receipt['halt']:
+                    row=_row(items[task['claim_id']],spec,receipt,_store(packet,spec),cached=True)
+                    if row.get('validation_errors'):
+                        try:revised=correction.request(spec,receipt['response']['output'],row['validation_errors'],task['correction'])
+                        except (ValueError,KeyError,TypeError):revised=None  # Overflow stays withheld, never truncated.
+                        if revised is not None:
+                            fixed=_cached(revised,_store(packet,revised))
+                            if fixed is not None and fixed['response'] is None:raise ValueError('Cached correction has unknown usage; no further calls')
+                            correction_cached=fixed is not None
+                    else:correction_cached=True
+                if not correction_cached:remaining+=Decimal(task['correction']['reserved_usd'])
         with supervised.cumulative_history(packet,out/'preflight') as history:
             prior=supervised.BASELINE_SPEND+sum((cost for _,cost in history),Decimal(0))
             if prior+remaining>=1:raise ValueError('Remaining full-profile reservations exceed cumulative $1 ceiling')
         results={};new_attempts=0;new_charge=Decimal(0);halt=None
-        for index,task in enumerate(packet['tasks']):
-            spec=requests.RequestSpec(**task['request']);target=_store(packet,spec);item=items[task['claim_id']]
-            receipt=cached[spec.fingerprint];was_cached=receipt is not None
-            if progress:progress(f"Analysis support {index+1}/{len(packet['tasks'])}: {item['claim_id']}"+(' · exact cache' if was_cached else ' · Qwen instant'))
+        def obtain(spec,label):
+            nonlocal new_attempts,new_charge,halt
+            target=_store(packet,spec);receipt=_cached(spec,target);was_cached=receipt is not None
+            if progress:progress(label+(' · exact cache' if was_cached else ' · Qwen instant'))
             uncertain=False
             if receipt is None:
                 try:
                     with supervised.cumulative_history(packet,target.root) as history:
                         current=supervised.BASELINE_SPEND+sum((cost for _,cost in history),Decimal(0))
-                        if current+requests.request_reservation(spec)>=1:raise ValueError('Cumulative spend ceiling reached')
-                        requests.execute(spec,provider.OneRequestLedger(str(requests.request_reservation(spec)),spec.version),target,transport)
-                except (ValueError,KeyError,TypeError,OSError,HTTPError) as error:
-                    # Known provider/contract failure is recorded; uncertain spend
-                    # halts the batch and never becomes a fresh generation attempt.
-                    halt=str(error)
-                if target.attempts():
+                        # Another run may have filled this exact cache while this run waited.
+                        receipt=_cached(spec,target)
+                        if receipt is None:
+                            if current+requests.request_reservation(spec)>=1:raise ValueError('Cumulative spend ceiling reached')
+                            requests.execute(spec,provider.OneRequestLedger(str(requests.request_reservation(spec)),spec.version),target,transport)
+                        else:was_cached=True
+                except (ValueError,KeyError,TypeError,OSError,HTTPError) as error:halt=str(error)
+                if target.attempts() and not was_cached:
                     usage=supervised.check.demo.usage_account(target);new_attempts+=usage['paid_attempts']
                     new_charge+=Decimal(usage['reserved_usd'] if usage['unknown_usage_attempts'] else usage['known_list_price_usage_usd'])
                     uncertain=usage['unknown_usage_attempts']>usage.get('reserved_cancelled_usage_attempts',0)
                     if uncertain and halt is None:halt='Unknown response usage; remaining calls halted'
                 try:receipt=_cached(spec,target)
+                except (ValueError,KeyError,TypeError,OSError) as error:halt=str(error);receipt=None
+                if receipt is not None and not uncertain:halt=None
+            if receipt is not None:
+                usage=supervised.check.demo.usage_account(target)
+                uncertain=usage['unknown_usage_attempts']>usage.get('reserved_cancelled_usage_attempts',0)
+                if uncertain and halt is None:halt='Unknown response usage; remaining calls halted'
+            return receipt,target,was_cached,uncertain
+
+        for index,task in enumerate(packet['tasks']):
+            spec=requests.RequestSpec(**task['request']);item=items[task['claim_id']]
+            receipt,target,was_cached,uncertain=obtain(spec,f"Analysis support {index+1}/{len(packet['tasks'])}: {item['claim_id']}")
+            if receipt is None:
+                results[item['claim_id']]=dict(claim_id=item['claim_id'],status='component_failure',judgment=None,failure=halt or 'No receipt',receipt=None,cache_reuse=False)
+                break
+            row=_row(item,spec,receipt,target,cached=was_cached)
+            # Validation feedback is distinct from transport recovery and never
+            # follows a lost, truncated, unaccounted or semantically unresolved answer.
+            rounds=[deepcopy(row)]
+            if (not uncertain and not receipt['halt'] and row.get('validation_errors') and task.get('correction')):
+                revised=None
+                try:
+                    revised=correction.request(spec,receipt['response']['output'],row['validation_errors'],task['correction'])
+                    if requests.request_reservation(revised)>Decimal(task['correction']['reserved_usd']):raise ValueError('Correction exceeds frozen reservation')
+                    Store(out).write_immutable('corrections/'+spec.fingerprint+'/request.json',asdict(revised))
+                    Store(out).write_immutable('corrections/'+spec.fingerprint+'/diagnostics.json',row['validation_errors'])
+                    fixed,fixed_store,reused,uncertain=obtain(revised,f"Contract correction 1/1: {item['claim_id']}")
+                    if fixed is None:
+                        row=dict(claim_id=item['claim_id'],status='component_failure',judgment=None,failure=halt or 'No correction receipt',receipt=None,cache_reuse=False)
+                    else:row=_row(item,revised,fixed,fixed_store,cached=reused)
+                    row['cache_reuse']=was_cached and row['cache_reuse'];rounds.append(deepcopy(row))
                 except (ValueError,KeyError,TypeError,OSError) as error:
-                    halt=str(error);receipt=None
-                if receipt is None:
-                    results[item['claim_id']]=dict(claim_id=item['claim_id'],status='component_failure',judgment=None,failure=halt or 'No receipt',receipt=None,cache_reuse=False)
-                    break
-                if not uncertain:halt=None  # A known, fully accounted failure is local to this item.
-            results[item['claim_id']]=_row(item,spec,receipt,target,cached=was_cached)
-            Store(out).write_immutable('progress/'+spec.fingerprint+'.json',{k:v for k,v in results[item['claim_id']].items() if k!='cache_reuse'})
-            if uncertain:break
+                    row['correction_blocked']=str(error)
+                    if revised is not None and _store(packet,revised).attempts():halt=str(error);uncertain=True
+            row['rounds']=rounds
+            results[item['claim_id']]=row
+            progress_row={k:v for k,v in row.items() if k!='cache_reuse'}
+            progress_row['rounds']=[{k:v for k,v in r.items() if k!='cache_reuse'} for r in rounds]
+            Store(out).write_immutable('progress/'+spec.fingerprint+'.json',progress_row)
+            if uncertain or halt:break
         for item in packet['plan']['items']:
             if item['claim_id'] not in results:results[item['claim_id']]=dict(claim_id=item['claim_id'],status='unresolved' if item['gap'] else 'not_run',judgment=None,receipt=None,failure=halt if not item['gap'] else None,cache_reuse=False)
         ordered=[results[i['claim_id']] for i in packet['plan']['items']]
@@ -179,7 +226,7 @@ def recipe(packet,out,transport,*,progress=None):
             cumulative=supervised.BASELINE_SPEND+sum((cost for _,cost in history),Decimal(0))
         failed=halt is not None or any(r['status']=='component_failure' for r in ordered)
         report=dict(input_fingerprint=packet['input_fingerprint'],status='FAIL(component)' if failed else 'INCONCLUSIVE',execution_status='HALTED' if halt else 'COMPLETE',halt=halt,results=ordered,coverage=document['coverage'],
-            accounting=dict(new_paid_attempts=new_attempts,cache_reused_claims=sum(r['cache_reuse'] for r in ordered),new_conservative_charge_usd=str(new_charge),cumulative_conservative_charge_usd=str(cumulative),runtime_repairs=0,runtime_approvals=0),
+            accounting=dict(new_paid_attempts=new_attempts,contract_corrections=sum(len(r.get('rounds',[]))>1 for r in ordered),cache_reused_claims=sum(r['cache_reuse'] for r in ordered),new_conservative_charge_usd=str(new_charge),cumulative_conservative_charge_usd=str(cumulative),runtime_repairs=0,runtime_approvals=0),
             semantic_outcome='Model assessments only; complete-profile fidelity and usefulness require source review',production_admission='not_admitted',document_input=str(out/'document-input.json'),report=str(out/'analysis-support.md'))
         Store(out).write_immutable('document-input.json',document)
         (out/'analysis-support.md').write_text(core.render_handoff(document))
