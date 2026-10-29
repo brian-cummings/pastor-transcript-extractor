@@ -1415,14 +1415,26 @@ pte identity consolidate-source-profiles \
 
 Omit `--plan-only` to run the pinned acoustic policy across up to three
 independent recording exemplars per profile and write an immutable proposal
-artifact. A valid observation remains eligible after its parent normalized
+artifact. Before opening audio, the command inspects saved association
+snapshots for those profile members. It reuses individual diagnostics only
+when the snapshot receipt, exact observation/window, current registered parent
+audio hash, full model fingerprint and pinned policy match. An outdated
+association pack or changed profile membership does not alone invalidate a
+compatible diagnostic. Conflicting saved outcomes remain unresolved; no best
+score is selected. Reuse receipts and rejection counts appear in the report.
+
+A valid observation remains eligible after its parent normalized
 audio is archived: consolidation uses its checksum-bound canonical clips when
 they are available, without reopening the full recording during signature or
 pair analysis. If an initial exemplar cannot supply the five policy-required
 activity-qualified clips, the bounded selector tries additional independent
-members from that profile before excluding it. If neither verified canonical
-clips nor parent audio are available, the command reports the exact
-observation-level reason without invalidating membership. Source membership
+members from that profile. If neither saved comparisons, verified canonical
+clips nor parent audio cover a pair, the profile stays in a partial review
+report, with the exact observation-level preparation failures and missing-pair
+review commands. Missing audio no longer aborts the whole source report, and
+missing comparisons remain unknown. Fresh listening still needs the relevant
+verified clips or archive access; saved scores do not create new clips.
+Source membership
 only retrieves the cohort and never counts as identity evidence. A profile pair
 qualifies only when every cross-exemplar comparison is `same_speaker` or an
 exact, qualified human same-speaker review resolves an abstention. Missing,

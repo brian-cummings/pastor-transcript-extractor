@@ -569,6 +569,23 @@ class SourceProfileConsolidationTests(unittest.TestCase):
         self.assertEqual(weakest, plan.proposals[0].weakest_observation_pair)
         self.assertEqual(0.61, plan.proposals[0].weakest_score)
 
+    def test_current_invalid_review_blocks_old_support_at_plan_and_apply(self):
+        profiles = [self._profile(key) for key in ("invalid-a", "invalid-b")]
+        old_plan, comparisons = self._two_profile_plan(profiles)
+        self.database.add_speaker_observation_review_event(
+            observation_id=profiles[0][1][0].id, action="invalid",
+            reviewer="brian", reason="Invalid window", event_fingerprint="invalidate-member",
+        )
+        plan, _ = self._two_profile_plan(profiles, comparisons=comparisons)
+        self.assertFalse(plan.proposals)
+        self.assertIn("reviewed_unqualified_profile_member", plan.pair_evidence[0].blockers)
+        conflicts = []
+        self.assertIsNone(apply_source_profile_consolidation(
+            self.database, plan=old_plan, proposal=old_plan.proposals[0], reviewer="brian",
+            artifact_sha256="a" * 64, conflicts=conflicts, allow_confirmed_names=True,
+        ))
+        self.assertIn("unqualified", conflicts[0])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import Counter, defaultdict
+from dataclasses import asdict, dataclass
 import hashlib
 import html
 import itertools
 import json
+import math
 import shlex
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -19,6 +21,12 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     assess_profile_association_readiness,
 )
 from pastor_transcript_extractor.storage import Database
+from pastor_transcript_extractor.speaker_pair_diagnostics import (
+    ANALYZER_VERSION,
+    DecisionPolicy,
+    apply_decision_policy,
+)
+from pastor_transcript_extractor.speaker_pair_eligibility import assess_automatic_speaker_observation
 
 
 SOURCE_PROFILE_CONSOLIDATION_VERSION = "source_profile_consolidation_v2"
@@ -85,6 +93,159 @@ class _SourceProfileCandidateContext:
     observations_by_id: Mapping[int, SpeakerObservation]
     readiness_by_id: Mapping[int, ProfileAssociationReadiness]
     identity_warnings_by_id: Mapping[int, tuple[str, ...]]
+
+
+@dataclass(frozen=True, slots=True)
+class SavedSourceProfileComparisons:
+    comparisons: Mapping[tuple[int, int], Mapping[str, Any]]
+    inspected_artifact_count: int
+    rejection_counts: Mapping[str, int]
+
+
+def load_saved_source_profile_comparisons(
+    database: Database,
+    candidates: Sequence[SourceProfileCandidate],
+    *,
+    association_root: Path,
+    model: Mapping[str, Any],
+    policy: DecisionPolicy,
+    policy_fingerprint: str,
+) -> SavedSourceProfileComparisons:
+    """Reuse exact diagnostic leaves from hash-verified association snapshots.
+
+    A changed association pack or profile snapshot does not invalidate a leaf.
+    Its observation, registered parent audio, model and policy must still match.
+    No audio is consumed here; archive availability is not evidence validity.
+    """
+    rejected: Counter[str] = Counter()
+    eligible = {}
+    owners: dict[int, set[int]] = defaultdict(set)
+    for candidate in candidates:
+        for observation_id in candidate.member_observation_ids:
+            owners[observation_id].add(candidate.profile_id)
+    for observation_id in sorted(owners):
+        observation = database.get_speaker_observation(observation_id)
+        if observation is None:
+            rejected["observation_missing"] += 1
+            continue
+        eligibility = assess_automatic_speaker_observation(
+            database, observation.video_id, observation_id=observation_id,
+            verify_media=False,
+        )
+        if not eligibility.eligible or eligibility.media_artifact is None:
+            rejected[eligibility.reason_code] += 1
+            continue
+        eligible[observation.input_fingerprint] = (observation, eligibility.media_artifact)
+
+    accepted: dict[tuple[int, int], list[tuple[dict[str, Any], dict[str, Any]]]] = defaultdict(list)
+    inspected = 0
+    expected_policy = asdict(policy)
+    for fingerprint, (candidate_observation, candidate_media) in sorted(eligible.items()):
+        directory = association_root.expanduser().resolve() / fingerprint[:16]
+        for path in sorted(directory.glob("*.json")):
+            inspected += 1
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                unhashed = dict(payload)
+                receipt = unhashed.pop("result_sha256", None)
+                if (payload.get("artifact_kind") != "speaker_profile_shadow_association"
+                    or payload.get("schema_version") != 1
+                    or payload.get("shadow_mode") is not True
+                    or payload.get("registry_mutation_allowed") is not False
+                    or receipt != _sha256(unhashed)):
+                    rejected["invalid_artifact_receipt"] += 1
+                    continue
+                candidate = payload.get("candidate", {})
+                if (candidate.get("input_fingerprint") != fingerprint
+                    or candidate.get("observation_id") != candidate_observation.id
+                    or candidate.get("normalized_audio_sha256") != candidate_media.content_sha256):
+                    rejected["candidate_media_or_observation_mismatch"] += 1
+                    continue
+                if (payload.get("model_fingerprint") != _sha256(model)
+                    or payload.get("policy", {}).get("artifact_sha256") != policy_fingerprint):
+                    rejected["model_or_policy_artifact_mismatch"] += 1
+                    continue
+                for profile in payload.get("profiles", []):
+                    for comparison in profile.get("comparisons", []):
+                        try:
+                            other_fingerprint = comparison.get("exemplar_fingerprint")
+                            other = eligible.get(other_fingerprint)
+                            if other is None or other_fingerprint == fingerprint:
+                                continue
+                            observation, media = other
+                            if not any(a != b for a in owners[candidate_observation.id] for b in owners[observation.id]):
+                                continue
+                            if (comparison.get("reviewed_constraint") is True
+                                or comparison.get("schema_version") != 1
+                                or comparison.get("registry_mutation_allowed") is not False
+                                or comparison.get("exemplar_observation_id") != observation.id
+                                or comparison.get("exemplar_normalized_audio_sha256") != media.content_sha256
+                                or comparison.get("observations") != {"a": fingerprint, "b": other_fingerprint}
+                                or comparison.get("analyzer_version") != ANALYZER_VERSION
+                                or comparison.get("model") != dict(model)
+                                or comparison.get("policy") != expected_policy
+                                or comparison.get("policy_version") != policy.version):
+                                rejected["incompatible_comparison"] += 1
+                                continue
+                            result = {key: value for key, value in comparison.items()
+                                      if key not in {"exemplar_fingerprint", "exemplar_observation_id", "exemplar_normalized_audio_sha256"}}
+                            if not _saved_comparison_spans_match(result, candidate_observation, observation, policy.min_valid_spans):
+                                rejected["incompatible_saved_spans"] += 1
+                                continue
+                            metrics = result["metrics"]
+                            values = [metrics["within_a"]["median"], metrics["within_b"]["median"],
+                                      *(metrics["cross"][name] for name in ("p10", "median", "p90"))]
+                            if not all(isinstance(value, (int, float)) and not isinstance(value, bool)
+                                       and math.isfinite(value) for value in values):
+                                rejected["invalid_saved_metrics"] += 1
+                                continue
+                            outcome, _ = apply_decision_policy(result["metrics"], policy)
+                            if result.get("outcome") != outcome:
+                                rejected["saved_outcome_policy_mismatch"] += 1
+                                continue
+                            pair = tuple(sorted((candidate_observation.id, observation.id)))
+                            accepted[pair].append((result, {
+                                "artifact_path": str(path), "artifact_sha256": receipt,
+                                "comparison_sha256": _sha256(comparison),
+                                "outcome": result["outcome"],
+                                "association_version": payload.get("association_version"),
+                                "span_selection": payload.get("span_selection"),
+                                "reuse_scope": "exact_recorded_diagnostic; no_new_audio_consumed_or_spans_reselected",
+                                "normalized_audio_sha256": {"a": candidate_media.content_sha256, "b": media.content_sha256},
+                            }))
+                        except (ValueError, TypeError, KeyError, AttributeError):
+                            rejected["malformed_saved_comparison"] += 1
+            except (OSError, UnicodeError, ValueError, TypeError, KeyError, AttributeError):
+                rejected["malformed_saved_artifact"] += 1
+    comparisons = {}
+    for pair, records in sorted(accepted.items()):
+        # Never cherry-pick the strongest diagnostic or hide a conflicting run.
+        outcomes = {result["outcome"] for result, _ in records}
+        result = dict(records[0][0]) if len(outcomes) == 1 else {
+            "outcome": "insufficient_evidence", "reason": "conflicting_saved_comparisons",
+        }
+        result["saved_evidence"] = [receipt for _, receipt in records]
+        comparisons[pair] = result
+    return SavedSourceProfileComparisons(comparisons, inspected, dict(sorted(rejected.items())))
+
+
+def _saved_comparison_spans_match(
+    result: Mapping[str, Any], a: SpeakerObservation, b: SpeakerObservation, minimum: int,
+) -> bool:
+    for label, observation in (("a", a), ("b", b)):
+        spans = result.get("spans", {}).get(label, [])
+        if not isinstance(spans, list) or len(spans) < minimum:
+            return False
+        for span in spans:
+            start, end = float(span["start_seconds"]), float(span["end_seconds"])
+            digest = span.get("wav_sha256", "")
+            if (span.get("observation_fingerprint") != observation.input_fingerprint
+                or not math.isfinite(start) or not math.isfinite(end)
+                or not observation.start_seconds <= start < end <= observation.end_seconds
+                or not isinstance(digest, str) or len(digest) != 64
+                or any(character not in "0123456789abcdef" for character in digest)):
+                return False
+    return True
 
 
 def source_profile_candidates(
@@ -304,6 +465,7 @@ def build_source_profile_consolidation_plan(
         for pair in database.list_effective_observation_difference_pairs()
     }
     pair_evidence: list[SourceProfilePairEvidence] = []
+    review_actions = database.list_effective_observation_review_actions()
     observations_by_id = {
         observation.id: observation for observation in database.list_speaker_observations()
     } if reviewed_evidence is not None else {}
@@ -312,6 +474,19 @@ def build_source_profile_consolidation_plan(
     ordered_candidates = sorted(candidates, key=lambda item: item.profile_id)
     for left, right in itertools.combinations(ordered_candidates, 2):
         blockers: list[str] = []
+        member_ids = set(left.member_observation_ids) | set(right.member_observation_ids)
+        if any(review_actions.get(value) not in (None, "qualified_single_speaker") for value in member_ids):
+            blockers.append("reviewed_unqualified_profile_member")
+        if reviewed_evidence is not None:
+            for value in member_ids:
+                observation = observations_by_id.get(value)
+                if observation is None:
+                    continue
+                fingerprint = observation.input_fingerprint
+                qualification = reviewed_evidence.qualifications.get(fingerprint)
+                if (fingerprint in reviewed_evidence.qualification_conflicts
+                    or (qualification is not None and qualification.action != "qualified_single_speaker")):
+                    blockers.append("reviewed_unqualified_profile_member")
         names = set(left.normalized_names) | set(right.normalized_names)
         identity_warnings = list(dict.fromkeys((*left.identity_warnings, *right.identity_warnings)))
         if len(names) > 1:
@@ -503,6 +678,7 @@ def source_profile_consolidation_payload(
     policy_fingerprint: str,
     preparation_failures: Sequence[tuple[int, str]] = (),
     review_suggestions: Sequence[Mapping[str, Any]] = (),
+    saved_evidence_reuse: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "artifact_kind": "source_profile_consolidation",
@@ -569,6 +745,7 @@ def source_profile_consolidation_payload(
         "registry_mutation_allowed": False,
         "human_cohort_approval_required": True,
         "review_suggestions": [dict(item) for item in review_suggestions],
+        "saved_evidence_reuse": dict(saved_evidence_reuse or {}),
     }
     payload["result_sha256"] = _sha256(payload)
     return payload
@@ -627,6 +804,15 @@ def write_source_profile_consolidation_review_report(
 ) -> Path:
     lines = ["# Source-profile consolidation review", "",
              "Shared source is retrieval context. Names warn; identity merges require human approval.", ""]
+    if payload.get("saved_evidence_reuse"):
+        lines.extend(["## Saved comparison reuse", "",
+                      "```json", json.dumps(payload["saved_evidence_reuse"], indent=2), "```", ""])
+    if payload["preparation_failures"]:
+        lines.extend(["## Unavailable acoustic inputs", "",
+                      "Profiles remain in the review. Missing comparisons stay unknown; these failures do not invalidate saved compatible evidence.", ""])
+        for item in payload["preparation_failures"]:
+            lines.append(f"- Observation {item['observation_id']}: {item['reason']}")
+        lines.append("")
     for item in payload["pair_evidence"]:
         lines.extend([
             "## Profiles " + " / ".join(map(str, item["profile_ids"])), "",

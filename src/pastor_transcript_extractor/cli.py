@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import date
 import json
 import os
@@ -295,6 +295,7 @@ from pastor_transcript_extractor.source_profile_consolidation import (
     apply_source_profile_consolidation,
     build_source_profile_consolidation_plan,
     list_source_profile_cohorts,
+    load_saved_source_profile_comparisons,
     source_profile_candidates,
     source_profile_consolidation_payload,
     source_profile_review_suggestions,
@@ -1260,7 +1261,26 @@ def consolidate_source_profiles_command(
     pair_diagnostic_cache = PairDiagnosticCache(cache_root)
     activity_selection_cache = ActivityQualifiedSelectionCache(cache_root)
 
+    saved_comparisons = load_saved_source_profile_comparisons(
+        database, candidates,
+        association_root=paths.evaluation / "speaker-associations/shadow-runs",
+        model=asdict(backend.spec), policy=policy_spec.policy,
+        policy_fingerprint=policy_spec.artifact_sha256,
+    )
+    selected_pairs = {
+        tuple(sorted((a, b)))
+        for index, left in enumerate(candidates)
+        for right in candidates[index + 1:]
+        for a in left.exemplar_observation_ids for b in right.exemplar_observation_ids
+    }
+    console.print(
+        f"Saved evidence: reusable_pairs={len(saved_comparisons.comparisons)} "
+        f"inspected_artifacts={saved_comparisons.inspected_artifact_count}. "
+        "Only exact observation, registered audio, model and policy matches are reused."
+    )
+
     signatures_by_observation_id = {}
+    attempted_preparation_ids: set[int] = set()
     preparation_failures: list[tuple[int, str]] = []
     prepared_ids_by_profile: dict[int, tuple[int, ...]] = {}
 
@@ -1268,6 +1288,12 @@ def consolidate_source_profiles_command(
         candidate,
         observation_id: int,
     ) -> bool:
+        required_pairs = {pair for pair in selected_pairs if observation_id in pair}
+        if required_pairs and required_pairs.issubset(saved_comparisons.comparisons):
+            # All required leaves already contain immutable waveform evidence.
+            # Reusing metrics consumes no audio and needs no archive mount.
+            return True
+        attempted_preparation_ids.add(observation_id)
         observation = database.get_speaker_observation(observation_id)
         if observation is None:
             preparation_failures.append((observation_id, "observation_missing"))
@@ -1398,54 +1424,42 @@ def consolidate_source_profiles_command(
                 for reason, observation_ids in sorted(failed_reasons.items())
             )
             console.print(
-                f"Excluded profile {candidate.profile_id}: fewer than two "
-                "usable acoustic exemplars"
+                f"Retained profile {candidate.profile_id} for partial review: fewer than two "
+                "locally prepared exemplars; saved evidence is preserved and uncovered comparisons remain unknown"
                 f"{f'; {reason_summary}' if reason_summary else ''}."
             )
+            prepared_candidates.append(candidate)
             continue
         prepared_candidates.append(
             replace(candidate, exemplar_observation_ids=prepared_ids)
         )
-    if len(prepared_candidates) < 2:
-        selected_observation_ids = {
-            observation_id
-            for candidate in candidates
-            for observation_id in candidate.exemplar_observation_ids
-        }
-        archived_observation_ids = {
-            observation_id
-            for observation_id, reason in preparation_failures
-            if reason == "archived_media_unavailable"
-        }
-        if archived_observation_ids == selected_observation_ids:
-            destination = database.get_active_media_archive_destination()
-            archive_root = (
-                f" at {destination.archive_root}"
-                if destination is not None
-                else ""
-            )
-            status_command = (
-                "pte media archive-status --base-dir "
-                f"{shlex.quote(str(paths.root))}"
-            )
-            raise typer.BadParameter(
-                "All selected observations remain valid, but their archived "
-                f"normalized audio is unavailable{archive_root}. Reconnect the "
-                "configured media archive, verify it with "
-                f"`{status_command}`, then rerun this command."
-            )
-        raise typer.BadParameter(
-            "Fewer than two profiles retained two usable acoustic exemplars; "
-            "see the per-profile reason codes above."
-        )
 
-    comparison_pairs = [
+    planned_pairs = {
         tuple(sorted((left_id, right_id)))
         for index, left in enumerate(prepared_candidates)
         for right in prepared_candidates[index + 1 :]
         for left_id in left.exemplar_observation_ids
         for right_id in right.exemplar_observation_ids
-    ]
+    }
+    # A fallback exemplar can introduce a new edge to an observation whose
+    # original edges were entirely cached. Prepare that newly needed endpoint
+    # once, without retrying any failed media preparation or expanding the cohort.
+    selected_pairs = planned_pairs
+    needed_for_fresh = {
+        value for pair in planned_pairs if pair not in saved_comparisons.comparisons
+        for value in pair
+    }
+    for candidate in prepared_candidates:
+        for observation_id in candidate.exemplar_observation_ids:
+            if (observation_id in needed_for_fresh
+                and observation_id not in signatures_by_observation_id
+                and observation_id not in attempted_preparation_ids):
+                prepare_observation(candidate, observation_id)
+    comparison_pairs = sorted(
+        pair for pair in planned_pairs
+        if pair not in saved_comparisons.comparisons
+        and all(value in signatures_by_observation_id for value in pair)
+    )
 
     def compare_pair(
         pair: tuple[int, int],
@@ -1470,8 +1484,12 @@ def consolidate_source_profiles_command(
         )
         return pair, result
 
-    comparisons: dict[tuple[int, int], Mapping[str, Any]] = {}
-    if jobs == 1:
+    comparisons: dict[tuple[int, int], Mapping[str, Any]] = {
+        pair: result for pair, result in saved_comparisons.comparisons.items()
+        if pair in planned_pairs
+    }
+    reused_pair_count = len(comparisons)
+    if jobs == 1 or not comparison_pairs:
         for pair in comparison_pairs:
             key, result = compare_pair(pair)
             comparisons[key] = result
@@ -1504,6 +1522,12 @@ def consolidate_source_profiles_command(
         policy_fingerprint=policy_spec.artifact_sha256,
         preparation_failures=preparation_failures,
         review_suggestions=review_suggestions,
+        saved_evidence_reuse={
+            "inspected_artifacts": saved_comparisons.inspected_artifact_count,
+            "reused_pair_count": reused_pair_count,
+            "rejection_counts": dict(saved_comparisons.rejection_counts),
+            "new_comparison_count": len(comparison_pairs),
+        },
     )
     result_sha256 = str(payload["result_sha256"])
     artifact_path = write_source_profile_consolidation_artifact(
@@ -1514,7 +1538,9 @@ def consolidate_source_profiles_command(
     )
     console.print(
         f"Source-profile acoustic plan complete: comparisons={len(comparisons)} "
-        f"proposals={len(plan.proposals)} cache_hits={pair_diagnostic_cache.hits} "
+        f"proposals={len(plan.proposals)} reused_pairs={reused_pair_count} "
+        f"unresolved_pairs={len(planned_pairs) - len(comparisons)} "
+        f"cache_hits={pair_diagnostic_cache.hits} "
         f"cache_misses={pair_diagnostic_cache.misses}."
     )
     review_report = write_source_profile_consolidation_review_report(

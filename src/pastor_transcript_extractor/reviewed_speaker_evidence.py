@@ -958,6 +958,17 @@ def merge_reviewed_source_profile_cohort(
             )
             return None
         member_ids = database.list_effective_observation_ids_for_profile(profile_id)
+        unqualified_members = [
+            value for value in member_ids
+            if database.get_effective_observation_review_action(value)
+            not in (None, "qualified_single_speaker")
+        ]
+        if unqualified_members:
+            reported_conflicts.append(
+                f"source cohort profile {profile_id} contains reviewed unqualified observations: "
+                + ",".join(map(str, unqualified_members))
+            )
+            return None
         profile_names = {
             name for observation_id in member_ids
             for name in claims_by_observation.get(observation_id, ())
