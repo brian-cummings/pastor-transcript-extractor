@@ -90,12 +90,12 @@ def acceptance_assemble(plan:Path=typer.Option(...,'--plan'),as_json:bool=typer.
 
 
 @app.command('acceptance-sources')
-def acceptance_sources(plan:Path=typer.Option(...,'--plan'),as_json:bool=typer.Option(False,'--json')):
+def acceptance_sources(plan:Path=typer.Option(...,'--plan'),canonical:bool=typer.Option(False,'--canonical',help='Use every existing canonical target block intersecting the sermon window, including projection exclusions.'),as_json:bool=typer.Option(False,'--json')):
     """Prepare complete declared-sermon text for reverse omission review; no inference."""
     from ... import profile_support_acceptance as acceptance
     from ... import profile_support_review as review
     try:
         packet,root=acceptance.load(plan)
-        result=review.sources(execution.core.read_record(packet['profile_input']['path']),root/'source-review')
+        result=review.sources(execution.core.read_record(packet['profile_input']['path']),root/('source-review-canonical' if canonical else 'source-review'),canonical=canonical)
         typer.echo(json.dumps(result,indent=2) if as_json else str(result))
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
