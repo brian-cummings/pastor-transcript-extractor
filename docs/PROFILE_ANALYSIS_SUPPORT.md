@@ -193,3 +193,25 @@ retained, with visible correction progress and accounting. Exact cached response
 are revalidated and reused; a failed or unreceipted correction cannot be silently
 resent. A failed second answer stays withheld. Historical packets/results are not
 upgraded or overwritten.
+
+## Whole-profile acceptance goal
+
+`acceptance-prepare --seed-run ... --objective ... --base-dir ...` freezes the
+acceptance criteria, all original statements and exact requests before paid runs.
+It records a separate additional-$2 authorization with the starting conservative
+ledger snapshot. The authorization is immutable per goal objective: repeated
+preparation cannot reset the starting spend. Historical packets keep their $1
+ceiling; only packets referencing the hashed allowance can use its cumulative
+limit. All inference still uses the same shared recipe, instant model, evidence
+requirements, one contract correction and bounded streaming recovery.
+
+`acceptance-run --plan ... --batch ... --approve-plan ...` executes only a named
+frozen batch. Dependency closure comes first; remaining cases follow stable
+prerequisite order in batches reserved below $0.45 each. No automatic next batch
+or next experiment is embedded in the runner. The authorizing goal may permit
+Codex to invoke successive declared batches after reviewing the preceding results.
+`acceptance-assemble --plan ...` verifies the saved receipt/claim mapping and
+produces the complete document handoff without inference. Gaps, failed judgments
+and unresolved dependencies remain explicit. Source review, reverse omission
+coverage, document-level assessment and a compatible untouched holdout are
+separate acceptance requirements, not implied by transport/contract PASS.

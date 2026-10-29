@@ -17,6 +17,7 @@ from . import profile_support_validation as validation
 from . import deepinfra_streaming as streaming
 from . import reading_diagnostics as diagnostics
 from . import profile_support_correction as correction
+from . import profile_support_budget as budget_guard
 from .config import build_paths
 from .pastor_evidence import EvidenceArtifactStore as Store, digest
 
@@ -135,6 +136,7 @@ def recipe(packet,out,transport,*,progress=None):
             saved=requests.strict_json((out/'results.json').read_text())
             if saved['input_fingerprint']!=packet['input_fingerprint']:raise ValueError('Foreign profile support result')
             return saved
+        ceiling=budget_guard.ceiling(packet)
         items={i['claim_id']:i for i in packet['plan']['items']};remaining=Decimal(0)
         for task in packet['tasks']:
             spec=requests.RequestSpec(**task['request']);receipt=_cached(spec,_store(packet,spec))
@@ -155,7 +157,7 @@ def recipe(packet,out,transport,*,progress=None):
                 if not correction_cached:remaining+=Decimal(task['correction']['reserved_usd'])
         with supervised.cumulative_history(packet,out/'preflight') as history:
             prior=supervised.BASELINE_SPEND+sum((cost for _,cost in history),Decimal(0))
-            if prior+remaining>=1:raise ValueError('Remaining full-profile reservations exceed cumulative $1 ceiling')
+            if prior+remaining>=ceiling:raise ValueError('Remaining full-profile reservations exceed authorized cumulative ceiling')
         results={};new_attempts=0;new_charge=Decimal(0);halt=None
         def obtain(spec,label):
             nonlocal new_attempts,new_charge,halt
@@ -169,7 +171,7 @@ def recipe(packet,out,transport,*,progress=None):
                         # Another run may have filled this exact cache while this run waited.
                         receipt=_cached(spec,target)
                         if receipt is None:
-                            if current+requests.request_reservation(spec)>=1:raise ValueError('Cumulative spend ceiling reached')
+                            if current+requests.request_reservation(spec)>=ceiling:raise ValueError('Cumulative spend ceiling reached')
                             requests.execute(spec,provider.OneRequestLedger(str(requests.request_reservation(spec)),spec.version),target,transport)
                         else:was_cached=True
                 except (ValueError,KeyError,TypeError,OSError,HTTPError) as error:halt=str(error)

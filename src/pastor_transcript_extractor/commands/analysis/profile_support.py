@@ -56,3 +56,34 @@ def transport_info(as_json:bool=typer.Option(False,'--json')):
             incomplete_cache_policy='Never successful',generation_calls=0)
         typer.echo(json.dumps(result,indent=2) if as_json else str(result))
     except ValueError as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('acceptance-prepare')
+def acceptance_prepare(seed_run:Path=typer.Option(...,'--seed-run'),objective:Path=typer.Option(...,'--objective'),base_dir:Path|None=typer.Option(None,'--base-dir'),as_json:bool=typer.Option(False,'--json')):
+    """Freeze whole-profile criteria, bounded batches and a separately authorized $2 allowance."""
+    from ... import profile_support_acceptance as acceptance
+    try:
+        result=acceptance.prepare(seed_run,objective,base_dir)
+        typer.echo(json.dumps(result,indent=2) if as_json else str(result))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('acceptance-run')
+def acceptance_run(plan:Path=typer.Option(...,'--plan'),batch:str=typer.Option(...,'--batch'),approve_plan:str=typer.Option(...,'--approve-plan'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Execute one frozen acceptance batch within its recorded goal allowance."""
+    from ... import profile_support_acceptance as acceptance
+    try:
+        result=acceptance.run(plan,batch,approve_plan=approve_plan,check_only=check_only,progress=lambda message:typer.echo(message,err=True))
+        shown={k:v for k,v in result.items() if k!='results'}
+        typer.echo(json.dumps(shown,indent=2) if as_json else str(shown))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('acceptance-assemble')
+def acceptance_assemble(plan:Path=typer.Option(...,'--plan'),as_json:bool=typer.Option(False,'--json')):
+    """Verify saved batches and assemble every original statement without inference."""
+    from ... import profile_support_acceptance as acceptance
+    try:
+        result=acceptance.assemble(plan)
+        typer.echo(json.dumps(result,indent=2) if as_json else str(result))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
