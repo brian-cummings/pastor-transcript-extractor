@@ -41,3 +41,18 @@ def report(run_dir:Path=typer.Option(...,'--run-dir'),as_json:bool=typer.Option(
         shown={k:v for k,v in value.items() if k!='results'}
         typer.echo(json.dumps(shown,indent=2) if as_json else (run_dir/'analysis-support.md').read_text())
     except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('transport-info')
+def transport_info(as_json:bool=typer.Option(False,'--json')):
+    """Inspect Qwen streaming/cancellation settings offline; no provider requests."""
+    import os
+    from ...deepinfra_streaming import JSONWhitespaceDetector
+    try:
+        threshold=int(os.environ.get('PTE_DEEPINFRA_WHITESPACE_THRESHOLD','256'))
+        JSONWhitespaceDetector(threshold)
+        result=dict(transport='DeepInfra OpenAI-compatible SSE',stream=True,whitespace_threshold=threshold,json_string_aware=True,
+            maximum_recovery_retries=1,retry_temperature='unchanged',budget_policy='Reserve both full attempts within existing ceilings; no recovery if insufficient',
+            incomplete_cache_policy='Never successful',generation_calls=0)
+        typer.echo(json.dumps(result,indent=2) if as_json else str(result))
+    except ValueError as error:raise typer.BadParameter(str(error)) from error

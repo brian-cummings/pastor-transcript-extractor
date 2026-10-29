@@ -47,6 +47,7 @@ def make_request(case):
         bound=len(requests.wire(body).encode())+4096
         if bound<=policy['input_cap']:
             spec=requests.RequestSpec('source_reading',body,dict(stage=core.VERSION,case_digest=digest(case)),namespace=version,version=version,runtime_identity=deepcopy(policy))
+            spec=provider.streaming_request(spec)
             spec.preflight();return spec
     raise ValueError('Complete linked evidence exceeds maximum context; no truncation or automatic chunking')
 
@@ -68,8 +69,8 @@ def prepare(base_dir,profile_path,*,check_only=False):
             or Decimal(metadata['input_cents_per_token'])*10000>Decimal(policy['input_usd_per_million'])
             or Decimal(metadata['output_cents_per_token'])*10000>Decimal(policy['output_usd_per_million'])):raise ValueError('Model metadata exceeds request policy')
     packet=dict(version=core.VERSION,plan=plan,tasks=tasks,model_metadata=metadata,profile_input=dict(path=str(profile_path),sha256=supervised.check.demo.file_hash(profile_path)),
-        budget=dict(max_usd=str(MAX_RUN_USD),reserved_usd=str(reserve),maximum_paid_attempts=len(tasks),cumulative_ceiling_usd='1',spend_root=str(build_paths(base_dir).evaluation/'qualified-observations')),
-        policy=dict(retries=0,thinking=False,automatic_expansion=False,production_admission='not_admitted'),
+        budget=dict(max_usd=str(MAX_RUN_USD),reserved_usd=str(reserve),maximum_paid_attempts=sum(t['token_account'].get('stream_recovery',{}).get('maximum_attempts',1) for t in tasks),cumulative_ceiling_usd='1',spend_root=str(build_paths(base_dir).evaluation/'qualified-observations')),
+        policy=dict(retries=0,stream_whitespace_retries=1,thinking=False,automatic_expansion=False,production_admission='not_admitted'),
         code_identity={m.__name__:supervised.check.demo.file_hash(Path(m.__file__)) for m in (core,requests,provider,supervised)},adapter_sha256=supervised.check.demo.file_hash(Path(__file__)))
     packet['input_fingerprint']=digest(packet);out=build_paths(base_dir).evaluation/core.VERSION/packet['input_fingerprint']
     if not check_only:

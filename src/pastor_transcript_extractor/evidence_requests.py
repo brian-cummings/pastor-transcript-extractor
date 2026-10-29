@@ -39,6 +39,7 @@ DEEPINFRA_QWEN_VERIFY_VERSION = 'evidence-request-qwen-instant-verifier-v1'
 DEEPINFRA_PROFILE_SUPPORT_VERSION = 'final-profile-support-v1'
 DEEPINFRA_ANALYSIS_SUPPORT_VERSIONS = tuple(f'profile-analysis-support-{cap}-v1' for cap in (16384,32768,65536,131072))
 DEEPINFRA_HOLDOUT_VERSIONS = ('qualifier-holdout-qwen35-v1','qualifier-holdout-qwen38-v1','qualifier-holdout-flash1017-v1')
+DEEPINFRA_QWEN_STREAM_VERSIONS = tuple(v+'-stream-v1' for v in (DEEPINFRA_QWEN_VERIFY_VERSION,DEEPINFRA_PROFILE_SUPPORT_VERSION,*DEEPINFRA_ANALYSIS_SUPPORT_VERSIONS,*DEEPINFRA_HOLDOUT_VERSIONS[:2]))
 THINKING_CHECK_POLICY = dict(thinking=True, output_cap=4096,
     timeout_policy='input-output-budget-v1', startup_seconds=120,
     input_tokens_per_second=100, output_tokens_per_second=8, maximum_seconds=1800)
@@ -134,7 +135,7 @@ def request_model(spec):
 
 
 def request_provider(spec):
-    return 'DeepInfra' if spec.version in (DEEPINFRA_VERSION,DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION,DEEPINFRA_ENUM_VERSION,DEEPINFRA_GUIDED_VERSION,DEEPINFRA_QWEN_VERIFY_VERSION,DEEPINFRA_PROFILE_SUPPORT_VERSION,*DEEPINFRA_ANALYSIS_SUPPORT_VERSIONS,*DEEPINFRA_HOLDOUT_VERSIONS) else PHASES[spec.phase][0]
+    return 'DeepInfra' if spec.version in (DEEPINFRA_VERSION,DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION,DEEPINFRA_ENUM_VERSION,DEEPINFRA_GUIDED_VERSION,DEEPINFRA_QWEN_VERIFY_VERSION,DEEPINFRA_PROFILE_SUPPORT_VERSION,*DEEPINFRA_ANALYSIS_SUPPORT_VERSIONS,*DEEPINFRA_HOLDOUT_VERSIONS,*DEEPINFRA_QWEN_STREAM_VERSIONS) else PHASES[spec.phase][0]
 
 
 def request_reservation(spec):
@@ -328,7 +329,21 @@ def execute(spec, ledger, store, transport, *, encoding=None):
         if request_provider(spec)=='DeepInfra': attempt['provider']='DeepInfra'
         store.write_immutable('attempts/'+key+'.json',attempt)
         # Any exception leaves durable uncertain-spend reservation; caller cannot retry.
-        response=transport(spec)
+        if request_provider(spec)=='DeepInfra' and getattr(transport,'supports_stream_callbacks',False):
+            maximum=account.get('stream_recovery',{}).get('maximum_attempts',1)
+            started=[]
+            def before_stream(index):
+                if index!=len(started)+1 or index>maximum:raise ValueError('Streaming attempts exceed frozen reservation')
+                from .deepinfra_requests import reserved_usd
+                base=spec.version.removesuffix('-stream-v1') if spec.version in DEEPINFRA_QWEN_STREAM_VERSIONS else spec.version
+                store.write_immutable(f'stream-attempts/{key}/{index}/reservation.json',dict(request_fingerprint=key,attempt=index,request_version=spec.version,reserved_usd=str(reserved_usd(base))))
+                started.append(index)
+            def after_stream(index,raw,record):
+                record['wire_digest']=digest(asdict(raw))
+                store.write_immutable(f'stream-attempts/{key}/{index}/wire.json',asdict(raw))
+                store.write_immutable(f'stream-attempts/{key}/{index}/telemetry.json',record)
+            response=transport(spec,before_attempt=before_stream,after_attempt=after_stream,maximum_attempts=maximum)
+        else:response=transport(spec)
         halt=None
         wire_response=None
         if isinstance(response,WireResponse):

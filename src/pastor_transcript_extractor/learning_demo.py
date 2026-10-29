@@ -472,10 +472,30 @@ def dependency_entries(entries, ids):
 
 def usage_account(store):
     attempts=store.attempts(); known_input=0;known_output=0;known_cost=Decimal(0);unknown=0
-    provider_estimated=Decimal(0);estimated_count=0
+    provider_estimated=Decimal(0);estimated_count=0;extra_physical_attempts=0
     for attempt in attempts:
         provider=attempt.get('provider',PHASES[attempt['phase']][0])
         path=store.root/'receipts'/(attempt['request_fingerprint']+'.json')
+        if provider=='DeepInfra':
+            from .deepinfra_streaming import usage_records
+            receipt=json.loads(path.read_text()) if path.exists() else None
+            physical=usage_records(store,attempt,receipt)
+            if physical is not None:
+                from .deepinfra_requests import policy_for
+                version=(receipt['request']['version'] if receipt else json.loads(next((store.root/'stream-attempts'/attempt['request_fingerprint']).glob('*/reservation.json')).read_text())['request_version'])
+                policy=policy_for(version);extra_physical_attempts+=len(physical)-1
+                for event in physical:
+                    usage=event['usage'];i=usage.get('prompt_tokens');o=usage.get('completion_tokens')
+                    if not event.get('usage_final') or type(i) is not int or type(o) is not int:unknown+=1;continue
+                    if not 0<=i<=policy['input_cap'] or not 0<=o<=policy['output_cap']:raise ValueError('Stream usage outside reservation')
+                    known_input+=i;known_output+=o
+                    known_cost+=(Decimal(i)*Decimal(policy['input_usd_per_million'])+Decimal(o)*Decimal(policy['output_usd_per_million']))/Decimal(1000000)
+                    estimate=usage.get('estimated_cost')
+                    if type(estimate) in (int,float,str):
+                        try:amount=Decimal(str(estimate))
+                        except InvalidOperation:amount=Decimal('NaN')
+                        if amount.is_finite() and amount>=0:provider_estimated+=amount;estimated_count+=1
+                continue
         if not path.exists(): unknown+=1;continue
         receipt=json.loads(path.read_text()); usage=(receipt['response'] or {}).get('usage',{})
         # A rejected local output can still carry genuine measured usage. Do not
@@ -511,8 +531,8 @@ def usage_account(store):
                         provider_estimated+=amount;estimated_count+=1
         else: ip,op=phase[5],phase[6]
         known_cost+=(Decimal(i)*Decimal(ip)+Decimal(o)*Decimal(op))/Decimal(1000000)
-    result=dict(attempts=len(attempts),local_attempts=sum(a.get('provider',PHASES[a['phase']][0])=='Ollama' for a in attempts),
-        paid_attempts=sum(a.get('provider',PHASES[a['phase']][0]) in ('TypeSafe','DeepInfra') for a in attempts),openai_calls=0,reserved_usd=str(sum((Decimal(a['reserved_usd']) for a in attempts),Decimal(0))),
+    result=dict(attempts=len(attempts)+extra_physical_attempts,local_attempts=sum(a.get('provider',PHASES[a['phase']][0])=='Ollama' for a in attempts),
+        paid_attempts=sum(a.get('provider',PHASES[a['phase']][0]) in ('TypeSafe','DeepInfra') for a in attempts)+extra_physical_attempts,openai_calls=0,reserved_usd=str(sum((Decimal(a['reserved_usd']) for a in attempts),Decimal(0))),
         known_input_tokens=known_input,known_output_tokens=known_output,known_list_price_usage_usd=str(known_cost),
         unknown_usage_attempts=unknown,runtime_repairs=0,runtime_approvals=0,reference_inputs=0)
     if estimated_count:

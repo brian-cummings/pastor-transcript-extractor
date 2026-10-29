@@ -15,7 +15,7 @@ is `profile_analysis_support.py`; the CLI/storage adapter is
    missing-evidence gaps. Exit: focused pure-core tests and alternate profile IDs.
 2. **Bounded request execution and pipeline CLI — implemented.** One Qwen3.8-27B
    instant request per eligible claim; complete input and schema preflight, exact
-   constituent caches, durable reservations and receipts, no retry/fallback.
+   constituent caches, durable reservations and receipts, and one budgeted streaming-whitespace retry without model fallback.
    Exit: stubbed whole-profile, cache/recovery, lost-response, budget, citation,
    dependency and withheld-result checks. No live corpus run during development.
 3. **One real-profile validation — prepared separately under application base.**
@@ -66,11 +66,14 @@ model or decoding changes invalidate the affected constituent request.
 
 Input reservation tiers are conservative UTF-8 byte bounds plus framing, not model
 tokenizer counts: 16,384, 32,768, 65,536 or 131,072. Each request has a 2,048-token
-output cap, thinking disabled, a finite preflight-derived timeout, and one attempt.
+output cap, thinking disabled, and a finite preflight-derived timeout. Newly prepared
+Qwen requests use streaming recovery with at most two physical HTTP attempts,
+reserved within the existing per-request dollar ceiling. If that ceiling cannot
+cover both attempts, cancellation still works but recovery is disabled.
 The frozen run enumerates its exact maximum attempts and total reservation before
 execution. The current supervised adapter allows at most $0.55 per run and strictly
 less than the previously authorized $1 cumulative conservative charge. Unknown
-usage retains its reservation and halts further calls. No corpus collection,
+usage retains its reservation and existing batch stopping rules remain unchanged. No corpus collection,
 classification, reclassification, pastor comparison, ranking or admission occurs.
 
 ## CLI
@@ -97,3 +100,38 @@ admitted. Experimental execution is a release-policy setting around the same
 contracts and composition code, not a separate semantic implementation. Routine
 per-statement human approval is not a runtime requirement. Source review is the
 bounded validation activity before any later release decision.
+
+## DeepInfra Qwen streaming recovery
+
+`deepinfra_streaming.py` assembles OpenAI-compatible SSE internally, retaining the
+existing nonstreaming response interface. `PTE_DEEPINFRA_WHITESPACE_THRESHOLD`
+sets the initial threshold (default 256); new request identities freeze that value.
+Only consecutive JSON whitespace outside a quoted string triggers cancellation;
+string escape state persists across chunks. The response and client pool close
+before retry begins. An identical request, including temperature and schema, may
+be sent once more. Retry uses the remaining original timeout, not a fresh timeout.
+Other incomplete, refused, malformed, HTTP-error or disconnected responses are not
+automatically retried by this mechanism.
+
+Before any send, the shared executor durably reserves the full permitted recovery
+cost. Each physical attempt has its own reservation, partial wire output and
+telemetry under `stream-attempts/<request-id>/<number>`. Latency, cancellation,
+usage availability, connection closure and retry outcome are retained. Only the
+last complete response can become a successful cache receipt. Cancelled/incomplete
+outputs remain failed evidence, never successful cache entries. The shared usage
+account counts both physical attempts, includes only final known usage in measured
+cost, and retains the full reservation for unavailable cancelled usage. Closing a
+client connection does not prove that the provider bills zero further tokens.
+
+Existing frozen request versions and receipts retain their original reservations;
+legacy Qwen requests stream with cancellation but cannot acquire an unreserved
+second attempt. Newly prepared profile requests carry an explicit `-stream-v1`
+identity. Maximum paid attempts now counts physical requests. No dollar ceiling
+has been raised: a complete profile with retry reservations may no longer fit its
+old budget, in which case preparation stops. New execution needs a fresh frozen
+input and an adequate separately authorized budget/scope, not an automatic rerun.
+
+Inspect settings without network or generation with
+`pte analysis profile-support transport-info --json`.
+
+Protocol reference: [DeepInfra streaming](https://docs.deepinfra.com/chat/streaming).
