@@ -120,9 +120,10 @@ def local_enum_transport(spec):
         # The complete source and complete local enum contract are never cut.
         # Select the established larger tier before freezing or reserving a call.
         streamed=spec.version in requests.DEEPINFRA_QWEN_STREAM_VERSIONS
-        version=requests.DEEPINFRA_BINDING_HEADROOM_VERSION+('-stream-v1' if streamed else '')
+        version=requests.DEEPINFRA_BINDING_HEADROOM_VERSION
         revised=replace(revised,version=version,namespace=version,
             runtime_identity=deepcopy(hosted.BINDING_HEADROOM_POLICY))
+        if streamed:revised=hosted.streaming_request(revised)
         revised.preflight()
     return revised
 
