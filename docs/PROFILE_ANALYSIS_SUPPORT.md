@@ -240,3 +240,20 @@ mechanical feedback only and does not establish semantic accuracy. Frozen varied
 synthetic regression inputs and evaluation-only references are stored separately;
 no expected judgments enter inference messages. `acceptance-report` reads historical
 reports without requiring that the current implementation still match the old freeze.
+
+New preparations use `whole-statement-support-v1`, an explicit decision procedure
+within the existing v2 answer schema. It checks assertion force and comparative
+warrants, and distinguishes necessary missing restrictions from inferences a
+statement does not make. Historical request construction remains available with
+its exact original prompt and cache identity; new procedure requests have a
+separate fingerprint. This is model-authored judgment, not code verification of
+semantic truth.
+
+`pte analysis profile-support readiness-regression-prepare --root ROOT` freezes
+the twelve previously selected synthetic cases in four batches. Each batch
+reserves both generations (initial plus at most one mechanical correction) and
+bounded streaming recovery under fifty cents. `readiness-regression-run --input
+PATH --approve-input FINGERPRINT` executes one batch. `readiness-regression-report
+--root ROOT` evaluates all completed outputs against a separate reference file;
+that file is never loaded into requests. Valid uncertainty is never retried.
+Synthetic checks do not establish whole-profile accuracy.

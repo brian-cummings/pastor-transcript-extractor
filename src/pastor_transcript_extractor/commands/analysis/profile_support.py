@@ -132,3 +132,31 @@ def readiness_run(input_path:Path=typer.Option(...,'--input'),approve_input:str=
         result=readiness.run(input_path,approve_input=approve_input,check_only=check_only,progress=lambda message:typer.echo(message,err=True))
         typer.echo(json.dumps({k:v for k,v in result.items() if k!='results'},indent=2) if as_json else str(result))
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('readiness-regression-prepare')
+def readiness_regression_prepare(root:Path=typer.Option(...,'--root'),as_json:bool=typer.Option(False,'--json')):
+    """Freeze twelve preselected synthetic judgments in batches below fifty cents."""
+    from ... import profile_support_regression as r
+    try:
+        result=r.prepare(root);typer.echo(json.dumps(result,indent=2) if as_json else str(result))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('readiness-regression-run')
+def readiness_regression_run(input_path:Path=typer.Option(...,'--input'),approve_input:str=typer.Option(...,'--approve-input'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Run one frozen synthetic batch; no semantic retries or references in requests."""
+    from ... import profile_support_regression as r
+    try:
+        result=r.run(input_path,approve_input,check_only=check_only,progress=lambda message:typer.echo(message,err=True))
+        typer.echo(json.dumps({k:v for k,v in result.items() if k!='results'},indent=2) if as_json else str(result))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('readiness-regression-report')
+def readiness_regression_report(root:Path=typer.Option(...,'--root'),as_json:bool=typer.Option(False,'--json')):
+    """Compare completed synthetic outputs to separate evaluation references; no calls."""
+    from ... import profile_support_regression as r
+    try:
+        result=r.report(root);typer.echo(json.dumps(result,indent=2) if as_json else str(result))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
