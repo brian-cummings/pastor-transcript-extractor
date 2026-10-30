@@ -42,3 +42,10 @@ request, one complete mechanical correction and Jev verification below $0.50.
 Qwen support batches separately reserve initial/corrective generations and existing
 stream recovery below $0.50. Unknown usage halts execution. The new allowance
 supersedes unused old credit; historical artifacts remain immutable.
+
+`pte analysis profile-support section-failure-handoff --plan PLAN` closes a
+demonstrated unknown-usage stop offline. It preserves the original attempt and its
+full reservation, emits a failed draft/document input with no unsupported clauses,
+and assesses each requested dimension as unavailable. It cannot retry, advance a
+window or confer semantic acceptance. `section-report --plan PLAN` reads this
+assessment even after the reporting implementation changes.

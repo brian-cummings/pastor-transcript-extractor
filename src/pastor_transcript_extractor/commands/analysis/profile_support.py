@@ -61,7 +61,10 @@ def section_report(plan:Path=typer.Option(...,'--plan'),as_json:bool=typer.Optio
         frozen=json.loads(plan.read_text());root=plan.parent
         if frozen['input_fingerprint']!=execution.digest({k:v for k,v in frozen.items() if k!='input_fingerprint'}):
             raise ValueError('Section freeze differs')
-        if (root/'delivery.json').exists():
+        if (root/'failure'/'assessment.json').exists():
+            result=json.loads((root/'failure'/'assessment.json').read_text())
+            typer.echo(json.dumps(result,indent=2) if as_json else (root/'failure'/'assessment.md').read_text())
+        elif (root/'delivery.json').exists():
             result=json.loads((root/'delivery.json').read_text())
             typer.echo(json.dumps(result,indent=2) if as_json else (root/'draft-section.md').read_text())
         else:
@@ -71,6 +74,16 @@ def section_report(plan:Path=typer.Option(...,'--plan'),as_json:bool=typer.Optio
                 saved=json.loads(path.read_text()) if path.exists() else {}
                 batches.append(dict(id=task['id'],status=saved.get('status','NOT_RUN'),eligible=saved.get('eligible'),reserved_usd=task['reserved_usd']))
             typer.echo(json.dumps(dict(status='PENDING',input_fingerprint=frozen['input_fingerprint'],budget=frozen['budget'],source_batches=batches),indent=2))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('section-failure-handoff')
+def section_failure_handoff(plan:Path=typer.Option(...,'--plan')):
+    """Finalize an unknown-usage stop into an explicit failed document handoff offline."""
+    from ... import profile_section as section
+    try:
+        result=section.failure_handoff(plan)
+        typer.echo(json.dumps({k:v for k,v in result.items() if k not in ('implementation_at_freeze','report_implementation','source_execution')},indent=2))
     except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
 
 

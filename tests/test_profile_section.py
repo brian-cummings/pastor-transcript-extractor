@@ -127,5 +127,33 @@ class SectionTests(unittest.TestCase):
                 broken=core.build_plan(record)
                 self.assertTrue(any(i['gap'] for i in broken['items']))
 
+    def test_unknown_usage_failure_handoff_preserves_reservation_and_has_no_claims(self):
+        window,spec,_,_=reading()
+        with TemporaryDirectory() as folder:
+            root=Path(folder)
+            p=dict(base_dir=str(root),profile=dict(id=window.profile_id,effective_member_video_ids=[window.video_id]),
+                inventory_fingerprint='inventory',coverage={},source_identity=[],unknowns=section.UNKNOWN,
+                tasks=[dict(id=window.id,window=asdict(window),request=asdict(spec))],code_identity={},
+                budget=dict(spend_root=str(root/'requests'),cumulative_ceiling_usd='1',starting_conservative_usd=str(section.x.supervised.BASELINE_SPEND)))
+            p['input_fingerprint']=section.digest(p)
+            path=root/'plan.json';path.write_text(json.dumps(p))
+            target=section.x._store(p,spec)
+            # Same durable state as a transport exception: reservation exists,
+            # but no complete response/usage receipt may be manufactured.
+            target.write_immutable('attempts/'+spec.fingerprint+'.json',dict(request_fingerprint=spec.fingerprint,
+                phase=spec.phase,reserved_usd=str(requests.request_reservation(spec)),namespace=spec.namespace,provider='DeepInfra'))
+            with patch.object(section,'inventory',return_value=dict(content_fingerprint='inventory')),patch.object(section,'windows',return_value=[window]):
+                result=section.failure_handoff(path)
+                replay=section.failure_handoff(path)
+            self.assertEqual(result,replay)
+            self.assertEqual('FAILED_BOUNDED_DELIVERY',result['status'])
+            self.assertEqual(1,result['costs']['unknown_usage_attempts'])
+            self.assertEqual(requests.request_reservation(spec),section.Decimal(result['costs']['new_conservative_usd']))
+            self.assertIsNone(result['costs']['actual_invoice_usd'])
+            doc=json.loads(Path(result['document_input']).read_text())
+            self.assertEqual([],doc['ready_claim_ids']);self.assertEqual([],doc['entries'])
+            self.assertTrue(doc['known_gaps']);self.assertTrue(result['paid_execution_stopped'])
+            self.assertFalse((target.root/'receipts'/f'{spec.fingerprint}.json').exists())
+
 
 if __name__=='__main__':unittest.main()

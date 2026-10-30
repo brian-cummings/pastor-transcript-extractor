@@ -390,3 +390,96 @@ def render(path):
         semantic_acceptance='Pending separate source review of original outputs',production_admission='not_admitted')
     Store(root).write_immutable('delivery.json',report)
     return report
+
+
+def failure_handoff(path):
+    """Close an unknown-usage stop without another provider call or evidence repair.
+
+    This historical/report path verifies the original frozen requests and sources,
+    rather than requiring the reporting implementation to equal the execution freeze.
+    It cannot prepare or execute new requests.
+    """
+    path=Path(path);p=json.loads(path.read_text());root=path.parent
+    if p['input_fingerprint']!=digest({k:v for k,v in p.items() if k!='input_fingerprint'}):
+        raise ValueError('Section freeze differs')
+    limit=allowance.ceiling(p)
+    inv=inventory(Path(p['base_dir']))
+    if inv['content_fingerprint']!=p['inventory_fingerprint'] or digest([asdict(w) for w in windows(inv)])!=digest([t['window'] for t in p['tasks']]):
+        raise ValueError('Frozen membership/source identity changed')
+    attempts=[]
+    for task in p['tasks']:
+        spec=x.requests.RequestSpec(**task['request']);spec.preflight()
+        store=x._store(p,spec)
+        for attempt in store.attempts():
+            if attempt['request_fingerprint']!=spec.fingerprint:
+                raise ValueError('Foreign source attempt')
+            receipt=store.root/'receipts'/f'{spec.fingerprint}.json'
+            if receipt.exists():
+                x._cached(spec,store)
+            account=x.supervised.check.demo.usage_account(store)
+            attempts.append(dict(batch=task['id'],request_fingerprint=spec.fingerprint,
+                attempt_path=str(store.root/'attempts'/f'{spec.fingerprint}.json'),
+                receipt_path=str(receipt),receipt_present=receipt.exists(),accounting=account))
+    uncertain=[a for a in attempts if a['accounting']['unknown_usage_attempts']]
+    if not uncertain:
+        raise ValueError('Failure handoff requires a demonstrated unknown-usage stop')
+    if any((root/'sources'/t['id']/'result.json').exists() for t in p['tasks']):
+        raise ValueError('Completed source results require ordinary assembly; do not discard evidence')
+    out=root/'failure'
+    record=assemble_record(p,[])
+    gap=dict(id='source-transport-unknown-usage',withheld='A substantive account of salvation, requested personal response, spiritual growth and reassurance/challenge in this sample',
+        cause='The frozen source request has a durable paid attempt but no complete usage-bearing receipt. All subsequent paid work is stopped.',
+        inspected_reuse=['Completed evidence-reuse audit: three compatible materialized sources, nine existing salvation meanings; three quarantined meanings unchanged.',
+            'Saved machine bindings retain partial/unverified authority and do not supply complete compatible response/growth evidence.',
+            'Frozen source request cache: attempt present, complete receipt absent. No replacement output or manual source reading is runtime evidence.'],
+        missing_information='A complete accounted response and qualified upstream observations for the frozen windows.',
+        responsible_producer='Shared DeepInfra source transport/receipt boundary before response_growth_binding and Jev qualification',
+        remedy='Reconcile the original request usage/termination before proposing a separately authorized frozen recovery. No retry, next window, model switch or successor experiment in this delivery.',
+        acceptance='Original attempt usage reconciled; any separately authorized recovery has durable accounting and passes unchanged literal/field gates.',
+        authorization_boundary='Current unknown-usage stop remains in force; no additional paid execution.')
+    record['gaps'].insert(0,gap)
+    plan=x.core.build_plan(record)
+    document=x.core.document_input(plan,[])
+    document.update(section_trace={},unknowns=p['unknowns'],limitation=LIMIT,
+        delivery_status='FAILED_UPSTREAM_TRANSPORT',unresolved_section_requirements=[
+            'How the selected sample presents salvation', 'What personal response is requested or described',
+            'How conditions and qualifications distinguish growth from immediate perfection',
+            'How supported reassurance and challenge relate within the selected sample'],
+        source_execution=attempts)
+    Store(out).write_immutable('assembled-profile.json',record)
+    Store(out).write_immutable('document-input.json',document)
+    Store(out).write_immutable('clause-trace.json',dict(clauses=[],reason='No clause is released without qualified upstream evidence and analysis support.'))
+    draft=('# Salvation, personal response and spiritual growth\n\n'
+        'Analysis unavailable for this bounded delivery. The first source check ended without '
+        'a complete response or known usage. No substantive paragraph is released.\n\n'
+        'The prepared sample comprises recordings 281, 3973 and 4589. How it presents salvation, '
+        'personal response, growth and reassurance/challenge remains unresolved in this delivery. '
+        'This is a collection failure, not evidence that those subjects are absent.\n')
+    (out/'draft-section.md').write_text(draft)
+    (out/'analysis-support.md').write_text(x.core.render_handoff(document))
+    spent=ledger(p,root);start=Decimal(p['budget']['starting_conservative_usd'])
+    assessment=dict(status='FAILED_BOUNDED_DELIVERY',plan=str(path),input_fingerprint=p['input_fingerprint'],
+        implementation_at_freeze=p['code_identity'],report_implementation=identity(),
+        draft=str(out/'draft-section.md'),document_input=str(out/'document-input.json'),clause_trace=str(out/'clause-trace.json'),
+        source_execution=attempts,blocked_statement=gap,
+        assessment=dict(mechanical='Live source transport failed before a complete response; prior 70 focused offline tests passed.',
+            model_approval='Not obtained; no source binding, Jev judgment or Qwen support result exists.',
+            claim_fidelity='Not assessable: zero generated/released substantive clauses.',
+            retained_qualifications='Not assessable: no qualified observations generated.',
+            omissions='The entire requested substantive section is withheld; prior full-source omission findings remain unresolved.',
+            contrary_evidence='No adopted stance or refutation is inferred. Frozen contrasts were not assessed by this execution.',
+            usefulness='Failure handoff and blocker are inspectable; the requested useful analysis section was not delivered.',
+            coverage='One source request attempted; no completed windows. Five other frozen windows and downstream stages were not run.',
+            semantic_acceptance='FAIL: substantive deliverable unavailable; no accuracy or generalization claim.'),
+        costs=dict(actual_invoice_usd=None,provider_estimated_usd=None,known_usage_usd=None,
+            unknown_usage_attempts=sum(a['accounting']['unknown_usage_attempts'] for a in attempts),
+            starting_conservative_usd=str(start),new_conservative_usd=str(spent-start),
+            cumulative_conservative_usd=str(spent),remaining_goal_credit_usd=str(limit-spent)),
+        production_admission='not_admitted',next_step=gap['remedy'],paid_execution_stopped=True)
+    Store(out).write_immutable('assessment.json',assessment)
+    (out/'assessment.md').write_text('# Bounded section delivery failed at source transport\n\n'+
+        '\n\n'.join(f'**{k.replace("_"," ")}:** {v}' for k,v in assessment['assessment'].items())+
+        '\n\n## Costs\n\n'+json.dumps(assessment['costs'],indent=2)+
+        '\n\nActual provider billing is unknown; the complete lost-request reservation remains charged. No retries or successor checks ran.\n\n## Smallest responsible blocker\n\n'+
+        gap['cause']+' '+gap['remedy']+'\n')
+    return assessment
