@@ -94,3 +94,25 @@ assessment even after the reporting implementation changes.
 ## Authorized continuation
 
 `section-continue-prepare --plan PRIOR` preserves the allowance and fixed six windows, reuses source requests, and freezes the current verifier. Repeated `--source-window ID` options refresh only explicitly selected fixed-window source requests. Every source and support batch must still fit its complete reservation before execution. Historical freezes and assessments are retained. The indexed verifier names each exact item path in every question; field meanings and the .90 eligibility threshold remain unchanged.
+
+The continuation reuses `source_passages` unit ranges for upstream binding spans.
+The model selects contiguous existing unit IDs; code copies and literally checks
+the complete span. This supplies analytical binding evidence, not illustrative
+quotation selection or a repair in final prose. Historical literal-text requests
+remain readable. Every model-created role, attachment and meaning still requires
+independent verification.
+
+The verifier state contains proposed contract fields and the complete source,
+without compiler/admission metadata. Exact field paths avoid duplicating long
+quotations in each question. Established condition attachment and qualification
+boundary rules distinguish prerequisites from concessions and uncertainty. Neither
+this presentation change nor successful literal binding confers eligibility.
+
+A separately frozen source-reasoning option retains the dated Flash model and
+source role; Jev stays the verifier and Qwen stays instant analysis support. The
+OpenAI endpoint's live schema accepts string effort levels; its incompatible
+numeric-effort rejection is preserved with a full unknown-usage reservation.
+The string-valued `high` configuration reserves all billed reasoning within the
+same 65,536-token output cap, one mechanical correction and bounded streaming
+recovery. Complete 131,072-byte input tiers remain below the $0.50 batch ceiling.
+No historical policy or receipt is rewritten.
