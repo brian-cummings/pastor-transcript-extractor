@@ -7,6 +7,11 @@ from .pastor_evidence import digest
 from . import profile_assertion_force as force
 
 VERSION='section-materialized-relationship-analysis-v2'
+LITERAL_VERSION='literal-contract-membership-v1'
+GROUPS=(('origin-basis',('divine_grace_initiative','atonement_as_basis')),
+    ('reception',('faith_as_receiving_response','conversion_new_birth')),
+    ('transformation',('sanctification_transformation','justification_right_standing')),
+    ('benefits-destiny',('forgiveness_pardon','assurance_security','judgment_final_destiny')))
 INSTRUCTION='''You assemble a short analysis section from compatible admitted local
 relationship observations and their frozen question meanings. Use only this
 structured evidence; no transcript, authored pastor reading or portrait is supplied.
@@ -57,7 +62,7 @@ def build(inventory,sources,windows):
     return packet
 
 
-def schema():
+def schema(*,literal=False):
     hypothesis=deepcopy(contract.HYPOTHESIS)
     hypothesis['properties']['warrant']=contract.PROSE;hypothesis['required'].append('warrant')
     hypothesis['properties']['inference_type']=contract.enum('selected_relationship_membership')
@@ -65,7 +70,31 @@ def schema():
     clauses['items']['properties']['role']=contract.enum('observation','inference')
     clauses['items']['properties']['assertion_force']=contract.enum(*force.FORCES)
     clauses['items']['required'].append('assertion_force')
-    return contract.obj(hypotheses=contract.array(hypothesis,1),clauses=clauses,unknowns=contract.array(contract.S,8))
+    return contract.obj(hypotheses=contract.array(hypothesis,4 if literal else 1),clauses=clauses,unknowns=contract.array(contract.S,8))
+
+
+def literal_reading(packet):
+    """Compile admitted meaning membership; never interpret source or choose a disjunct."""
+    clauses=[];hypotheses=[]
+    for name,fields in GROUPS:
+        rows=[o for o in packet['observations'] if o['state']=='observed' and o['field'] in fields]
+        present=[f for f in fields if any(o['field']==f for o in rows)]
+        if not rows:continue
+        meanings=[packet['contracts'][f]['description'] for f in present]
+        text='The selected passages discuss '+'; '.join(meanings)+'.'
+        ids=sorted(o['id'] for o in rows);scope=sorted({o['video_id'] for o in rows})
+        if len(ids)>1:
+            hid='membership-'+name
+            hypotheses.append(dict(id=hid,conclusion=text,premise_ids=ids,
+                inference_type='selected_relationship_membership',scope_video_ids=scope,
+                warrant='Each premise is an admitted positive local relationship observation under its unchanged meaning. Set membership warrants only that these kinds of relationship are discussed in the selected passages, not a connection, causal sequence, priority, or adoption.',
+                alternatives=['Deliberate source selection may account for this co-presence; these findings do not establish the relation among the themes.'],
+                counterevidence_ids=[],defeaters=['A source, question, model or eligibility incompatibility defeats the affected membership finding. Below-threshold rows are not contrary evidence. Complete adoption, polarity and qualifications remain unknown.']))
+            refs=[hid];role='inference';declared='sample_membership'
+        else:refs=ids;role='observation';declared='local_observation'
+        clauses.append(dict(id=name,text=text,entry_ids=refs,scope_video_ids=scope,role=role,assertion_force=declared))
+    return dict(clauses=clauses,hypotheses=hypotheses,unknowns=['Gradual versus immediate change','Personal response conditions',
+        'Relations among these themes, their relative emphasis, and an adopted theological synthesis'])
 
 
 def state(packet):
@@ -80,10 +109,10 @@ def request(packet):
         dict(stage=VERSION,inputs_digest=packet['fingerprint'],contract_correction_policy=execution.correction.VERSION))
 
 
-def inspect(output,packet):
+def inspect(output,packet,*,literal=False):
     try:value=evidence_requests.strict_json(output) if isinstance(output,str) else deepcopy(output)
     except ValueError as error:return None,[dict(path='$',code='json',message=str(error))]
-    errors=reading_diagnostics.shape_errors(value,schema())
+    errors=reading_diagnostics.shape_errors(value,schema(literal=literal))
     if errors:return None,errors
     rows={o['id']:o for o in packet['observations']};hypotheses={h['id']:h for h in value['hypotheses']}
     try:

@@ -329,7 +329,7 @@ def reconcile_completed_wire(packet,spec):
     return dict(path=str(dest),sha256=file_hash(dest))
 
 
-def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logical_condition_scopes=False,reuse_materialized=False):
+def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logical_condition_scopes=False,reuse_materialized=False,literal_materialized=False):
     """Freeze another authorized bounded step without replacing the allowance."""
     path=Path(path);prior=json.loads(path.read_text())
     if prior['input_fingerprint']!=digest({k:v for k,v in prior.items() if k!='input_fingerprint'}):
@@ -368,12 +368,13 @@ def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logic
         verification_version=producer.VERIFICATION_VERSION,
         current_conservative_usd=str(current),remaining_credit_usd=str(limit-current))
     packet['budget']['maximum_sequence_reservation_usd']=str(sum((Decimal(t['reserved_usd']) for t in packet['tasks']),Decimal(packet['budget']['support_reservation_usd'])))
-    if reuse_materialized or prior.get('materialized_inputs'):
+    if reuse_materialized or literal_materialized or prior.get('materialized_inputs'):
         sources={s['video_id']:json.loads(Path(s['source_path']).read_text()) for s in packet['source_identity']}
         data=measurements.build(inv,sources,[t['window'] for t in packet['tasks']])
         dest=Path(packet['base_dir'])/'evaluation'/VERSION/'materialized'/data['fingerprint']/'inputs.json'
         Store(dest.parent).write_immutable(dest.name,data)
         packet['materialized_inputs']=dict(path=str(dest),sha256=file_hash(dest),version=measurements.VERSION)
+    if literal_materialized:packet['materialized_composition']=measurements.LITERAL_VERSION
     if current>=limit:raise ValueError('Original goal allowance exhausted')
     packet['code_identity']=identity();packet['input_fingerprint']=digest(packet)
     out=Path(packet['base_dir'])/'evaluation'/VERSION/'continuations'/packet['input_fingerprint']
@@ -394,12 +395,14 @@ def materialized_inputs(p):
 
 def prepare_analysis(path):
     p,root=load(path);data=materialized_inputs(p)
-    spec=measurements.request(data) if any(o['state']=='observed' for o in data['observations']) else None
+    literal=p.get('materialized_composition')==measurements.LITERAL_VERSION
+    spec=measurements.request(data) if not literal and any(o['state']=='observed' for o in data['observations']) else None
     correction=x.correction.policy(spec,headroom=True) if spec else None
     reserve=x.requests.request_reservation(spec)+Decimal(correction['reserved_usd']) if spec else Decimal(0)
     if reserve>Decimal('.50') or ledger(p,root)+reserve>=allowance.ceiling(p):raise ValueError('Complete analysis draft batch exceeds allowance')
     packet=dict(version=measurements.VERSION,request=asdict(spec) if spec else None,correction=correction,
-        inputs=p['materialized_inputs'],reserved_usd=str(reserve),maximum_corrections=1)
+        inputs=p['materialized_inputs'],reserved_usd=str(reserve),maximum_corrections=1,
+        composition=p.get('materialized_composition'))
     packet['fingerprint']=digest(packet);out=root/'analysis'
     Store(out).write_immutable('input.json',packet)
     return dict(input=str(out/'input.json'),reserved_usd=str(reserve),materialized_observations=len(data['observations']),
@@ -415,6 +418,8 @@ def run_analysis(path,approve_input,*,transport=None):
     if (out/'results.json').exists():return read_analysis(p,root)
     if ledger(p,root)+Decimal(packet['reserved_usd'])>=allowance.ceiling(p):raise ValueError('Complete analysis batch exceeds allowance')
     rounds=[];value=dict(hypotheses=[],clauses=[],unknowns=['No admitted positive relationship inputs.']);errors=[]
+    if packet.get('composition')==measurements.LITERAL_VERSION:
+        value,errors=measurements.inspect(measurements.literal_reading(data),data,literal=True)
     if packet['request']:
         spec=x.requests.RequestSpec(**packet['request'])
         if asdict(measurements.request(data))!=packet['request']:raise ValueError('Analysis request differs from frozen measurements')
@@ -433,12 +438,15 @@ def run_analysis(path,approve_input,*,transport=None):
 def read_analysis(p,root):
     packet=json.loads((root/'analysis/input.json').read_text());result=json.loads((root/'analysis/results.json').read_text())
     data=materialized_inputs(p);spec=measurements.request(data) if packet['request'] else None
+    if packet.get('composition')!=p.get('materialized_composition'):raise ValueError('Analysis composition changed')
     if packet['fingerprint']!=digest({k:v for k,v in packet.items() if k!='fingerprint'}):raise ValueError('Analysis freeze differs')
     if result['input_fingerprint']!=packet['fingerprint'] or (asdict(spec) if spec else None)!=packet['request']:
         raise ValueError('Analysis lineage differs')
     if packet['inputs']!=p['materialized_inputs'] or bool(spec)!=bool(result['rounds']):
         raise ValueError('Analysis receipt inventory differs')
     value=dict(hypotheses=[],clauses=[],unknowns=['No admitted positive relationship inputs.']);errors=[]
+    if packet.get('composition')==measurements.LITERAL_VERSION:
+        value,errors=measurements.inspect(measurements.literal_reading(data),data,literal=True)
     for n,round_ in enumerate(result['rounds']):
         ref=round_['receipt']
         if n>1 or file_hash(ref['path'])!=ref['sha256']:raise ValueError('Analysis receipt changed')

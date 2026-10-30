@@ -16,6 +16,38 @@ def data():
 
 
 class MeasurementSectionTests(unittest.TestCase):
+    def test_literal_draft_is_recomputed_from_frozen_inputs_without_provider_or_authored_readings(self):
+        with TemporaryDirectory() as folder:
+            root=Path(folder);packet=data();path=root/'inputs.json';path.write_text(json.dumps(packet))
+            p=dict(input_fingerprint='frozen',materialized_composition=m.LITERAL_VERSION,
+                materialized_inputs=dict(path=str(path),sha256=section.file_hash(path)),
+                budget=dict(spend_root=str(root/'requests'),cumulative_ceiling_usd='1'))
+            with patch.object(section,'load',return_value=(p,root)):
+                prepared=section.prepare_analysis(root/'plan.json');self.assertEqual('0',prepared['reserved_usd'])
+                result=section.run_analysis(root/'plan.json','frozen',transport=lambda s:self.fail('No draft inference'))
+                self.assertEqual(m.literal_reading(packet),result['reading']);self.assertEqual([],result['rounds'])
+                edited=deepcopy(result);edited['reading']['clauses'][0]['text']='An authored replacement'
+                (root/'analysis/results.json').write_text(json.dumps(edited))
+                with self.assertRaisesRegex(ValueError,'output changed'):section.read_analysis(p,root)
+
+    def test_literal_composition_preserves_every_alternative_and_only_selected_positive_findings(self):
+        packet=data();reading=m.literal_reading(packet)
+        self.assertEqual([],m.inspect(reading,packet,literal=True)[1])
+        positive=[o for o in packet['observations'] if o['state']=='observed']
+        self.assertEqual(1,len(positive));self.assertEqual(1,len(reading['clauses']))
+        self.assertEqual('The selected passages discuss '+packet['contracts'][positive[0]['field']]['description']+'.',reading['clauses'][0]['text'])
+        # Metamorphic input: a different admitted relationship, not an expected pastor answer.
+        changed=deepcopy(packet)
+        for o in changed['observations']:o['state']='observed' if o['field']=='judgment_final_destiny' else 'measured_below_threshold'
+        next_reading=m.literal_reading(changed)
+        self.assertEqual('The selected passages discuss '+changed['contracts']['judgment_final_destiny']['description']+'.',next_reading['clauses'][0]['text'])
+        self.assertIn(' or ',next_reading['clauses'][0]['text'])
+        for o in changed['observations']:o['state']='observed'
+        grouped=m.literal_reading(changed)
+        self.assertEqual([],m.inspect(grouped,changed,literal=True)[1])
+        self.assertTrue(grouped['hypotheses'])
+        self.assertTrue(all(h['warrant'] and h['alternatives'] and h['defeaters'] for h in grouped['hypotheses']))
+
     def test_structured_draft_through_ordinary_support_and_final_document_without_new_bindings(self):
         from test_profile_analysis_support_execution import wire
         with TemporaryDirectory() as folder:

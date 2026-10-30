@@ -173,3 +173,13 @@ Missing distinctions and unresolved entitlement withhold the unchanged statement
 without a mechanical retry. This judgment remains a model assessment, not an
 automatic proof of semantic correctness. The original draft can be reused exactly
 when only this support contract changes.
+
+`section-continue-prepare --plan PRIOR --literal-materialized` freezes constrained
+composition from the admitted meanings themselves. The same analysis commands
+compile those full meanings verbatim, with no draft inference or pastor-authored
+inputs. The generic question-area groups supply only selected-relationship
+membership hypotheses, explicit warrants, selection alternatives and defeaters.
+No disjunct is chosen and no theological connection is added. The ordinary Qwen
+support recipe still checks the resulting unchanged clauses. This is a narrower
+fallback inside the same adapter, not permission to release failed model prose or
+claim missing growth timing, response conditions or adoption.
