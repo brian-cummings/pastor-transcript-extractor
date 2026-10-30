@@ -165,3 +165,11 @@ outputs and never trigger mechanical correction. This extension leaves the defau
 support schema and historical cache identities unchanged. Neutral fixtures cover
 local observation, warranted membership, frequency, comparison, dominance and
 causality; no pastor-specific wording filter supplies the classification.
+
+The assertion inventory separately judges measurement entitlement under the exact
+admitted meanings. Disjunctive findings do not establish every alternative or a
+narrower one; source support cannot silently create that missing observation.
+Missing distinctions and unresolved entitlement withhold the unchanged statement
+without a mechanical retry. This judgment remains a model assessment, not an
+automatic proof of semantic correctness. The original draft can be reused exactly
+when only this support contract changes.

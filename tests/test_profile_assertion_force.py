@@ -16,7 +16,21 @@ class AssertionForceTests(unittest.TestCase):
 
     def answer(self,case,kind,complete=True):
         return dict(judgment='supported',evidence=[next(iter(core.citation_catalog(case)))],qualifications=[],reason='Synthetic support judgment.',
-            assertion_force=dict(complete=complete,assertions=[dict(excerpt=case['state']['candidate']['statement'],force=kind)]))
+            assertion_force=dict(complete=complete,assertions=[dict(excerpt=case['state']['candidate']['statement'],force=kind,
+                measurement_entitlement='within_meaning',reason='Matches the supplied local relationship meaning.')]))
+
+    def test_disjunctive_meaning_cannot_be_promoted_by_a_supported_source_judgment(self):
+        from pastor_transcript_extractor import profile_support_regression as regression
+        case=regression.case(dict(id='indicator',candidate='The indicator is red and blue.',scope='This indicator.',source='The indicator is blue.'))
+        case['state']['candidate']['assertion_contract']=dict(version=force.VERSION,declared_force='local_observation',allowed_forces=['local_observation'])
+        case['state']['measurement_ledger']['contracts']=[dict(meaning='The indicator is red or blue.')]
+        value=self.answer(case,'local_observation');item=value['assertion_force']['assertions'][0]
+        item.update(measurement_entitlement='requires_missing_distinction',reason='The observed alternative does not establish both colors.')
+        before=deepcopy(value);judgment,errors=correction.inspect(case,execution.requests.wire(value),execution.schema(case))
+        self.assertEqual([],errors);self.assertEqual(before,value)
+        self.assertEqual('unwarranted_or_unresolved',judgment['assertion_assessment']['status'])
+        value['assertion_force']['assertions'][0]['measurement_entitlement']='unresolved'
+        self.assertEqual([],correction.inspect(case,execution.requests.wire(value),execution.schema(case))[1])
 
     def test_stronger_force_is_withheld_even_when_model_supports_underlying_topic(self):
         for statement,kind in [('The valve usually closes.','frequency'),('Pressure causes closure.','causal'),

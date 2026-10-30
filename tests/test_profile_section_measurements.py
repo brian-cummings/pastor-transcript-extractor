@@ -45,7 +45,8 @@ class MeasurementSectionTests(unittest.TestCase):
                 self.assertEqual(1,support['claims']);self.assertEqual(0,support['eligible_bindings'])
                 def support_wire(spec):
                     raw=wire(spec);outer=json.loads(raw.text);answer=json.loads(outer['choices'][0]['message']['content'])
-                    answer['assertion_force']=dict(complete=True,assertions=[dict(excerpt=value['clauses'][0]['text'],force='local_observation')])
+                    answer['assertion_force']=dict(complete=True,assertions=[dict(excerpt=value['clauses'][0]['text'],force='local_observation',
+                        measurement_entitlement='within_meaning',reason='Restates the supplied admitted relationship.')])
                     outer['choices'][0]['message']['content']=json.dumps(answer)
                     return type(raw)(200,json.dumps(outer))
                 section.run_support(root/'plan.json','1','frozen',transport=support_wire)
