@@ -52,6 +52,14 @@ def section_local_enums_prepare(plan:Path=typer.Option(...,'--plan')):
     except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
 
 
+@app.command('section-headroom-prepare')
+def section_headroom_prepare(plan:Path=typer.Option(...,'--plan')):
+    """Reserve complete source-correction feedback and reuse completed source results."""
+    from ... import profile_section as section
+    try:typer.echo(json.dumps(section.prepare_source_headroom(plan),indent=2))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
 @app.command('section-support-prepare')
 def section_support_prepare(plan:Path=typer.Option(...,'--plan')):
     """Assemble machine observations and freeze bounded ordinary profile-support batches."""

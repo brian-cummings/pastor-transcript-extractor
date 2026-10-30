@@ -119,6 +119,9 @@ def load(path):
         for ref in p['local_enum_transport']['preserved_files']:
             if file_hash(ref['path'])!=ref['sha256']:
                 raise ValueError('Local-enum predecessor changed')
+    if p.get('source_correction_headroom'):
+        ref=p['source_correction_headroom']['predecessor']
+        if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Headroom predecessor changed')
     allowance.ceiling(p)
     inv = inventory(Path(p['base_dir']))
     if (inv['content_fingerprint'] != p['inventory_fingerprint'] or
@@ -240,6 +243,56 @@ def prepare_local_enum_transport(path):
         current_conservative_usd=str(current),remaining_credit_usd=str(limit-current),maximum_sequence_reservation_usd=str(maximum),paid_calls=0)
 
 
+def source_correction(spec,output,errors,*,headroom=False):
+    revised=x.requests.corrective_request(spec,output,errors,producer.reading_diagnostics.CORRECTION,validate=not headroom)
+    if headroom:
+        try:revised.preflight()
+        except ValueError as error:
+            if 'input exceeds reservation' not in str(error):raise
+            version=x.requests.DEEPINFRA_BINDING_HEADROOM_VERSION
+            revised=replace(revised,version=version,namespace=version,runtime_identity=x.provider.BINDING_HEADROOM_POLICY)
+            revised=x.provider.streaming_request(revised)
+        revised.preflight()
+    return revised
+
+
+def prepare_source_headroom(path):
+    """Predeclare complete mechanical feedback capacity; never alter a source answer."""
+    path=Path(path);prior=json.loads(path.read_text())
+    if prior['input_fingerprint']!=digest({k:v for k,v in prior.items() if k!='input_fingerprint'}) or prior.get('source_correction_headroom'):
+        raise ValueError('Requires unchanged predecessor without prior headroom expansion')
+    if not prior.get('local_enum_transport'):raise ValueError('Headroom applies only to the final source iteration')
+    limit=allowance.ceiling(prior);packet=deepcopy(prior);packet.pop('input_fingerprint');demonstrated=[]
+    version=x.requests.DEEPINFRA_BINDING_HEADROOM_VERSION+'-stream-v1'
+    correction_reserve=x.provider.reserved_usd(version)
+    for task in packet['tasks']:
+        spec=x.requests.RequestSpec(**task['request']);store=x._store(prior,spec);receipt=x._cached(spec,store)
+        if receipt and not receipt['halt']:
+            rpath=store.root/'receipts'/f'{spec.fingerprint}.json'
+            checked=producer.inspect(receipt['response']['output'],SourceWindow(**task['window']),spec,rpath)
+            if checked['errors']:
+                fixed=source_correction(spec,receipt['response']['output'],checked['errors'],headroom=True)
+                if fixed.runtime_identity['input_cap']>spec.runtime_identity['input_cap']:
+                    demonstrated.append(dict(receipt=str(rpath),sha256=file_hash(rpath),complete_feedback_bound=fixed.preflight()['request_upper_bound']))
+        task['reserved_usd']=str(x.requests.request_reservation(spec)+correction_reserve+x.requests.reservation('source_verification'))
+        if Decimal(task['reserved_usd'])>Decimal('.50'):raise ValueError('Source headroom batch exceeds fifty cents')
+    if len(demonstrated)!=1:raise ValueError('Exactly one demonstrated feedback overflow required')
+    maximum=sum((Decimal(t['reserved_usd']) for t in packet['tasks']),Decimal(packet['budget']['support_reservation_usd']))
+    current=ledger(prior,path.parent)
+    if current+maximum>=limit:raise ValueError('Full headroom reservation exceeds remaining allowance')
+    packet['source_correction_headroom']=dict(predecessor=dict(path=str(path.resolve()),sha256=file_hash(path)),demonstrated=demonstrated,
+        maximum_corrections=1,maximum_input_cap=65536,maximum_correction_reservation_usd=str(correction_reserve))
+    packet['budget']['maximum_sequence_reservation_usd']=str(maximum)
+    packet['code_identity']=identity();packet['input_fingerprint']=digest(packet)
+    out=path.parent/'headroom'/packet['input_fingerprint'];Store(out).write_immutable('plan.json',packet)
+    # Exact completed source results are reused with their original receipt paths.
+    for task in packet['tasks']:
+        result=path.parent/'sources'/task['id']/'result.json'
+        if result.exists():Store(out/'sources'/task['id']).write_immutable('result.json',json.loads(result.read_text()))
+    return dict(plan=str(out/'plan.json'),input_fingerprint=packet['input_fingerprint'],demonstrated=demonstrated,
+        maximum_sequence_reservation_usd=str(maximum),remaining_credit_usd=str(limit-current),paid_calls=0)
+
+
 def ledger(p, root):
     with x.supervised.cumulative_history(p, root/'ledger') as history:
         return x.supervised.BASELINE_SPEND + sum((c for _,c in history), Decimal(0))
@@ -285,8 +338,7 @@ def run_source(path, batch, approve_input, *, check_only=False, transport=None):
     checked = producer.inspect(raw['response']['output'],window,spec,receipt)
     rounds = [dict(receipt=str(receipt),errors=checked['errors'])]
     if checked['errors']:
-        corrected = x.requests.corrective_request(spec,raw['response']['output'],checked['errors'],
-            producer.reading_diagnostics.CORRECTION)
+        corrected = source_correction(spec,raw['response']['output'],checked['errors'],headroom=bool(p.get('source_correction_headroom')))
         # Corrective context must fit its original frozen policy, never truncate.
         raw, receipt = obtain(p,corrected,send)
         spec = corrected

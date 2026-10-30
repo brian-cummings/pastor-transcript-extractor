@@ -34,6 +34,7 @@ DEEPINFRA_EXPANDED_VERSION = 'evidence-request-deepinfra-expanded-v1'
 DEEPINFRA_DIRECT_VERSION = 'evidence-request-deepinfra-direct-v1'
 DEEPINFRA_CORRECTION_VERSION = 'evidence-request-deepinfra-correction-v1'
 DEEPINFRA_BINDING_VERSION = 'evidence-request-deepinfra-binding-retry-v1'
+DEEPINFRA_BINDING_HEADROOM_VERSION = 'evidence-request-deepinfra-binding-headroom-v1'
 DEEPINFRA_ENUM_VERSION = 'evidence-request-deepinfra-enum-check-v1'
 DEEPINFRA_GUIDED_VERSION = 'evidence-request-deepinfra-guided-source-v1'
 DEEPINFRA_QWEN_VERIFY_VERSION = 'evidence-request-qwen-instant-verifier-v1'
@@ -42,7 +43,7 @@ DEEPINFRA_ANALYSIS_SUPPORT_VERSIONS = tuple(f'profile-analysis-support-{cap}-v1'
 DEEPINFRA_HOLDOUT_VERSIONS = ('qualifier-holdout-qwen35-v1','qualifier-holdout-qwen38-v1','qualifier-holdout-flash1017-v1')
 # Historical exported name retained; the same transport now also covers the
 # demonstrated Flash source-binding whitespace loop without changing its model.
-DEEPINFRA_QWEN_STREAM_VERSIONS = tuple(v+'-stream-v1' for v in (DEEPINFRA_QWEN_VERIFY_VERSION,DEEPINFRA_PROFILE_SUPPORT_VERSION,*DEEPINFRA_ANALYSIS_SUPPORT_VERSIONS,*DEEPINFRA_HOLDOUT_VERSIONS[:2],DEEPINFRA_BINDING_VERSION))
+DEEPINFRA_QWEN_STREAM_VERSIONS = tuple(v+'-stream-v1' for v in (DEEPINFRA_QWEN_VERIFY_VERSION,DEEPINFRA_PROFILE_SUPPORT_VERSION,*DEEPINFRA_ANALYSIS_SUPPORT_VERSIONS,*DEEPINFRA_HOLDOUT_VERSIONS[:2],DEEPINFRA_BINDING_VERSION,DEEPINFRA_BINDING_HEADROOM_VERSION))
 THINKING_CHECK_POLICY = dict(thinking=True, output_cap=4096,
     timeout_policy='input-output-budget-v1', startup_seconds=120,
     input_tokens_per_second=100, output_tokens_per_second=8, maximum_seconds=1800)
@@ -138,7 +139,7 @@ def request_model(spec):
 
 
 def request_provider(spec):
-    return 'DeepInfra' if spec.version in (DEEPINFRA_VERSION,DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION,DEEPINFRA_ENUM_VERSION,DEEPINFRA_GUIDED_VERSION,DEEPINFRA_QWEN_VERIFY_VERSION,DEEPINFRA_PROFILE_SUPPORT_VERSION,*DEEPINFRA_ANALYSIS_SUPPORT_VERSIONS,*DEEPINFRA_HOLDOUT_VERSIONS,*DEEPINFRA_QWEN_STREAM_VERSIONS) else PHASES[spec.phase][0]
+    return 'DeepInfra' if spec.version in (DEEPINFRA_VERSION,DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION,DEEPINFRA_BINDING_HEADROOM_VERSION,DEEPINFRA_ENUM_VERSION,DEEPINFRA_GUIDED_VERSION,DEEPINFRA_QWEN_VERIFY_VERSION,DEEPINFRA_PROFILE_SUPPORT_VERSION,*DEEPINFRA_ANALYSIS_SUPPORT_VERSIONS,*DEEPINFRA_HOLDOUT_VERSIONS,*DEEPINFRA_QWEN_STREAM_VERSIONS) else PHASES[spec.phase][0]
 
 
 def request_reservation(spec):

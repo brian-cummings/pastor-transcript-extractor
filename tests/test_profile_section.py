@@ -127,6 +127,23 @@ class SectionTests(unittest.TestCase):
         self.assertTrue(invalid['errors']);self.assertEqual([],invalid['observations'])
         with self.assertRaisesRegex(ValueError,'already selected'):producer.local_enum_transport(revised)
 
+    def test_source_feedback_headroom_preserves_entire_prefix_and_single_correction(self):
+        _,old,_,_=reading();spec=producer.local_enum_transport(producer.hosted.streaming_request(old))
+        spec=replace(spec,body=deepcopy(spec.body))
+        room=49152-spec.preflight()['request_upper_bound']-1000
+        spec.body['messages'][1]['content']+='x'*max(0,room);spec.preflight()
+        output=' '*2500+'{}';errors=[dict(path='$',code='schema',message='Missing required fields')]
+        with self.assertRaisesRegex(ValueError,'input exceeds reservation'):
+            section.source_correction(spec,output,errors)
+        revised=section.source_correction(spec,output,errors,headroom=True)
+        self.assertEqual(65536,revised.runtime_identity['input_cap'])
+        self.assertEqual(spec.body['messages'],revised.body['messages'][:2])
+        self.assertEqual(output,revised.body['messages'][2]['content'])
+        self.assertEqual(spec.body['model'],revised.body['model'])
+        self.assertEqual(spec.body['response_format'],revised.body['response_format'])
+        revised.preflight()
+        with self.assertRaises(ValueError):section.source_correction(revised,'{}',errors,headroom=True)
+
     def test_stubbed_source_through_shared_support_and_final_handoff(self):
         from test_learning_demo_correction import wire_response
         from test_profile_analysis_support_execution import wire
