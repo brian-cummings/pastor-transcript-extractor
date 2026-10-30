@@ -24,6 +24,20 @@ def reading():
 
 
 class SectionTests(unittest.TestCase):
+    def test_source_reasoning_preserves_model_contract_and_correction_configuration(self):
+        _,old,_,_=reading()
+        spec=producer.reasoning_request(old)
+        self.assertEqual(old.body['model'],spec.body['model'])
+        self.assertEqual(old.body['response_format'],spec.body['response_format'])
+        self.assertEqual(old.body['messages'][1],spec.body['messages'][1])
+        self.assertEqual(50,spec.body['reasoning_effort'])
+        self.assertEqual(2,spec.preflight()['stream_recovery']['maximum_attempts'])
+        corrected=section.source_correction(spec,'{}',[dict(path='$',code='schema',message='Missing fields')],headroom=True,feedback_headroom=True)
+        self.assertEqual(spec.version,corrected.version)
+        self.assertEqual(spec.runtime_identity,corrected.runtime_identity)
+        total=2*requests.request_reservation(spec)+requests.reservation('source_verification')
+        self.assertLess(total,section.Decimal('.50'))
+
     def test_source_unit_transport_resolves_only_existing_ranges(self):
         window,_,value,_=reading()
         source=producer.source_passages.inventory(window)

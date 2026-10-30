@@ -131,6 +131,17 @@ def fit_input(spec):
     raise failure
 
 
+def reasoning_request(spec):
+    """Same dated Flash model and source role; bounded reasoning is billed output."""
+    version=requests.DEEPINFRA_BINDING_REASONING_VERSION
+    body=deepcopy(spec.body);body['reasoning_effort']=50
+    body['messages'][0]['content']+='\nKeep each reader_statement to one or two concise sentences about the exact qualified proposition. Complete the source analysis before emitting the binding; do not summarize unrelated points or add absent-topic boilerplate.'
+    revised=replace(spec,body=body,version=version,namespace=version,
+        runtime_identity=deepcopy(hosted.BINDING_REASONING_POLICY))
+    revised=hosted.streaming_request(revised);revised.preflight()
+    return revised
+
+
 def local_enum_transport(spec):
     """Move only enum constraints from provider grammar to unchanged local checks.
 

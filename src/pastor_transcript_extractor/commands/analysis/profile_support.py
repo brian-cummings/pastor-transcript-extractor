@@ -29,10 +29,10 @@ def section_source(plan:Path=typer.Option(...,'--plan'),batch:str=typer.Option(.
 
 
 @app.command('section-continue-prepare')
-def section_continue_prepare(plan:Path=typer.Option(...,'--plan'),source_window:list[str]=typer.Option([],'--source-window')):
+def section_continue_prepare(plan:Path=typer.Option(...,'--plan'),source_window:list[str]=typer.Option([],'--source-window'),source_reasoning:bool=typer.Option(False,'--source-reasoning')):
     """Freeze a continuation within the original allowance; reuse unchanged source requests."""
     from ... import profile_section as section
-    try:typer.echo(json.dumps(section.prepare_continuation(plan,source_window),indent=2))
+    try:typer.echo(json.dumps(section.prepare_continuation(plan,source_window,source_reasoning=source_reasoning),indent=2))
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
 
 

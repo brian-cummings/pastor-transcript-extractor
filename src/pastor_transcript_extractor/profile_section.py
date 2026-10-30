@@ -248,6 +248,8 @@ def prepare_local_enum_transport(path):
 
 def source_correction(spec,output,errors,*,headroom=False,feedback_headroom=False):
     revised=x.requests.corrective_request(spec,output,errors,producer.reading_diagnostics.CORRECTION,validate=not headroom)
+    if spec.version.removesuffix('-stream-v1')==x.requests.DEEPINFRA_BINDING_REASONING_VERSION:
+        revised.preflight();return revised
     if headroom:
         tiers=[(None,None),(x.requests.DEEPINFRA_BINDING_HEADROOM_VERSION,x.provider.BINDING_HEADROOM_POLICY)]
         if feedback_headroom:tiers.append((x.requests.DEEPINFRA_BINDING_FEEDBACK_VERSION,x.provider.BINDING_FEEDBACK_POLICY))
@@ -307,7 +309,7 @@ def ledger(p, root):
         return x.supervised.BASELINE_SPEND + sum((c for _,c in history), Decimal(0))
 
 
-def prepare_continuation(path, source_windows=()):
+def prepare_continuation(path, source_windows=(), *,source_reasoning=False):
     """Freeze another authorized bounded step without replacing the allowance."""
     path=Path(path);prior=json.loads(path.read_text())
     if prior['input_fingerprint']!=digest({k:v for k,v in prior.items() if k!='input_fingerprint'}):
@@ -316,12 +318,14 @@ def prepare_continuation(path, source_windows=()):
     if inv['content_fingerprint']!=prior['inventory_fingerprint']:
         raise ValueError('Continuation inventory changed')
     selected=set(source_windows)
+    if source_reasoning and not selected:raise ValueError('Source reasoning requires selected fixed windows')
     if not selected<=set(t['id'] for t in prior['tasks']):raise ValueError('Unknown fixed source window')
     packet=deepcopy(prior);packet.pop('input_fingerprint')
     correction_reserve=x.provider.reserved_usd(x.requests.DEEPINFRA_BINDING_FEEDBACK_VERSION+'-stream-v1')
     for task in packet['tasks']:
         if task['id'] in selected:
             spec=producer.local_enum_transport(x.provider.streaming_request(producer.request(SourceWindow(**task['window']),unit_ranges=True)))
+            if source_reasoning:spec=producer.reasoning_request(spec)
             task['request']=asdict(spec)
         else:spec=x.requests.RequestSpec(**task['request'])
         task['reserved_usd']=str(x.requests.request_reservation(spec)+correction_reserve+x.requests.reservation('source_verification'))
@@ -332,7 +336,8 @@ def prepare_continuation(path, source_windows=()):
         maximum_correction_reservation_usd=str(correction_reserve))
     packet['continuation']=dict(predecessor=dict(path=str(path.resolve()),sha256=file_hash(path)),
         authorization='User removed iteration ceiling and approved this and future runs within the original goal budget.',
-        refreshed_source_windows=sorted(selected),verification_version=producer.VERIFICATION_VERSION,
+        refreshed_source_windows=sorted(selected),source_reasoning_effort=50 if source_reasoning else None,
+        verification_version=producer.VERIFICATION_VERSION,
         current_conservative_usd=str(current),remaining_credit_usd=str(limit-current))
     packet['budget']['maximum_sequence_reservation_usd']=str(sum((Decimal(t['reserved_usd']) for t in packet['tasks']),Decimal(packet['budget']['support_reservation_usd'])))
     if current>=limit:raise ValueError('Original goal allowance exhausted')
