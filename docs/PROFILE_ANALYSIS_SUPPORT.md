@@ -257,3 +257,24 @@ PATH --approve-input FINGERPRINT` executes one batch. `readiness-regression-repo
 --root ROOT` evaluates all completed outputs against a separate reference file;
 that file is never loaded into requests. Valid uncertainty is never retried.
 Synthetic checks do not establish whole-profile accuracy.
+
+`readiness-diagnostic-prepare --root ROOT` freezes only the two already demonstrated
+profile judgment gaps. It uses unchanged candidate wording, full evidence and the
+same whole-statement instruction as the synthetic checks. No reference judgment
+is sent. `readiness-diagnostic-run --input PATH --approve-input FINGERPRINT` runs
+the frozen diagnostic; it is explicitly exposed development evidence.
+
+`readiness-review --root ROOT --base-dir BASE` prepares every original statement
+as a concrete human decision, complete sample source links, a separate model
+recommendation appendix, exact registered cache audit and holdout prerequisites.
+It re-evaluates the whole dependency graph after merging saved outcomes. It never
+infers missing positions or changes quarantines. Compatible source-form or public
+treatment probabilities do not establish adopted interpretive authorities or
+object-specific positions: those require qualified upstream bindings.
+
+The review distinguishes an independent human review of exposed development
+material from a genuinely untouched profile. The read-only holdout audit checks
+all current topic-run metadata (within the existing twelve-recording limit) and
+prior category exposure before considering new prose. No exposed recording is
+silently trimmed to manufacture a holdout. Review packets are evaluation inputs,
+never runtime analytical evidence.

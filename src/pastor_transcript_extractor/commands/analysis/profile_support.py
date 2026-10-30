@@ -160,3 +160,31 @@ def readiness_regression_report(root:Path=typer.Option(...,'--root'),as_json:boo
     try:
         result=r.report(root);typer.echo(json.dumps(result,indent=2) if as_json else str(result))
     except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('readiness-diagnostic-prepare')
+def readiness_diagnostic_prepare(root:Path=typer.Option(...,'--root'),as_json:bool=typer.Option(False,'--json')):
+    """Freeze the two demonstrated profile judgment gaps; no expected answers in requests."""
+    from ... import profile_support_readiness_review as r
+    try:
+        result=r.diagnostic_prepare(root);typer.echo(json.dumps(result,indent=2) if as_json else str(result))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('readiness-diagnostic-run')
+def readiness_diagnostic_run(input_path:Path=typer.Option(...,'--input'),approve_input:str=typer.Option(...,'--approve-input'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Run only the frozen two-case judgment diagnostic, within the active goal budget."""
+    from ... import profile_support_readiness_review as r
+    try:
+        result=r.diagnostic_run(input_path,approve_input,check_only=check_only,progress=lambda message:typer.echo(message,err=True))
+        typer.echo(json.dumps({k:v for k,v in result.items() if k!='results'},indent=2) if as_json else str(result))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('readiness-review')
+def readiness_review(root:Path=typer.Option(...,'--root'),base_dir:Path|None=typer.Option(None,'--base-dir'),as_json:bool=typer.Option(False,'--json')):
+    """Prepare concrete human decisions, exact cache audit and holdout prerequisites; no inference."""
+    from ... import profile_support_readiness_review as r
+    try:
+        result=r.packet(root,base_dir);typer.echo(json.dumps(result,indent=2) if as_json else str(result))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
