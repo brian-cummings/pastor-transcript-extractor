@@ -321,7 +321,7 @@ def prepare_continuation(path, source_windows=()):
     correction_reserve=x.provider.reserved_usd(x.requests.DEEPINFRA_BINDING_FEEDBACK_VERSION+'-stream-v1')
     for task in packet['tasks']:
         if task['id'] in selected:
-            spec=producer.local_enum_transport(x.provider.streaming_request(producer.request(SourceWindow(**task['window']))))
+            spec=producer.local_enum_transport(x.provider.streaming_request(producer.request(SourceWindow(**task['window']),unit_ranges=True)))
             task['request']=asdict(spec)
         else:spec=x.requests.RequestSpec(**task['request'])
         task['reserved_usd']=str(x.requests.request_reservation(spec)+correction_reserve+x.requests.reservation('source_verification'))

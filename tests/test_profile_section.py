@@ -24,6 +24,26 @@ def reading():
 
 
 class SectionTests(unittest.TestCase):
+    def test_source_unit_transport_resolves_only_existing_ranges(self):
+        window,_,value,_=reading()
+        source=producer.source_passages.inventory(window)
+        def ranges(v):
+            if isinstance(v,dict):
+                if set(v)=={'source_field','text'}:
+                    text=window.target()[0]['target_text'];start=text.index(v['text']);end=start+len(v['text'])
+                    units=[u for u in source['units'] if start<u['end'] and end>u['start']]
+                    return dict(start_unit=units[0]['id'],end_unit=units[-1]['id'])
+                return {k:ranges(x) for k,x in v.items()}
+            if isinstance(v,list):return [ranges(x) for x in v]
+            return v
+        ranged=ranges(value);spec=producer.request(window,unit_ranges=True)
+        result=producer.inspect(ranged,window,spec,'receipt')
+        self.assertEqual([],result['errors'])
+        self.assertEqual(2,len(result['observations']))
+        ranged['claims'][0]['proposition']['span']['start_unit']='foreign'
+        rejected=producer.inspect(ranged,window,spec,'receipt')
+        self.assertEqual([],rejected['observations']);self.assertEqual('source_range',rejected['errors'][0]['code'])
+
     def test_large_feedback_requires_explicit_reserved_tier_and_keeps_all_text(self):
         _,spec,_,_=reading()
         output='x'*50000
@@ -42,9 +62,9 @@ class SectionTests(unittest.TestCase):
         for i,row in enumerate(checked['observations']):
             for field in producer.evidence.REQUIRED_CHECKS:
                 question=spec.body['questions'][row['id']+':'+field]
-                self.assertIn(f'`items[{i}].binding`',question['instructions'])
-                self.assertIn(producer.contract.CHECK_MEANINGS[field],question['instructions'])
-                self.assertIn('source.texts.target_text',question['instructions'])
+                self.assertIn(f'`items[{i}].binding`',question['instructions']['instruction'])
+                self.assertIn(producer.contract.CHECK_MEANINGS[field],question['instructions']['instruction'])
+                self.assertIn('source.texts.target_text',question['instructions']['instruction'])
         self.assertEqual(producer.VERIFICATION_VERSION,spec.version)
         for item in spec.body['state']['items']:
             self.assertEqual(set(producer.contract.BINDING['properties']),set(item['binding']))
