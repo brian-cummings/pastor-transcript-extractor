@@ -2,6 +2,9 @@
 from . import evidence_requests as requests
 from . import profile_analysis_support as core
 from . import reading_diagnostics as diagnostics
+from . import deepinfra_requests as provider
+from dataclasses import replace
+from decimal import Decimal
 
 VERSION='profile-support-contract-correction-v1'
 TEMPLATE='''Return one complete replacement JSON answer to the original profile-support task.
@@ -21,11 +24,22 @@ Validation diagnostics:
 '''
 
 
-def policy(spec):
-    return dict(version=VERSION,maximum_corrections=1,template=TEMPLATE,
+def policy(spec,*,headroom=False):
+    result=dict(version=VERSION,maximum_corrections=1,template=TEMPLATE,
         reserved_usd=str(requests.request_reservation(spec)),
         overflow='Stop without truncation or a larger request tier',
         eligible='Complete, accounted responses failing JSON/schema/literal contract validation only')
+    if not headroom:return result
+    tiers=[dict(version=spec.version,namespace=spec.namespace,runtime_identity=spec.runtime_identity)]
+    for version,runtime in provider.ANALYSIS_SUPPORT_POLICIES.items():
+        if runtime['input_cap']<=spec.runtime_identity['input_cap']:continue
+        candidate=replace(spec,version=version,namespace=version,runtime_identity=runtime)
+        candidate=provider.streaming_request(candidate,whitespace_threshold=spec.runtime_identity.get('stream_recovery',{}).get('whitespace_threshold',256))
+        tiers.append(dict(version=candidate.version,namespace=candidate.namespace,runtime_identity=candidate.runtime_identity))
+    result.update(version='profile-support-contract-correction-v2',allowed_tiers=tiers,
+        reserved_usd=str(max(provider.reserved_usd(t['version']) for t in tiers)),
+        overflow='Try only predeclared tiers; stop without truncation if complete feedback exceeds all frozen tiers')
+    return result
 
 
 def inspect(case,output,schema):
@@ -41,7 +55,18 @@ def inspect(case,output,schema):
 
 
 def request(spec,output,errors,frozen):
-    if frozen!=policy(spec):raise ValueError('Frozen contract correction policy differs')
+    headroom=frozen.get('version')=='profile-support-contract-correction-v2'
+    if frozen!=policy(spec,headroom=headroom):raise ValueError('Frozen contract correction policy differs')
     if spec.source_identity.get('contract_correction_policy')!=VERSION or spec.source_identity.get('correction_of'):
         raise ValueError('Only one newly frozen profile contract correction permitted')
-    return requests.corrective_request(spec,output,errors,frozen['template'])
+    revised=requests.corrective_request(spec,output,errors,frozen['template'],validate=not headroom)
+    if not headroom:return revised
+    for tier in frozen['allowed_tiers']:
+        candidate=replace(revised,**tier)
+        try:candidate.preflight()
+        except ValueError as error:
+            if 'input exceeds reservation' in str(error) or 'timeout exceeds bounded policy' in str(error):continue
+            raise
+        if requests.request_reservation(candidate)>Decimal(frozen['reserved_usd']):raise ValueError('Correction exceeds frozen reservation')
+        return candidate
+    raise ValueError('Complete corrective feedback exceeds all frozen tiers; no truncation')

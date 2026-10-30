@@ -69,7 +69,7 @@ def prepare(base_dir,profile_path=None,*,validation_from=None,check_only=False):
         try:spec=make_request(item['case'])
         except ValueError as error:
             item['gap']=dict(blocked_statement=item['statement'],inspected_reuse=['Complete declared measurement ledger and all linked supporting/contrary passages'],missing_information=str(error),responsible_producer='profile evidence assembly / request context policy',smallest_remedy='Keep unresolved; propose a bounded evidence representation change separately.',acceptance='Complete context fits without dropping counterevidence or denominators.',authorization_boundary='No automatic extra calls or context loss');continue
-        tasks.append(dict(claim_id=item['claim_id'],request=asdict(spec),token_account=spec.preflight(),correction=correction.policy(spec)))
+        tasks.append(dict(claim_id=item['claim_id'],request=asdict(spec),token_account=spec.preflight(),correction=correction.policy(spec,headroom=True)))
     reserve=sum((requests.request_reservation(requests.RequestSpec(**t['request']))+Decimal(t['correction']['reserved_usd']) for t in tasks),Decimal(0))
     if reserve>run_cap:raise ValueError(f'Planned reservation ${reserve} exceeds ${run_cap}; no execution prepared')
     metadata=provider.public_model_metadata(provider.QWEN_VERIFY_POLICY['model']) if tasks else None

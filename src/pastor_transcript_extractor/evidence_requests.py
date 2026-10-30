@@ -146,7 +146,7 @@ def request_reservation(spec):
     return reservation(spec.phase)
 
 
-def corrective_request(original,output,errors,template):
+def corrective_request(original,output,errors,template,*,validate=True):
     """Preserve the original prefix and append model output plus mechanical feedback.
 
     Shared with the bounded extraction experiments. This constructs a new request,
@@ -158,7 +158,7 @@ def corrective_request(original,output,errors,template):
     spec=replace(original,body={**deepcopy(original.body),'messages':messages},
         source_identity={**original.source_identity,'correction_of':original.fingerprint,
             'failed_output_digest':digest(content),'diagnostics_digest':digest(errors)})
-    spec.preflight()
+    if validate:spec.preflight()
     return spec
 
 

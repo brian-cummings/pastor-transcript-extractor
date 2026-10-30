@@ -215,3 +215,28 @@ produces the complete document handoff without inference. Gaps, failed judgments
 and unresolved dependencies remain explicit. Source review, reverse omission
 coverage, document-level assessment and a compatible untouched holdout are
 separate acceptance requirements, not implied by transport/contract PASS.
+
+## Readiness work after the whole-profile acceptance decision
+
+`readiness-prepare` freezes an explicit additional-$3 authorization for its exact
+objective and supersedes the previous unused goal credit. The shared ledger still
+charges every known/uncertain attempt conservatively; new batches are capped at
+$0.50. Historical allowance and receipt files remain immutable. The active allowance
+pointer prevents old goal inputs spending the superseded credit. Repreparation
+reuses the original starting ledger snapshot rather than granting another allowance.
+
+New correction policies can predeclare larger approved context tiers and reserve
+the maximum of their costs before execution. The shared correction builder keeps
+the original messages, rejected answer and complete diagnostics. It tries the
+original tier first: every successful legacy correction remains the exact same
+request and cache identity. Only an overflow may select a larger predeclared tier;
+model, schema, source context, temperature and initial request remain unchanged.
+The correction still happens at most once. If none of the frozen tiers fits, it
+stops without truncation. Existing pinned same-tier policies retain their behavior.
+
+`readiness-run` consumes the frozen input and reuses the saved initial receipt; it
+does not reopen or mutate the earlier acceptance run. A capacity check exercises
+mechanical feedback only and does not establish semantic accuracy. Frozen varied
+synthetic regression inputs and evaluation-only references are stored separately;
+no expected judgments enter inference messages. `acceptance-report` reads historical
+reports without requiring that the current implementation still match the old freeze.

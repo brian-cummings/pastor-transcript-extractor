@@ -106,8 +106,29 @@ def acceptance_report(plan:Path=typer.Option(...,'--plan'),as_json:bool=typer.Op
     """Read the saved whole-profile acceptance decision without inference."""
     from ... import profile_support_acceptance as acceptance
     try:
-        packet,root=acceptance.load(plan)
+        packet=json.loads(plan.read_text());root=plan.parent
+        if packet['input_fingerprint']!=execution.digest({k:v for k,v in packet.items() if k!='input_fingerprint'}):raise ValueError('Acceptance plan digest differs')
         result=json.loads((root/'acceptance-report.json').read_text())
         if result['plan_fingerprint']!=packet['input_fingerprint']:raise ValueError('Foreign acceptance report')
         typer.echo(json.dumps(result,indent=2) if as_json else (root/'acceptance-report.md').read_text())
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('readiness-prepare')
+def readiness_prepare(prior_acceptance:Path=typer.Option(...,'--prior-acceptance'),objective:Path=typer.Option(...,'--objective'),base_dir:Path|None=typer.Option(None,'--base-dir'),as_json:bool=typer.Option(False,'--json')):
+    """Freeze the authorized $3 readiness allowance and saved-answer capacity check."""
+    from ... import profile_support_readiness as readiness
+    try:
+        result=readiness.prepare(prior_acceptance,objective,base_dir)
+        typer.echo(json.dumps(result,indent=2) if as_json else str(result))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('readiness-run')
+def readiness_run(input_path:Path=typer.Option(...,'--input'),approve_input:str=typer.Option(...,'--approve-input'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
+    """Execute one frozen readiness check; cached originals are never regenerated."""
+    from ... import profile_support_readiness as readiness
+    try:
+        result=readiness.run(input_path,approve_input=approve_input,check_only=check_only,progress=lambda message:typer.echo(message,err=True))
+        typer.echo(json.dumps({k:v for k,v in result.items() if k!='results'},indent=2) if as_json else str(result))
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
