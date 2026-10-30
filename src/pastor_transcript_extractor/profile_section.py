@@ -327,7 +327,7 @@ def reconcile_completed_wire(packet,spec):
     return dict(path=str(dest),sha256=file_hash(dest))
 
 
-def prepare_continuation(path, source_windows=(), *,source_reasoning=False):
+def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logical_condition_scopes=False):
     """Freeze another authorized bounded step without replacing the allowance."""
     path=Path(path);prior=json.loads(path.read_text())
     if prior['input_fingerprint']!=digest({k:v for k,v in prior.items() if k!='input_fingerprint'}):
@@ -337,13 +337,15 @@ def prepare_continuation(path, source_windows=(), *,source_reasoning=False):
         raise ValueError('Continuation inventory changed')
     selected=set(source_windows)
     if source_reasoning and not selected:raise ValueError('Source reasoning requires selected fixed windows')
+    if logical_condition_scopes and not selected:raise ValueError('Condition attachment contract requires selected fixed windows')
     if not selected<=set(t['id'] for t in prior['tasks']):raise ValueError('Unknown fixed source window')
     packet=deepcopy(prior);packet.pop('input_fingerprint')
     packet.setdefault('completed_wire_reuse',{})
     correction_reserve=x.provider.reserved_usd(x.requests.DEEPINFRA_BINDING_FEEDBACK_VERSION+'-stream-v1')
     for task in packet['tasks']:
         if task['id'] in selected:
-            spec=producer.local_enum_transport(x.provider.streaming_request(producer.request(SourceWindow(**task['window']),unit_ranges=True)))
+            spec=producer.local_enum_transport(x.provider.streaming_request(producer.request(SourceWindow(**task['window']),unit_ranges=True,
+                condition_attachments=logical_condition_scopes)))
             if source_reasoning:spec=producer.reasoning_request(spec)
             task['request']=asdict(spec)
         else:spec=x.requests.RequestSpec(**task['request'])
@@ -360,6 +362,7 @@ def prepare_continuation(path, source_windows=(), *,source_reasoning=False):
     packet['continuation']=dict(predecessor=dict(path=str(path.resolve()),sha256=file_hash(path)),
         authorization='User removed iteration ceiling and approved this and future runs within the original goal budget.',
         refreshed_source_windows=sorted(selected),source_reasoning_effort='high' if source_reasoning else None,
+        condition_attachment_contract=producer.CONDITION_ATTACHMENT_VERSION if logical_condition_scopes else None,
         verification_version=producer.VERIFICATION_VERSION,
         current_conservative_usd=str(current),remaining_credit_usd=str(limit-current))
     packet['budget']['maximum_sequence_reservation_usd']=str(sum((Decimal(t['reserved_usd']) for t in packet['tasks']),Decimal(packet['budget']['support_reservation_usd'])))

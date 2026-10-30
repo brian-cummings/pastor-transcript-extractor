@@ -116,3 +116,14 @@ The string-valued `high` configuration reserves all billed reasoning within the
 same 65,536-token output cap, one mechanical correction and bounded streaming
 recovery. Complete 131,072-byte input tiers remain below the $0.50 batch ceiling.
 No historical policy or receipt is rewritten.
+
+The opt-in `--logical-condition-scopes` continuation contract requires one indexed
+attachment record per proposed condition, naming its consequence, dependency role
+and literal evidence. This responds to demonstrated temporal/concession placement
+errors, not a below-threshold score. Pure time scope and concessions cannot remain
+in a logical-condition container merely by receiving that label. Code rejects
+inconsistent declared placement; it never moves or reinterprets source meaning.
+An explicitly unresolved dependency remains unresolved without a corrective retry
+and cannot become eligible. Existing source contracts and historical outputs retain
+their meanings. A neutral account-access fixture checks structural enforcement;
+no pastor-specific reference reading or expected answer enters runtime prompts.

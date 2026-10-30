@@ -24,6 +24,46 @@ def reading():
 
 
 class SectionTests(unittest.TestCase):
+    def test_condition_attachment_contract_separates_dependency_from_time_and_concession(self):
+        window,_,value,_=reading()
+        text='If the account is verified, access is granted.'
+        window=replace(window,blocks=({**window.blocks[0],'target_text':text},))
+        value['claims']=value['claims'][:1]
+        def source_spans(v):
+            if isinstance(v,dict):
+                if set(v)=={'source_field','text'}:return dict(source_field='target_text',text=text)
+                return {k:source_spans(x) for k,x in v.items()}
+            if isinstance(v,list):return [source_spans(x) for x in v]
+            return v
+        value=source_spans(value);claim=value['claims'][0]
+        claim['proposition']['reading']='Access is granted if the account is verified.'
+        span=dict(source_field='target_text',text=text)
+        claim['conditions']=[dict(kind='condition',span=span,rationale='Verification is a prerequisite for granting access.')]
+        attachment=dict(condition_index=0,role='prerequisite',consequence='Access is granted.',
+            dependency_evidence=[span],rationale='The source explicitly makes access depend on verification.')
+        claim['response_growth']['condition_attachments']=[attachment]
+        spec=producer.request(window,condition_attachments=True)
+        valid=producer.inspect(value,window,spec,'receipt')
+        self.assertEqual([],valid['errors'])
+        original=deepcopy(value)
+        for role in ('temporal_scope','concession','exception'):
+            bad=deepcopy(value);bad['claims'][0]['response_growth']['condition_attachments'][0]['role']=role
+            checked=producer.inspect(bad,window,spec,'receipt')
+            self.assertTrue(checked['errors']);self.assertEqual([],checked['observations'])
+        self.assertEqual(original,value)
+        uncertain=deepcopy(value);uncertain['claims'][0]['response_growth']['condition_attachments'][0]['role']='unresolved'
+        checked=producer.inspect(uncertain,window,spec,'receipt')
+        self.assertEqual([],checked['errors'])
+        verifier=producer.verification(window,checked['observations'])
+        rows=producer.qualify(checked,dict(output={k:dict(type='noul',noul=.99) for k in verifier.body['questions']}),verifier)
+        self.assertFalse(rows[0]['section_eligibility']['eligible'])
+        self.assertEqual('condition_dependency_unresolved',rows[0]['section_eligibility']['reason'])
+        for field in ('condition_index','dependency_evidence','consequence'):
+            bad=deepcopy(value);a=bad['claims'][0]['response_growth']['condition_attachments'][0]
+            a[field]=2 if field=='condition_index' else [] if field=='dependency_evidence' else ''
+            self.assertTrue(producer.inspect(bad,window,spec,'receipt')['errors'])
+        self.assertTrue(producer.inspect(value,window,producer.request(window),'receipt')['errors'])
+
     def test_identical_uncertain_question_is_reused_instead_of_repurchased(self):
         window,_,_,checked=reading();observations=checked['observations'][:1]
         full=producer.verification(window,observations);parts=producer.verification_parts(window,observations)

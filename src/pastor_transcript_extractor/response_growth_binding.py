@@ -12,6 +12,25 @@ PRODUCER_RECIPE = 'complete-point-source-units-v3'
 VERIFICATION_VERSION = 'qualified-response-growth-field-focus-v4'
 FIELD_VERIFICATION_VERSION = 'qualified-response-growth-field-isolated-v5'
 RANGE_TRANSPORT = 'response-growth-source-unit-ranges-v1'
+CONDITION_ATTACHMENT_VERSION = 'source-logical-condition-attachments-v1'
+CONDITION_ATTACHMENT_PROMPT = '''
+For each conditions entry, return one corresponding condition_attachments record
+in response_growth. condition_index is zero-based. Name the exact consequence
+whose fulfillment depends on the condition and give literal dependency evidence.
+Distinguish prerequisite, exception, temporal_scope, concession and unresolved.
+A prerequisite establishes what must hold for that consequence. An exception
+narrows a stated rule. Temporal scope specifies the occasion or time of a claim;
+temporal wording alone does not establish a logical prerequisite. A concession
+acknowledges a countervailing fact while maintaining the point. Preserve temporal
+scope in scope and concessions in qualifications. Do not place either in conditions
+merely because a clause occurs nearby. Do not reinterpret source to fill a role.
+Only prerequisite corresponds to conditions.kind=condition, and only exception
+corresponds to conditions.kind=exception. The other roles cannot remain in that
+container. If a dependency cannot be resolved, retain unresolved and explain the
+missing information; valid uncertainty is not a request for another answer.
+An empty conditions list requires an empty attachment list. This local contract
+does not assert an unconditional doctrine or resolve conditions on other points.
+'''
 FACETS = ('salvation', 'personal_response', 'gradual_growth', 'reassurance', 'challenge')
 PROMPT = source_context.contract_packet()['reader_prompt'] + '''
 This bounded extension concerns salvation, personal response and spiritual growth.
@@ -65,28 +84,34 @@ Keep requested_response equally local and preserve any source-stated prerequisit
 '''
 
 
-def schema():
+def schema(*,condition_attachments=False):
     value = source_context.schema()
     extension = contract.obj(requested_response=contract.PROSE,
         growth=contract.enum('gradual_growth', 'immediate_perfection', 'not_stated', 'unresolved'),
         evidence=contract.array(contract.SPAN, 8),
         facets=contract.array(contract.enum(*FACETS), 5), reader_statement=contract.PROSE)
+    if condition_attachments:
+        extension['properties']['condition_attachments']=contract.array(contract.obj(
+            condition_index=contract.I,
+            role=contract.enum('prerequisite','exception','temporal_scope','concession','unresolved'),
+            consequence=contract.PROSE,dependency_evidence=contract.array(contract.SPAN,8),rationale=contract.S),8)
+        extension['required'].append('condition_attachments')
     binding = value['properties']['claims']['items']
     binding['properties']['response_growth'] = extension
     binding['required'].append('response_growth')
     return value
 
 
-def range_schema():
+def range_schema(*,condition_attachments=False):
     def convert(value):
         if value==contract.SPAN:return contract.obj(start_unit=contract.S,end_unit=contract.S)
         if isinstance(value,list):return [convert(v) for v in value]
         if isinstance(value,dict):return {k:convert(v) for k,v in value.items()}
         return value
-    return convert(schema())
+    return convert(schema(condition_attachments=condition_attachments))
 
 
-def request(window,*,unit_ranges=False):
+def request(window,*,unit_ranges=False,condition_attachments=False):
     texts, mapping = window.target()
     policy = hosted.BINDING_POLICY
     unit_rule='''\nFor this request every evidence span is a contiguous source-unit range,
@@ -97,16 +122,18 @@ source meaning, completeness, field roles and semantic validation requirements.
 Unit boundaries are not proof that a thought is complete: extend ranges to retain
 all necessary restrictions. Never select unrelated material to hide a missing link.
 '''
-    body = dict(model=policy['model'], messages=[dict(role='system', content=PROMPT+(unit_rule if unit_ranges else '')),
+    body = dict(model=policy['model'], messages=[dict(role='system', content=PROMPT+(unit_rule if unit_ranges else '')+
+        (CONDITION_ATTACHMENT_PROMPT if condition_attachments else '')),
         dict(role='user', content=requests.wire(dict(texts=texts, block_mapping=mapping,
             **(dict(source_units=source_passages.inventory(window)) if unit_ranges else {}),
             source_identity={k:v for k,v in asdict(window).items() if k!='blocks'})))],
         max_tokens=policy['output_cap'], response_format=dict(type='json_schema',
-            json_schema=dict(name='qualified_source_reading', strict=True, schema=range_schema() if unit_ranges else schema())),
+            json_schema=dict(name='qualified_source_reading', strict=True, schema=(range_schema if unit_ranges else schema)(condition_attachments=condition_attachments))),
         temperature=0, top_p=1, stream=False, n=1, reasoning_effort='none')
     spec = requests.RequestSpec('source_reading', body,
         dict(contract=VERSION, recipe=PRODUCER_RECIPE if unit_ranges else 'complete-point-before-presentation-v2',
             **(dict(span_transport=RANGE_TRANSPORT) if unit_ranges else {}),
+            **(dict(condition_attachment_contract=CONDITION_ATTACHMENT_VERSION) if condition_attachments else {}),
             window_digest=evidence.digest(asdict(window))),
         namespace=hosted.BINDING_NAMESPACE, version=requests.DEEPINFRA_BINDING_VERSION,
         runtime_identity=deepcopy(policy))
@@ -153,7 +180,8 @@ def local_enum_transport(spec):
         raise ValueError('Source schema transport already selected')
     body=deepcopy(spec.body)
     original=body['response_format']['json_schema']['schema']
-    expected=range_schema() if spec.source_identity.get('span_transport')==RANGE_TRANSPORT else schema()
+    expected=(range_schema if spec.source_identity.get('span_transport')==RANGE_TRANSPORT else schema)(
+        condition_attachments=spec.source_identity.get('condition_attachment_contract')==CONDITION_ATTACHMENT_VERSION)
     if original!=expected:raise ValueError('Local enum transport requires the exact source contract')
     def provider_shape(value):
         if isinstance(value,list):return [provider_shape(v) for v in value]
@@ -176,7 +204,8 @@ def inspect(output, window, spec, receipt):
     except ValueError as error:
         return dict(errors=[dict(path='$', code='json', message=str(error))], observations=[])
     ranged=spec.source_identity.get('span_transport')==RANGE_TRANSPORT
-    errors = reading_diagnostics.shape_errors(reading, range_schema() if ranged else schema())
+    attached=spec.source_identity.get('condition_attachment_contract')==CONDITION_ATTACHMENT_VERSION
+    errors = reading_diagnostics.shape_errors(reading,(range_schema if ranged else schema)(condition_attachments=attached))
     if errors:
         return dict(errors=errors, observations=[])
     if ranged:
@@ -206,6 +235,18 @@ def inspect(output, window, spec, receipt):
                 raise ValueError('Growth judgment requires literal evidence')
             if not extension['reader_statement'].strip() or not extension['requested_response'].strip():
                 raise ValueError('Response and local presentation must be explicit')
+            if attached:
+                attachments=extension['condition_attachments'];conditions=row['binding']['conditions']
+                indexes=[a['condition_index'] for a in attachments]
+                if len(indexes)!=len(conditions) or set(indexes)!=set(range(len(conditions))):
+                    raise ValueError('Exactly one attachment record per condition is required; no missing or duplicate indexes')
+                for a in attachments:
+                    role=a['role'];kind=conditions[a['condition_index']]['kind']
+                    if role=='unresolved':continue
+                    if role not in ('prerequisite','exception') or kind!=dict(prerequisite='condition',exception='exception')[role]:
+                        raise ValueError('Declared dependency role is inconsistent with the conditions container; preserve time scope and concessions in their responsible fields')
+                    if not a['consequence'].strip() or not a['dependency_evidence']:
+                        raise ValueError('Resolved condition requires an explicit consequence and literal dependency evidence')
             row['response_growth'] = dict(version=VERSION, **located,
                 provenance=dict(request_fingerprint=spec.fingerprint, receipt=str(receipt)))
         except ValueError as error:
@@ -228,6 +269,9 @@ def verification(window, observations):
         items=[dict(id=o['id'], binding=proposal({k:o['binding'][k] for k in contract.BINDING['properties']}),
             response_growth=proposal({k:o['response_growth'][k] for k in
                 ('requested_response','growth','evidence','facets','reader_statement')})) for o in observations])
+    for item,observation in zip(state['items'],observations):
+        if 'condition_attachments' in observation['response_growth']:
+            item['response_growth']['condition_attachments']=proposal(observation['response_growth']['condition_attachments'])
     spec = contract.verification_request('source_verification', state, state['items'],
         dict(contract=VERSION, window_digest=evidence.digest(asdict(window))), source=True)
     if spec is None:
@@ -254,6 +298,9 @@ def verification(window, observations):
                 question['instructions']['field_boundaries']=qualification_verification.RULES
                 question['instructions']['qualification_nodes_path']=f'items[{i}].binding.evidence_nodes (role=qualification)'
             if field=='conditions':question['instructions']['attachment_rule']=source_context.ATTACHMENT_RULE
+            if field=='conditions' and 'condition_attachments' in item['response_growth']:
+                question['instructions']['dependency_records_path']=f'items[{i}].response_growth.condition_attachments'
+                question['instructions']['dependency_check']='Each indexed dependency must have the correct consequence, logical role, scope and literal support; time scope or a concession cannot masquerade as a prerequisite or exception. Unresolved dependency records remain unresolved.'
         for field, instruction in dict(response_growth='The requested response, growth distinction and facets are source-supported for this exact binding; not-stated is local only.',
                 reader_statement='Every substantive clause in the local reader statement is supported by this binding and full source; all meaning-changing qualifications, conditions, voice/adoption, polarity and uncertainty survive. No actual audience uptake, dominance, frequency, causal generalization or comparative priority is invented.').items():
             body['questions'][item['id']+':'+field] = dict(type='noul', instructions=dict(
@@ -289,7 +336,10 @@ def verification_parts(window,observations,reused_keys=()):
             body['questions']={key:body['questions'][key]}
             field_key={'relations':'development_relations','address':'address_acts','context_sufficiency':'proposition'}.get(field,field)
             item['binding']={k:v for k,v in item['binding'].items() if k in {'proposition',field_key,*keys}}
-            if field not in ('response_growth','reader_statement'):item.pop('response_growth')
+            if field not in ('response_growth','reader_statement'):
+                attachments=item['response_growth'].get('condition_attachments')
+                if field=='conditions' and attachments is not None:item['response_growth']={'condition_attachments':attachments}
+                else:item.pop('response_growth')
             body['state']['items']=[item if j==i else None for j in range(len(body['state']['items']))]
             part=replace(full,body=body,version=FIELD_VERIFICATION_VERSION,
                 source_identity={**full.source_identity,'field':field,'item_index':i,'full_contract_request':full.fingerprint})
@@ -327,6 +377,8 @@ def apply_findings(checked,findings,verification_identity):
         accepted, reason = evidence.EvidencePolicy().permits(row)
         extra = row['response_growth']['checks']
         accepted = accepted and set(extra)=={'response_growth','reader_statement'} and all(v['resolved'] for v in extra.values())
+        if any(a['role']=='unresolved' for a in row['response_growth'].get('condition_attachments',[])):
+            accepted=False;reason='condition_dependency_unresolved'
         row['section_eligibility'] = dict(eligible=accepted,
             reason=None if accepted else reason or 'response_growth_or_presentation_unresolved',
             verification_request=verification_identity)
