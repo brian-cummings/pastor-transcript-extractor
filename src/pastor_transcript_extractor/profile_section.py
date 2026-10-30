@@ -111,6 +111,10 @@ def load(path):
                 raise ValueError('Original lost attempt changed')
             if (Path(ref['path']).parent.parent/'receipts'/Path(ref['path']).name).exists():
                 raise ValueError('Original response recovered; resolve compatible reuse before execution')
+    if p.get('streaming_recovery'):
+        for ref in p['streaming_recovery']['preserved_files']:
+            if file_hash(ref['path'])!=ref['sha256']:
+                raise ValueError('Streaming predecessor changed')
     allowance.ceiling(p)
     inv = inventory(Path(p['base_dir']))
     if (inv['content_fingerprint'] != p['inventory_fingerprint'] or
@@ -161,6 +165,44 @@ def prepare_recovery(path):
     return dict(plan=str(out/'plan.json'),input_fingerprint=packet['input_fingerprint'],
         retained_lost_attempts=lost,current_conservative_usd=str(current),
         remaining_credit_usd=str(limit-current),maximum_sequence_reservation_usd=packet['budget']['maximum_sequence_reservation_usd'],paid_calls=0)
+
+
+def prepare_streaming_recovery(path):
+    """Use existing cancellation/recovery for the demonstrated source whitespace loop."""
+    path=Path(path);prior=json.loads(path.read_text())
+    if prior['input_fingerprint']!=digest({k:v for k,v in prior.items() if k!='input_fingerprint'}) or prior.get('streaming_recovery'):
+        raise ValueError('Requires unchanged predecessor without a prior streaming recovery')
+    limit=allowance.ceiling(prior);inv=inventory(Path(prior['base_dir']))
+    if inv['content_fingerprint']!=prior['inventory_fingerprint'] or digest([asdict(w) for w in windows(inv)])!=digest([t['window'] for t in prior['tasks']]):
+        raise ValueError('Frozen source/membership changed')
+    packet=deepcopy(prior);packet.pop('input_fingerprint');refs=[dict(path=str(path.resolve()),sha256=file_hash(path))];demonstrated=[]
+    for task in packet['tasks']:
+        old=x.requests.RequestSpec(**task['request']);store=x._store(prior,old)
+        receipt=x._cached(old,store)
+        if receipt is not None:
+            wire=store.root/'wire-responses'/f'{old.fingerprint}.json'
+            raw=json.loads(json.loads(wire.read_text())['text']);choice=raw['choices'][0];content=choice['message'].get('content','')
+            if choice['finish_reason']!='length' or len(content)-len(content.rstrip())<256:
+                raise ValueError('Only the demonstrated length/whitespace failure permits this transport change')
+            demonstrated.append(old.fingerprint)
+            refs.extend(dict(path=str(f),sha256=file_hash(f)) for f in (wire,store.root/'receipts'/f'{old.fingerprint}.json'))
+        spec=x.provider.streaming_request(old)
+        task.update(request=asdict(spec),reserved_usd=str(2*x.requests.request_reservation(spec)+x.requests.reservation('source_verification')),maximum_paid_attempts=5)
+        if Decimal(task['reserved_usd'])>Decimal('.50'):
+            raise ValueError('Streaming source batch exceeds fifty cents')
+    if len(demonstrated)!=1:
+        raise ValueError('Exactly one accounted whitespace failure is required')
+    maximum=sum((Decimal(t['reserved_usd']) for t in packet['tasks']),Decimal(packet['budget']['support_reservation_usd']))
+    current=ledger(prior,path.parent)
+    if current+maximum>=limit:
+        raise ValueError('Full streaming sequence exceeds existing allowance')
+    packet['budget']['maximum_sequence_reservation_usd']=str(maximum)
+    packet['streaming_recovery']=dict(preserved_files=refs,demonstrated_requests=demonstrated,
+        semantics_unchanged=True,maximum_whitespace_retries=1,model_switch=False)
+    packet['code_identity']=identity();packet['input_fingerprint']=digest(packet)
+    out=path.parent/'streaming'/packet['input_fingerprint'];Store(out).write_immutable('plan.json',packet)
+    return dict(plan=str(out/'plan.json'),input_fingerprint=packet['input_fingerprint'],current_conservative_usd=str(current),
+        maximum_sequence_reservation_usd=str(maximum),remaining_credit_usd=str(limit-current),source_batch_reservation_usd=packet['tasks'][0]['reserved_usd'],paid_calls=0)
 
 
 def ledger(p, root):

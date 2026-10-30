@@ -36,6 +36,14 @@ def section_recovery_prepare(plan:Path=typer.Option(...,'--plan')):
     except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
 
 
+@app.command('section-streaming-prepare')
+def section_streaming_prepare(plan:Path=typer.Option(...,'--plan')):
+    """Freeze existing stream cancellation for an accounted source whitespace failure."""
+    from ... import profile_section as section
+    try:typer.echo(json.dumps(section.prepare_streaming_recovery(plan),indent=2))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
 @app.command('section-support-prepare')
 def section_support_prepare(plan:Path=typer.Option(...,'--plan')):
     """Assemble machine observations and freeze bounded ordinary profile-support batches."""

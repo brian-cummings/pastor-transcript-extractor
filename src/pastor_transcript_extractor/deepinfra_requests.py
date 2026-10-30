@@ -81,7 +81,7 @@ def preflight(spec):
         if not isinstance(settings,dict) or set(settings)!={'version','whitespace_threshold','maximum_attempts'} or settings['version']!='json-whitespace-v1' or type(settings['whitespace_threshold']) is not int or settings['whitespace_threshold']<1:raise ValueError('Invalid frozen streaming recovery policy')
         expected=2 if reserved_usd(spec.version)==2*reserved_usd(base) else 1
         if type(settings['maximum_attempts']) is not int or settings['maximum_attempts']!=expected or spec.namespace!=spec.version:raise ValueError('Streaming retry reservation differs')
-        namespace=QWEN_VERIFY_NAMESPACE if base==DEEPINFRA_QWEN_VERIFY_VERSION else base
+        namespace=QWEN_VERIFY_NAMESPACE if base==DEEPINFRA_QWEN_VERIFY_VERSION else BINDING_NAMESPACE if base==DEEPINFRA_BINDING_VERSION else base
         account=preflight(replace(spec,version=base,namespace=namespace,runtime_identity=runtime))
         account['reserved_usd']=str(reserved_usd(spec.version));account['stream_recovery']=settings
         return account
@@ -257,7 +257,7 @@ def credential_present():
 
 
 def streaming_request(spec,*,whitespace_threshold=None):
-    """Opt newly prepared Qwen requests into durably reserved streaming recovery.
+    """Opt supported requests into durably reserved streaming recovery.
 
     Historical versions/reservations are immutable. Recovery remains disabled if
     a second full attempt cannot fit the existing per-request dollar ceiling.
@@ -265,7 +265,7 @@ def streaming_request(spec,*,whitespace_threshold=None):
     from dataclasses import replace
     if spec.version in DEEPINFRA_QWEN_STREAM_VERSIONS:return spec
     version=spec.version+'-stream-v1'
-    if version not in DEEPINFRA_QWEN_STREAM_VERSIONS:raise ValueError('Streaming recovery requires a supported Qwen request')
+    if version not in DEEPINFRA_QWEN_STREAM_VERSIONS:raise ValueError('Streaming recovery requires a supported request')
     threshold=int(os.environ.get('PTE_DEEPINFRA_WHITESPACE_THRESHOLD','256')) if whitespace_threshold is None else whitespace_threshold
     if type(threshold) is not int or threshold<1:raise ValueError('Whitespace threshold must be a positive integer')
     settings=dict(version='json-whitespace-v1',whitespace_threshold=threshold,maximum_attempts=2 if reserved_usd(version)==2*reserved_usd(spec.version) else 1)
@@ -278,7 +278,7 @@ def transport(spec,*,before_attempt=None,after_attempt=None,maximum_attempts=1):
     account=spec.preflight()
     key=os.environ.get('DEEPINFRA_API_KEY','').strip()
     if not key: raise ValueError('Set DEEPINFRA_API_KEY before execution')
-    if spec.body['model'].startswith('Qwen/'):
+    if spec.body['model'].startswith('Qwen/') or spec.version in DEEPINFRA_QWEN_STREAM_VERSIONS:
         from . import deepinfra_streaming
         settings=account.get('stream_recovery',{})
         if maximum_attempts>settings.get('maximum_attempts',1):raise ValueError('Streaming retry lacks frozen reservation')

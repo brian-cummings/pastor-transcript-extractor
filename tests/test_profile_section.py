@@ -88,6 +88,30 @@ class SectionTests(unittest.TestCase):
         self.assertLessEqual(one,section.Decimal('.50'))
         self.assertLessEqual(6*one+section.Decimal('1.25'),section.Decimal('3'))
 
+    def test_flash_streaming_reuses_detector_and_preserves_source_semantics(self):
+        from test_deepinfra_streaming import Harness,loop,normal
+        window,old,value,_=reading()
+        streamed=producer.hosted.streaming_request(old)
+        self.assertEqual(old.body,streamed.body)
+        self.assertEqual(old.body['model'],streamed.body['model'])
+        self.assertEqual(2,streamed.preflight()['stream_recovery']['maximum_attempts'])
+        with TemporaryDirectory() as folder:
+            store=requests.ReceiptStore(Path(folder))
+            h=Harness(streamed,[loop(streamed),normal(streamed,json.dumps(value))])
+            response=requests.execute(streamed,producer.hosted.OneRequestLedger(str(requests.request_reservation(streamed)),streamed.version),store,h.managed())
+            self.assertEqual(2,len(h.requests))
+            self.assertEqual(old.body,{k:v for k,v in h.requests[0].items() if k!='stream'}|{'stream':False})
+            checked=producer.inspect(response['output'],window,streamed,'stream-receipt')
+            self.assertEqual([],checked['errors'])
+            correction=requests.corrective_request(streamed,'{}',[dict(path='$',code='schema',message='Missing fields')],producer.reading_diagnostics.CORRECTION)
+            correction.preflight()
+            self.assertEqual(streamed.body['messages'],correction.body['messages'][:2])
+            usage=section.x.supervised.check.demo.usage_account(store)
+            self.assertEqual(2,usage['paid_attempts']);self.assertEqual(1,usage['reserved_cancelled_usage_attempts'])
+        one=2*requests.request_reservation(streamed)+requests.reservation('source_verification')
+        self.assertLess(one,section.Decimal('.50'))
+        self.assertLess(6*one+section.Decimal('1.25')+section.Decimal('.0890834'),section.Decimal(3))
+
     def test_stubbed_source_through_shared_support_and_final_handoff(self):
         from test_learning_demo_correction import wire_response
         from test_profile_analysis_support_execution import wire
