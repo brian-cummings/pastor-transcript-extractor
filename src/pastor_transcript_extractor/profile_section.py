@@ -498,6 +498,12 @@ def failure_handoff(path):
     path=Path(path);p=json.loads(path.read_text());root=path.parent
     if p['input_fingerprint']!=digest({k:v for k,v in p.items() if k!='input_fingerprint'}):
         raise ValueError('Section freeze differs')
+    saved=root/'failure'/'assessment.json'
+    if saved.exists():
+        report=json.loads(saved.read_text())
+        if report['input_fingerprint']!=p['input_fingerprint']:
+            raise ValueError('Foreign failure assessment')
+        return report
     limit=allowance.ceiling(p)
     inv=inventory(Path(p['base_dir']))
     if inv['content_fingerprint']!=p['inventory_fingerprint'] or digest([asdict(w) for w in windows(inv)])!=digest([t['window'] for t in p['tasks']]):
@@ -522,6 +528,27 @@ def failure_handoff(path):
     if any((root/'sources'/t['id']/'result.json').exists() for t in p['tasks']):
         raise ValueError('Completed source results require ordinary assembly; do not discard evidence')
     out=root/'failure'
+    # Include preserved predecessor attempts once, without copying or relabeling
+    # their receipts. A goal's conservative charge includes every physical send.
+    history={a['request_fingerprint']:a for a in attempts}
+    predecessors=[]
+    for lost in p.get('transport_recovery',{}).get('preserved_lost_attempts',[]):
+        ref=lost['attempt']
+        if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Lost attempt changed')
+        predecessors.append(Path(ref['path']).parent.parent)
+    for ref in p.get('streaming_recovery',{}).get('preserved_files',[]):
+        if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Streaming predecessor changed')
+        if Path(ref['path']).parent.name=='receipts':predecessors.append(Path(ref['path']).parent.parent)
+    for directory in predecessors:
+        store=x.requests.ReceiptStore(directory)
+        for attempt in store.attempts():
+            key=attempt['request_fingerprint'];receipt=directory/'receipts'/f'{key}.json'
+            if receipt.exists():
+                raw=json.loads(receipt.read_text());x._cached(x.requests.RequestSpec(**raw['request']),store)
+            history[key]=dict(request_fingerprint=key,attempt_path=str(directory/'attempts'/f'{key}.json'),
+                receipt_path=str(receipt),receipt_present=receipt.exists(),accounting=x.supervised.check.demo.usage_account(store))
+    all_attempts=list(history.values())
+    halt_reasons=[json.loads(Path(a['receipt_path']).read_text()).get('halt') for a in all_attempts if a['receipt_present']]
     record=assemble_record(p,[])
     gap=dict(id='source-transport-unknown-usage',withheld='A substantive account of salvation, requested personal response, spiritual growth and reassurance/challenge in this sample',
         cause='The frozen source request has a durable paid attempt but no complete usage-bearing receipt. All subsequent paid work is stopped.',
@@ -533,6 +560,11 @@ def failure_handoff(path):
         remedy='Reconcile the original request usage/termination before proposing a separately authorized frozen recovery. No retry, next window, model switch or successor experiment in this delivery.',
         acceptance='Original attempt usage reconciled; any separately authorized recovery has durable accounting and passes unchanged literal/field gates.',
         authorization_boundary='Current unknown-usage stop remains in force; no additional paid execution.')
+    if any('whitespace loop' in (reason or '') for reason in halt_reasons):
+        gap.update(cause='The unchanged Flash source request repeatedly entered a JSON whitespace loop. Existing streaming cancellation closed both connections and its one recovery was exhausted; no complete source binding exists.',
+            missing_information='A valid complete source-binding response under the frozen structured-output contract.',
+            responsible_producer='DeepInfra Flash constrained source generation / strict-schema compatibility before upstream binding qualification',
+            remedy='Investigate the demonstrated provider/schema incompatibility using the preserved partial outputs. Any change to the upstream model role requires Brian’s separate decision. No further paid variant or successor experiment in this delivery.')
     record['gaps'].insert(0,gap)
     plan=x.core.build_plan(record)
     document=x.core.document_input(plan,[])
@@ -541,7 +573,7 @@ def failure_handoff(path):
             'How the selected sample presents salvation', 'What personal response is requested or described',
             'How conditions and qualifications distinguish growth from immediate perfection',
             'How supported reassurance and challenge relate within the selected sample'],
-        source_execution=attempts)
+        source_execution=all_attempts)
     Store(out).write_immutable('assembled-profile.json',record)
     Store(out).write_immutable('document-input.json',document)
     Store(out).write_immutable('clause-trace.json',dict(clauses=[],reason='No clause is released without qualified upstream evidence and analysis support.'))
@@ -557,7 +589,7 @@ def failure_handoff(path):
     assessment=dict(status='FAILED_BOUNDED_DELIVERY',plan=str(path),input_fingerprint=p['input_fingerprint'],
         implementation_at_freeze=p['code_identity'],report_implementation=identity(),
         draft=str(out/'draft-section.md'),document_input=str(out/'document-input.json'),clause_trace=str(out/'clause-trace.json'),
-        source_execution=attempts,blocked_statement=gap,
+        source_execution=all_attempts,blocked_statement=gap,
         assessment=dict(mechanical='Live source transport failed before a complete response; prior 70 focused offline tests passed.',
             model_approval='Not obtained; no source binding, Jev judgment or Qwen support result exists.',
             claim_fidelity='Not assessable: zero generated/released substantive clauses.',
@@ -565,10 +597,13 @@ def failure_handoff(path):
             omissions='The entire requested substantive section is withheld; prior full-source omission findings remain unresolved.',
             contrary_evidence='No adopted stance or refutation is inferred. Frozen contrasts were not assessed by this execution.',
             usefulness='Failure handoff and blocker are inspectable; the requested useful analysis section was not delivered.',
-            coverage='One source request attempted; no completed windows. Five other frozen windows and downstream stages were not run.',
+            coverage=f"One source window attempted in {sum(a['accounting']['paid_attempts'] for a in all_attempts)} physical sends; no completed windows. Five other frozen windows and downstream stages were not run.",
             semantic_acceptance='FAIL: substantive deliverable unavailable; no accuracy or generalization claim.'),
         costs=dict(actual_invoice_usd=None,provider_estimated_usd=None,known_usage_usd=None,
-            unknown_usage_attempts=sum(a['accounting']['unknown_usage_attempts'] for a in attempts),
+            unknown_usage_attempts=sum(a['accounting']['unknown_usage_attempts'] for a in all_attempts),
+            known_list_price_usage_usd=str(sum((Decimal(a['accounting']['known_list_price_usage_usd']) for a in all_attempts),Decimal(0))),
+            partial_provider_estimated_usd=str(sum((Decimal(a['accounting'].get('known_provider_estimated_usage_usd','0')) for a in all_attempts),Decimal(0))),
+            physical_paid_attempts=sum(a['accounting']['paid_attempts'] for a in all_attempts),
             starting_conservative_usd=str(start),new_conservative_usd=str(spent-start),
             cumulative_conservative_usd=str(spent),remaining_goal_credit_usd=str(limit-spent)),
         production_admission='not_admitted',next_step=gap['remedy'],paid_execution_stopped=True)
