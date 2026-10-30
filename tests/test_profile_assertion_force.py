@@ -59,6 +59,8 @@ class AssertionForceTests(unittest.TestCase):
         self.assertNotIn('assertion_force',execution.schema(plain)['properties'])
         self.assertNotEqual(old.fingerprint,new.fingerprint);self.assertEqual(old,execution.make_request(plain))
         self.assertEqual('none',new.body['reasoning_effort'])
+        self.assertTrue(execution.schema(case)['properties']['assertion_force']['properties']['forces']['uniqueItems'])
+        self.assertNotIn('uniqueItems',new.body['response_format']['json_schema']['schema']['properties']['assertion_force']['properties']['forces'])
 
     def test_compact_inventory_retains_stronger_force_and_long_candidate_without_copying_it(self):
         case=self.case('This valve is closed. '+('A supplied explanation remains part of the candidate. '*20))
@@ -67,3 +69,5 @@ class AssertionForceTests(unittest.TestCase):
         self.assertEqual('within_authority',core.validate_answer_v2(case,value)['assertion_assessment']['status'])
         value['assertion_force']['forces'].append('frequency')
         self.assertEqual('unwarranted_or_unresolved',core.validate_answer_v2(case,value)['assertion_assessment']['status'])
+        value['assertion_force']['forces']=['local_observation','local_observation']
+        with self.assertRaisesRegex(ValueError,'inventory'):core.validate_answer_v2(case,value)

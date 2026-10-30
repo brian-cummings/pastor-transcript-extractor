@@ -81,7 +81,13 @@ def make_request(case,*,whole_statement=False):
     identity=dict(stage=core.VERSION,case_digest=digest(case),answer_contract=core.ANSWER_V2,
         contract_correction_policy=correction.VERSION,citation_catalog_digest=digest(core.citation_catalog(case)))
     if whole_statement:identity['judgment_procedure']=WHOLE_STATEMENT_VERSION
-    return make_structured_request(core.citation_state(case),schema(case),instruction,identity)
+    output_schema=schema(case)
+    if case['state']['candidate'].get('assertion_contract'):
+        # Array uniqueness is checked by the unchanged local contract. Some
+        # hosted grammar engines reject this JSON Schema keyword outright.
+        output_schema['properties']['assertion_force']['properties']['forces'].pop('uniqueItems',None)
+        identity['wire_constraint_policy']='assertion-force-uniqueness-local-v1'
+    return make_structured_request(core.citation_state(case),output_schema,instruction,identity)
 
 
 def make_structured_request(state,output_schema,instruction,source_identity):
