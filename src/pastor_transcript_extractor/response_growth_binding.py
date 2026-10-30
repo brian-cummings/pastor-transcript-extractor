@@ -114,7 +114,16 @@ def local_enum_transport(spec):
         'Return the same complete source binding, preserving all source qualifications and explicit unknowns.\nLocal validation schema: '+requests.wire(original))
     revised=replace(spec,body=body,source_identity={**spec.source_identity,
         'schema_transport':LOCAL_ENUM_TRANSPORT,'local_schema_digest':evidence.digest(original)})
-    revised.preflight()
+    try:revised.preflight()
+    except ValueError as error:
+        if 'input exceeds reservation' not in str(error):raise
+        # The complete source and complete local enum contract are never cut.
+        # Select the established larger tier before freezing or reserving a call.
+        streamed=spec.version in requests.DEEPINFRA_QWEN_STREAM_VERSIONS
+        version=requests.DEEPINFRA_BINDING_HEADROOM_VERSION+('-stream-v1' if streamed else '')
+        revised=replace(revised,version=version,namespace=version,
+            runtime_identity=deepcopy(hosted.BINDING_HEADROOM_POLICY))
+        revised.preflight()
     return revised
 
 
