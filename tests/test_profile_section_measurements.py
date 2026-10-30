@@ -34,7 +34,7 @@ class MeasurementSectionTests(unittest.TestCase):
             result=root/'sources/v9b1';result.mkdir(parents=True)
             (result/'result.json').write_text(json.dumps(dict(observations=[],eligible=0,verification_receipt=None)))
             eid=next(o['id'] for o in packet['observations'] if o['state']=='observed')
-            value=dict(hypotheses=[],clauses=[dict(id='grace',text='The selected passage records salvation as an unearned gift.',entry_ids=[eid],scope_video_ids=[9],role='observation')],unknowns=['Adoption is not measured.'])
+            value=dict(hypotheses=[],clauses=[dict(id='grace',text='The selected passage records salvation as an unearned gift.',entry_ids=[eid],scope_video_ids=[9],role='observation',assertion_force='local_observation')],unknowns=['Adoption is not measured.'])
             with patch.object(section,'load',return_value=(p,root)):
                 prepared=section.prepare_analysis(root/'plan.json')
                 self.assertLess(section.Decimal(prepared['reserved_usd']),section.Decimal('.50'))
@@ -43,7 +43,12 @@ class MeasurementSectionTests(unittest.TestCase):
                 section.run_analysis(root/'plan.json','frozen',transport=lambda s:self.fail('draft cache must be reused'))
                 support=section.prepare_support(root/'plan.json')
                 self.assertEqual(1,support['claims']);self.assertEqual(0,support['eligible_bindings'])
-                section.run_support(root/'plan.json','1','frozen',transport=wire)
+                def support_wire(spec):
+                    raw=wire(spec);outer=json.loads(raw.text);answer=json.loads(outer['choices'][0]['message']['content'])
+                    answer['assertion_force']=dict(complete=True,assertions=[dict(excerpt=value['clauses'][0]['text'],force='local_observation')])
+                    outer['choices'][0]['message']['content']=json.dumps(answer)
+                    return type(raw)(200,json.dumps(outer))
+                section.run_support(root/'plan.json','1','frozen',transport=support_wire)
                 delivery=section.render(root/'plan.json')
                 self.assertEqual(1,delivery['model_supported']);self.assertEqual(9,delivery['reused_materialized_observations'])
                 doc=json.loads(Path(delivery['document_input']).read_text())
@@ -70,7 +75,7 @@ class MeasurementSectionTests(unittest.TestCase):
     def test_draft_references_and_scope_are_checked_without_semantic_repair(self):
         packet=data();eid=packet['observations'][0]['id']
         value=dict(hypotheses=[],clauses=[dict(id='local',text='A local measured relationship is recorded.',
-            entry_ids=[eid],scope_video_ids=[9],role='observation')],unknowns=['Adoption is unknown.'])
+            entry_ids=[eid],scope_video_ids=[9],role='observation',assertion_force='local_observation')],unknowns=['Adoption is unknown.'])
         original=deepcopy(value);parsed,errors=m.inspect(value,packet)
         self.assertEqual([],errors);claims=m.claims(parsed,packet)
         self.assertEqual(value,original);self.assertEqual(value['clauses'][0]['text'],claims[0]['wording'])

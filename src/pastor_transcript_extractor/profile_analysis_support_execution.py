@@ -66,11 +66,18 @@ def schema(case):
     citations=dict(type='array',items=dict(type='string',enum=list(core.citation_catalog(case))),maxItems=64)
     proof=dict(type='object',properties=dict(field=dict(type='string',enum=['statement','scope','declared_caveats']),text=dict(type='string',minLength=1,maxLength=300)),required=['field','text'],additionalProperties=False)
     qualification=dict(type='object',properties=dict(reading=dict(type='string',minLength=1,maxLength=300),evidence=dict(deepcopy(citations),minItems=1),status=dict(type='string',enum=['already_preserved','missing_required','unresolved']),preservation_evidence=dict(type='array',items=proof,maxItems=3)),required=['reading','evidence','status','preservation_evidence'],additionalProperties=False)
-    return dict(type='object',properties=dict(judgment=dict(type='string',enum=['supported','contradicted','unresolved']),evidence=citations,qualifications=dict(type='array',items=qualification,maxItems=8),reason=dict(type='string',minLength=1,maxLength=800)),required=['judgment','evidence','qualifications','reason'],additionalProperties=False)
+    result=dict(type='object',properties=dict(judgment=dict(type='string',enum=['supported','contradicted','unresolved']),evidence=citations,qualifications=dict(type='array',items=qualification,maxItems=8),reason=dict(type='string',minLength=1,maxLength=800)),required=['judgment','evidence','qualifications','reason'],additionalProperties=False)
+    if case['state']['candidate'].get('assertion_contract'):
+        from . import profile_assertion_force as force
+        result['properties']['assertion_force']=force.schema();result['required'].append('assertion_force')
+    return result
 
 
 def make_request(case,*,whole_statement=False):
     instruction=INSTRUCTION+(WHOLE_STATEMENT_INSTRUCTION if whole_statement else '')
+    if case['state']['candidate'].get('assertion_contract'):
+        from . import profile_assertion_force as force
+        instruction+=force.INSTRUCTION
     identity=dict(stage=core.VERSION,case_digest=digest(case),answer_contract=core.ANSWER_V2,
         contract_correction_policy=correction.VERSION,citation_catalog_digest=digest(core.citation_catalog(case)))
     if whole_statement:identity['judgment_procedure']=WHOLE_STATEMENT_VERSION

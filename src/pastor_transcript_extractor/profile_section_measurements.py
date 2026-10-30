@@ -4,8 +4,9 @@ from . import profile_description, sermon_salvation_relationships as salvation
 from . import learning_demo_contracts as contract, reading_diagnostics, evidence_requests
 from . import profile_analysis_support_execution as execution
 from .pastor_evidence import digest
+from . import profile_assertion_force as force
 
-VERSION='section-materialized-relationship-analysis-v1'
+VERSION='section-materialized-relationship-analysis-v2'
 INSTRUCTION='''You assemble a short analysis section from compatible admitted local
 relationship observations and their frozen question meanings. Use only this
 structured evidence; no transcript, authored pastor reading or portrait is supplied.
@@ -21,6 +22,10 @@ Below-threshold, unrouted and quarantined are different unknown states, not deni
 For an interpretation, use a selected_relationship_membership hypothesis with at
 least two measured premises, an explicit warrant, alternatives, contrary/limiting
 evidence and defeaters. Co-presence does not establish a causal or doctrinal link.
+Declare each clause's assertion_force explicitly using its actual wording. This
+input supplies local relationship authority and, with a declared hypothesis,
+selected sample-membership authority only. Stronger force lacks an approved
+measurement/aggregation warrant and will be withheld without a semantic retry.
 Every clause cites observation IDs or its hypothesis ID in entry_ids and exact
 scope_video_ids. Observation clauses cite observations directly. Inference clauses
 must cite a returned hypothesis. Do not cite other clauses. Return unknowns for
@@ -58,6 +63,8 @@ def schema():
     hypothesis['properties']['inference_type']=contract.enum('selected_relationship_membership')
     clauses=deepcopy(contract.NARRATIVE_SCHEMA['properties']['clauses']);clauses['maxItems']=4
     clauses['items']['properties']['role']=contract.enum('observation','inference')
+    clauses['items']['properties']['assertion_force']=contract.enum(*force.FORCES)
+    clauses['items']['required'].append('assertion_force')
     return contract.obj(hypotheses=contract.array(hypothesis,1),clauses=clauses,unknowns=contract.array(contract.S,8))
 
 
@@ -108,7 +115,9 @@ def claims(value,packet):
             observation_input_ids=[o['id'] for o in packet['observations'] if o['field'] in leaves],
             upstream_claim_ids=[],counterevidence_ids=sorted({k for h in hs for k in h['counterevidence_ids']}),
             scope=dict(video_ids=sorted(c['scope_video_ids']),meaning='Only admitted local relationship findings in the six selected development windows; not adopted positions.'),
-            assertion_force='sample_membership' if hs else 'local_observation',
+            assertion_force=c['assertion_force'],
+            assertion_contract=dict(version=force.VERSION,declared_force=c['assertion_force'],
+                allowed_forces=['local_observation']+(['sample_membership'] if hs else [])),
             analytical_basis=dict(producer=VERSION,meaning_contracts=sorted(leaves),hypotheses=hs),
             limits=[packet['authority'],'Gradual versus immediate change, attached conditions and actual uptake remain unknown.'],
             alternative=[a for h in hs for a in h['alternatives']]))

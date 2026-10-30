@@ -137,6 +137,7 @@ def _case(record,claim,reader,claims,points):
         sample=dict(profile_id=record['profile']['id'],video_ids=sorted(record['profile']['effective_member_video_ids']),coverage=deepcopy(record.get('coverage',{}))),
         measurement_ledger=dict(columns=['input_id','video_id','block_id','contract','value','state'],topic_value_columns=['score','confidence','probabilities_0_to_4'],contracts=contracts,rows=rows,meaning='Complete declared observation inputs, not semantic proof. Only linked supporting/contrary passages are reproduced below.'),
         passages=source_state,upstream_points=upstream,bound_observations=bound,stored_aggregates=aggregates,upstream_aggregate_claims=aggregate_claims,aggregation_contract=record['reader'].get('synthesis_rule','Not supplied; do not invent aggregation meanings.'))
+    if claim.get('assertion_contract'):state['candidate']['assertion_contract']=deepcopy(claim['assertion_contract'])
     return dict(state=state,sources=sources,input_ids={str(v):k for k,v in aliases.items()},dependencies=dependencies,
         identity=dict(profile_id=record['profile']['id'],membership_fingerprint=record['profile']['membership_fingerprint'],inventory_fingerprint=record['inventory_fingerprint']))
 
@@ -213,7 +214,9 @@ def citation_state(case):
 
 def validate_answer_v2(case,answer):
     """Bind model judgments and literal preservation evidence without semantic repair."""
-    if not isinstance(answer,dict) or set(answer)!={'judgment','evidence','qualifications','reason'}:raise ValueError('Invalid v2 support answer')
+    force_contract=case['state']['candidate'].get('assertion_contract')
+    expected={'judgment','evidence','qualifications','reason'}|({'assertion_force'} if force_contract else set())
+    if not isinstance(answer,dict) or set(answer)!=expected:raise ValueError('Invalid v2 support answer')
     catalog=citation_catalog(case)
     def selections(ids):
         if not isinstance(ids,list) or len(ids)>64 or any(not isinstance(cid,str) or cid not in catalog for cid in ids):raise ValueError('Unknown source citation ID')
@@ -242,6 +245,9 @@ def validate_answer_v2(case,answer):
     result=validate_answer(case,old,maximum_citations=64)
     for q,p in zip(result['qualifications'],preservation):q.update(p)
     result.update(answer=deepcopy(answer),contract_version=ANSWER_V2,citation_catalog_digest=evidence.digest(catalog))
+    if force_contract:
+        from . import profile_assertion_force as force
+        result['assertion_assessment']=force.assess(candidate,answer['assertion_force'])
     return result
 
 
@@ -257,6 +263,8 @@ def document_input(plan,results,*,production=False):
         if cid in path:return 'dependency_unresolved'
         row=indexed[cid];judgment=row.get('judgment')
         status=judgment['answer']['judgment'] if judgment else row.get('status','unresolved')
+        if status=='supported' and (by_id[cid]['case'] or {}).get('state',{}).get('candidate',{}).get('assertion_contract'):
+            if judgment.get('assertion_assessment',{}).get('status')!='within_authority':status='assertion_force_unresolved'
         if status=='supported' and judgment['qualifications']:
             if judgment.get('contract_version')!=ANSWER_V2:status='requires_qualification'
             elif any(q.get('status')=='missing_required' for q in judgment['qualifications']):status='requires_qualification'

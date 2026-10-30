@@ -29,7 +29,7 @@ def identity():
     return {m.__name__:file_hash(m.__file__) for m in (producer, producer.source_context,
         producer.contract, producer.reading_diagnostics, producer.evidence, x, x.core, x.requests,
         x.provider, x.correction, x.streaming, x.supervised, allowance,measurements,
-        measurements.profile_description)} | {__name__:file_hash(__file__)}
+        measurements.profile_description,measurements.force)} | {__name__:file_hash(__file__)}
 
 
 def inventory(base_dir):
@@ -579,6 +579,10 @@ def check_strength(claim):
     material with comparative_priority force and no warrant.
     """
     force = claim.get('assertion_force')
+    if claim.get('assertion_contract'):
+        contract=claim['assertion_contract']
+        if contract['declared_force']!=force or force not in contract['allowed_forces']:
+            raise ValueError('Generated claim force lacks supplied authority')
     if force not in ('local_observation','sample_membership','comparative_priority','dominance','frequency','causal'):
         raise ValueError('Explicit assertion force required')
     if force in ('comparative_priority','dominance','frequency','causal') and not claim.get('strength_warrant'):
@@ -782,7 +786,7 @@ def render(path):
     document['section_trace']={c['id']:dict(evidence_ids=c.get('machine_observation_ids',c['evidence_ids']),
         premise_ids=c['upstream_claim_ids'],scope=c['scope'],assertion_force=c['assertion_force'],
         interpretation=next((h for h in record['hypotheses'] if h['id']==c['id']),None),
-        analytical_basis=c['analytical_basis'],
+        analytical_basis=c['analytical_basis'],assertion_contract=c.get('assertion_contract'),
         evidence_kind='qualified_machine_binding' if 'machine_observation_ids' in c else 'admitted_local_relationship') for c in record['claims']}
     document['unknowns']=list(dict.fromkeys(p['unknowns']+record.get('analysis_unknowns',[])+
         (['Voiced speaker, preacher adoption, polarity and attached conditions are not supplied by local relationship measurements.'] if record.get('materialized_analysis') else [])))

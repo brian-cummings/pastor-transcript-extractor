@@ -155,3 +155,13 @@ or gradual versus immediate change. These limits remain visible in the rendered
 section and structured trace. The source-binding gates and admission policy are
 unchanged. A model-supported clause still needs separate semantic assessment;
 successful execution alone does not satisfy the section's usefulness criterion.
+
+Generated relationship clauses now declare their own assertion force. The adapter
+does not infer local force from an observation-role tag. The opt-in ordinary support
+contract independently inventories literal assertion excerpts and their force;
+the final consumer withholds supported judgments whose inventory requires absent
+authority, or whose inventory is incomplete. These semantic failures remain valid
+outputs and never trigger mechanical correction. This extension leaves the default
+support schema and historical cache identities unchanged. Neutral fixtures cover
+local observation, warranted membership, frequency, comparison, dominance and
+causality; no pastor-specific wording filter supplies the classification.
