@@ -85,6 +85,8 @@ def prepare(base_dir, objective, previous_allowance):
             maximum_source_windows=6, automatic_expansion=False, production_admission='not_admitted'),
         limitation=LIMIT, unknowns=UNKNOWN, code_identity=identity())
     packet['input_fingerprint'] = digest(packet)
+    # Keep earlier freezes intact when a focused implementation fix changes code.
+    root = root/'freezes'/packet['input_fingerprint']
     Store(root).write_immutable('plan.json', packet)
     (root/'plan.md').write_text('# Bounded automatic section\n\n'+LIMIT+'\n\n'+
         json.dumps(dict(budget=packet['budget'], source_batches=[{k:t[k] for k in
@@ -136,6 +138,9 @@ def run_source(path, batch, approve_input, *, check_only=False, transport=None):
     if approve_input != p['input_fingerprint']:
         raise ValueError('Exact frozen input approval required')
     task = next(t for t in p['tasks'] if t['id']==batch)
+    for previous in p['tasks'][:p['tasks'].index(task)]:
+        if not (root/'sources'/previous['id']/'result.json').exists():
+            raise ValueError('Preceding source batch incomplete; no advancement after unknown usage')
     out = root/'sources'/batch
     if (out/'result.json').exists():
         return json.loads((out/'result.json').read_text())

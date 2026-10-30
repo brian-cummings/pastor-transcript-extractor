@@ -54,6 +54,26 @@ def section_render(plan:Path=typer.Option(...,'--plan')):
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
 
 
+@app.command('section-report')
+def section_report(plan:Path=typer.Option(...,'--plan'),as_json:bool=typer.Option(False,'--json')):
+    """Inspect the saved section or pending batches offline, including historical freezes."""
+    try:
+        frozen=json.loads(plan.read_text());root=plan.parent
+        if frozen['input_fingerprint']!=execution.digest({k:v for k,v in frozen.items() if k!='input_fingerprint'}):
+            raise ValueError('Section freeze differs')
+        if (root/'delivery.json').exists():
+            result=json.loads((root/'delivery.json').read_text())
+            typer.echo(json.dumps(result,indent=2) if as_json else (root/'draft-section.md').read_text())
+        else:
+            batches=[]
+            for task in frozen['tasks']:
+                path=root/'sources'/task['id']/'result.json'
+                saved=json.loads(path.read_text()) if path.exists() else {}
+                batches.append(dict(id=task['id'],status=saved.get('status','NOT_RUN'),eligible=saved.get('eligible'),reserved_usd=task['reserved_usd']))
+            typer.echo(json.dumps(dict(status='PENDING',input_fingerprint=frozen['input_fingerprint'],budget=frozen['budget'],source_batches=batches),indent=2))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
 @app.command('prepare')
 def prepare(profile_record:Path|None=typer.Option(None,'--profile-record'),validation_from:Path|None=typer.Option(None,'--validation-from',help='Freeze four saved contract regression cases from this run directory; no generation.'),base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
     """Freeze an assembled profile or four saved regression cases; no generation."""
