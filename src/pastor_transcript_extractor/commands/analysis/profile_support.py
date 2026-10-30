@@ -10,6 +10,50 @@ app=typer.Typer(help='Prepare and run evidence-linked profile analysis support b
 analysis_app.add_typer(app,name='profile-support')
 
 
+@app.command('section-prepare')
+def section_prepare(objective:Path=typer.Option(...,'--objective'),previous_allowance:Path=typer.Option(...,'--previous-allowance'),base_dir:Path=typer.Option(...,'--base-dir')):
+    """Freeze the authorized six-window automatic section and superseding $3 allowance."""
+    from ... import profile_section as section
+    try:typer.echo(json.dumps(section.prepare(base_dir,objective,previous_allowance),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('section-source')
+def section_source(plan:Path=typer.Option(...,'--plan'),batch:str=typer.Option(...,'--batch'),approve_input:str=typer.Option(...,'--approve-input'),check_only:bool=typer.Option(False,'--check-only')):
+    """Run one frozen source batch using shared binding, verification and accounting."""
+    from ... import profile_section as section
+    try:
+        result=section.run_source(plan,batch,approve_input,check_only=check_only)
+        typer.echo(json.dumps({k:v for k,v in result.items() if k!='observations'},indent=2))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('section-support-prepare')
+def section_support_prepare(plan:Path=typer.Option(...,'--plan')):
+    """Assemble machine observations and freeze bounded ordinary profile-support batches."""
+    from ... import profile_section as section
+    try:typer.echo(json.dumps(section.prepare_support(plan),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('section-support')
+def section_support(plan:Path=typer.Option(...,'--plan'),batch:str=typer.Option(...,'--batch'),approve_input:str=typer.Option(...,'--approve-input'),check_only:bool=typer.Option(False,'--check-only')):
+    """Run one frozen section batch through the ordinary Qwen support recipe."""
+    from ... import profile_section as section
+    try:
+        result=section.run_support(plan,batch,approve_input,check_only=check_only)
+        typer.echo(json.dumps({k:v for k,v in result.items() if k!='results'},indent=2))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('section-render')
+def section_render(plan:Path=typer.Option(...,'--plan')):
+    """Deliver supported unchanged clauses, source links, trace and explicit unknowns."""
+    from ... import profile_section as section
+    try:typer.echo(json.dumps(section.render(plan),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
 @app.command('prepare')
 def prepare(profile_record:Path|None=typer.Option(None,'--profile-record'),validation_from:Path|None=typer.Option(None,'--validation-from',help='Freeze four saved contract regression cases from this run directory; no generation.'),base_dir:Path|None=typer.Option(None,'--base-dir'),check_only:bool=typer.Option(False,'--check-only'),as_json:bool=typer.Option(False,'--json')):
     """Freeze an assembled profile or four saved regression cases; no generation."""

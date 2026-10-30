@@ -150,7 +150,13 @@ def build_plan(record,*,loader=None):
     points={p.get('claim_id',p['point_id']):p for p in record['reader'].get('explanatory_descriptions',{}).get('points',[])}
     items=[]
     for cid,claim in sorted(claims.items()):
-        try:case=_case(record,claim,reader,claims,points);gap=None
+        try:
+            if 'machine_observation_ids' in claim:
+                from .profile_section import machine_case
+                case=machine_case(record,claim)
+                reader.files.update(case['source_files'])
+            else:case=_case(record,claim,reader,claims,points)
+            gap=None
         except (ValueError,KeyError,StopIteration,OSError,TypeError) as error:
             case=None;gap=dict(blocked_statement=claim['wording'],inspected_reuse=['Declared observation inputs','Linked source blocks/context','Linked upstream bound records'],missing_information=str(error) or type(error).__name__,responsible_producer='existing profile evidence assembly / relevant category-leaf producer',smallest_remedy='Restore compatible existing evidence or return this statement unresolved; do not reconstruct measurements here.',acceptance='Exact source, question, model, membership and context checks pass.',authorization_boundary='No new inference or upstream repair in analysis support')
         items.append(dict(claim_id=cid,statement=claim['wording'],scope=deepcopy(claim.get('scope',{})),declared_caveats=claim['_support_caveats'],case=case,gap=gap))
