@@ -6,6 +6,26 @@ extractor or a replacement for category/leaf analysis. The shared implementation
 is `profile_analysis_support.py`; the CLI/storage adapter is
 `profile_analysis_support_execution.py`.
 
+## Bounded automatic-section integration
+
+The [automatic section delivery](PROFILE_SECTION_DELIVERY.md) adds an opt-in
+machine-bound evidence seam to the same plan, support recipe, dependency gates and
+document-input consumer. It does not change V8/P1. Its first six-window profile
+318 delivery completed the workflow with **zero eligible bindings and zero
+released clauses**; this is an assessed bounded failure, not a successful automatic
+analysis section. Original outputs, source-review findings and costs are linked
+from the application-base `evaluation/profile-section-v1/DELIVERY_318.md` index.
+
+The upstream response/growth extension preserves existing binding semantics and
+does not admit quarantined leaves. A final transport iteration moves enum grammar
+enforcement to the unchanged local validator, retaining every allowed choice in
+the model-visible schema. Source binding requests explicitly opted into the shared
+whitespace cancellation mechanism reserve both physical attempts; historical
+nonstreaming Flash requests are unchanged. A separately frozen 65,536-byte source
+correction tier retains the exact initial prefix, rejected answer and diagnostics,
+with one correction only and all costs reserved before execution. These are
+source-side contracts; end-stage Qwen may not repair missing distinctions.
+
 ## Active implementation sequence
 
 1. **Shared evidence/claim boundary and document handoff — implemented.** Enumerate
