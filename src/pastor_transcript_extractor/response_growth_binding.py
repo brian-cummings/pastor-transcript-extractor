@@ -10,6 +10,7 @@ VERSION = 'qualified-response-growth-v1'
 LOCAL_ENUM_TRANSPORT = 'source-local-enum-transport-v1'
 PRODUCER_RECIPE = 'complete-point-source-units-v3'
 VERIFICATION_VERSION = 'qualified-response-growth-field-focus-v4'
+FIELD_VERIFICATION_VERSION = 'qualified-response-growth-field-isolated-v5'
 RANGE_TRANSPORT = 'response-growth-source-unit-ranges-v1'
 FACETS = ('salvation', 'personal_response', 'gradual_growth', 'reassurance', 'challenge')
 PROMPT = source_context.contract_packet()['reader_prompt'] + '''
@@ -266,6 +267,58 @@ def verification(window, observations):
 
 def qualify(checked, response, spec):
     findings = contract.judgments(response, spec) if spec else {}
+    return apply_findings(checked,findings,spec.fingerprint if spec else None)
+
+
+def verification_parts(window,observations,reused_keys=()):
+    """Same questions and full source, with only each field's necessary proposals."""
+    full=verification(window,observations)
+    if full is None:return {}
+    contexts=dict(proposition=('voice','adoption'),voice=(),adoption=('voice',),polarity=('voice',),
+        conditions=('voice','scope','development_relations','evidence_nodes'),
+        scope=('voice','address_acts'),qualifications=('voice','evidence_nodes','epistemic_status'),
+        context_sufficiency=('scope','unknowns'),relations=('voice','adoption','evidence_nodes'),
+        address=('voice','adoption'),response_growth=('voice','adoption','conditions','qualifications','evidence_nodes'),
+        reader_statement=tuple(contract.BINDING['properties']))
+    parts={}
+    for field,keys in contexts.items():
+        for i,original in enumerate(full.body['state']['items']):
+            key=original['id']+':'+field
+            if key in reused_keys:continue
+            body=deepcopy(full.body);item=body['state']['items'][i]
+            body['questions']={key:body['questions'][key]}
+            field_key={'relations':'development_relations','address':'address_acts','context_sufficiency':'proposition'}.get(field,field)
+            item['binding']={k:v for k,v in item['binding'].items() if k in {'proposition',field_key,*keys}}
+            if field not in ('response_growth','reader_statement'):item.pop('response_growth')
+            body['state']['items']=[item if j==i else None for j in range(len(body['state']['items']))]
+            part=replace(full,body=body,version=FIELD_VERIFICATION_VERSION,
+                source_identity={**full.source_identity,'field':field,'item_index':i,'full_contract_request':full.fingerprint})
+            part.preflight();parts[field+':'+str(i)]=part
+
+    return parts
+
+
+def reused_answers(response,spec,parts=None):
+    if response is None:return {}
+    checked=contract.judgments(response,spec)
+    identical={key for part in (parts or {}).values() if part.body['state']==spec.body['state']
+        for key,q in part.body['questions'].items() if q==spec.body['questions'][key]}
+    return {key:deepcopy(value) for key,value in response['output'].items()
+        if key in identical or checked[key.rsplit(':',1)[0]][key.rsplit(':',1)[1]]['resolved']}
+
+
+def qualify_parts(checked,full,parts,responses,reused):
+    answers=deepcopy(reused)
+    for field,spec in parts.items():
+        contract.judgments(responses[field],spec)
+        if set(answers)&set(responses[field]['output']):raise ValueError('Duplicate field answer')
+        answers.update(responses[field]['output'])
+    findings=contract.judgments(dict(output=answers),full)
+    return apply_findings(checked,findings,evidence.digest(dict(
+        full=full.fingerprint,parts={f:s.fingerprint for f,s in parts.items()},reused_keys=sorted(reused))))
+
+
+def apply_findings(checked,findings,verification_identity):
     rows = deepcopy(checked['observations'])
     for row in rows:
         checks = findings.get(row['id'], {})
@@ -276,5 +329,5 @@ def qualify(checked, response, spec):
         accepted = accepted and set(extra)=={'response_growth','reader_statement'} and all(v['resolved'] for v in extra.values())
         row['section_eligibility'] = dict(eligible=accepted,
             reason=None if accepted else reason or 'response_growth_or_presentation_unresolved',
-            verification_request=spec.fingerprint if spec else None)
+            verification_request=verification_identity)
     return rows

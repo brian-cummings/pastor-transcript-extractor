@@ -349,10 +349,12 @@ def prepare_continuation(path, source_windows=(), *,source_reasoning=False):
         else:spec=x.requests.RequestSpec(**task['request'])
         reconciled=reconcile_completed_wire(prior,spec)
         if reconciled:packet['completed_wire_reuse'][spec.fingerprint]=reconciled
-        task['reserved_usd']=str(x.requests.request_reservation(spec)+correction_reserve+x.requests.reservation('source_verification'))
+        task['reserved_usd']=str(x.requests.request_reservation(spec)+correction_reserve+24*x.requests.reservation('source_verification'))
+        task['maximum_paid_attempts']=28
         if Decimal(task['reserved_usd'])>Decimal('.50'):raise ValueError('Continuation batch exceeds fifty cents')
     current=ledger(prior,path.parent);limit=allowance.ceiling(prior)
     packet['policy'].update(semantic_iterations='until_original_allowance_or_goal',automatic_expansion=False)
+    packet['field_isolated_verification']=producer.FIELD_VERIFICATION_VERSION
     packet['source_feedback_headroom']=dict(maximum_input_cap=131072,maximum_corrections=1,
         maximum_correction_reservation_usd=str(correction_reserve))
     packet['continuation']=dict(predecessor=dict(path=str(path.resolve()),sha256=file_hash(path)),
@@ -433,9 +435,12 @@ def run_source(path, batch, approve_input, *, check_only=False, transport=None):
     if not checked['errors']:
         verifier = producer.verification(window,checked['observations'])
         if verifier:
-            answer, vpath = obtain(p,verifier,transport or x.requests.typesafe_transport)
+            if p.get('field_isolated_verification')==producer.FIELD_VERIFICATION_VERSION:
+                rows,vpath=verify_fields(p,out,window,checked,transport or x.requests.typesafe_transport)
+            else:
+                answer, vpath = obtain(p,verifier,transport or x.requests.typesafe_transport)
+                rows = producer.qualify(checked,answer['response'],verifier)
             verification = str(vpath)
-            rows = producer.qualify(checked,answer['response'],verifier)
     result = dict(batch=batch,status='FAIL(component)' if checked['errors'] else 'COMPLETE',
         observations=rows, rounds=rounds, abstentions=checked.get('abstentions',[]),
         source_status=(checked.get('reading') or {}).get('status'), verification_receipt=verification,
@@ -443,6 +448,48 @@ def run_source(path, batch, approve_input, *, check_only=False, transport=None):
         production_admission='not_admitted')
     Store(out).write_immutable('result.json',result)
     return result
+
+
+def verify_fields(p,out,window,checked,transport):
+    full=producer.verification(window,checked['observations'])
+    cached=x._cached(full,x._store(p,full));reused={};ref=None
+    if cached and not cached['halt']:
+        reused=producer.reused_answers(cached['response'],full,producer.verification_parts(window,checked['observations']))
+        path=x._store(p,full).root/'receipts'/f'{full.fingerprint}.json'
+        ref=dict(path=str(path),sha256=file_hash(path))
+    parts=producer.verification_parts(window,checked['observations'],reused)
+    receipts={}
+    for field,spec in parts.items():
+        _,path=obtain(p,spec,transport)
+        receipts[field]=dict(path=str(path),sha256=file_hash(path))
+    bundle=dict(version=producer.FIELD_VERIFICATION_VERSION,window_digest=digest(asdict(window)),
+        canonical_contract_request=asdict(full),reused_from=ref,reused_keys=sorted(reused),parts=receipts,
+        compatibility='Exact source, bound proposals, field questions, criteria and Jev model. Compatible resolved fields and any identical model-visible inputs are reused, including uncertainty. Other fields receive isolated proposal views. No old answers enter model inputs.')
+    bundle['fingerprint']=digest(bundle)
+    path=out/'verification-bundle.json';Store(out).write_immutable(path.name,bundle)
+    rows,_=load_field_bundle(path,window,checked)
+    return rows,path
+
+
+def load_field_bundle(path,window,checked):
+    bundle=json.loads(Path(path).read_text());files={str(path):file_hash(path)}
+    if (bundle['version']!=producer.FIELD_VERIFICATION_VERSION or bundle['window_digest']!=digest(asdict(window))
+        or bundle['fingerprint']!=digest({k:v for k,v in bundle.items() if k!='fingerprint'})):
+        raise ValueError('Field verification bundle differs')
+    full=producer.verification(window,checked['observations'])
+    if bundle['canonical_contract_request']!=asdict(full):raise ValueError('Canonical field contract differs')
+    def response(ref,spec):
+        if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Field receipt changed')
+        raw=x._cached(spec,x.requests.ReceiptStore(Path(ref['path']).parent.parent))
+        if raw is None or raw['halt']:raise ValueError('Field receipt incomplete')
+        x.requests.validate_response(spec,raw['response'])
+        files[ref['path']]=ref['sha256'];return raw['response']
+    reused=producer.reused_answers(response(bundle['reused_from'],full),full,producer.verification_parts(window,checked['observations'])) if bundle['reused_from'] else {}
+    if sorted(reused)!=bundle['reused_keys']:raise ValueError('Reused field inventory differs')
+    parts=producer.verification_parts(window,checked['observations'],reused)
+    if set(parts)!=set(bundle['parts']):raise ValueError('Field-part inventory differs')
+    answers={field:response(bundle['parts'][field],spec) for field,spec in parts.items()}
+    return producer.qualify_parts(checked,full,parts,answers,reused),files
 
 
 def check_strength(claim):
@@ -542,11 +589,15 @@ def machine_case(record, claim):
         checked = producer.inspect(receipt['response']['output'],w,spec,ref)
         rebuilt = next(r for r in checked['observations'] if r['id']==oid)
         # Verify original Jev answers and every retained binding/extension field.
-        verifier=producer.verification(w,checked['observations'])
         vref=Path(o['verification_receipt']); vr=json.loads(vref.read_text())
-        if vr['request']!=asdict(verifier) or vr['halt'] or vr['response_digest']!=digest(vr['response']):
-            raise ValueError('Machine verification receipt changed')
-        rebuilt=next(r for r in producer.qualify(checked,vr['response'],verifier) if r['id']==oid)
+        if vr.get('version')==producer.FIELD_VERIFICATION_VERSION:
+            verified,field_files=load_field_bundle(vref,w,checked);files.update(field_files)
+        else:
+            verifier=producer.verification(w,checked['observations'])
+            if vr['request']!=asdict(verifier) or vr['halt'] or vr['response_digest']!=digest(vr['response']):
+                raise ValueError('Machine verification receipt changed')
+            verified=producer.qualify(checked,vr['response'],verifier)
+        rebuilt=next(r for r in verified if r['id']==oid)
         rebuilt['verification_receipt']=str(vref)
         if rebuilt!=o:
             raise ValueError('Machine binding or eligibility changed')

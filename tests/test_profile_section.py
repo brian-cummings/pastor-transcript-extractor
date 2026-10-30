@@ -24,6 +24,49 @@ def reading():
 
 
 class SectionTests(unittest.TestCase):
+    def test_identical_uncertain_question_is_reused_instead_of_repurchased(self):
+        window,_,_,checked=reading();observations=checked['observations'][:1]
+        full=producer.verification(window,observations);parts=producer.verification_parts(window,observations)
+        response=dict(output={k:dict(type='noul',noul=.5) for k in full.body['questions']})
+        reused=producer.reused_answers(response,full,parts)
+        key=observations[0]['id']+':reader_statement'
+        self.assertIn(key,reused);self.assertEqual(.5,reused[key]['noul'])
+        reduced=producer.verification_parts(window,observations,reused)
+        self.assertTrue(all(key not in part.body['questions'] for part in reduced.values()))
+
+    def test_isolated_fields_reuse_resolved_answers_and_require_complete_receipted_bundle(self):
+        window,_,_,checked=reading();full=producer.verification(window,checked['observations'])
+        old_answers={k:dict(type='noul',noul=.99 if k.endswith(':voice') else .5) for k in full.body['questions']}
+        with TemporaryDirectory() as folder:
+            packet=dict(budget=dict(spend_root=str(Path(folder)/'spend')))
+            def save(spec,answers):
+                response=dict(model='jev-1.13.0',complete=True,usage=dict(input_tokens=100,output_tokens=0),output=answers)
+                receipt=dict(request=asdict(spec),token_account=spec.preflight(),response=response,
+                    response_digest=section.digest(response),wire_response_digest=None,halt=None)
+                store=section.x._store(packet,spec);path=store.root/'receipts'/f'{spec.fingerprint}.json'
+                store.write_immutable(f'receipts/{spec.fingerprint}.json',receipt)
+                return receipt,path
+            save(full,old_answers);calls=[]
+            def obtain(p,spec,transport):
+                calls.append(spec)
+                return save(spec,{k:dict(type='noul',noul=.99) for k in spec.body['questions']})
+            out=Path(folder)/'result'
+            with patch.object(section,'obtain',side_effect=obtain):
+                rows,path=section.verify_fields(packet,out,window,checked,None)
+            self.assertEqual(22,len(calls))
+            self.assertTrue(all(o['section_eligibility']['eligible'] for o in rows))
+            for spec in calls:
+                self.assertEqual(window.target()[0],spec.body['state']['source']['texts'])
+                self.assertTrue(all(not k.endswith(':voice') for k in spec.body['questions']))
+                self.assertEqual(1,len({k.rsplit(':',1)[1] for k in spec.body['questions']}))
+                for key,question in spec.body['questions'].items():self.assertEqual(full.body['questions'][key],question)
+            rebuilt,files=section.load_field_bundle(path,window,checked)
+            self.assertEqual(rows,rebuilt);self.assertEqual(24,len(files))
+            manifest=json.loads(path.read_text());ref=manifest['parts']['conditions:0']['path']
+            raw=json.loads(Path(ref).read_text());raw['response']['output'][next(iter(raw['response']['output']))]['noul']=.1
+            Path(ref).write_text(json.dumps(raw))
+            with self.assertRaisesRegex(ValueError,'receipt changed'):section.load_field_bundle(path,window,checked)
+
     def test_complete_reasoning_wire_can_be_reconciled_offline_without_rewriting_failure(self):
         _,old,value,_=reading();spec=producer.reasoning_request(old)
         raw=dict(model=spec.body['model'],choices=[dict(finish_reason='stop',message=dict(
