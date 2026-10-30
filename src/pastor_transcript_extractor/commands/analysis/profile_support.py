@@ -188,3 +188,14 @@ def readiness_review(root:Path=typer.Option(...,'--root'),base_dir:Path|None=typ
     try:
         result=r.packet(root,base_dir);typer.echo(json.dumps(result,indent=2) if as_json else str(result))
     except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('readiness-report')
+def readiness_report(root:Path=typer.Option(...,'--root'),refresh:bool=typer.Option(False,'--refresh'),as_json:bool=typer.Option(False,'--json')):
+    """Read the saved readiness decision, or audit completed receipts without inference."""
+    from ... import profile_support_readiness_report as r
+    try:
+        result=r.prepare(root) if refresh else json.loads((root/'readiness-report.json').read_text())
+        if result['report_fingerprint']!=execution.digest({k:v for k,v in result.items() if k!='report_fingerprint'}):raise ValueError('Readiness report changed')
+        typer.echo(json.dumps(result,indent=2) if as_json else (root/'readiness-report.md').read_text())
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error

@@ -278,3 +278,13 @@ all current topic-run metadata (within the existing twelve-recording limit) and
 prior category exposure before considering new prose. No exposed recording is
 silently trimmed to manufacture a holdout. Review packets are evaluation inputs,
 never runtime analytical evidence.
+
+`readiness-report --root ROOT` reads the saved requirement audit without provider
+access. `--refresh` audits the six completed bounded runs, original regression
+reference hashes, shared spend ledger and human packet, then writes Markdown and
+JSON. It rejects incomplete/uncertain executions, changed references and
+unreconciled ledger movement. Model support is explicitly separate from semantic
+acceptance: all statements may be mechanically processable while a known judgment
+error still blocks an accuracy claim. Reports identify missing upstream producers,
+non-exposure prerequisites, provider estimates versus conservative charges, and
+unused allowance. A report does not launch the next experiment.

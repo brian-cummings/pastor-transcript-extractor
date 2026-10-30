@@ -25,3 +25,14 @@ class ReadinessReviewTests(unittest.TestCase):
         with TemporaryDirectory() as folder:
             p=Path(folder)/'source.json';p.write_text('{}');before=r.reference(p);p.write_text('{ }')
             self.assertNotEqual(before,r.reference(p))
+
+    def test_holdout_metadata_does_not_silently_truncate_a_larger_inventory(self):
+        from types import SimpleNamespace
+        class Connection:
+            def __enter__(self):return self
+            def __exit__(self,*args):return False
+            def execute(self,*args):return [dict(video_id=n,run_id=n) for n in range(13)]
+        fake=SimpleNamespace(connect=lambda:Connection())
+        with patch('pastor_transcript_extractor.storage.Database',return_value=fake),patch.object(r.inventory_module,'build') as build:
+            with self.assertRaisesRegex(ValueError,'freeze a selection'):r.holdout_audit(Path('/tmp/test-base'),Path('/tmp/prior'))
+        build.assert_not_called()
