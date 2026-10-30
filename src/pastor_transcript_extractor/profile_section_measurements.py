@@ -66,6 +66,7 @@ def schema(*,literal=False):
     hypothesis=deepcopy(contract.HYPOTHESIS)
     hypothesis['properties']['warrant']=contract.PROSE;hypothesis['required'].append('warrant')
     hypothesis['properties']['inference_type']=contract.enum('selected_relationship_membership')
+    if literal:hypothesis['properties']['premise_ids']['maxItems']=270  # all nine meanings in at most thirty fixed blocks
     clauses=deepcopy(contract.NARRATIVE_SCHEMA['properties']['clauses']);clauses['maxItems']=4
     clauses['items']['properties']['role']=contract.enum('observation','inference')
     clauses['items']['properties']['assertion_force']=contract.enum(*force.FORCES)

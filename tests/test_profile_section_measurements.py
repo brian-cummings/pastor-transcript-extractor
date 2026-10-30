@@ -47,6 +47,11 @@ class MeasurementSectionTests(unittest.TestCase):
         self.assertEqual([],m.inspect(grouped,changed,literal=True)[1])
         self.assertTrue(grouped['hypotheses'])
         self.assertTrue(all(h['warrant'] and h['alternatives'] and h['defeaters'] for h in grouped['hypotheses']))
+        scaled=deepcopy(changed)
+        scaled['observations']=[dict(o,id=o['id']+'-'+str(i)) for i in range(14) for o in changed['observations']]
+        complete=m.literal_reading(scaled)
+        self.assertEqual([],m.inspect(complete,scaled,literal=True)[1])
+        self.assertEqual(len(scaled['observations']),sum(len(h['premise_ids']) for h in complete['hypotheses']))
 
     def test_structured_draft_through_ordinary_support_and_final_document_without_new_bindings(self):
         from test_profile_analysis_support_execution import wire
