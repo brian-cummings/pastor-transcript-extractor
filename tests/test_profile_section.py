@@ -154,6 +154,19 @@ class SectionTests(unittest.TestCase):
             self.assertEqual([],doc['ready_claim_ids']);self.assertEqual([],doc['entries'])
             self.assertTrue(doc['known_gaps']);self.assertTrue(result['paid_execution_stopped'])
             self.assertFalse((target.root/'receipts'/f'{spec.fingerprint}.json').exists())
+            # An explicitly authorized recovery preserves the original payload,
+            # lost attempt and allowance; it cannot mint a second recovery.
+            p['budget']['maximum_sequence_reservation_usd']='.2'
+            p['input_fingerprint']=section.digest({k:v for k,v in p.items() if k!='input_fingerprint'})
+            path.write_text(json.dumps(p))
+            with patch.object(section,'inventory',return_value=dict(content_fingerprint='inventory')),patch.object(section,'windows',return_value=[window]):
+                recovery=section.prepare_recovery(path)
+                changed=json.loads(Path(recovery['plan']).read_text())
+                self.assertEqual(p['tasks'][0]['request']['body'],changed['tasks'][0]['request']['body'])
+                self.assertEqual(p['budget'],changed['budget'])
+                self.assertTrue((target.root/'attempts'/f'{spec.fingerprint}.json').exists())
+                with self.assertRaisesRegex(ValueError,'Only one recovery'):
+                    section.prepare_recovery(recovery['plan'])
 
 
 if __name__=='__main__':unittest.main()

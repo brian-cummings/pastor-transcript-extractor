@@ -1,6 +1,6 @@
 """Bounded section adapter over shared source bindings, profile support and handoff."""
 from copy import deepcopy
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from decimal import Decimal
 from pathlib import Path
 import json
@@ -101,12 +101,66 @@ def load(path):
         raise ValueError('Section freeze differs')
     if p['code_identity'] != identity():
         raise ValueError('Section implementation changed after freeze')
+    if p.get('transport_recovery'):
+        lineage=p['transport_recovery'];ref=lineage['original_plan']
+        if file_hash(ref['path'])!=ref['sha256']:
+            raise ValueError('Original recovery plan changed')
+        for lost in lineage['preserved_lost_attempts']:
+            ref=lost['attempt']
+            if file_hash(ref['path'])!=ref['sha256']:
+                raise ValueError('Original lost attempt changed')
+            if (Path(ref['path']).parent.parent/'receipts'/Path(ref['path']).name).exists():
+                raise ValueError('Original response recovered; resolve compatible reuse before execution')
     allowance.ceiling(p)
     inv = inventory(Path(p['base_dir']))
     if (inv['content_fingerprint'] != p['inventory_fingerprint'] or
         digest([asdict(w) for w in windows(inv)]) != digest([t['window'] for t in p['tasks']])):
         raise ValueError('Membership, inventory or complete source windows changed')
     return p, path.parent
+
+
+def prepare_recovery(path):
+    """User-authorized transport recovery; no new allowance or semantic variant."""
+    path=Path(path);prior=json.loads(path.read_text())
+    if prior['input_fingerprint']!=digest({k:v for k,v in prior.items() if k!='input_fingerprint'}):
+        raise ValueError('Original freeze differs')
+    if prior.get('transport_recovery'):
+        raise ValueError('Only one recovery of this interrupted freeze is permitted')
+    limit=allowance.ceiling(prior)
+    inv=inventory(Path(prior['base_dir']))
+    if inv['content_fingerprint']!=prior['inventory_fingerprint'] or digest([asdict(w) for w in windows(inv)])!=digest([t['window'] for t in prior['tasks']]):
+        raise ValueError('Original source/membership differs')
+    packet=deepcopy(prior);packet.pop('input_fingerprint');lost=[]
+    for task in packet['tasks']:
+        original=x.requests.RequestSpec(**task['request']);store=x._store(prior,original)
+        if store.attempts() and not (store.root/'receipts'/f'{original.fingerprint}.json').exists():
+            if len(store.attempts())!=1:
+                raise ValueError('Recovery requires exactly one preserved interrupted attempt')
+            attempt=store.root/'attempts'/f'{original.fingerprint}.json'
+            revised=replace(original,source_identity={**original.source_identity,
+                'transport_recovery_of':original.fingerprint,
+                'original_attempt_sha256':file_hash(attempt)})
+            revised.preflight()
+            task['request']=asdict(revised)
+            lost.append(dict(batch=task['id'],request_fingerprint=original.fingerprint,
+                attempt=dict(path=str(attempt),sha256=file_hash(attempt)),
+                retained_reservation_usd=str(x.requests.request_reservation(original))))
+    if len(lost)!=1:
+        raise ValueError('Recovery requires one demonstrated lost source request')
+    packet['transport_recovery']=dict(original_plan=dict(path=str(path.resolve()),sha256=file_hash(path)),
+        preserved_lost_attempts=lost,maximum_recoveries=1,semantic_changes=False,
+        authorization='Brian approved this and future runs for this goal within the existing budget; original unknown usage remains fully reserved.')
+    packet['code_identity']=identity()
+    # The original starting ledger and $3 allowance remain unchanged.
+    current=ledger(prior,path.parent)
+    if current+Decimal(packet['budget']['maximum_sequence_reservation_usd'])>=limit:
+        raise ValueError('Full recovery sequence exceeds remaining authorized allowance')
+    packet['input_fingerprint']=digest(packet)
+    out=path.parent/'recovery'/packet['input_fingerprint']
+    Store(out).write_immutable('plan.json',packet)
+    return dict(plan=str(out/'plan.json'),input_fingerprint=packet['input_fingerprint'],
+        retained_lost_attempts=lost,current_conservative_usd=str(current),
+        remaining_credit_usd=str(limit-current),maximum_sequence_reservation_usd=packet['budget']['maximum_sequence_reservation_usd'],paid_calls=0)
 
 
 def ledger(p, root):
