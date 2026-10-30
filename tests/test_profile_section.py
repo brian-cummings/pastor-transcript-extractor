@@ -24,6 +24,18 @@ def reading():
 
 
 class SectionTests(unittest.TestCase):
+    def test_large_feedback_requires_explicit_reserved_tier_and_keeps_all_text(self):
+        _,spec,_,_=reading()
+        output='x'*50000
+        errors=[dict(path='$',code='literal',message='Exact source span required')]
+        with self.assertRaisesRegex(ValueError,'input exceeds reservation'):
+            section.source_correction(spec,output,errors,headroom=True)
+        fixed=section.source_correction(spec,output,errors,headroom=True,feedback_headroom=True)
+        self.assertEqual(131072,fixed.runtime_identity['input_cap'])
+        self.assertEqual(spec.body['messages'],fixed.body['messages'][:2])
+        self.assertEqual(output,fixed.body['messages'][2]['content'])
+        self.assertLess(requests.request_reservation(fixed),section.Decimal('.50'))
+
     def test_verifier_questions_name_visible_item_paths_without_changing_checks(self):
         window,_,_,checked=reading()
         spec=producer.verification(window,checked['observations'])

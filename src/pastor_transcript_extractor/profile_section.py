@@ -246,16 +246,22 @@ def prepare_local_enum_transport(path):
         current_conservative_usd=str(current),remaining_credit_usd=str(limit-current),maximum_sequence_reservation_usd=str(maximum),paid_calls=0)
 
 
-def source_correction(spec,output,errors,*,headroom=False):
+def source_correction(spec,output,errors,*,headroom=False,feedback_headroom=False):
     revised=x.requests.corrective_request(spec,output,errors,producer.reading_diagnostics.CORRECTION,validate=not headroom)
     if headroom:
-        try:revised.preflight()
-        except ValueError as error:
-            if 'input exceeds reservation' not in str(error):raise
-            version=x.requests.DEEPINFRA_BINDING_HEADROOM_VERSION
-            revised=replace(revised,version=version,namespace=version,runtime_identity=x.provider.BINDING_HEADROOM_POLICY)
-            revised=x.provider.streaming_request(revised)
-        revised.preflight()
+        tiers=[(None,None),(x.requests.DEEPINFRA_BINDING_HEADROOM_VERSION,x.provider.BINDING_HEADROOM_POLICY)]
+        if feedback_headroom:tiers.append((x.requests.DEEPINFRA_BINDING_FEEDBACK_VERSION,x.provider.BINDING_FEEDBACK_POLICY))
+        for version,policy in tiers:
+            try:
+                candidate=(revised if version is None else x.provider.streaming_request(
+                    replace(revised,version=version,namespace=version,runtime_identity=policy)))
+                candidate.preflight()
+                return candidate
+            except ValueError as error:
+                if 'input exceeds reservation' not in str(error):raise
+                failure=error
+        raise failure
+
     return revised
 
 
@@ -312,7 +318,7 @@ def prepare_continuation(path, source_windows=()):
     selected=set(source_windows)
     if not selected<=set(t['id'] for t in prior['tasks']):raise ValueError('Unknown fixed source window')
     packet=deepcopy(prior);packet.pop('input_fingerprint')
-    correction_reserve=x.provider.reserved_usd(x.requests.DEEPINFRA_BINDING_HEADROOM_VERSION+'-stream-v1')
+    correction_reserve=x.provider.reserved_usd(x.requests.DEEPINFRA_BINDING_FEEDBACK_VERSION+'-stream-v1')
     for task in packet['tasks']:
         if task['id'] in selected:
             spec=producer.local_enum_transport(x.provider.streaming_request(producer.request(SourceWindow(**task['window']))))
@@ -322,6 +328,8 @@ def prepare_continuation(path, source_windows=()):
         if Decimal(task['reserved_usd'])>Decimal('.50'):raise ValueError('Continuation batch exceeds fifty cents')
     current=ledger(prior,path.parent);limit=allowance.ceiling(prior)
     packet['policy'].update(semantic_iterations='until_original_allowance_or_goal',automatic_expansion=False)
+    packet['source_feedback_headroom']=dict(maximum_input_cap=131072,maximum_corrections=1,
+        maximum_correction_reservation_usd=str(correction_reserve))
     packet['continuation']=dict(predecessor=dict(path=str(path.resolve()),sha256=file_hash(path)),
         authorization='User removed iteration ceiling and approved this and future runs within the original goal budget.',
         refreshed_source_windows=sorted(selected),verification_version=producer.VERIFICATION_VERSION,
@@ -376,7 +384,8 @@ def run_source(path, batch, approve_input, *, check_only=False, transport=None):
     checked = producer.inspect(raw['response']['output'],window,spec,receipt)
     rounds = [dict(receipt=str(receipt),errors=checked['errors'])]
     if checked['errors']:
-        corrected = source_correction(spec,raw['response']['output'],checked['errors'],headroom=bool(p.get('source_correction_headroom')))
+        corrected = source_correction(spec,raw['response']['output'],checked['errors'],headroom=bool(p.get('source_correction_headroom')),
+            feedback_headroom=bool(p.get('source_feedback_headroom')))
         # Corrective context must fit its original frozen policy, never truncate.
         raw, receipt = obtain(p,corrected,send)
         spec = corrected
