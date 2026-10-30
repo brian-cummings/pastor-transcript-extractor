@@ -122,6 +122,9 @@ def load(path):
     if p.get('source_correction_headroom'):
         ref=p['source_correction_headroom']['predecessor']
         if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Headroom predecessor changed')
+    if p.get('continuation'):
+        ref=p['continuation']['predecessor']
+        if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Continuation predecessor changed')
     allowance.ceiling(p)
     inv = inventory(Path(p['base_dir']))
     if (inv['content_fingerprint'] != p['inventory_fingerprint'] or
@@ -296,6 +299,41 @@ def prepare_source_headroom(path):
 def ledger(p, root):
     with x.supervised.cumulative_history(p, root/'ledger') as history:
         return x.supervised.BASELINE_SPEND + sum((c for _,c in history), Decimal(0))
+
+
+def prepare_continuation(path, source_windows=()):
+    """Freeze another authorized bounded step without replacing the allowance."""
+    path=Path(path);prior=json.loads(path.read_text())
+    if prior['input_fingerprint']!=digest({k:v for k,v in prior.items() if k!='input_fingerprint'}):
+        raise ValueError('Continuation predecessor differs')
+    inv=inventory(Path(prior['base_dir']))
+    if inv['content_fingerprint']!=prior['inventory_fingerprint']:
+        raise ValueError('Continuation inventory changed')
+    selected=set(source_windows)
+    if not selected<=set(t['id'] for t in prior['tasks']):raise ValueError('Unknown fixed source window')
+    packet=deepcopy(prior);packet.pop('input_fingerprint')
+    correction_reserve=x.provider.reserved_usd(x.requests.DEEPINFRA_BINDING_HEADROOM_VERSION+'-stream-v1')
+    for task in packet['tasks']:
+        if task['id'] in selected:
+            spec=producer.local_enum_transport(x.provider.streaming_request(producer.request(SourceWindow(**task['window']))))
+            task['request']=asdict(spec)
+        else:spec=x.requests.RequestSpec(**task['request'])
+        task['reserved_usd']=str(x.requests.request_reservation(spec)+correction_reserve+x.requests.reservation('source_verification'))
+        if Decimal(task['reserved_usd'])>Decimal('.50'):raise ValueError('Continuation batch exceeds fifty cents')
+    current=ledger(prior,path.parent);limit=allowance.ceiling(prior)
+    packet['policy'].update(semantic_iterations='until_original_allowance_or_goal',automatic_expansion=False)
+    packet['continuation']=dict(predecessor=dict(path=str(path.resolve()),sha256=file_hash(path)),
+        authorization='User removed iteration ceiling and approved this and future runs within the original goal budget.',
+        refreshed_source_windows=sorted(selected),verification_version=producer.VERIFICATION_VERSION,
+        current_conservative_usd=str(current),remaining_credit_usd=str(limit-current))
+    packet['budget']['maximum_sequence_reservation_usd']=str(sum((Decimal(t['reserved_usd']) for t in packet['tasks']),Decimal(packet['budget']['support_reservation_usd'])))
+    if current>=limit:raise ValueError('Original goal allowance exhausted')
+    packet['code_identity']=identity();packet['input_fingerprint']=digest(packet)
+    out=Path(packet['base_dir'])/'evaluation'/VERSION/'continuations'/packet['input_fingerprint']
+    Store(out).write_immutable('plan.json',packet)
+    return dict(plan=str(out/'plan.json'),input_fingerprint=packet['input_fingerprint'],
+        current_conservative_usd=str(current),remaining_credit_usd=str(limit-current),paid_calls=0,
+        policy='Each complete batch must fit the remaining original allowance before execution.')
 
 
 def obtain(p, spec, transport):

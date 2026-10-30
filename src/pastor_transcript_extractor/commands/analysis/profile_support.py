@@ -28,6 +28,14 @@ def section_source(plan:Path=typer.Option(...,'--plan'),batch:str=typer.Option(.
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
 
 
+@app.command('section-continue-prepare')
+def section_continue_prepare(plan:Path=typer.Option(...,'--plan'),source_window:list[str]=typer.Option([],'--source-window')):
+    """Freeze a continuation within the original allowance; reuse unchanged source requests."""
+    from ... import profile_section as section
+    try:typer.echo(json.dumps(section.prepare_continuation(plan,source_window),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
 @app.command('section-recovery-prepare')
 def section_recovery_prepare(plan:Path=typer.Option(...,'--plan')):
     """Freeze an explicitly authorized identical recovery; retain lost usage and allowance."""

@@ -24,6 +24,17 @@ def reading():
 
 
 class SectionTests(unittest.TestCase):
+    def test_verifier_questions_name_visible_item_paths_without_changing_checks(self):
+        window,_,_,checked=reading()
+        spec=producer.verification(window,checked['observations'])
+        for i,row in enumerate(checked['observations']):
+            for field in producer.evidence.REQUIRED_CHECKS:
+                question=spec.body['questions'][row['id']+':'+field]
+                self.assertIn(f'`items[{i}].binding`',question['instructions'])
+                self.assertIn(producer.contract.CHECK_MEANINGS[field],question['instructions'])
+                self.assertIn('source.texts.target_text',question['instructions'])
+        self.assertEqual(producer.VERIFICATION_VERSION,spec.version)
+
     def test_versioned_source_contract_preserves_existing_binding_semantics(self):
         window,spec,value,checked=reading()
         self.assertEqual([],checked['errors'])

@@ -7,6 +7,7 @@ from . import pastor_evidence as evidence
 
 VERSION = 'qualified-response-growth-v1'
 LOCAL_ENUM_TRANSPORT = 'source-local-enum-transport-v1'
+VERIFICATION_VERSION = 'qualified-response-growth-indexed-verification-v2'
 FACETS = ('salvation', 'personal_response', 'gradual_growth', 'reassurance', 'challenge')
 PROMPT = source_context.contract_packet()['reader_prompt'] + '''
 This bounded extension concerns salvation, personal response and spiritual growth.
@@ -132,13 +133,22 @@ def verification(window, observations):
         return None
     body = deepcopy(spec.body)
     for i, item in enumerate(state['items']):
+        # Question IDs are not model-visible. Name the exact state path and field
+        # in every independent question, rather than relying on an opaque item ID.
+        for field in evidence.REQUIRED_CHECKS:
+            question = body['questions'][item['id']+':'+field]
+            question['instructions'] = (
+                f'Inspect `items[{i}].binding` against the entire '
+                '`source.texts.target_text`. Evaluate only the '+field+' finding '
+                'for this binding, including attached source qualifications. '
+                +contract.CHECK_MEANINGS[field])
         for field, instruction in dict(response_growth='The requested response, growth distinction and facets are source-supported for this exact binding; not-stated is local only.',
                 reader_statement='Every substantive clause in the local reader statement is supported by this binding and full source; all meaning-changing qualifications, conditions, voice/adoption, polarity and uncertainty survive. No actual audience uptake, dominance, frequency, causal generalization or comparative priority is invented.').items():
             body['questions'][item['id']+':'+field] = dict(type='noul', instructions=dict(
                 instruction=f'Read items[{i}] against the complete source.texts.target_text. '+instruction),
                 criteria={'true':'Correct and fully supported at its stated local scope.',
                           'false':'Unsupported, incomplete, misattributed or unresolved.'})
-    spec = replace(spec, body=body, namespace=VERSION, version=VERSION)
+    spec = replace(spec, body=body, namespace=VERSION, version=VERIFICATION_VERSION)
     spec.preflight()
     return spec
 

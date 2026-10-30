@@ -24,7 +24,7 @@ the Flash source role, Jev checks and Qwen support role: existing whitespace
 cancellation was applied to Flash after a demonstrated loop; the final iteration
 kept the full enum contract locally while giving the provider a JSON shape, and
 complete correction headroom was reserved before execution. All original failed
-attempts and receipts remain unchanged. No further variant follows automatically.
+attempts and receipts remain unchanged. These historical decisions and receipts remain immutable. Brian subsequently removed the two-iteration stop and authorized continued bounded runs until the original $3 allowance is exhausted or the goal is achieved.
 
 The final conservative charge is **$0.221478316**, with **$2.778521684** left from
 the fresh $3. Nineteen physical paid sends are reconciled; three lack final usage
@@ -39,7 +39,7 @@ The next prioritized proposal belongs at the source producer: bind a complete
 proposition with its attached restriction/self-correction before address and
 presentation. Reuse current evidence and failed cases. Do not reconstruct the
 missing meanings in profile prose, lower thresholds, change model roles or launch
-a third iteration without a separate decision. No admission, whole-profile
+unbounded retries. The subsequent user authorization permits further frozen iterations within the same allowance. No admission, whole-profile
 accuracy or independent generalization is established.
 
 ## Frozen sequence
@@ -59,8 +59,8 @@ accuracy or independent generalization is established.
    recipe, constituent caches, dependency propagation and document-input contract.
 4. Render supported entries with source links, trace and explicit unknowns. Review
    original outputs for fidelity, qualifications, omissions, contrary evidence,
-   usefulness and coverage separately. At most two demonstrated-gap semantic
-   implementation iterations; no successor experiment after assessment.
+   usefulness and coverage separately. Further demonstrated-gap iterations now follow Brian’s explicit authorization,
+   with each complete batch reserved against the unchanged original allowance.
 
 Acceptance: no pastor-authored runtime bridges; substantive supported clauses;
 preserved attribution/conditions/counterevidence; visible unread or insufficient
@@ -90,3 +90,7 @@ full reservation, emits a failed draft/document input with no unsupported clause
 and assesses each requested dimension as unavailable. It cannot retry, advance a
 window or confer semantic acceptance. `section-report --plan PLAN` reads this
 assessment even after the reporting implementation changes.
+
+## Authorized continuation
+
+`section-continue-prepare --plan PRIOR` preserves the allowance and fixed six windows, reuses source requests, and freezes the current verifier. Repeated `--source-window ID` options refresh only explicitly selected fixed-window source requests. Every source and support batch must still fit its complete reservation before execution. Historical freezes and assessments are retained. The indexed verifier names each exact item path in every question; field meanings and the .90 eligibility threshold remain unchanged.
