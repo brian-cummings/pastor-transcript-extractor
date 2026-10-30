@@ -7,6 +7,7 @@ from . import pastor_evidence as evidence
 
 VERSION = 'qualified-response-growth-v1'
 LOCAL_ENUM_TRANSPORT = 'source-local-enum-transport-v1'
+PRODUCER_RECIPE = 'complete-point-before-presentation-v2'
 VERIFICATION_VERSION = 'qualified-response-growth-indexed-verification-v2'
 FACETS = ('salvation', 'personal_response', 'gradual_growth', 'reassurance', 'challenge')
 PROMPT = source_context.contract_packet()['reader_prompt'] + '''
@@ -31,6 +32,33 @@ only source-grounded relations already retained in the binding. It must be usabl
 unchanged as a paragraph about this selected passage. No comparative priority,
 dominance, frequency or causal generalization. Do not merge unrelated propositions
 to evade the two-point cap. Expose unrecovered content with status saturated.
+
+Work from the complete point outward: read the entire window, choose the most
+relevant complete salvation/response/growth point, and bind its proposition with
+all attached restrictions before constructing address acts or reader_statement.
+One complete binding is preferable to two fragmentary or unrelated bindings.
+Include a second only when it adds a distinct complete relevant point. Do not
+spend a slot on incidental discourse management when substantive teaching is
+available. This is selection, not a claim of relative pastoral emphasis.
+An immediate retraction or self-correction controls the earlier wording; never
+present a proposition the speaker starts to say but then withdraws as affirmed.
+For illustrations, retain the antecedent behavior, hypothetical status and actor;
+do not substitute an adjacent prayer or healthy practice for an illustrated fault.
+Polarity evaluates the entire proposition.reading, including its internal
+negation. If the speaker affirms that something is NOT instant, affirmed applies
+to that negative proposition; denied would deny the entire negative proposition.
+Copy enough contiguous source into proposition.span to include its restrictions.
+conditions must explicitly list attached prerequisites and exceptions even when
+already quoted; qualifications must reference evidence_nodes whose role is
+qualification and attach to the proposition node. Empty lists require inspection
+of the entire window, not just the chosen sentence. Do not invent a relation merely
+to populate development_relations: use it only for a connection actually needed
+to preserve this point. Keep literal spans exact; never normalize transcripts.
+reader_statement should state the supported local point directly, without generic
+boilerplate about all absent topics. An unknown about this binding cannot say that
+the entire passage lacks a distinction that occurs in another point. In particular,
+growth=not_stated means absent for this exact point, not absent from the window.
+Keep requested_response equally local and preserve any source-stated prerequisite.
 '''
 
 
@@ -56,7 +84,7 @@ def request(window):
             json_schema=dict(name='qualified_source_reading', strict=True, schema=schema())),
         temperature=0, top_p=1, stream=False, n=1, reasoning_effort='none')
     spec = requests.RequestSpec('source_reading', body,
-        dict(contract=VERSION, window_digest=evidence.digest(asdict(window))),
+        dict(contract=VERSION, recipe=PRODUCER_RECIPE, window_digest=evidence.digest(asdict(window))),
         namespace=hosted.BINDING_NAMESPACE, version=requests.DEEPINFRA_BINDING_VERSION,
         runtime_identity=deepcopy(policy))
     spec.preflight()
