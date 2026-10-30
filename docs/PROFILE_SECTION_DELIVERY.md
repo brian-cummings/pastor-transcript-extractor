@@ -127,3 +127,31 @@ An explicitly unresolved dependency remains unresolved without a corrective retr
 and cannot become eligible. Existing source contracts and historical outputs retain
 their meanings. A neutral account-access fixture checks structural enforcement;
 no pastor-specific reference reading or expected answer enters runtime prompts.
+
+## Reusing admitted materialized relationships
+
+The optional `section-continue-prepare --plan PRIOR --reuse-materialized` path
+also consumes compatible admitted salvation relationship observations from the
+same fixed blocks. It calls ordinary profile assembly in materialized-only mode,
+before reviewed readings or authored presentation inputs are attached. It retains
+each saved question, model, threshold, source identity and observation state.
+Quarantined receiving-response and obedience leaves remain unavailable.
+
+`section-analysis-prepare --plan PLAN` freezes a bounded instant-Qwen analysis
+request using these structured observations and their existing meaning contracts.
+No raw transcript or authored pastor interpretation enters this drafting request.
+`section-analysis --plan PLAN --approve-input FINGERPRINT` produces at most four
+unchanged clauses and one explicitly warranted selected-relationship membership
+interpretation. Zero clauses and unknowns are valid outcomes. Mechanical correction
+is limited to one receipted attempt; semantic uncertainty is not a retry trigger.
+
+Then run `section-support-prepare`, each frozen `section-support` batch, and
+`section-render` with that plan. Each generated clause receives the ordinary
+whole-statement analysis-support check against its original source and complete
+declared measurement inputs. The handoff distinguishes admitted local relationship
+evidence from eligible experimental bindings. A relationship being discussed does
+not establish its voiced speaker, preacher adoption, polarity, attached conditions
+or gradual versus immediate change. These limits remain visible in the rendered
+section and structured trace. The source-binding gates and admission policy are
+unchanged. A model-supported clause still needs separate semantic assessment;
+successful execution alone does not satisfy the section's usefulness criterion.
