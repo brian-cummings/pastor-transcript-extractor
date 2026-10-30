@@ -71,13 +71,19 @@ def schema(case):
 
 def make_request(case,*,whole_statement=False):
     instruction=INSTRUCTION+(WHOLE_STATEMENT_INSTRUCTION if whole_statement else '')
+    identity=dict(stage=core.VERSION,case_digest=digest(case),answer_contract=core.ANSWER_V2,
+        contract_correction_policy=correction.VERSION,citation_catalog_digest=digest(core.citation_catalog(case)))
+    if whole_statement:identity['judgment_procedure']=WHOLE_STATEMENT_VERSION
+    return make_structured_request(core.citation_state(case),schema(case),instruction,identity)
+
+
+def make_structured_request(state,output_schema,instruction,source_identity):
+    """Shared instant analysis role and exact bounded transport; no source extraction."""
     for version,policy in provider.ANALYSIS_SUPPORT_POLICIES.items():
-        body=dict(model=policy['model'],messages=[dict(role='system',content=instruction),dict(role='user',content=requests.wire(core.citation_state(case)))],max_tokens=policy['output_cap'],temperature=0,top_p=1,stream=False,n=1,reasoning_effort='none',response_format=dict(type='json_schema',json_schema=dict(name='profile_analysis_support',strict=True,schema=schema(case))))
+        body=dict(model=policy['model'],messages=[dict(role='system',content=instruction),dict(role='user',content=requests.wire(state))],max_tokens=policy['output_cap'],temperature=0,top_p=1,stream=False,n=1,reasoning_effort='none',response_format=dict(type='json_schema',json_schema=dict(name='profile_analysis_support',strict=True,schema=output_schema)))
         bound=len(requests.wire(body).encode())+4096
         if bound<=policy['input_cap']:
-            spec=requests.RequestSpec('source_reading',body,dict(stage=core.VERSION,case_digest=digest(case),answer_contract=core.ANSWER_V2,contract_correction_policy=correction.VERSION,citation_catalog_digest=digest(core.citation_catalog(case))),namespace=version,version=version,runtime_identity=deepcopy(policy))
-            if whole_statement:
-                spec.source_identity['judgment_procedure']=WHOLE_STATEMENT_VERSION
+            spec=requests.RequestSpec('source_reading',body,deepcopy(source_identity),namespace=version,version=version,runtime_identity=deepcopy(policy))
             spec=provider.streaming_request(spec)
             spec.preflight();return spec
     raise ValueError('Complete linked evidence exceeds maximum context; no truncation or automatic chunking')

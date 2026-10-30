@@ -9,6 +9,7 @@ from . import response_growth_binding as producer
 from . import profile_analysis_support_execution as x
 from . import profile_support_budget as allowance
 from . import segment_cache_inventory, sermon_topics
+from . import profile_section_measurements as measurements
 from .pastor_evidence import SourceWindow, EvidenceArtifactStore as Store, digest
 from .profile_support_validation import file_hash
 
@@ -27,7 +28,8 @@ UNKNOWN = ['Completeness outside the six windows and unrecovered points within t
 def identity():
     return {m.__name__:file_hash(m.__file__) for m in (producer, producer.source_context,
         producer.contract, producer.reading_diagnostics, producer.evidence, x, x.core, x.requests,
-        x.provider, x.correction, x.streaming, x.supervised, allowance)} | {__name__:file_hash(__file__)}
+        x.provider, x.correction, x.streaming, x.supervised, allowance,measurements,
+        measurements.profile_description)} | {__name__:file_hash(__file__)}
 
 
 def inventory(base_dir):
@@ -327,7 +329,7 @@ def reconcile_completed_wire(packet,spec):
     return dict(path=str(dest),sha256=file_hash(dest))
 
 
-def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logical_condition_scopes=False):
+def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logical_condition_scopes=False,reuse_materialized=False):
     """Freeze another authorized bounded step without replacing the allowance."""
     path=Path(path);prior=json.loads(path.read_text())
     if prior['input_fingerprint']!=digest({k:v for k,v in prior.items() if k!='input_fingerprint'}):
@@ -366,6 +368,12 @@ def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logic
         verification_version=producer.VERIFICATION_VERSION,
         current_conservative_usd=str(current),remaining_credit_usd=str(limit-current))
     packet['budget']['maximum_sequence_reservation_usd']=str(sum((Decimal(t['reserved_usd']) for t in packet['tasks']),Decimal(packet['budget']['support_reservation_usd'])))
+    if reuse_materialized or prior.get('materialized_inputs'):
+        sources={s['video_id']:json.loads(Path(s['source_path']).read_text()) for s in packet['source_identity']}
+        data=measurements.build(inv,sources,[t['window'] for t in packet['tasks']])
+        dest=Path(packet['base_dir'])/'evaluation'/VERSION/'materialized'/data['fingerprint']/'inputs.json'
+        Store(dest.parent).write_immutable(dest.name,data)
+        packet['materialized_inputs']=dict(path=str(dest),sha256=file_hash(dest),version=measurements.VERSION)
     if current>=limit:raise ValueError('Original goal allowance exhausted')
     packet['code_identity']=identity();packet['input_fingerprint']=digest(packet)
     out=Path(packet['base_dir'])/'evaluation'/VERSION/'continuations'/packet['input_fingerprint']
@@ -373,6 +381,74 @@ def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logic
     return dict(plan=str(out/'plan.json'),input_fingerprint=packet['input_fingerprint'],
         current_conservative_usd=str(current),remaining_credit_usd=str(limit-current),paid_calls=0,
         policy='Each complete batch must fit the remaining original allowance before execution.')
+
+
+def materialized_inputs(p):
+    ref=p['materialized_inputs']
+    if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Materialized section inputs changed')
+    data=json.loads(Path(ref['path']).read_text())
+    if data['version']!=measurements.VERSION or data['fingerprint']!=digest({k:v for k,v in data.items() if k!='fingerprint'}):
+        raise ValueError('Materialized analysis contract differs')
+    return data
+
+
+def prepare_analysis(path):
+    p,root=load(path);data=materialized_inputs(p)
+    spec=measurements.request(data) if any(o['state']=='observed' for o in data['observations']) else None
+    correction=x.correction.policy(spec,headroom=True) if spec else None
+    reserve=x.requests.request_reservation(spec)+Decimal(correction['reserved_usd']) if spec else Decimal(0)
+    if reserve>Decimal('.50') or ledger(p,root)+reserve>=allowance.ceiling(p):raise ValueError('Complete analysis draft batch exceeds allowance')
+    packet=dict(version=measurements.VERSION,request=asdict(spec) if spec else None,correction=correction,
+        inputs=p['materialized_inputs'],reserved_usd=str(reserve),maximum_corrections=1)
+    packet['fingerprint']=digest(packet);out=root/'analysis'
+    Store(out).write_immutable('input.json',packet)
+    return dict(input=str(out/'input.json'),reserved_usd=str(reserve),materialized_observations=len(data['observations']),
+        positive_observations=sum(o['state']=='observed' for o in data['observations']),provider_calls=0)
+
+
+def run_analysis(path,approve_input,*,transport=None):
+    p,root=load(path)
+    if approve_input!=p['input_fingerprint']:raise ValueError('Exact frozen input approval required')
+    out=root/'analysis';packet=json.loads((out/'input.json').read_text());data=materialized_inputs(p)
+    if packet['fingerprint']!=digest({k:v for k,v in packet.items() if k!='fingerprint'}):raise ValueError('Analysis input changed')
+    if packet['inputs']!=p['materialized_inputs']:raise ValueError('Analysis measurements differ')
+    if (out/'results.json').exists():return read_analysis(p,root)
+    if ledger(p,root)+Decimal(packet['reserved_usd'])>=allowance.ceiling(p):raise ValueError('Complete analysis batch exceeds allowance')
+    rounds=[];value=dict(hypotheses=[],clauses=[],unknowns=['No admitted positive relationship inputs.']);errors=[]
+    if packet['request']:
+        spec=x.requests.RequestSpec(**packet['request'])
+        if asdict(measurements.request(data))!=packet['request']:raise ValueError('Analysis request differs from frozen measurements')
+        for n in range(2):
+            receipt,ref=obtain(p,spec,transport or x.provider.transport)
+            value,errors=measurements.inspect(receipt['response']['output'],data)
+            rounds.append(dict(receipt=dict(path=str(ref),sha256=file_hash(ref)),errors=errors))
+            if not errors or n==1:break
+            spec=x.correction.request(spec,receipt['response']['output'],errors,packet['correction'])
+    result=dict(version=measurements.VERSION,status='FAIL(component)' if errors else 'COMPLETE',
+        input_fingerprint=packet['fingerprint'],rounds=rounds,reading=value,errors=errors)
+    Store(out).write_immutable('results.json',result)
+    return read_analysis(p,root)
+
+
+def read_analysis(p,root):
+    packet=json.loads((root/'analysis/input.json').read_text());result=json.loads((root/'analysis/results.json').read_text())
+    data=materialized_inputs(p);spec=measurements.request(data) if packet['request'] else None
+    if packet['fingerprint']!=digest({k:v for k,v in packet.items() if k!='fingerprint'}):raise ValueError('Analysis freeze differs')
+    if result['input_fingerprint']!=packet['fingerprint'] or (asdict(spec) if spec else None)!=packet['request']:
+        raise ValueError('Analysis lineage differs')
+    if packet['inputs']!=p['materialized_inputs'] or bool(spec)!=bool(result['rounds']):
+        raise ValueError('Analysis receipt inventory differs')
+    value=dict(hypotheses=[],clauses=[],unknowns=['No admitted positive relationship inputs.']);errors=[]
+    for n,round_ in enumerate(result['rounds']):
+        ref=round_['receipt']
+        if n>1 or file_hash(ref['path'])!=ref['sha256']:raise ValueError('Analysis receipt changed')
+        receipt=x._cached(spec,x._store(p,spec))
+        if receipt is None or receipt['halt']:raise ValueError('Analysis receipt incomplete')
+        value,errors=measurements.inspect(receipt['response']['output'],data)
+        if errors!=round_['errors']:raise ValueError('Analysis mechanical findings differ')
+        if errors and n==0:spec=x.correction.request(spec,receipt['response']['output'],errors,packet['correction'])
+    if value!=result['reading'] or errors!=result['errors']:raise ValueError('Analysis output changed')
+    return result
 
 
 def obtain(p, spec, transport):
@@ -629,6 +705,26 @@ def prepare_support(path):
             o['verification_receipt']=result['verification_receipt']
         results.append(result)
     record=assemble_record(p,results)
+    if p.get('materialized_inputs'):
+        data=materialized_inputs(p);draft=read_analysis(p,root)
+        record['observations']=data['observations']
+        record['materialized_analysis']=dict(inputs=p['materialized_inputs'],
+            generation=dict(path=str(root/'analysis/results.json'),sha256=file_hash(root/'analysis/results.json')),
+            authority=data['authority'],block_states=data['block_states'])
+        if not draft['errors']:
+            for claim in measurements.claims(draft['reading'],data):
+                try:check_strength(claim)
+                except ValueError as error:
+                    record['gaps'].append(dict(id='withheld-'+claim['id'],withheld=claim['wording'],
+                        cause=str(error),remedy='Retain original unsupported candidate; no semantic rewrite or retry.'))
+                    continue
+                record['claims'].append(claim)
+            record['hypotheses'].extend(draft['reading']['hypotheses'])
+            record['analysis_unknowns']=draft['reading']['unknowns']
+        else:record['gaps'].append(dict(id='materialized-draft',withheld='Measured relationship analysis',
+            cause='Bounded analysis draft failed its mechanical contract',remedy='Retain unknown'))
+        record['reader']['claims']=record['claims'];record['reader']['portrait']['entries']=record['claims']
+        record['reader']['synthesis_rule']+=' Admitted materialized relationships retain their exact local meanings; no adoption, polarity or condition is inferred from them.'
     Store(root).write_immutable('assembled-profile.json',record)
     plan=x.core.build_plan(record); tasks=[]
     for item in plan['items']:
@@ -683,18 +779,31 @@ def render(path):
         rows.extend(json.loads((Path(name).parent/'results.json').read_text())['results'])
     document=x.core.document_input(frozen['plan'],rows)
     record=x.core.read_record(root/'assembled-profile.json')
-    document['section_trace']={c['id']:dict(evidence_ids=c['machine_observation_ids'],
+    document['section_trace']={c['id']:dict(evidence_ids=c.get('machine_observation_ids',c['evidence_ids']),
         premise_ids=c['upstream_claim_ids'],scope=c['scope'],assertion_force=c['assertion_force'],
-        interpretation=next((h for h in record['hypotheses'] if h['id']==c['id']),None)) for c in record['claims']}
-    document['unknowns']=p['unknowns']; document['limitation']=LIMIT
+        interpretation=next((h for h in record['hypotheses'] if h['id']==c['id']),None),
+        analytical_basis=c['analytical_basis'],
+        evidence_kind='qualified_machine_binding' if 'machine_observation_ids' in c else 'admitted_local_relationship') for c in record['claims']}
+    document['unknowns']=list(dict.fromkeys(p['unknowns']+record.get('analysis_unknowns',[])+
+        (['Voiced speaker, preacher adoption, polarity and attached conditions are not supplied by local relationship measurements.'] if record.get('materialized_analysis') else [])))
+    document['limitation']=LIMIT
+    if record.get('materialized_analysis'):document['materialized_analysis']=record['materialized_analysis']
     Store(root).write_immutable('document-input.json',document)
     lines=['# Salvation, personal response and spiritual growth','',LIMIT,'']
+    if record.get('materialized_analysis'):
+        lines.extend(['Relationship findings describe what is discussed in these selected passages. They do not by themselves establish which reported views the preacher adopts or how every condition applies.',''])
     sources={t['id']:t['window'] for t in p['tasks']}
     obs={o['id']:o for o in record['machine_observations']}
+    measured={o['id']:o for o in record['observations']}
     for entry in document['entries']:
         if entry['support_status']!='supported':continue
         links=[]
         for oid in document['section_trace'][entry['claim_id']]['evidence_ids']:
+            if oid in measured:
+                o=measured[oid]
+                link=f"[Recording {o['video_id']}, block {o['block_id']}]({o['watch_url']})"
+                if link not in links:links.append(link)
+                continue
             window=sources[obs[oid]['source_refs'][0]['window_id']]
             source=next(s for s in p['source_identity'] if s['video_id']==window['video_id'])
             url=source['url']+('&' if '?' in source['url'] else '?')+'t='+str(int(window['blocks'][0]['start_seconds']))
@@ -703,7 +812,7 @@ def render(path):
         lines.extend([entry['statement']+' '+'; '.join(links), '',f"Trace: `{entry['claim_id']}`",''])
     if not document['ready_claim_ids']:
         lines.extend(['No substantive paragraph passed all upstream and analysis-support gates.',''])
-    lines.extend(['## Limits and unknowns','']+['- '+u for u in UNKNOWN]+['','## Withheld clauses',''])
+    lines.extend(['## Limits and unknowns','']+['- '+u for u in document['unknowns']]+['','## Withheld clauses',''])
     lines += [f"- {e['statement']} ({e['support_status']})" for e in document['entries'] if e['support_status']!='supported']
     (root/'draft-section.md').write_text('\n'.join(lines)+'\n')
     (root/'analysis-support.md').write_text(x.core.render_handoff(document))
@@ -712,6 +821,7 @@ def render(path):
         model_supported=len(document['ready_claim_ids']),clauses=len(document['entries']),
         eligible_upstream=sum(o['section_eligibility']['eligible'] for o in obs.values()),
         upstream_total=len(obs),starting_conservative_usd=str(start),cumulative_conservative_usd=str(spent),
+        reused_materialized_observations=len(measured),
         new_conservative_usd=str(spent-start),remaining_credit_usd=str(allowance.ceiling(p)-spent),
         semantic_acceptance='Pending separate source review of original outputs',production_admission='not_admitted')
     Store(root).write_immutable('delivery.json',report)

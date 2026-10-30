@@ -29,11 +29,11 @@ def section_source(plan:Path=typer.Option(...,'--plan'),batch:str=typer.Option(.
 
 
 @app.command('section-continue-prepare')
-def section_continue_prepare(plan:Path=typer.Option(...,'--plan'),source_window:list[str]=typer.Option([],'--source-window'),source_reasoning:bool=typer.Option(False,'--source-reasoning'),logical_condition_scopes:bool=typer.Option(False,'--logical-condition-scopes')):
+def section_continue_prepare(plan:Path=typer.Option(...,'--plan'),source_window:list[str]=typer.Option([],'--source-window'),source_reasoning:bool=typer.Option(False,'--source-reasoning'),logical_condition_scopes:bool=typer.Option(False,'--logical-condition-scopes'),reuse_materialized:bool=typer.Option(False,'--reuse-materialized')):
     """Freeze a continuation within the original allowance; reuse unchanged source requests."""
     from ... import profile_section as section
     try:typer.echo(json.dumps(section.prepare_continuation(plan,source_window,source_reasoning=source_reasoning,
-        logical_condition_scopes=logical_condition_scopes),indent=2))
+        logical_condition_scopes=logical_condition_scopes,reuse_materialized=reuse_materialized),indent=2))
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
 
 
@@ -74,6 +74,24 @@ def section_support_prepare(plan:Path=typer.Option(...,'--plan')):
     """Assemble machine observations and freeze bounded ordinary profile-support batches."""
     from ... import profile_section as section
     try:typer.echo(json.dumps(section.prepare_support(plan),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('section-analysis-prepare')
+def section_analysis_prepare(plan:Path=typer.Option(...,'--plan')):
+    """Freeze instant analysis from admitted structured relationships; no source extraction."""
+    from ... import profile_section as section
+    try:typer.echo(json.dumps(section.prepare_analysis(plan),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('section-analysis')
+def section_analysis(plan:Path=typer.Option(...,'--plan'),approve_input:str=typer.Option(...,'--approve-input')):
+    """Draft bounded relationship analysis using structured admitted evidence only."""
+    from ... import profile_section as section
+    try:
+        result=section.run_analysis(plan,approve_input)
+        typer.echo(json.dumps({k:v for k,v in result.items() if k!='reading'},indent=2))
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
 
 
