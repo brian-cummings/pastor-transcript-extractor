@@ -69,7 +69,7 @@ def schema(case):
     result=dict(type='object',properties=dict(judgment=dict(type='string',enum=['supported','contradicted','unresolved']),evidence=citations,qualifications=dict(type='array',items=qualification,maxItems=8),reason=dict(type='string',minLength=1,maxLength=800)),required=['judgment','evidence','qualifications','reason'],additionalProperties=False)
     if case['state']['candidate'].get('assertion_contract'):
         from . import profile_assertion_force as force
-        result['properties']['assertion_force']=force.schema();result['required'].append('assertion_force')
+        result['properties']['assertion_force']=force.schema(case['state']['candidate']);result['required'].append('assertion_force')
     return result
 
 

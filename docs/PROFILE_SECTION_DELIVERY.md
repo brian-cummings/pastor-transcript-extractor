@@ -183,3 +183,11 @@ No disjunct is chosen and no theological connection is added. The ordinary Qwen
 support recipe still checks the resulting unchanged clauses. This is a narrower
 fallback inside the same adapter, not permission to release failed model prose or
 claim missing growth timing, response conditions or adoption.
+
+The current assertion audit references the frozen candidate ID and returns all
+forces found anywhere in the whole statement, plus whole-statement measurement
+entitlement. It avoids copying long candidate excerpts or repeating an assertion
+record for each source row. Candidate identity and the complete request fingerprint
+bind the result to unchanged wording. The instant model and 2,048-token output cap
+remain fixed; historical excerpt-format failures and token-truncated responses
+remain preserved with their recorded usage.
