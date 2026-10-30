@@ -30,7 +30,7 @@ class SectionTests(unittest.TestCase):
         self.assertEqual(old.body['model'],spec.body['model'])
         self.assertEqual(old.body['response_format'],spec.body['response_format'])
         self.assertEqual(old.body['messages'][1],spec.body['messages'][1])
-        self.assertEqual(50,spec.body['reasoning_effort'])
+        self.assertEqual('high',spec.body['reasoning_effort'])
         self.assertEqual(2,spec.preflight()['stream_recovery']['maximum_attempts'])
         corrected=section.source_correction(spec,'{}',[dict(path='$',code='schema',message='Missing fields')],headroom=True,feedback_headroom=True)
         self.assertEqual(spec.version,corrected.version)

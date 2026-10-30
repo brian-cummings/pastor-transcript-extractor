@@ -248,7 +248,7 @@ def prepare_local_enum_transport(path):
 
 def source_correction(spec,output,errors,*,headroom=False,feedback_headroom=False):
     revised=x.requests.corrective_request(spec,output,errors,producer.reading_diagnostics.CORRECTION,validate=not headroom)
-    if spec.version.removesuffix('-stream-v1')==x.requests.DEEPINFRA_BINDING_REASONING_VERSION:
+    if spec.version.removesuffix('-stream-v1')in (x.requests.DEEPINFRA_BINDING_REASONING_VERSION,x.requests.DEEPINFRA_BINDING_REASONING_TEXT_VERSION):
         revised.preflight();return revised
     if headroom:
         tiers=[(None,None),(x.requests.DEEPINFRA_BINDING_HEADROOM_VERSION,x.provider.BINDING_HEADROOM_POLICY)]
@@ -336,7 +336,7 @@ def prepare_continuation(path, source_windows=(), *,source_reasoning=False):
         maximum_correction_reservation_usd=str(correction_reserve))
     packet['continuation']=dict(predecessor=dict(path=str(path.resolve()),sha256=file_hash(path)),
         authorization='User removed iteration ceiling and approved this and future runs within the original goal budget.',
-        refreshed_source_windows=sorted(selected),source_reasoning_effort=50 if source_reasoning else None,
+        refreshed_source_windows=sorted(selected),source_reasoning_effort='high' if source_reasoning else None,
         verification_version=producer.VERIFICATION_VERSION,
         current_conservative_usd=str(current),remaining_credit_usd=str(limit-current))
     packet['budget']['maximum_sequence_reservation_usd']=str(sum((Decimal(t['reserved_usd']) for t in packet['tasks']),Decimal(packet['budget']['support_reservation_usd'])))
