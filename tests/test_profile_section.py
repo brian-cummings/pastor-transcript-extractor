@@ -112,6 +112,21 @@ class SectionTests(unittest.TestCase):
         self.assertLess(one,section.Decimal('.50'))
         self.assertLess(6*one+section.Decimal('1.25')+section.Decimal('.0890834'),section.Decimal(3))
 
+    def test_local_enum_transport_does_not_relax_local_semantic_acceptance(self):
+        window,old,value,_=reading();original=deepcopy(value)
+        revised=producer.local_enum_transport(producer.hosted.streaming_request(old))
+        self.assertEqual(old.body['messages'][1],revised.body['messages'][1])
+        self.assertTrue(revised.body['messages'][0]['content'].startswith(old.body['messages'][0]['content']))
+        self.assertEqual(old.body['model'],revised.body['model'])
+        self.assertNotIn('"enum"',json.dumps(revised.body['response_format']))
+        self.assertEqual(producer.evidence.digest(producer.schema()),revised.source_identity['local_schema_digest'])
+        checked=producer.inspect(value,window,revised,'local-enum-receipt')
+        self.assertEqual([],checked['errors']);self.assertEqual(original,value)
+        value['claims'][0]['adoption']['status']='invented_choice'
+        invalid=producer.inspect(value,window,revised,'local-enum-receipt')
+        self.assertTrue(invalid['errors']);self.assertEqual([],invalid['observations'])
+        with self.assertRaisesRegex(ValueError,'already selected'):producer.local_enum_transport(revised)
+
     def test_stubbed_source_through_shared_support_and_final_handoff(self):
         from test_learning_demo_correction import wire_response
         from test_profile_analysis_support_execution import wire

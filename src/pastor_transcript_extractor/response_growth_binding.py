@@ -6,6 +6,7 @@ from . import evidence_requests as requests, deepinfra_requests as hosted
 from . import pastor_evidence as evidence
 
 VERSION = 'qualified-response-growth-v1'
+LOCAL_ENUM_TRANSPORT = 'source-local-enum-transport-v1'
 FACETS = ('salvation', 'personal_response', 'gradual_growth', 'reassurance', 'challenge')
 PROMPT = source_context.contract_packet()['reader_prompt'] + '''
 This bounded extension concerns salvation, personal response and spiritual growth.
@@ -59,6 +60,33 @@ def request(window):
         runtime_identity=deepcopy(policy))
     spec.preflight()
     return spec
+
+
+def local_enum_transport(spec):
+    """Move only enum constraints from provider grammar to unchanged local checks.
+
+    The full original schema remains visible to the model. This opt-in changes
+    no field meaning, allowed value, source, model or acceptance requirement.
+    """
+    if spec.source_identity.get('schema_transport'):
+        raise ValueError('Source schema transport already selected')
+    body=deepcopy(spec.body)
+    original=body['response_format']['json_schema']['schema']
+    if original!=schema():raise ValueError('Local enum transport requires the exact source contract')
+    def provider_shape(value):
+        if isinstance(value,list):return [provider_shape(v) for v in value]
+        if not isinstance(value,dict):return value
+        result={k:provider_shape(v) for k,v in value.items() if k!='enum'}
+        if 'enum' in value and value.get('type')=='string':result['minLength']=max(1,value.get('minLength',0))
+        return result
+    body['response_format']['json_schema']['schema']=provider_shape(original)
+    body['messages'][0]['content']+=('\nThe provider enforces JSON shape; the application independently enforces every allowed value in the full contract below. '
+        'Use exactly those enum choices. They retain their original meanings; strings outside the listed choices fail validation. '
+        'Return the same complete source binding, preserving all source qualifications and explicit unknowns.\nLocal validation schema: '+requests.wire(original))
+    revised=replace(spec,body=body,source_identity={**spec.source_identity,
+        'schema_transport':LOCAL_ENUM_TRANSPORT,'local_schema_digest':evidence.digest(original)})
+    revised.preflight()
+    return revised
 
 
 def inspect(output, window, spec, receipt):

@@ -115,6 +115,10 @@ def load(path):
         for ref in p['streaming_recovery']['preserved_files']:
             if file_hash(ref['path'])!=ref['sha256']:
                 raise ValueError('Streaming predecessor changed')
+    if p.get('local_enum_transport'):
+        for ref in p['local_enum_transport']['preserved_files']:
+            if file_hash(ref['path'])!=ref['sha256']:
+                raise ValueError('Local-enum predecessor changed')
     allowance.ceiling(p)
     inv = inventory(Path(p['base_dir']))
     if (inv['content_fingerprint'] != p['inventory_fingerprint'] or
@@ -203,6 +207,37 @@ def prepare_streaming_recovery(path):
     out=path.parent/'streaming'/packet['input_fingerprint'];Store(out).write_immutable('plan.json',packet)
     return dict(plan=str(out/'plan.json'),input_fingerprint=packet['input_fingerprint'],current_conservative_usd=str(current),
         maximum_sequence_reservation_usd=str(maximum),remaining_credit_usd=str(limit-current),source_batch_reservation_usd=packet['tasks'][0]['reserved_usd'],paid_calls=0)
+
+
+def prepare_local_enum_transport(path):
+    """Second and final implementation iteration; unchanged local semantic contract."""
+    path=Path(path);prior=json.loads(path.read_text())
+    if prior['input_fingerprint']!=digest({k:v for k,v in prior.items() if k!='input_fingerprint'}) or prior.get('local_enum_transport'):
+        raise ValueError('Requires unchanged predecessor without another local-enum iteration')
+    if not prior.get('streaming_recovery'):raise ValueError('Requires the demonstrated bounded streaming failure')
+    limit=allowance.ceiling(prior);inv=inventory(Path(prior['base_dir']))
+    if inv['content_fingerprint']!=prior['inventory_fingerprint'] or digest([asdict(w) for w in windows(inv)])!=digest([t['window'] for t in prior['tasks']]):
+        raise ValueError('Source/membership changed')
+    packet=deepcopy(prior);packet.pop('input_fingerprint');refs=[dict(path=str(path.resolve()),sha256=file_hash(path))];failures=[]
+    for task in packet['tasks']:
+        old=x.requests.RequestSpec(**task['request']);store=x._store(prior,old);receipt=x._cached(old,store)
+        if receipt:
+            if 'whitespace loop' not in (receipt['halt'] or ''):raise ValueError('Requires a demonstrated whitespace failure')
+            f=store.root/'receipts'/f'{old.fingerprint}.json';refs.append(dict(path=str(f),sha256=file_hash(f)));failures.append(old.fingerprint)
+        spec=producer.local_enum_transport(old)
+        task['request']=asdict(spec)
+        task['reserved_usd']=str(2*x.requests.request_reservation(spec)+x.requests.reservation('source_verification'))
+    if len(failures)!=1:raise ValueError('Exactly one exhausted source request required')
+    maximum=sum((Decimal(t['reserved_usd']) for t in packet['tasks']),Decimal(packet['budget']['support_reservation_usd']))
+    current=ledger(prior,path.parent)
+    if current+maximum>=limit:raise ValueError('Complete final iteration exceeds remaining allowance')
+    packet['local_enum_transport']=dict(version=producer.LOCAL_ENUM_TRANSPORT,implementation_iteration=2,
+        preserved_files=refs,local_schema_unchanged=True,model_unchanged=True,no_further_variants=True)
+    packet['budget']['maximum_sequence_reservation_usd']=str(maximum)
+    packet['code_identity']=identity();packet['input_fingerprint']=digest(packet)
+    out=path.parent/'local-enums'/packet['input_fingerprint'];Store(out).write_immutable('plan.json',packet)
+    return dict(plan=str(out/'plan.json'),input_fingerprint=packet['input_fingerprint'],iteration=2,
+        current_conservative_usd=str(current),remaining_credit_usd=str(limit-current),maximum_sequence_reservation_usd=str(maximum),paid_calls=0)
 
 
 def ledger(p, root):
