@@ -46,6 +46,10 @@ class SectionTests(unittest.TestCase):
                 self.assertIn(producer.contract.CHECK_MEANINGS[field],question['instructions'])
                 self.assertIn('source.texts.target_text',question['instructions'])
         self.assertEqual(producer.VERIFICATION_VERSION,spec.version)
+        for item in spec.body['state']['items']:
+            self.assertEqual(set(producer.contract.BINDING['properties']),set(item['binding']))
+            self.assertNotIn('semantic_validation',item['binding'])
+            self.assertNotIn('provenance',item['response_growth'])
 
     def test_versioned_source_contract_preserves_existing_binding_semantics(self):
         window,spec,value,checked=reading()
