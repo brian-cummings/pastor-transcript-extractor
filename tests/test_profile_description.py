@@ -51,6 +51,16 @@ def fixture(*, routed=False, measured=True, text='A quoted view is discussed, no
 
 
 class DescriptionTests(unittest.TestCase):
+    def test_materialized_only_keeps_compatible_observations_without_review_inputs(self):
+        inv,sources=fixture(routed=True)
+        with patch('pastor_transcript_extractor.profile_evidence_supply.attach',side_effect=AssertionError('review inputs forbidden')):
+            record=d.build(inv,sources,materialized_only=True)
+        self.assertTrue(any(o['layer']=='salvation' and o['state']=='observed' for o in record['observations']))
+        self.assertTrue(any(c['rule']=='salvation' for c in record['claims']))
+        self.assertNotIn('evidence_supply',record)
+        self.assertNotIn('reader',record)
+        self.assertFalse(record['provider_requests'])
+
     def test_no_adoption_from_identical_topic_in_quoted_or_affirmed_text(self):
         for text in ('He quotes someone saying salvation is earned.', 'He affirms salvation is earned.'):
             record = d.build(*fixture(text=text))

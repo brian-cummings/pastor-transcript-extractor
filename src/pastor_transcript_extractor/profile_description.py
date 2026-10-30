@@ -136,7 +136,7 @@ def gap_ledger():
     )]
 
 
-def build(inventory, sources, reuse_checks=None, source_reviews=None, capability_inputs=None):
+def build(inventory, sources, reuse_checks=None, source_reviews=None, capability_inputs=None, *,materialized_only=False):
     """Pure assembly. Recheck layer identity so saved presentation cannot admit stale data."""
     if seal(inventory) != inventory:
         raise ValueError('Invalid inventory seal')
@@ -270,6 +270,10 @@ def build(inventory, sources, reuse_checks=None, source_reviews=None, capability
         benchmark=dict(status='unavailable', reason='Comparison not yet established; no compatible benchmark method or calibration.'),
         gaps=gaps, reuse_checks=deepcopy(reuse_checks or []), evidence_view=lower,
         provider_requests=0, database_writes=0, new_measurements=False, profile_scores=False, quote_execution=False)
+    if materialized_only:
+        # The automatic section may consume admitted measured meanings without
+        # loading authored source readings, portrait prose or review warrants.
+        return seal(record)
     from pastor_transcript_extractor.profile_evidence_supply import attach, reviewed_bindings
     attach(record)
     reviewed_bindings(record, sources)
