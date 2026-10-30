@@ -24,6 +24,29 @@ def reading():
 
 
 class SectionTests(unittest.TestCase):
+    def test_complete_reasoning_wire_can_be_reconciled_offline_without_rewriting_failure(self):
+        _,old,value,_=reading();spec=producer.reasoning_request(old)
+        raw=dict(model=spec.body['model'],choices=[dict(finish_reason='stop',message=dict(
+            content=json.dumps(value),reasoning_content='Synthetic private deliberation'))],
+            usage=dict(prompt_tokens=100,completion_tokens=300,completion_tokens_details=dict(reasoning_tokens=100)))
+        wire=dict(status_code=200,text=json.dumps(raw))
+        failed=dict(request=asdict(spec),token_account=spec.preflight(),response=None,
+            response_digest=section.digest(None),wire_response_digest=section.digest(wire),
+            halt='DeepInfra emitted reasoning despite frozen disabled policy; no retry')
+        with TemporaryDirectory() as folder:
+            store=requests.ReceiptStore(Path(folder))
+            store.write_immutable(f'receipts/{spec.fingerprint}.json',failed)
+            store.write_immutable(f'wire-responses/{spec.fingerprint}.json',wire)
+            original=(store.root/'receipts'/f'{spec.fingerprint}.json').read_bytes()
+            with patch.object(section.x,'_store',return_value=store):
+                ref=section.reconcile_completed_wire({},spec)
+                recovered=json.loads(Path(ref['path']).read_text())
+                self.assertEqual(0,recovered['reconciliation']['provider_calls'])
+                self.assertEqual(json.dumps(value),recovered['response']['output'])
+                self.assertIsNone(recovered['halt'])
+                self.assertEqual(original,(store.root/'receipts'/f'{spec.fingerprint}.json').read_bytes())
+                self.assertEqual(failed,section.x._cached(spec,store))
+
     def test_source_reasoning_preserves_model_contract_and_correction_configuration(self):
         _,old,_,_=reading()
         spec=producer.reasoning_request(old)

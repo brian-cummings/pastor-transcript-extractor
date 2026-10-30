@@ -309,6 +309,24 @@ def ledger(p, root):
         return x.supervised.BASELINE_SPEND + sum((c for _,c in history), Decimal(0))
 
 
+def reconcile_completed_wire(packet,spec):
+    """Append a decoder correction for a complete wire; never resend or edit history."""
+    store=x._store(packet,spec);cached=x._cached(spec,store)
+    if not cached or cached['halt']!='DeepInfra emitted reasoning despite frozen disabled policy; no retry':return None
+    if spec.runtime_identity.get('reasoning_effort') not in ('high',):return None
+    original=store.root/'receipts'/f'{spec.fingerprint}.json'
+    wire=store.root/'wire-responses'/f'{spec.fingerprint}.json'
+    response=x.requests.decode_response(spec,x.requests.WireResponse(**json.loads(wire.read_text())))
+    x.requests.validate_response(spec,response)
+    revised={**cached,'response':response,'response_digest':digest(response),'halt':None,
+        'reconciliation':dict(original_receipt=dict(path=str(original),sha256=file_hash(original)),
+            complete_wire=dict(path=str(wire),sha256=file_hash(wire)),provider_calls=0,
+            basis='Declared reasoning-enabled request completed; decoder incorrectly applied disabled-reasoning guard. Original reservation and receipt retained.')}
+    dest=store.root/'reconciliations'/f'{spec.fingerprint}.json'
+    Store(dest.parent).write_immutable(dest.name,revised)
+    return dict(path=str(dest),sha256=file_hash(dest))
+
+
 def prepare_continuation(path, source_windows=(), *,source_reasoning=False):
     """Freeze another authorized bounded step without replacing the allowance."""
     path=Path(path);prior=json.loads(path.read_text())
@@ -321,6 +339,7 @@ def prepare_continuation(path, source_windows=(), *,source_reasoning=False):
     if source_reasoning and not selected:raise ValueError('Source reasoning requires selected fixed windows')
     if not selected<=set(t['id'] for t in prior['tasks']):raise ValueError('Unknown fixed source window')
     packet=deepcopy(prior);packet.pop('input_fingerprint')
+    packet.setdefault('completed_wire_reuse',{})
     correction_reserve=x.provider.reserved_usd(x.requests.DEEPINFRA_BINDING_FEEDBACK_VERSION+'-stream-v1')
     for task in packet['tasks']:
         if task['id'] in selected:
@@ -328,6 +347,8 @@ def prepare_continuation(path, source_windows=(), *,source_reasoning=False):
             if source_reasoning:spec=producer.reasoning_request(spec)
             task['request']=asdict(spec)
         else:spec=x.requests.RequestSpec(**task['request'])
+        reconciled=reconcile_completed_wire(prior,spec)
+        if reconciled:packet['completed_wire_reuse'][spec.fingerprint]=reconciled
         task['reserved_usd']=str(x.requests.request_reservation(spec)+correction_reserve+x.requests.reservation('source_verification'))
         if Decimal(task['reserved_usd'])>Decimal('.50'):raise ValueError('Continuation batch exceeds fifty cents')
     current=ledger(prior,path.parent);limit=allowance.ceiling(prior)
@@ -355,6 +376,18 @@ def obtain(p, spec, transport):
     with x.supervised.cumulative_history(p, target.root) as history:
         spent = x.supervised.BASELINE_SPEND + sum((c for _,c in history),Decimal(0))
         cached = x._cached(spec,target)
+        if cached and cached['halt'] and spec.fingerprint in p.get('completed_wire_reuse',{}):
+            ref=p['completed_wire_reuse'][spec.fingerprint]
+            if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Reconciled receipt changed')
+            revised=json.loads(Path(ref['path']).read_text())
+            for parent in revised['reconciliation'].values():
+                if isinstance(parent,dict) and 'path' in parent and file_hash(parent['path'])!=parent['sha256']:
+                    raise ValueError('Reconciled parent changed')
+            wire=json.loads(Path(revised['reconciliation']['complete_wire']['path']).read_text())
+            if (revised['request']!=asdict(spec) or revised['halt'] or revised['response_digest']!=digest(revised['response'])
+                or x.requests.decode_response(spec,x.requests.WireResponse(**wire))!=revised['response']):
+                raise ValueError('Reconciled complete response differs')
+            return revised,Path(ref['path'])
         if cached is None:
             if spent+x.requests.request_reservation(spec) >= allowance.ceiling(p):
                 raise ValueError('Goal allowance exhausted')
@@ -499,6 +532,10 @@ def machine_case(record, claim):
                 any(block[k]!=actual[k] for k in ('start_seconds','end_seconds','segment_indexes'))):
                 raise ValueError('Machine window geometry changed')
         ref = Path(o['raw_response_ref']); receipt = json.loads(ref.read_text()); spec=x.requests.RequestSpec(**receipt['request'])
+        for parent in receipt.get('reconciliation',{}).values():
+            if isinstance(parent,dict) and 'path' in parent:
+                if file_hash(parent['path'])!=parent['sha256']:raise ValueError('Machine reconciliation parent changed')
+                files[parent['path']]=parent['sha256']
         if receipt['halt'] or receipt['response_digest']!=digest(receipt['response']):
             raise ValueError('Machine producer receipt changed')
         x.requests.validate_response(spec,receipt['response'])

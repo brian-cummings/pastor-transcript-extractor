@@ -221,7 +221,7 @@ def decode(raw,spec=None):
         raise ValueError('DeepInfra refused or returned no final JSON')
     usage=raw['usage']
     if not isinstance(usage,dict): raise ValueError('Invalid DeepInfra usage')
-    if spec is not None and (spec.version in DEEPINFRA_QWEN_STREAM_VERSIONS or spec.version in (DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION,DEEPINFRA_ENUM_VERSION,DEEPINFRA_GUIDED_VERSION,DEEPINFRA_QWEN_VERIFY_VERSION,DEEPINFRA_PROFILE_SUPPORT_VERSION,*DEEPINFRA_ANALYSIS_SUPPORT_VERSIONS,*DEEPINFRA_HOLDOUT_VERSIONS)):
+    if spec is not None and policy.get('reasoning_effort')=='none':
         details=usage.get('completion_tokens_details') or {}
         if not isinstance(details,dict): raise ValueError('Invalid DeepInfra token details')
         if (message.get('reasoning_content') or message.get('thinking') or message.get('reasoning')
