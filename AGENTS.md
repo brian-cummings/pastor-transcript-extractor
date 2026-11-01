@@ -14,6 +14,17 @@
 - Own interpretation and next-step recommendations after Brian reviews the prepared results. Ask only for decisions that cannot reasonably be resolved from the available evidence, with a concrete proposal ready for approval.
 - For current supervised learning-demo work, cumulative attempt counts are reporting only: Brian superseded the original V3 66-attempt ceiling. Prevent runaway spending with an explicitly approved frozen run, a per-run dollar/attempt ceiling, bounded retries and no automatic expansion or next experiment. Preserve historical budgets and receipts unchanged.
 
+## Progress, budgets, and stopping
+
+- Define acceptance criteria and stop conditions before implementation. Passing tests or executing the pipeline does not establish product success; distinguish engineering progress from progress toward the requested outcome.
+- Track assistant usage across the primary agent and helpers. Reserve at least 10% of the budget for verification and handoff. If accounting is incomplete, use a conservative estimate and stop earlier; disclose the limitation.
+- After each bounded experiment, briefly record which acceptance criterion advanced, what new evidence changed the diagnosis, and what next action that evidence justifies. If none changed, classify the iteration as no progress.
+- Do not repeat an experiment to overcome uncertainty or an unfavorable result. Another revision requires a demonstrated defect, an explanation of how the change addresses it, and a falsifiable acceptance check.
+- When source review and automated verification disagree, inspect saved questions, inputs, answers, and decision logic before revising the producer again, and before spending the final development revision. Distinguish extraction failure, missing context, verification-contract failure, and valid uncertainty; do not try to overcome an unexplained gate.
+- Limit integration and reporting work to what is needed to test the central acceptance criterion while the core behavior remains unproven.
+- Automatic continuation does not override budgets, frozen experiments, stop conditions, or pending authorization. Rereading unchanged files and restating status is not progress.
+- At a hard stop, deliver the failed acceptance result, useful completed work, exact blocker, costs, and one concrete next-step proposal. Use the available blocked-state mechanism when its conditions are met; do not leave an automatic continuation loop running.
+
 ## Reuse and responsibility in the evidence pipeline
 
 - Start from a concrete reader-facing statement or behavior. Trace it to the existing category/leaf contract, producer, saved observations and consumer before proposing a new measurement, inference call or pipeline.
