@@ -441,6 +441,67 @@ class SectionTests(unittest.TestCase):
                 broken=core.build_plan(record)
                 self.assertTrue(any(i['gap'] for i in broken['items']))
 
+    def test_dimension_only_and_mixed_handoff_preserve_complete_binding_hold(self):
+        from test_learning_demo_correction import wire_response
+        from test_profile_analysis_support_execution import wire
+        from test_profile_analysis_support import fixture as measured_fixture
+        window,_,value,_=reading()
+        value['claims'][0]['response_growth'].update(growth='gradual_growth',evidence=[value['claims'][0]['proposition']['span']])
+        with TemporaryDirectory() as folder:
+            root=Path(folder);source=root/'source.json';source.write_text('{"classification": {}}')
+            window=replace(window,source_sha256=section.file_hash(source));spec=producer.request(window)
+            blocks=[dict(b,text=b['target_text']) for b in window.blocks]
+            p=dict(input_fingerprint='frozen',dimension_contract=producer.DIMENSION_VERIFICATION_VERSION,
+                profile=dict(id=window.profile_id,effective_member_video_ids=[window.video_id],membership_fingerprint='membership'),
+                inventory_fingerprint='inventory',coverage={},unknowns=section.UNKNOWN,acceptance_authorization=None,
+                source_identity=[dict(video_id=window.video_id,url='https://example.org/watch',source_path=str(source),source_sha256=window.source_sha256,gate=dict(eligible=True))],
+                tasks=[dict(id=window.id,window=asdict(window),request=asdict(spec),reserved_usd='.11')],
+                budget=dict(spend_root=str(root/'requests'),cumulative_ceiling_usd='1',starting_conservative_usd='0',support_reservation_usd='1.25'))
+            def send(request):
+                if request.phase=='source_reading':return wire_response(request,json.dumps(value))
+                answers={k:dict(type='noul',noul=.1) for k in request.body['questions']}
+                if request.version==producer.DIMENSION_VERIFICATION_VERSION:
+                    for k in answers:
+                        if k.endswith(':growth'):answers[k]['noul']=.99
+                return dict(output=answers,usage=dict(input_tokens=100,output_tokens=0),model='jev-1.13.0',complete=True)
+            def support_wire(request):
+                state=json.loads(request.body['messages'][1]['content'])
+                answer=dict(judgment='supported',evidence=[state['passages'][0]['fields']['target_text'][0]['citation_id']],qualifications=[],reason='Synthetic dimension-only support.',
+                    assertion_force=dict(candidate_id=state['candidate']['id'],complete=True,forces=['local_observation'],measurement_entitlement='within_meaning',reason='Exact qualified dimension.'))
+                return wire(request,json.dumps(answer))
+            def resolve(c):return c['search']['topic_analysis'] if 'search' in c else dict(blocks=blocks)
+            def context(b):return b['context'] if 'context' in b else dict(target_text=b['target_text'])
+            with patch.object(section,'load',return_value=(p,root)),patch.object(section.sermon_topics,'resolve_topic_analysis_artifact',side_effect=resolve),patch.object(section.sermon_topics,'resolve_topic_block_context',side_effect=context):
+                self.assertEqual(0,section.run_source(root/'plan.json',window.id,'frozen',transport=send)['eligible'])
+                section.prepare_dimensions(root/'plan.json')
+                self.assertEqual(1,section.run_dimensions(root/'plan.json',window.id,'frozen',transport=send)['eligible'])
+                self.assertEqual(1,section.prepare_support(root/'plan.json')['claims'])
+                section.run_support(root/'plan.json','1','frozen',transport=support_wire)
+                delivery=section.render(root/'plan.json');self.assertEqual(1,delivery['model_supported'])
+                self.assertEqual(0,delivery['eligible_upstream']);self.assertEqual(1,delivery['qualified_dimensions'])
+                record=core.read_record(root/'assembled-profile.json');claim=record['claims'][0]
+                case=section.machine_case(record,claim)
+                self.assertNotIn('binding',case['state']['bound_observations'][0])
+                self.assertEqual('growth',case['state']['qualified_dimensions'][0]['field'])
+                measured,blob=measured_fixture();path=root/'measured.json';path.write_bytes(blob)
+                measured['observations'][0]['source_path']=str(path);measured['source_identity'][0]['source_path']=str(path)
+                record['observations']=measured['observations'];record['source_identity']+=measured['source_identity'];record['profile']['effective_member_video_ids'].append(9)
+                mixed=deepcopy(claim);mixed.update(id='mixed',evidence_ids=['e1'],observation_input_ids=['e1'],upstream_claim_ids=[claim['id']])
+                record['claims'].append(mixed)
+                combined=section.machine_case(record,mixed)
+                self.assertEqual({window.id,'v9b1'},set(combined['sources']))
+                self.assertEqual({'0':'e1'},combined['input_ids'])
+                self.assertTrue(combined['state']['measurement_ledger']['rows']);self.assertTrue(combined['state']['qualified_dimensions'])
+                dependency_plan=dict(profile=record['profile'],known_gaps=[],items=[dict(claim_id=c['id'],statement=c['wording'],scope=c['scope'],gap=None,
+                    case=case if c is claim else combined) for c in (claim,mixed)])
+                withheld=core.document_input(dependency_plan,[dict(claim_id=claim['id'],judgment=dict(answer=dict(judgment='unresolved'),qualifications=[])),
+                    dict(claim_id=mixed['id'],judgment=dict(answer=dict(judgment='supported'),qualifications=[]))])
+                self.assertEqual('dependency_unresolved',withheld['entries'][1]['support_status'])
+                bad=deepcopy(claim);bad['dimension_field']='requested_response'
+                with self.assertRaisesRegex(ValueError,'below threshold'):section.machine_case(record,bad)
+                record['machine_observations'][0]['response_growth']['reader_statement']='Authored replacement'
+                with self.assertRaisesRegex(ValueError,'changed'):section.machine_case(record,claim)
+
     def test_unknown_usage_failure_handoff_preserves_reservation_and_has_no_claims(self):
         window,spec,_,_=reading()
         with TemporaryDirectory() as folder:

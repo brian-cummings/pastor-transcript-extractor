@@ -220,3 +220,14 @@ does not make the whole binding eligible, admit a legacy leaf, or authorize clai
 about adoption, uptake or a complete doctrine. Old combined judgments and original
 outputs remain unchanged. The dimension result and each receipt are checked again
 on reuse; hand-authored replacement values cannot enter through this path.
+
+Ordinary `section-support-prepare` consumes eligible dimension results separately
+from complete bindings. It emits one source-ordered example per recording and
+dimension, retaining every result in the record. The support case exposes only
+the qualified dimension as analytical evidence; unqualified binding prose remains
+withheld. A mixed membership interpretation can combine admitted relationship
+measurements with a qualified timing value through the same source/citation reader.
+Its parents must each pass ordinary support before the final consumer releases it.
+The structured trace retains both evidence kinds and all source links. A scoped
+timing finding does not resolve conditions, actual progress, adoption, or timing
+outside that exact point.

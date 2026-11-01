@@ -495,6 +495,80 @@ def read_dimension_result(p,root,batch):
     return result
 
 
+def dimension_proof(record,window,oid,field):
+    """A dimension receipt grants no authority to the other proposed binding fields."""
+    refs=record['dimension_packets'][window.id];files={}
+    for ref in refs.values():
+        if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Dimension proof changed')
+        files[ref['path']]=ref['sha256']
+    packet=json.loads(Path(refs['input']['path']).read_text());result=json.loads(Path(refs['result']['path']).read_text())
+    if packet['fingerprint']!=digest({k:v for k,v in packet.items() if k!='fingerprint'}) or result['input_fingerprint']!=packet['fingerprint']:
+        raise ValueError('Dimension proof lineage differs')
+    parent=packet['source_result']
+    if file_hash(parent['path'])!=parent['sha256']:raise ValueError('Dimension source parent changed')
+    files[parent['path']]=parent['sha256']
+    observations=[o for o in record['machine_observations'] if {r['window_id'] for r in o['source_refs']}=={window.id}]
+    spec=producer.dimension_verification(window,observations)
+    if packet['request']!=asdict(spec):raise ValueError('Dimension proof request differs')
+    ref=result['receipt']
+    if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Dimension receipt changed')
+    receipt=x._cached(spec,x.requests.ReceiptStore(Path(ref['path']).parent.parent))
+    if receipt is None or receipt['halt']:raise ValueError('Dimension receipt incomplete')
+    findings=producer.dimension_findings(observations,receipt['response'],spec)
+    if findings!=result['findings']:raise ValueError('Dimension proof values changed')
+    row=next(r for r in findings if r['observation_id']==oid and r['field']==field)
+    if not row['eligible']:raise ValueError('Dimension is unresolved or below threshold')
+    files[ref['path']]=ref['sha256'];return row,files
+
+
+def attach_dimensions(p,root,record):
+    """Expose exact individually qualified values; retain complete-binding holds."""
+    record['dimension_packets']={};findings=[]
+    for task in p['tasks']:
+        result=read_dimension_result(p,root,task['id']);out=root/'dimensions'/task['id']
+        record['dimension_packets'][task['id']]={k:dict(path=str(out/name),sha256=file_hash(out/name))
+            for k,name in [('input','input.json'),('result','result.json')]}
+        findings.extend(result['findings'])
+    record['dimension_findings']=findings;by_id={o['id']:o for o in record['machine_observations']};seen=set();added=[]
+    for row in findings:
+        if not row['eligible']:continue
+        o=by_id[row['observation_id']];vid=o['source_refs'][0]['video_id'];key=(vid,row['field'])
+        if key in seen:continue  # One source-ordered example per recording and dimension; all results remain available.
+        seen.add(key)
+        wording=('At this selected point, spiritual growth is discussed as a process over time.' if row['value']=='gradual_growth' else
+            'At this selected point, spiritual growth is discussed as immediate perfection.') if row['field']=='growth' else (
+            'The response requested or described at this selected point is: '+row['value'])
+        c=dict(id='section-dimension-'+row['field']+'-'+o['id'],wording=wording,
+            machine_observation_ids=[o['id']],dimension_field=row['field'],evidence_ids=[],upstream_claim_ids=[],
+            scope=dict(video_ids=[vid],meaning='Only this individually qualified discussion dimension in the selected source point.'),
+            assertion_force='local_observation',analytical_basis=row,
+            assertion_contract=dict(version=measurements.force.VERSION,declared_force='local_observation',allowed_forces=['local_observation']),
+            limits=[row['authority'],'No actual listener response, unconditional progress, complete conditions or adopted theology is established.'])
+        check_strength(c);record['claims'].append(c);added.append(c)
+    if any(c['dimension_field']=='growth' for c in added):
+        record['analysis_unknowns']=[u if u!='Gradual versus immediate change' else 'Growth timing outside the individually qualified source points' for u in record.get('analysis_unknowns',[])]
+    record.setdefault('analysis_unknowns',[]).append('How reassurance and challenge relate to the individually qualified response/growth findings')
+    # This is a declared membership interpretation, conditional on both parent
+    # claims passing ordinary support. It is not an explanatory theological edge.
+    receiving=next((c for c in record['claims'] if c['id']=='section-measured-reception'),None)
+    growth=next((c for c in added if c['dimension_field']=='growth' and c['analytical_basis']['value']=='gradual_growth'),None)
+    if receiving and growth:
+        wording=('The selected sample includes discussion of faith, belief or trust as a receiving response alongside spiritual growth over time. '
+            'Their co-presence does not establish a causal sequence, their relative emphasis, or a complete account of how receiving and growth relate.')
+        h=dict(id='section-receiving-growth-membership',conclusion=wording,premise_ids=[receiving['id'],growth['id']],
+            inference_type='selected_relationship_membership',scope_video_ids=sorted(set(receiving['scope']['video_ids']+growth['scope']['video_ids'])),
+            warrant='The receiving-response finding is backed by admitted local measurements; the timing finding has its own eligible source-dimension receipt. Conditional on both parent claims passing support, their presence warrants only selected-sample membership, not a doctrinal or causal relation.',
+            alternatives=['The deliberately selected passages may concern different situations; selection may exaggerate apparent thematic proximity.'],
+            counterevidence_ids=[],defeaters=['An unsupported parent defeats this interpretation. No qualified adopted counterposition is available; absence of one does not establish consistency.'])
+        record['hypotheses'].append(h)
+        record['claims'].append(dict(id=h['id'],wording=wording,evidence_ids=receiving['evidence_ids'],
+            observation_input_ids=receiving.get('observation_input_ids',[]),machine_observation_ids=growth['machine_observation_ids'],dimension_field='growth',
+            upstream_claim_ids=h['premise_ids'],scope=dict(video_ids=h['scope_video_ids'],meaning=LIMIT),assertion_force='sample_membership',
+            assertion_contract=dict(version=measurements.force.VERSION,declared_force='sample_membership',allowed_forces=['local_observation','sample_membership']),
+            analytical_basis=h,limits=h['defeaters'],alternative=h['alternatives']))
+    record['reader']['claims']=record['claims'];record['reader']['portrait']['entries']=record['claims']
+
+
 def prepare_analysis(path):
     p,root=load(path);data=materialized_inputs(p)
     literal=p.get('materialized_composition')==measurements.LITERAL_VERSION
@@ -753,10 +827,11 @@ def machine_case(record, claim):
     """Shared analysis-support seam: verify saved producer receipts, never repair them."""
     check_strength(claim)
     by_id = {o['id']:o for o in record['machine_observations']}
-    sources = {}; bound = []; files = {}
+    sources = {}; bound = []; files = {};dimensions=[];dimension_field=claim.get('dimension_field')
+    if dimension_field is not None and dimension_field not in ('growth','requested_response'):raise ValueError('Unknown source dimension')
     for oid in claim['machine_observation_ids']:
         o = by_id[oid]
-        if not o['section_eligibility']['eligible'] or o['origin']!='machine_generated' or o['production_admission']!='not_admitted':
+        if (not dimension_field and not o['section_eligibility']['eligible']) or o['origin']!='machine_generated' or o['production_admission']!='not_admitted':
             raise ValueError('Machine binding is not eligible experimental evidence')
         source_ids = {r['window_id'] for r in o['source_refs']}
         if len(source_ids)!=1:
@@ -797,10 +872,12 @@ def machine_case(record, claim):
         rebuilt['verification_receipt']=str(vref)
         if rebuilt!=o:
             raise ValueError('Machine binding or eligibility changed')
+        if dimension_field:
+            finding,dimension_files=dimension_proof(record,w,oid,dimension_field);files.update(dimension_files);dimensions.append(finding)
         texts=w.target()[0]
         sources[wid]=dict(window=json.loads(json.dumps(asdict(w))),texts=texts,
             fields=x.core._inventory(w,texts),context_sha256=x.core.context_digest(texts))
-        bound.append(deepcopy(o))
+        bound.append(dict(id=oid,qualified_dimension=finding,authority=finding['authority'],source_refs=o['source_refs']) if dimension_field else deepcopy(o))
         files.update({str(ref):file_hash(ref),str(vref):file_hash(vref),source['source_path']:w.source_sha256})
     passages=[dict(passage_id=k,video_id=s['window']['video_id'],fields={f:[dict(id=u['id'],text=u['text']) for u in units] for f,units in s['fields'].items()}) for k,s in sources.items()]
     hypotheses=[h for h in record.get('hypotheses',[]) if h['id']==claim['id']]
@@ -810,7 +887,20 @@ def machine_case(record, claim):
         bound_observations=bound,passages=passages,measurement_ledger=dict(rows=[],contracts=[],meaning='Qualified machine bindings; not legacy leaf measurements'),
         upstream_points=[],stored_aggregates=[],upstream_aggregate_claims=hypotheses,
         aggregation_contract=record['reader']['synthesis_rule'])
-    return dict(state=state,sources=sources,input_ids={},dependencies=claim['upstream_claim_ids'],
+    if dimension_field:
+        state['qualified_dimensions']=dimensions
+        state['measurement_ledger']['meaning']='Only the named independently qualified dimensions are evidence; the complete source bindings remain withheld.'
+    if claim.get('assertion_contract'):state['candidate']['assertion_contract']=deepcopy(claim['assertion_contract'])
+    if claim['evidence_ids']:
+        reader=x.core.EvidenceReader(record)
+        measured=x.core._case(record,claim,reader,{c['id']:c for c in record['claims']},{})
+        if set(sources)&set(measured['sources']):raise ValueError('Mixed evidence passage identities collide')
+        sources.update(measured['sources']);files.update(reader.files)
+        state['passages']+=measured['state']['passages'];state['measurement_ledger']=measured['state']['measurement_ledger']
+        state['upstream_aggregate_claims']=measured['state']['upstream_aggregate_claims']+hypotheses
+        input_ids=measured['input_ids']
+    else:input_ids={}
+    return dict(state=state,sources=sources,input_ids=input_ids,dependencies=claim['upstream_claim_ids'],
         identity=dict(profile_id=record['profile']['id'],membership_fingerprint=record['profile']['membership_fingerprint'],inventory_fingerprint=record['inventory_fingerprint']),source_files=files)
 
 
@@ -842,6 +932,7 @@ def prepare_support(path):
             cause='Bounded analysis draft failed its mechanical contract',remedy='Retain unknown'))
         record['reader']['claims']=record['claims'];record['reader']['portrait']['entries']=record['claims']
         record['reader']['synthesis_rule']+=' Admitted materialized relationships retain their exact local meanings; no adoption, polarity or condition is inferred from them.'
+    if p.get('dimension_contract'):attach_dimensions(p,root,record)
     Store(root).write_immutable('assembled-profile.json',record)
     plan=x.core.build_plan(record); tasks=[]
     for item in plan['items']:
@@ -896,15 +987,16 @@ def render(path):
         rows.extend(json.loads((Path(name).parent/'results.json').read_text())['results'])
     document=x.core.document_input(frozen['plan'],rows)
     record=x.core.read_record(root/'assembled-profile.json')
-    document['section_trace']={c['id']:dict(evidence_ids=c.get('machine_observation_ids',c['evidence_ids']),
+    document['section_trace']={c['id']:dict(evidence_ids=list(dict.fromkeys(c.get('machine_observation_ids',[])+c['evidence_ids'])),
         premise_ids=c['upstream_claim_ids'],scope=c['scope'],assertion_force=c['assertion_force'],
         interpretation=next((h for h in record['hypotheses'] if h['id']==c['id']),None),
         analytical_basis=c['analytical_basis'],assertion_contract=c.get('assertion_contract'),
-        evidence_kind='qualified_machine_binding' if 'machine_observation_ids' in c else 'admitted_local_relationship') for c in record['claims']}
+        evidence_kind=('mixed_qualified_dimension_and_measurements' if c['evidence_ids'] else 'qualified_source_dimension') if c.get('dimension_field') else 'qualified_machine_binding' if 'machine_observation_ids' in c else 'admitted_local_relationship') for c in record['claims']}
     document['unknowns']=list(dict.fromkeys(p['unknowns']+record.get('analysis_unknowns',[])+
         (['Voiced speaker, preacher adoption, polarity and attached conditions are not supplied by local relationship measurements.'] if record.get('materialized_analysis') else [])))
     document['limitation']=LIMIT
     if record.get('materialized_analysis'):document['materialized_analysis']=record['materialized_analysis']
+    if record.get('dimension_packets'):document['dimension_packets']=record['dimension_packets']
     Store(root).write_immutable('document-input.json',document)
     lines=['# Salvation, personal response and spiritual growth','',LIMIT,'']
     if record.get('materialized_analysis'):
@@ -938,7 +1030,7 @@ def render(path):
         model_supported=len(document['ready_claim_ids']),clauses=len(document['entries']),
         eligible_upstream=sum(o['section_eligibility']['eligible'] for o in obs.values()),
         upstream_total=len(obs),starting_conservative_usd=str(start),cumulative_conservative_usd=str(spent),
-        reused_materialized_observations=len(measured),
+        reused_materialized_observations=len(measured),qualified_dimensions=sum(r['eligible'] for r in record.get('dimension_findings',[])),
         new_conservative_usd=str(spent-start),remaining_credit_usd=str(allowance.ceiling(p)-spent),
         semantic_acceptance='Pending separate source review of original outputs',production_admission='not_admitted')
     Store(root).write_immutable('delivery.json',report)

@@ -149,6 +149,6 @@ def claims(value,packet):
             assertion_contract=dict(version=force.VERSION,declared_force=c['assertion_force'],
                 allowed_forces=['local_observation']+(['sample_membership'] if hs else [])),
             analytical_basis=dict(producer=VERSION,meaning_contracts=sorted(leaves),hypotheses=hs),
-            limits=[packet['authority'],'Gradual versus immediate change, attached conditions and actual uptake remain unknown.'],
+            limits=[packet['authority'],'These local relationship measurements do not establish gradual versus immediate change, attached conditions or actual uptake.'],
             alternative=[a for h in hs for a in h['alternatives']]))
     return result
