@@ -366,7 +366,7 @@ def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logic
         authorization='User removed iteration ceiling and approved this and future runs within the original goal budget.',
         refreshed_source_windows=sorted(selected),source_reasoning_effort='high' if source_reasoning else None,
         condition_attachment_contract=producer.CONDITION_ATTACHMENT_VERSION if logical_condition_scopes else None,
-        verification_version=producer.VERIFICATION_VERSION,
+        verification_version=packet.get('field_criteria_contract',producer.VERIFICATION_VERSION),
         current_conservative_usd=str(current),remaining_credit_usd=str(limit-current))
     packet['budget']['maximum_sequence_reservation_usd']=str(sum((Decimal(t['reserved_usd']) for t in packet['tasks']),Decimal(packet['budget']['support_reservation_usd'])))
     if reuse_materialized or literal_materialized or prior.get('materialized_inputs'):
