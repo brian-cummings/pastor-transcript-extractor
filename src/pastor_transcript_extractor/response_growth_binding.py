@@ -15,6 +15,7 @@ FIELD_LOCAL_CRITERIA_V1 = 'qualified-response-growth-field-local-criteria-v6'
 FIELD_LOCAL_CRITERIA = 'qualified-response-growth-field-local-criteria-v7'
 RANGE_TRANSPORT = 'response-growth-source-unit-ranges-v1'
 CONDITION_ATTACHMENT_VERSION = 'source-logical-condition-attachments-v1'
+DIMENSION_VERIFICATION_VERSION = 'response-growth-dimension-correctness-v1'
 CONDITION_ATTACHMENT_PROMPT = '''
 For each conditions entry, return one corresponding condition_attachments record
 in response_growth. condition_index is zero-based. Name the exact consequence
@@ -326,6 +327,42 @@ def verification(window, observations,*,field_local=False):
 def qualify(checked, response, spec):
     findings = contract.judgments(response, spec) if spec else {}
     return apply_findings(checked,findings,spec.fingerprint if spec else None)
+
+
+def dimension_verification(window,observations):
+    """Qualify existing dimension values, never a complete binding or repaired prose."""
+    full=verification(window,observations)
+    if full is None:return None
+    body=deepcopy(full.body);body['questions']={}
+    for i,item in enumerate(body['state']['items']):
+        prefix=f'Read items[{i}].response_growth against the entire source.texts.target_text. Other binding fields are proposals, not proof. '
+        descriptions=dict(
+            requested_response='Is requested_response a correct, self-contained description of the response requested or described for this exact point? All meaning-changing prerequisites, exceptions, qualifications and actual versus projected/reported speech relevant to that description must be retained. Do not infer audience uptake or treat an unadopted quotation as a present invitation.',
+            requested_response_present='Does requested_response describe a specific requested or described response, rather than saying no response is established, stating uncertainty, or offering only metacommentary? Presence is independent of correctness.',
+        )
+        if item['response_growth']['growth'] in ('gradual_growth','immediate_perfection'):
+            descriptions['growth']='Does growth correctly classify the spiritual-growth timing discussed in this exact point, supported by its literal evidence and full source? gradual_growth means change over time; immediate_perfection means being fully perfected immediately. Do not confuse a denied expectation, physical growth alone, or progressive harmful behavior with an affirmed spiritual-growth process. This is a local discussion finding, not preacher adoption, actual outcome, universal condition or an unconditional promise.'
+        for field,description in descriptions.items():
+            body['questions'][item['id']+':'+field]=dict(type='noul',instructions=prefix+description,
+                criteria=dict(true='This exact dimension judgment is supported and resolved under the stated meaning. Judge it independently of unrelated fields.',
+                    false='This dimension judgment is wrong, unsupported, incomplete or unresolved.'))
+    spec=replace(full,body=body,version=DIMENSION_VERIFICATION_VERSION,namespace=DIMENSION_VERIFICATION_VERSION,
+        source_identity=dict(contract=DIMENSION_VERIFICATION_VERSION,window_digest=evidence.digest(asdict(window))))
+    spec.preflight();return spec
+
+
+def dimension_findings(observations,response,spec):
+    findings=contract.judgments(response,spec);rows=[]
+    for o in observations:
+        checks=findings.get(o['id'],{})
+        for field in ('requested_response','growth'):
+            if field not in checks:continue
+            eligible=checks[field]['resolved'] and (field!='requested_response' or checks['requested_response_present']['resolved'])
+            rows.append(dict(observation_id=o['id'],field=field,value=o['response_growth'][field],
+                eligible=eligible,checks={k:v for k,v in checks.items() if k==field or (field=='requested_response' and k=='requested_response_present')},
+                version=DIMENSION_VERIFICATION_VERSION,verification_request=spec.fingerprint,
+                authority='This exact dimension only; no complete-binding eligibility, legacy measurement or production admission.'))
+    return rows
 
 
 def verification_parts(window,observations,reused_keys=(),*,field_local=False):

@@ -24,6 +24,46 @@ def reading():
 
 
 class SectionTests(unittest.TestCase):
+    def test_independent_dimensions_preserve_values_and_do_not_admit_complete_bindings(self):
+        window,_,_,checked=reading();observations=deepcopy(checked['observations'])
+        observations[0]['response_growth']['growth']='gradual_growth'
+        spec=producer.dimension_verification(window,observations)
+        self.assertEqual(window.target()[0],spec.body['state']['source']['texts'])
+        self.assertEqual('jev-1.13.0',spec.body['model'])
+        answers={k:dict(type='noul',noul=.99) for k in spec.body['questions']}
+        oid=observations[0]['id'];answers[oid+':requested_response_present']['noul']=.1
+        rows=producer.dimension_findings(observations,dict(output=answers),spec)
+        self.assertTrue(next(r for r in rows if r['observation_id']==oid and r['field']=='growth')['eligible'])
+        self.assertFalse(next(r for r in rows if r['observation_id']==oid and r['field']=='requested_response')['eligible'])
+        self.assertTrue(all('section_eligibility' not in r for r in rows))
+        answers[oid+':growth']['noul']=.89
+        self.assertFalse(next(r for r in producer.dimension_findings(observations,dict(output=answers),spec)
+            if r['observation_id']==oid and r['field']=='growth')['eligible'])
+
+    def test_dimension_execution_reuses_receipt_and_rejects_changed_results(self):
+        window,_,_,checked=reading()
+        with TemporaryDirectory() as folder:
+            root=Path(folder);source=dict(observations=checked['observations']);dest=root/'sources'/window.id
+            dest.mkdir(parents=True);(dest/'result.json').write_text(json.dumps(source))
+            p=dict(input_fingerprint='frozen',dimension_contract=producer.DIMENSION_VERIFICATION_VERSION,
+                tasks=[dict(id=window.id,window=asdict(window))],budget=dict(spend_root=str(root/'requests'),cumulative_ceiling_usd='1'))
+            def receive(packet,spec,transport):
+                response=dict(model='jev-1.13.0',complete=True,usage=dict(input_tokens=100,output_tokens=0),
+                    output={k:dict(type='noul',noul=.99) for k in spec.body['questions']})
+                receipt=dict(request=asdict(spec),token_account=spec.preflight(),response=response,
+                    response_digest=section.digest(response),wire_response_digest=None,halt=None)
+                store=section.x._store(p,spec);ref=store.root/'receipts'/f'{spec.fingerprint}.json'
+                store.write_immutable('receipts/'+ref.name,receipt);return receipt,ref
+            with patch.object(section,'load',return_value=(p,root)),patch.object(section,'verified_source_result',return_value=source):
+                section.prepare_dimensions(root/'plan.json')
+                with patch.object(section,'obtain',side_effect=receive) as send:
+                    result=section.run_dimensions(root/'plan.json',window.id,'frozen');self.assertEqual(1,send.call_count)
+                with patch.object(section,'obtain',side_effect=AssertionError('No duplicate request')):
+                    self.assertEqual(result,section.run_dimensions(root/'plan.json',window.id,'frozen'))
+                edited=deepcopy(result);edited['findings'][0]['value']='An authored replacement'
+                (root/'dimensions'/window.id/'result.json').write_text(json.dumps(edited))
+                with self.assertRaisesRegex(ValueError,'findings changed'):section.read_dimension_result(p,root,window.id)
+
     def test_field_local_criteria_are_explicit_without_changing_old_questions_or_whole_binding_gate(self):
         window,_,_,checked=reading();old=producer.verification(window,checked['observations'])
         new=producer.verification(window,checked['observations'],field_local=True)

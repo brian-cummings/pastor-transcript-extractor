@@ -329,7 +329,7 @@ def reconcile_completed_wire(packet,spec):
     return dict(path=str(dest),sha256=file_hash(dest))
 
 
-def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logical_condition_scopes=False,reuse_materialized=False,literal_materialized=False,field_local_criteria=False):
+def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logical_condition_scopes=False,reuse_materialized=False,literal_materialized=False,field_local_criteria=False,dimension_checks=False):
     """Freeze another authorized bounded step without replacing the allowance."""
     path=Path(path);prior=json.loads(path.read_text())
     if prior['input_fingerprint']!=digest({k:v for k,v in prior.items() if k!='input_fingerprint'}):
@@ -376,6 +376,7 @@ def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logic
         Store(dest.parent).write_immutable(dest.name,data)
         packet['materialized_inputs']=dict(path=str(dest),sha256=file_hash(dest),version=measurements.VERSION)
     if literal_materialized:packet['materialized_composition']=measurements.LITERAL_VERSION
+    if dimension_checks:packet['dimension_contract']=producer.DIMENSION_VERIFICATION_VERSION
     if current>=limit:raise ValueError('Original goal allowance exhausted')
     packet['code_identity']=identity();packet['input_fingerprint']=digest(packet)
     out=Path(packet['base_dir'])/'evaluation'/VERSION/'continuations'/packet['input_fingerprint']
@@ -392,6 +393,106 @@ def materialized_inputs(p):
     if data['version']!=measurements.VERSION or data['fingerprint']!=digest({k:v for k,v in data.items() if k!='fingerprint'}):
         raise ValueError('Materialized analysis contract differs')
     return data
+
+
+def prepare_dimensions(path):
+    p,root=load(path)
+    if p.get('dimension_contract')!=producer.DIMENSION_VERIFICATION_VERSION:raise ValueError('Dimension contract must be frozen explicitly')
+    inputs=[]
+    for task in p['tasks']:
+        parent=root/'sources'/task['id']/'result.json';result=verified_source_result(p,root,task)
+        spec=producer.dimension_verification(SourceWindow(**task['window']),result['observations'])
+        reserve=x.requests.request_reservation(spec) if spec else Decimal(0)
+        if reserve>Decimal('.50'):raise ValueError('Dimension batch exceeds fifty cents')
+        packet=dict(version=producer.DIMENSION_VERIFICATION_VERSION,source_result=dict(path=str(parent),sha256=file_hash(parent)),
+            request=asdict(spec) if spec else None,reserved_usd=str(reserve),maximum_paid_attempts=1,
+            authority='Individual proposed dimension values only; no full-binding or legacy admission.')
+        packet['fingerprint']=digest(packet);dest=root/'dimensions'/task['id']/'input.json'
+        Store(dest.parent).write_immutable(dest.name,packet);inputs.append(str(dest))
+    return dict(inputs=inputs,provider_calls=0,maximum_paid_attempts=sum(bool(json.loads(Path(f).read_text())['request']) for f in inputs))
+
+
+def verified_source_result(p,root,task):
+    """Rebuild original machine proposals and judgments before new dimension checks."""
+    result=json.loads((root/'sources'/task['id']/'result.json').read_text());window=SourceWindow(**task['window'])
+    spec=x.requests.RequestSpec(**task['request']);checked=None
+    if not 1<=len(result['rounds'])<=2:raise ValueError('Source round inventory differs')
+    for n,round_ in enumerate(result['rounds']):
+        ref=Path(round_['receipt']);receipt=json.loads(ref.read_text())
+        cached=x._cached(spec,x._store(p,spec))
+        if cached and cached['halt'] and spec.fingerprint in p.get('completed_wire_reuse',{}):
+            saved=p['completed_wire_reuse'][spec.fingerprint]
+            if Path(saved['path'])!=ref or file_hash(ref)!=saved['sha256']:raise ValueError('Source reconciliation differs')
+            cached=json.loads(ref.read_text())
+            for parent in cached['reconciliation'].values():
+                if isinstance(parent,dict) and 'path' in parent and file_hash(parent['path'])!=parent['sha256']:
+                    raise ValueError('Source reconciliation parent changed')
+            wire=json.loads(Path(cached['reconciliation']['complete_wire']['path']).read_text())
+            if x.requests.decode_response(spec,x.requests.WireResponse(**wire))!=cached['response']:raise ValueError('Source reconciliation output differs')
+        if cached!=receipt:raise ValueError('Dimension source must retain its original cached machine receipt')
+        if receipt['request']!=asdict(spec) or receipt['halt'] or receipt['response_digest']!=digest(receipt['response']):
+            raise ValueError('Original machine source receipt differs')
+        x.requests.validate_response(spec,receipt['response'])
+        checked=producer.inspect(receipt['response']['output'],window,spec,ref)
+        if checked['errors']!=round_['errors']:raise ValueError('Original source findings differ')
+        if n==0 and checked['errors']:
+            spec=source_correction(spec,receipt['response']['output'],checked['errors'],
+                headroom=bool(p.get('source_correction_headroom')),feedback_headroom=bool(p.get('source_feedback_headroom')))
+    rows=[]
+    if not checked['errors'] and checked['observations']:
+        ref=Path(result['verification_receipt']);saved=json.loads(ref.read_text())
+        if saved.get('version')==producer.FIELD_VERIFICATION_VERSION:rows,_=load_field_bundle(ref,window,checked)
+        else:
+            verifier=producer.verification(window,checked['observations'])
+            receipt=x._cached(verifier,x.requests.ReceiptStore(ref.parent.parent))
+            if receipt is None or receipt['halt']:raise ValueError('Original source verification incomplete')
+            rows=producer.qualify(checked,receipt['response'],verifier)
+    if rows!=result['observations']:raise ValueError('Original machine source proposals or judgments changed')
+    return result
+
+
+def dimension_input(p,root,batch):
+    task=next(t for t in p['tasks'] if t['id']==batch);out=root/'dimensions'/batch
+    packet=json.loads((out/'input.json').read_text());parent=packet['source_result']
+    if packet['fingerprint']!=digest({k:v for k,v in packet.items() if k!='fingerprint'}) or file_hash(parent['path'])!=parent['sha256']:
+        raise ValueError('Dimension input or source changed')
+    if Path(parent['path'])!=root/'sources'/batch/'result.json':raise ValueError('Foreign dimension source parent')
+    source=verified_source_result(p,root,task)
+    spec=producer.dimension_verification(SourceWindow(**task['window']),source['observations'])
+    if (asdict(spec) if spec else None)!=packet['request']:raise ValueError('Dimension request differs from source proposals')
+    return packet,source,spec,out
+
+
+def run_dimensions(path,batch,approve_input,*,transport=None):
+    p,root=load(path)
+    if approve_input!=p['input_fingerprint']:raise ValueError('Exact frozen input approval required')
+    packet,source,spec,out=dimension_input(p,root,batch)
+    if (out/'result.json').exists():return read_dimension_result(p,root,batch)
+    if ledger(p,root)+Decimal(packet['reserved_usd'])>=allowance.ceiling(p):raise ValueError('Complete dimension batch exceeds allowance')
+    findings=[];ref=None
+    if spec:
+        receipt,path=obtain(p,spec,transport or x.requests.typesafe_transport)
+        findings=producer.dimension_findings(source['observations'],receipt['response'],spec)
+        ref=dict(path=str(path),sha256=file_hash(path))
+    result=dict(version=producer.DIMENSION_VERIFICATION_VERSION,input_fingerprint=packet['fingerprint'],receipt=ref,
+        findings=findings,eligible=sum(row['eligible'] for row in findings),production_admission='not_admitted')
+    Store(out).write_immutable('result.json',result)
+    return read_dimension_result(p,root,batch)
+
+
+def read_dimension_result(p,root,batch):
+    packet,source,spec,out=dimension_input(p,root,batch);result=json.loads((out/'result.json').read_text())
+    if result['input_fingerprint']!=packet['fingerprint']:raise ValueError('Dimension result lineage differs')
+    findings=[]
+    if spec:
+        ref=result['receipt']
+        if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Dimension receipt changed')
+        receipt=x._cached(spec,x._store(p,spec))
+        if receipt is None or receipt['halt']:raise ValueError('Dimension receipt incomplete')
+        findings=producer.dimension_findings(source['observations'],receipt['response'],spec)
+    if findings!=result['findings'] or sum(row['eligible'] for row in findings)!=result['eligible']:
+        raise ValueError('Dimension findings changed')
+    return result
 
 
 def prepare_analysis(path):

@@ -200,3 +200,23 @@ present. Complete-binding release still requires every original check at .90,
 including response/growth and unchanged local prose. Old questions, scores and
 proof bundles keep their original contracts. New bundles record the exact criteria
 version; changed questions cannot reuse old answers as though they were identical.
+
+## Independently qualified response/growth dimensions
+
+The existing combined response/growth judgment does not identify which of its
+components is unresolved. `section-continue-prepare --plan PRIOR --dimension-checks`
+freezes narrow independent checks of the already generated requested-response and
+growth-timing values. `section-dimensions-prepare --plan PLAN` rebuilds every input
+from its original source receipt and original verification bundle before freezing
+the requests. `section-dimensions --plan PLAN --batch WINDOW --approve-input FP`
+executes one bounded Jev batch, with no retry or rewritten source reading.
+
+Response correctness includes every meaning-changing restriction relevant to the
+description; a separate presence judgment prevents emitting absence/metacommentary
+as an actual requested response. Only explicitly proposed gradual/immediate timing
+values receive a timing check. Each necessary judgment must pass .90. A qualified
+dimension is an experimental observation of that exact local dimension only; it
+does not make the whole binding eligible, admit a legacy leaf, or authorize claims
+about adoption, uptake or a complete doctrine. Old combined judgments and original
+outputs remain unchanged. The dimension result and each receipt are checked again
+on reuse; hand-authored replacement values cannot enter through this path.

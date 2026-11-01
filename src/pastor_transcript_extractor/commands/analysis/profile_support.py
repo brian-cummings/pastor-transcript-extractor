@@ -29,11 +29,11 @@ def section_source(plan:Path=typer.Option(...,'--plan'),batch:str=typer.Option(.
 
 
 @app.command('section-continue-prepare')
-def section_continue_prepare(plan:Path=typer.Option(...,'--plan'),source_window:list[str]=typer.Option([],'--source-window'),source_reasoning:bool=typer.Option(False,'--source-reasoning'),logical_condition_scopes:bool=typer.Option(False,'--logical-condition-scopes'),reuse_materialized:bool=typer.Option(False,'--reuse-materialized'),literal_materialized:bool=typer.Option(False,'--literal-materialized'),field_local_criteria:bool=typer.Option(False,'--field-local-criteria')):
+def section_continue_prepare(plan:Path=typer.Option(...,'--plan'),source_window:list[str]=typer.Option([],'--source-window'),source_reasoning:bool=typer.Option(False,'--source-reasoning'),logical_condition_scopes:bool=typer.Option(False,'--logical-condition-scopes'),reuse_materialized:bool=typer.Option(False,'--reuse-materialized'),literal_materialized:bool=typer.Option(False,'--literal-materialized'),field_local_criteria:bool=typer.Option(False,'--field-local-criteria'),dimension_checks:bool=typer.Option(False,'--dimension-checks')):
     """Freeze a continuation within the original allowance; reuse unchanged source requests."""
     from ... import profile_section as section
     try:typer.echo(json.dumps(section.prepare_continuation(plan,source_window,source_reasoning=source_reasoning,
-        logical_condition_scopes=logical_condition_scopes,reuse_materialized=reuse_materialized,literal_materialized=literal_materialized,field_local_criteria=field_local_criteria),indent=2))
+        logical_condition_scopes=logical_condition_scopes,reuse_materialized=reuse_materialized,literal_materialized=literal_materialized,field_local_criteria=field_local_criteria,dimension_checks=dimension_checks),indent=2))
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
 
 
@@ -82,6 +82,24 @@ def section_analysis_prepare(plan:Path=typer.Option(...,'--plan')):
     """Freeze instant analysis from admitted structured relationships; no source extraction."""
     from ... import profile_section as section
     try:typer.echo(json.dumps(section.prepare_analysis(plan),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('section-dimensions-prepare')
+def section_dimensions_prepare(plan:Path=typer.Option(...,'--plan')):
+    """Freeze independent checks of already generated response and growth values."""
+    from ... import profile_section as section
+    try:typer.echo(json.dumps(section.prepare_dimensions(plan),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('section-dimensions')
+def section_dimensions(plan:Path=typer.Option(...,'--plan'),batch:str=typer.Option(...,'--batch'),approve_input:str=typer.Option(...,'--approve-input')):
+    """Qualify exact upstream dimension values; no retries or complete-binding admission."""
+    from ... import profile_section as section
+    try:
+        result=section.run_dimensions(plan,batch,approve_input)
+        typer.echo(json.dumps({k:v for k,v in result.items() if k!='findings'},indent=2))
     except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
 
 
