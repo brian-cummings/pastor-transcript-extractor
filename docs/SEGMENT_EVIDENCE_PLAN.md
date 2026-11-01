@@ -1,5 +1,7 @@
 # Current plan: segment evidence first, illustrative quotations last
 
+**Foundational policy, status clarified 2026-11-01.** Segment evidence first and illustrative quotations last remain applicable. The dated “where we are” and execution scope below are historical. Current automatic-analysis/benchmark goals and next actions are in the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) and [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md). This policy does not reopen quotation execution.
+
 **Brian's current direction, 2026-10-19.** Use the existing nominal minute pipeline for analysis. Accumulate supported segment-level observations before selecting quotations. Exact-quotation extraction is a presentation task, not an upstream prerequisite for every observation or profile field. This document supersedes the active sequencing recommendations in the exact-span proposals listed in the [retirement registry](review-proposals/segment-evidence-plan-v1/plan-v1.json); their historical artifacts and decisions remain intact.
 
 ## Pipeline order

@@ -1,5 +1,7 @@
 # Profile analysis support
 
+**Status alignment, 2026-11-01:** this is an implemented support-contract/workflow reference. Follow the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) and [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for current goals. Automatic useful analysis is partially met; model support and the narrow section PASS do not establish semantic acceptance or dimensional benchmark readiness. Earlier validation instructions below are scoped history, not a new execution queue.
+
 The penultimate stage consumes an already assembled profile and produces the
 support record consumed by final document assembly. It is not a new sermon
 extractor or a replacement for category/leaf analysis. The shared implementation
@@ -33,7 +35,7 @@ correction tier retains the exact initial prefix, rejected answer and diagnostic
 with one correction only and all costs reserved before execution. These are
 source-side contracts; end-stage Qwen may not repair missing distinctions.
 
-## Active implementation sequence
+## Implemented support sequence and historical validation preparation
 
 1. **Shared evidence/claim boundary and document handoff — implemented.** Enumerate
    every reader claim, validate exact source, measurement, question/model, sample

@@ -1,5 +1,7 @@
 # Paired product and implementation plans
 
+**Historical documentation-replacement review, superseded as next-step guidance on 2026-11-01.** The milestones and “not yet implemented” CLI status below describe this review’s original date. The active [product plan](../../PASTOR_PROFILE_PRODUCT_PLAN.md), [implementation plan](../../PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) and [registry v32](plan-v32.json) now define partial automatic-analysis acceptance and the dimensional benchmark objective. Preserve earlier sealed registries unchanged.
+
 **Completed Brian's requested documentation replacement.** The active pair is:
 
 - [Product plan](../../PASTOR_PROFILE_PRODUCT_PLAN.md): reader experience, analytical meanings and evidence boundaries.

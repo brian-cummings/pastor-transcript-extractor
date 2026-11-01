@@ -7,11 +7,12 @@ from pastor_transcript_extractor import segment_evidence_plan as p
 class SegmentPlanTests(unittest.TestCase):
     def test_plan_is_read_only_and_quotes_are_last(self):
         plan,_=p.verify()
-        self.assertEqual('V8_PRESERVED_P1_DELIVERED_READER_ACCEPTANCE_PENDING',plan['status'])
+        self.assertEqual('AUTOMATIC_ANALYSIS_PARTIAL_DIMENSIONAL_BENCHMARK_GOAL_NOT_ACHIEVED',plan['status'])
         self.assertEqual('gap_code_map_delivered_remedies_conditional',plan['milestone_status']['4'])
         self.assertFalse(plan['source_review_pilot']['automatic_binding'])
         self.assertTrue(plan['historical_capability_decision']['pilot_execution'])
-        self.assertEqual('pastor-profile-description-v8',plan['current_delivery'])
+        self.assertEqual('profile-section-v1_bounded_discussion_analysis',plan['current_delivery'])
+        self.assertEqual('pastor-profile-description-v8',plan['historical_review_delivery'])
         self.assertEqual(['R1','R3','R4'],plan['profile_reuse_increment']['main_path'])
         self.assertTrue(plan['verification']['feature_increment_executed'])
         self.assertEqual(10,plan['bounded_delivery']['reviewed_local_proposals'])
@@ -64,6 +65,22 @@ class SegmentPlanTests(unittest.TestCase):
                 with patch.object(p.trace,'read',return_value=changed):
                     with self.assertRaisesRegex(ValueError,'Reuse-first'):
                         p.verify()
+
+    def test_historical_pass_cannot_become_product_or_benchmark_acceptance(self):
+        from copy import deepcopy
+        plan,_=p.verify()
+        self.assertEqual('complete',plan['automatic_section_delivery']['goal_tool_status'])
+        self.assertEqual('partial',plan['product_goal']['automatic_analysis_acceptance'])
+        for group,field,value in (
+                ('product_goal','goal_tool_closure_is_full_product_acceptance',True),
+                ('product_goal','broad_dimensional_benchmark_validated',True),
+                ('product_goal','unknown_is_not_zero',False),
+                ('automatic_section_delivery','eligible_complete_bindings',12),
+                ('automatic_section_delivery','remaining_credit_is_new_experiment_authorization',True)):
+            changed=deepcopy(plan);changed[group][field]=value
+            with self.subTest(field=field),patch.object(p.trace,'read',return_value=changed):
+                with self.assertRaisesRegex(ValueError,'Product acceptance'):
+                    p.verify()
 
     def test_description_revision_keeps_evidence_and_execution_boundaries(self):
         from copy import deepcopy
@@ -124,7 +141,7 @@ class SegmentPlanTests(unittest.TestCase):
         from copy import deepcopy
         plan,_=p.verify()
         self.assertEqual('complete',plan['implementation_goal']['status'])
-        self.assertEqual(5,len(plan['documentation_cleanup']['archives']))
+        self.assertEqual(9,len(plan['documentation_cleanup']['archives']))
         for field,value in (('execution_authorized',False),('implemented',False),('provider_requests',1),
                 ('max_additional_profiles',2),('cached_evidence_only',False),
                 ('manual_interpretation_disclosure',False),('profile_318_wording_transplant',True)):
@@ -142,7 +159,7 @@ class SegmentPlanTests(unittest.TestCase):
             else:changed['documentation_cleanup']['active_docs']['docs/PASTOR_PROFILE_DESCRIPTION.md']='changed'
             original=p.trace.read
             def read(path,sealed=False):
-                return changed if path.name=='plan-v31.json' else original(path,sealed)
+                return changed if path.name=='plan-v32.json' else original(path,sealed)
             with self.subTest(field=field),patch.object(p.trace,'read',side_effect=read):
                 with self.assertRaisesRegex(ValueError,'documentation'):
                     p.verify()

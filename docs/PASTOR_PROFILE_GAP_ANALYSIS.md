@@ -1,5 +1,7 @@
 # Desired PastorProfile and measurement gap analysis V1
 
+**Historical design/gap record; not the current execution plan (2026-11-01).** Opening G1/G2/G3 approvals, pending choices and holds below describe their original scope. Current goals, acceptance and next checkpoint are in the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) and [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md). Existing meanings and historical decisions remain preserved; do not resume the old queue from this page.
+
 Status: **C01–C20 and D01–D06 approved as design direction** by Brian. The next
 G1 design is approved and implementation/expansion are explicitly on hold.
 [G2/G3 contract designs](review-proposals/g2-g3-v1/REVIEW.md) are now approved

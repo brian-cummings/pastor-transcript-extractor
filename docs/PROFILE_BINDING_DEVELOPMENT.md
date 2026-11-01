@@ -1,6 +1,6 @@
 # Automatic generic proposition binding: bounded development workflow
 
-> **Roadmap correction, 2026-10-20:** preserved experimental results. Their extractor/model follow-up recommendations are superseded by the [reuse-first implementation sequence](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md#active-work-sequence). No new variant, prompt/model change or provider run follows from this report. Use existing category-leaf evidence and put a demonstrated semantic gap at its responsible upstream producer.
+> **Roadmap correction, 2026-10-20:** preserved experimental results. Their extractor/model follow-up recommendations are superseded by the [reuse-first implementation sequence](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md). No new variant, prompt/model change or provider run follows from this report. Use existing category-leaf evidence and put a demonstrated semantic gap at its responsible upstream producer.
 
 **Current result, 2026-10-20: V2 executed by Brian and semantically compared by Codex. Decision: do not expand validation or run another menu/cutoff-tuning iteration.** The same three passages produced 35 structurally valid candidates in 39 provider requests (zero cache hits), using 503,108 input and 65,691 output tokens. A monetary cost was not returned. All subsequent comparison, verification and report formatting used caches with provider construction blocked; Brian's original invocation receipt remains unchanged.
 

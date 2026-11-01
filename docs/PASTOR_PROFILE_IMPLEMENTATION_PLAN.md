@@ -1,103 +1,90 @@
 # Pastor profile implementation plan
 
-**Current as of 2026-10-23.** The [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) defines the reader experience; this document is the active engineering sequence. [AGENTS.md](../AGENTS.md#reuse-and-responsibility-in-the-evidence-pipeline) governs evidence reuse and insertion points.
+**Current authority: 2026-11-01.** Engineering companion to the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). Start with the [handoff](HANDOFF.md) and [status index](review-proposals/README.md). Only the documentation/status alignment is active in this request; the sequence below is the prioritized path, not automatic execution of all phases.
 
-## Delivered baseline and closed implementation goal
+## Current baseline and acceptance correction
 
-**V8 is the current generated review profile.** Profile 318 uses recordings 3973 / 281 / 4589. The original milestones 1–3 and D1–D4 are implemented; subsequent refinements through D7 delivered a meaningful opening portrait. The old D1–D4 goal was marked **complete** on 2026-10-23. Brian’s “looking much better” feedback is recorded, while concrete wording acceptance and production admission remain separate.
+The historical D1–D4 goal and P1 portability case are closed implementation milestones. The later automatic-section goal was also marked complete in the goal tool. **That closure overstated product acceptance:** the bounded handoff works, but useful automatic analysis is only partially met. Do not reopen a closed source experiment or infer general validation from its status string.
 
-| Deliverable | Current state |
+- V8/profile 318 and P1/profile 130 remain reproducible reviewed examples with disclosed manual descriptions/warrants. Their unchanged default behavior is a regression requirement.
+- The automatic section for 318/281/3973/4589 emits six discussion-level clauses. Only one independently qualified growth-timing dimension passes (.93); 12 complete experimental bindings and 12 specific response descriptions remain withheld. A receiving/growth co-presence interpretation has explicit limits and parent dependencies.
+- Relationship reuse found 126 compatible local rows, 29 positive, across the same 30 blocks. Positive discussion membership is not an adopted position, recurrence rate or comparison score. Three quarantined legacy leaves remain quarantined.
+- The saved assessment's `PASS_BOUNDED_DISCUSSION_ANALYSIS` accepts the narrow slice, not full original usefulness or benchmark readiness. The ordinary support status remains inconclusive for full-profile fidelity/coverage.
+- 86 focused tests passed for the delivered integration. This is functional/contract evidence, not independent semantic or population validation.
+- Existing Scripture-use benchmark panels, snapshots and distance calculations are implemented. Broader theological/pastoral dimensional comparison has not been demonstrated. Reuse this code and its missingness/lineage contracts before proposing another comparison system.
+
+Final frozen plan: `evaluation/profile-section-v1/continuations/0c9338eeab7a21e0e2385478e2357ac69bdae57f632c5fa946f6157c89326980/plan.json` beneath the configured base. [Section delivery](PROFILE_SECTION_DELIVERY.md) documents the implemented workflow; base `evaluation/profile-section-v1/DELIVERY_318.md` and `.json` link immutable outputs, source review, clause trace, gaps and costs.
+
+## Existing components and ownership
+
+| Component | Responsibility and limit |
 |---|---|
-| Opening assessment and at-a-glance | Delivered in V8, with seven authored provisional interpretations. |
-| Evidence-to-description assembly and source navigation | Delivered; fourteen reviewed descriptions, 29 underlying reader descriptions and seven interpretive additions. |
-| Supporting examples | Same 53 original selected example sets; interpretation uses the reviewed-point ledger rather than independently selecting measured examples. |
-| Consequential-gap map | Delivered; eight gaps remain visible. Remedies are conditional on actual reuse and authorization. |
-| General profile generator | Not demonstrated. Profile 318’s authored interpretations are example-specific. |
-| Original goal | Complete. The separately authorized P1 case is now delivered; reader acceptance remains pending. |
+| Existing category-leaf/shared binding producer; `response_growth_binding.py` | Local proposition/response, conditions, voice/adoption, polarity and growth distinctions. Independent dimension eligibility grants authority only for that field. |
+| `profile_description.py`, `profile_section_measurements.py` | Compatible materialized observation reuse and scoped literal discussion findings. Materialized-only path excludes authored reading/prose hooks. |
+| `profile_section.py` | Frozen source/dimension proof reconstruction, aggregation, hypotheses, support inputs, dependency gates and final-document handoff. No late theological repair. |
+| `profile_analysis_support.py` / execution adapter | Existing instant Qwen support role, exact evidence, durable reservations/receipts and abstention. Model approval does not establish entailment; prior false acceptances remain failures. |
+| V8/P1 presentation and authored portrait components | Reproduce historical reviewed examples; authored warrants remain disclosed and are not the automatic section's runtime inputs. |
+| Existing reference-panel/snapshot/comparison modules | Scripture-use feature geometry, reviewed membership, exact input lineage, missingness and descriptive differences. See [benchmark workflow](reference-benchmarking.md); do not extend its authority by relabeling fields. |
 
-V8’s description fingerprint is `0b6f4d0cedaf64a0f4cfc2958c3101e8605823c5090e845a43fcbea2daed8545`; manifest `b1f0bd2b0830157196e722586daaed08aca87c84bc0fbc949d758685c2b928a5`. The 163-word opening and `portrait-review-v1.md/json` are saved under the app base in `evaluation/pastor-profile-description-v8/<manifest>/`. Review fingerprint: `48fb5acf6eefa9413158408977be65f09bb12a0d07b6032e97f240e9e490fe28`.
+## Delivery order and current authorization
 
-Generation/review made zero provider requests, metadata probes and database writes. Raw observations, original claims, bindings, fourteen explanatory points, examples and gaps match V7; original reader content/evidence is unchanged apart from version tags. Source/implementation hashes, seals and links pass. Latest focused checks: 123 profile tests and 8 plan tests. No visual browser layout review was performed. Implementation commits: `a90e213`, `a19078f`.
+### 1. Qualify one useful upstream distinction — next checkpoint
 
-## Existing path and responsibilities
+Concrete blocked statement: **what response does this selected passage request or describe, with which attached conditions, qualifications, voice and polarity?** The reader should get more than a statement that faith and growth are discussed.
 
-Processing order: **compatible category/leaf evidence → reviewed local meanings → recording/sample aggregation → reviewed portrait interpretation → supporting source blocks → optional held quotation**.
+Inspected reuse: compatible local relationship observations were reused; all existing 12 generated response descriptions and combined bindings were checked; independent dimension verification found no eligible specific response description. One candidate had response presence .92 but description correctness .84. Presence alone cannot qualify it, and uncertainty is not proof the description is wrong. The qualified growth example does not repair this gap. Historical G1/G2/G3 stores not established as exhausted remain specific compatibility questions, not grounds for another global inventory.
 
-| Existing component | Responsibility |
-|---|---|
-| `profile_description.load/build` | Read eligible compatible saved evidence and retain source, measurement and missing-state provenance. |
-| `profile_explanatory_descriptions` | Assemble exact reviewed style examples/local bindings, with voice, adoption, qualifications and proposal status. |
-| `profile_presentation` and authored editorial inputs | Present descriptions, local accounts, concise table entries and evidence disclosures. Exact-point digests guard authored wording. |
-| `profile_portrait` and `profile-portrait-authored-v1.json` | Seven authored cross-point warrants, limits and alternatives. Changed support withholds dependent interpretation. Hashes verify compatibility, not truth. |
-| `profile_supporting_blocks` | Reuse eligible full-block examples for established point records. Portrait interpretations trace through those records. |
-| Existing category-leaf/shared binding producer | Own missing support/refutation, speaker/adoption, conditions and related local semantic distinctions. The portrait cannot supply them. |
+Responsible insertion point: the existing category-leaf/shared response-growth binding producer. Smallest proposed change: resolve one demonstrated loss of response/attached restriction using compatible existing constituents and a narrow producer correction, retaining original outputs and frozen .90 gates. Specify the exact failure and contract change before any new call; do not retry valid uncertainty for agreement or start another menu of variants.
 
-The default workflow remains profile 318/V8. The bounded selector below adds exactly one prepared case through the same assembly, leaf-reuse inspection, reviewed-point validation, portrait-warrant validator, supporting-block selection and HTML/Markdown reader. It does not enable arbitrary-profile selection.
+Prepared deliverables: exact target statement, constituent reuse outcome, versioned smallest change if necessary, focused contract/metamorphic/stubbed tests and Markdown/JSON acceptance packet with exact CLI input. Codex prepares and interprets; Brian need not select passages, author JSON or annotate an open-ended corpus.
 
-## Completed P1: one cached second-profile portability case
+Exit: a self-contained qualified observation that preserves meaning, or an unchanged-output failure report identifying the smallest blocker. Any dataset validation command goes to Brian unless a specific applicable execution authorization covers it. No new paid run is frozen by this plan; earlier same-goal authorization/remaining credit is preserved in the product plan, not silently reset or expanded.
 
-**Status: delivered and artifact-reviewed, 2026-10-23; Brian reader acceptance pending.** Brian explicitly authorized Codex to select, prepare and execute this provider-free case. P1 stops here; no third case or upstream semantic experiment is active.
+### 2. Deliver useful automatic individual analysis
 
-### P1.1 Prepared case and reuse
+Consume qualified distinctions through the existing aggregation/support/document workflow. Explain the selected sample's response, growth and supported reassurance/challenge, with variation, contrary evidence, warrants, unknowns and source links. No pastor-specific authored bridges or raw-transcript theological repair. Preserve the main-question false-acceptance regression and assess unchanged prose separately from model approval.
 
-Profile **130**, recordings **1037 / 350 / 4430**, was selected from the existing twelve-source inventory by remaining eligible-block coverage after excluding 318. Current reviewed ownership, eligible canonical sources, topic question/model identities, treatment targets, salvation routing/policy and frozen observation thresholds pass. The other twelve effective profile members are outside this sample.
+Exit: semantic acceptance of reader usefulness and fidelity against the product criteria, plus mechanical/CLI checks. Category membership alone is insufficient. A development pass remains sample-scoped.
 
-The existing assembler reuses 154 topic blocks, 154 treatment blocks and 47 routed salvation blocks. Independent exact-path checks also find **36 saved answers / 220 raw leaf observations** across nine listener/public-life/source-material packs on four blocks of recording 4430, including individual/refinement forms. Same-question dependence, original question meaning, request provenance and unadmitted status remain in the ledger. Full-pack absence was not treated as constituent absence. Exact-current Scripture runs are unavailable for all three recordings. The curated reviewed binding packet fails exact source/inventory/membership compatibility and supplies zero bindings; no remapping is attempted. Other G1/G2/G3 result stores were not inventoried, and global absence is not asserted.
+### 3. Validate a shared dimension and aggregate
 
-### P1.2 Narrow CLI integration
+Begin with one reader-relevant dimension supported by qualified observations, not a broad score inventory. Reuse existing leaf meanings and the Scripture-use benchmark contracts where compatible. Freeze target meaning, representation, opportunities/denominator, sample aggregation, dependence, missingness, uncertainty and eligibility before scoring.
 
-`profile_portability.py` pins profile 130 and its three prepared recording IDs. The existing inventory builder can read only those IDs and fails if any becomes incompatible or changes ownership. `pte analysis structure-readiness --segment-view --description --profile-id 130` uses that path; other explicit IDs fail. Omit the selector for unchanged profile 318. No collector, provider, cache refill, new semantic contract or production projection was added.
+Exit: traceable values whose meaning and stability are checked on independently selected material, with explicit abstention and sample-sensitivity results. The six exposed windows cannot supply independent confirmation. Exact bounded validation requires prepared inputs and appropriate authorization; no corpus job is released here.
 
-The source-controlled `data/profile-portability-130-v1.json` contains **four manually authored style descriptions and three cross-point interpretations**. The existing exact-source and full-point-digest guards withhold changed support. The opening connects a repertoire of textual comparison, contrasting accounts, anecdote and application; its possible benefit and review question remain explicitly interpretive. This is manual authoring by Codex pending Brian’s acceptance, not automatic discovery.
+### 4. Add benchmark comparison on validated dimensions
 
-The apparent adopted theological center and pastoral posture are visibly unknown. Authored style descriptions do not create proposition, voice, adoption, polarity, recipient or qualification bindings. Topic summaries retain attention-only meaning. Missing/below-threshold/unrouted/unresolved states remain distinct.
+Use reviewed reference membership and immutable snapshots. Require candidate/reference contract compatibility and adequate comparable samples. Report per-dimension differences; only add aggregate distance when normalization, weights, missingness and family balance are justified. Explain the largest contributors and evidence. Reuse existing comparison machinery rather than building a parallel pipeline.
 
-### P1.3 Delivered artifacts and review
+Exit: independent semantic review of supported differences, sample/weight sensitivity, explicit uncertainty and abstention. Distances are not probabilities, quality rankings, theological identity or church fit. Existing Scripture-use comparisons remain limited to their current meanings.
+
+## Other consequential gaps
+
+| Blocked statement | Inspected outcome / exact missing information | Owner, smallest remedy, acceptance and boundary |
+|---|---|---|
+| Pastor adopts a complete theological position | All 12 combined experimental bindings fail full eligibility; partial fields do not supply complete voice/adoption/polarity/qualification proof. | Existing leaf/shared binding; qualify one complete proposition unchanged at current gates. No promotion from dimension-only proof or legacy admission. |
+| Reassurance and challenge have a particular relationship | No nonempty pastoral-address inventory qualified; an empty address inventory passing a field check is not positive evidence. | Existing address/shared producer; qualify a local act/recipient/frame before sample interpretation. No posture inferred from topic or invitations alone. |
+| Growth timing elsewhere follows the same pattern | Other proposed timing judgments .32 and .89 remain withheld; one .93 example is local. | Existing producer and coverage policy; reuse exact local findings and leave other timing unknown. No threshold change or extrapolation. |
+| A trait is frequent, dominant, representative or stable | Six selected windows are saturated development material; no representative denominator or untouched confirmation. | Sampling/aggregation contract; define opportunities and a bounded independent check. Missing sampling is not automatically another detector. No broad run here. |
+| Legacy obedience/repentance leaves support scores | Three leaves remain quarantined: obedience-as-condition/means, obedience-as-consequence/evidence, repentance-as-receiving-response. | Existing admission process only; experimental dimensions cannot impersonate them. No quarantine change. |
+| Invitations demonstrate uptake, outcomes or a causal doctrine | Co-presence and described invitation contain no such observations/warrants. | Upstream evidence owner if evidence exists; otherwise explicit unknown. No end-stage causal bridge or invented new outcome measurement. |
+
+## Inspection and verification
+
+Regenerate and search the consolidated CLI catalog before looking up options, as AGENTS.md requires. Current provider-free status check:
 
 ```bash
-pte analysis structure-readiness --segment-view --description --profile-id 130 --json
-pte analysis structure-readiness --segment-view --description --profile-id 130 --check-only --json
-```
-
-Final artifacts are under the configured app base in:
-
-`evaluation/pastor-profile-portability-p1/b71806632436ea3eff9f5df37d10edd3ca232ca2875ea7de76d79673efe97a67/`
-
-- `index.html`, `profile-p1.md`, `description-p1.json`: actual readable profile, evidence, exact source identities and authoring ledger.
-- `review-p1.md/json`: automatic reuse, manual interpretation and consequential gaps.
-- `consequential-gaps-p1.md/json`: compact gap table plus full inspected paths, missing fields, producer, smallest remedy, acceptance and authorization boundaries.
-- `artifact-review-p1.md/json`: saved artifact and manual warrant review. Fingerprint `ec6b65a03804628ee74f670026c83a92bd38c415b3cb89f905e49566ea79feb9`.
-
-Description fingerprint: `f33f0ab5d9eff2144f129986aa89fa9b008b4138b3908a76d061e00f1a778e40`.
-
-The case has 20 reader claims, four explanatory points, three portrait interpretations and 34 selected full-block example sets. Artifact checks pass for seals, current source/implementation hashes, claim-to-observation links, exact interpretation supports, 2,090 unique HTML targets and 1,297 internal links, plus Markdown navigation. Manual review confirms the warrants stay within the reviewed style meanings. No browser layout inspection was performed. An initial render exposed fallback machine topic labels; one display-label/grammar and gap-summary repair was rendered for this same case. Both immutable artifact directories remain preserved; original observations, style points and portrait warrants match exactly between them. No new evidence generation or experiment followed.
-
-Profile 318 still resolves to V8 description fingerprint `0b6f4d0cedaf64a0f4cfc2958c3101e8605823c5090e845a43fcbea2daed8545`; its original manifest and artifacts are unchanged. Focused verification: 29 profile/inventory/portability tests and 10 plan tests; no corpus evaluation. Implementation commits: `32ec7c0`, `9e547cf`.
-
-### P1.4 Consequential recommendation and exit
-
-Deliver this partial profile for Brian’s concrete review. Do not require a complete theological portrait to deliver supported style and emphasis. The highest-impact missing statement is an apparent adopted center: exact compatible local proposition/voice/adoption/conditions are absent from the supplied reviewed packet. The smallest conditional remedy is one bounded reading at the existing upstream theological/shared binding producer for a specific center-relevant proposition, reusing compatible saved evidence first. Pastoral posture similarly needs an act/recipient/voice/adoption binding; raw listener answers and application examples are insufficient. Neither remedy is authorized automatically, and other G1/G2/G3 stores remain an explicit uninspected reuse path before any new judgment.
-
-Sampling, dominant style, Scripture argument, accepted identity, comparison and short quotations retain their separate precise gaps and boundaries. Automatic assembly now works for this second bounded case, but useful local descriptions and cross-point warrants still require manual authoring. Two examples do not establish a general generator, independent validation, calibration or ministry-wide stability.
-
-**Exit met:** one actual second profile and its consequential-gap report. Stop after this case; Brian reviews the prepared result. No provider/model calls, new measurements, broader collection, production admission, ranking or quotation execution occurred.
-
-## Holds and closed branches
-
-The following remain held: new provider/model calls; new or broadened measurements; broader collection; production admission/activation; benchmark similarity/ranking; calibrated confidence and single pastor scores; ministry-wide stability; Ollama quotation execution. A quote illustrates a supported point and cannot repair missing analysis. The [segment/quotation policy](SEGMENT_EVIDENCE_PLAN.md) remains a foundational boundary, not a new execution queue.
-
-TypeSafe automatic binding V1/V2, connected extraction and S1 Ollama editorial synthesis are completed unsuccessful experiments. Preserve raw responses, usage and semantic reviews. V2 synthesis passed structure but failed semantic review; no automatic retry, smaller-schema loop, model switch or fallback is active. Historical “Keep V5” instructions described those runs’ immediate outcome; V8 is now the current review product. The [synthesis status page](PASTOR_PROFILE_SYNTHESIS.md) is diagnostic history, not an active writing workflow.
-
-## Current commands, ownership and history
-
-Reproduce profile 318 or inspect compatibility without writes:
-
-```bash
-pte analysis structure-readiness --segment-view --description --json
-pte analysis structure-readiness --segment-view --description --check-only --json
 pte analysis structure-readiness --segment-plan --json
 ```
 
-These default commands preserve profile 318. The explicit profile 130 commands above reproduce P1. Normally Brian executes dataset validation; a specific exception may authorize Codex, as it did for V6–V8. No standing permission for future model calls is inferred. All new workflows need a `pte` CLI tie-in, exact prepared inputs and Markdown/JSON review reports. Preserve unrelated working-tree changes and commit coherent work frequently.
+Inspect the saved automatic-section result without new inference:
 
-The [pre-portability implementation snapshot](PASTOR_PROFILE_IMPLEMENTATION_PLAN.historical-before-portability-2026-10-23.md) preserves the full prior roadmap and completed increments. [Historical documentation index](PASTOR_PROFILE_HISTORY.md) identifies the exact snapshots. Archived commands are not active instructions. No cached results, receipts, source evidence or prior profile output has been deleted.
+```bash
+pte analysis profile-support section-report --plan /Users/briancummings/Documents/PastorSearchData/evaluation/profile-section-v1/continuations/0c9338eeab7a21e0e2385478e2357ac69bdae57f632c5fa946f6157c89326980/plan.json --json
+```
+
+The exact saved plan is historical and can report compatibility limits after source changes; do not regenerate or pay to make a historical fingerprint current. Original artifacts remain authoritative evidence of that run. The status registry verifies current document hashes and historical snapshots. This request needs only focused plan/CLI checks and inexpensive static checks, not dataset evaluation.
+
+## History and holds
+
+[History index](PASTOR_PROFILE_HISTORY.md) links byte-preserved earlier plans and the old handoff. D1–D4/P1 completion is historical implementation scope only. No successor source run, automatic provider/model variant, new recordings, broad corpus jobs, production admission, quarantine change, quotation execution or calibrated overall score is authorized by this documentation update. Benchmark comparison is now a product objective; the original section's no-comparison boundary remains correct for that historical run.

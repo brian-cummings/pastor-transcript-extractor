@@ -1,5 +1,7 @@
 # Reference panels and benchmark snapshots
 
+**Scope clarification, 2026-11-01:** the implemented workflow below compares **Scripture-use measurements**. The [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) now also calls for validated theological/pastoral and other dimensional benchmark comparisons. Those broader dimensions are not established by this implementation. Reuse its compatible membership, snapshot, provenance and distance machinery; do not treat existing distances as overall pastor similarity. Commands below document capabilities, not approval for a new dataset run.
+
 Reference panels are reviewed analytical selections of speaker profiles. They are not
 attributes of pastors, sources, videos, or analyses: those records continue through the
 ordinary acquisition, identity, sermon-analysis, and profile-analysis pipelines. A

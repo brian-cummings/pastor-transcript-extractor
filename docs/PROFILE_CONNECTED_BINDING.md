@@ -1,6 +1,6 @@
 # Connected passage binding: bounded development workflow
 
-> **Roadmap correction, 2026-10-20:** preserved experimental results. Their extractor/model follow-up recommendations are superseded by the [reuse-first implementation sequence](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md#active-work-sequence). No new variant, prompt/model change or provider run follows from this report. Use existing category-leaf evidence and put a demonstrated semantic gap at its responsible upstream producer.
+> **Roadmap correction, 2026-10-20:** preserved experimental results. Their extractor/model follow-up recommendations are superseded by the [reuse-first implementation sequence](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md). No new variant, prompt/model change or provider run follows from this report. Use existing category-leaf evidence and put a demonstrated semantic gap at its responsible upstream producer.
 
 **2026-10-20: Brian executed the bounded run; Codex completed cache-only diagnostics and source inspection. Decision: stop this full-contract configuration; no rerun or broader validation recommended.** Three `gemma3:4b` requests and seven metadata reads produced 14 raw propositions and 29 raw frames, but all three passages were rejected before proposition validation. Zero usable bindings remain. Usage: 3,409 input and 7,407 output tokens. No additional generation or metadata call occurred during review.
 

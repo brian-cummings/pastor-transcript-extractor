@@ -1,5 +1,7 @@
 # One-window local thinking diagnostic
 
+**Historical bounded development workflow (status clarified 2026-11-01).** Recorded authorization, budgets, selected models and retry decisions apply to the runs described below. This is not the current goal/next-run queue. Follow the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md), [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) and [section delivery](PROFILE_SECTION_DELIVERY.md); preserve original receipts and do not replay old commands as a successor experiment.
+
 The reviewed runtime-repeat failed at two different boundaries: the first window
 was schema-valid but its proposition referenced an undefined evidence node, and
 the second window was still generating at roughly 13 tokens/second when the

@@ -1,6 +1,6 @@
 # Pastor Transcript Extractor
 
-Current product direction: [readable pastor profile, dimensions and linked evidence](docs/PASTOR_PROFILE_PRODUCT_PLAN.md). Engineering roadmap: [current implementation plan](docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md). Segment evidence comes first; illustrative quotations remain last. The exact-span nomination detour is closed; use the [current status registry](docs/review-proposals/README.md) rather than historical execution instructions.
+Current product direction (2026-11-01): [useful automatic pastor analysis and mathematical dimensional comparison with benchmark pastors](docs/PASTOR_PROFILE_PRODUCT_PLAN.md). Automatic analysis is partially delivered; broader dimensional comparison remains a goal. Start with the [current handoff](docs/HANDOFF.md). Engineering roadmap: [current implementation plan](docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md). Segment evidence comes first; illustrative quotations remain last. The exact-span nomination detour is closed; use the [current status registry](docs/review-proposals/README.md) rather than historical execution instructions.
 
 Generated evaluation artifacts and full source-backed review evidence belong under
 `<base-dir>/evaluation/`; authored fixtures, contracts, policies and implementation

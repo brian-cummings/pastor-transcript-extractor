@@ -1,5 +1,7 @@
 # Bounded DeepInfra source check
 
+**Historical bounded development workflow (status clarified 2026-11-01).** Recorded authorization, budgets, selected models and retry decisions apply to the runs described below. This is not the current goal/next-run queue. Follow the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md), [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) and [section delivery](PROFILE_SECTION_DELIVERY.md); preserve original receipts and do not replay old commands as a successor experiment.
+
 Brian authorized wiring one hosted DeepSeek V4 Pro check after the preserved local
 thinking attempt exhausted 4,096 output tokens without a final answer. This slice
 tests the feasibility of the same complete source window and two-claim qualified

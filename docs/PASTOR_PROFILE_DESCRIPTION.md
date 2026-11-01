@@ -1,6 +1,6 @@
 # Pastor profile: current workflow
 
-**Current as of 2026-10-23: V8 is the generated review profile for profile 318.** The [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) defines the experience; the [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) defines completed work and the delivered P1 portability case.
+**Workflow scope, 2026-11-01:** this page reproduces the historical V8/profile 318 and P1/profile 130 reviewed examples, with authored inputs disclosed. They remain available; they are not the current automatic-analysis goal or proof of general generation. Use the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md), [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) and [automatic-section workflow](PROFILE_SECTION_DELIVERY.md) for current status.
 
 ## Reproduce the current example
 

@@ -6,12 +6,12 @@ OLD_SELECTION_INPUT='19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceab
 
 
 def verify():
-    plan=trace.read(HERE/'plan-v31.json',True)
-    if (plan['version']!='pastor-profile-product-and-implementation-status-v31'
+    plan=trace.read(HERE/'plan-v32.json',True)
+    if (plan['version']!='pastor-profile-product-and-implementation-status-v32'
             or plan['analytical_families']!=['preaching_style','theological_emphasis','theological_orientation','pastoral_rhetorical_orientation']
             or any(plan[k] for k in ('model_probability_is_pastor_score','benchmark_percentages_authorized','single_pastor_score_proposed','draft_is_measurement_ground_truth'))
             or plan['high_labels_require_explicit_rules'] is not True
-            or plan['status']!='V8_PRESERVED_P1_DELIVERED_READER_ACCEPTANCE_PENDING' or plan['exact_span_extraction_required_upstream'] is not False
+            or plan['status']!='AUTOMATIC_ANALYSIS_PARTIAL_DIMENSIONAL_BENCHMARK_GOAL_NOT_ACHIEVED' or plan['exact_span_extraction_required_upstream'] is not False
             or plan['pipeline_order']!=['existing_segment_observations','supported_evidence_accumulation','bounded_profile_review','reviewed_portrait_interpretation','strongest_supporting_segment','optional_Ollama_illustrative_quote']
             or plan['quote_context']!=['preceding_segment','center_segment','following_segment']
             or plan['quote_anchor']!='substantive_content_in_center'
@@ -19,6 +19,23 @@ def verify():
             or plan['quotes_change_measurements'] is not False
             or any(plan[k] for k in ('provider_execution','new_collection','new_projection_scoring','quote_implementation'))):
         raise ValueError('Current segment/quotation planning scope differs')
+    product=plan['product_goal']
+    section=plan['automatic_section_delivery']
+    if (product['status']!='not_achieved'
+            or product['automatic_analysis_acceptance']!='partial'
+            or product['broad_dimensional_benchmark_validated']
+            or product['goal_tool_closure_is_full_product_acceptance']
+            or not all(product[k] for k in ('existing_scripture_use_benchmark_implemented',
+                'no_model_probability_as_pastor_score','unknown_is_not_zero',
+                'reuse_existing_benchmark_machinery','sampling_confirmation_independent_of_exposed_windows',
+                'no_new_paid_or_dataset_run_frozen_by_documentation_update'))
+            or not section['closure_overstated_product_acceptance']
+            or section['eligible_complete_bindings']!=0
+            or section['eligible_specific_response_descriptions']!=0
+            or section['qualified_growth_dimensions']!=1
+            or any(section[k] for k in ('general_generator_validated','independent_holdout',
+                'production_admission','quarantine_changed','remaining_credit_is_new_experiment_authorization'))):
+        raise ValueError('Product acceptance and dimensional benchmark readiness differ')
     goal=plan['implementation_goal']
     if (goal['status']!='complete' or not goal['implementation_scope_complete']
             or any(goal[k] for k in ('formal_reader_acceptance','general_generator_validated','new_goal_created'))):

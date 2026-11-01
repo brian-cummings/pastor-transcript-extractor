@@ -1,60 +1,53 @@
 # Pastor profile product plan
 
-**Current as of 2026-10-23.** The [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) is the engineering companion. Together these are the authoritative active plans. [AGENTS.md](../AGENTS.md#reuse-and-responsibility-in-the-evidence-pipeline) defines reuse and producer responsibility.
+**Current authority: 2026-11-01.** Read with the [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md), [current handoff](HANDOFF.md) and [status index](review-proposals/README.md). These replace earlier next-step instructions. [AGENTS.md](../AGENTS.md) governs evidence reuse and producer responsibility. The historical goal-tool closure and bounded pilot PASS do not mean the product goal has been achieved.
 
-## Current product and acceptance
+## Goal and present position
 
-V8 delivers a readable, provisional portrait for profile **318**, using recordings **3973, 281 and 4589**. Its opening interprets the reviewed material into an apparent theological center, preaching approach, pastoral posture, noticeable sample emphasis, potential strength and a question for further examination. The at-a-glance table, recording accounts, reasoning, original observations and full source segments remain underneath.
+Deliver useful, automatically assembled, source-grounded pastor analysis **and mathematical comparison across explicit dimensions with benchmark pastors**. The same qualified upstream evidence should support the readable explanation and the numerical comparison. Show what a pastor teaches, how the sample develops and addresses it, what remains unknown, and which supported dimensions account for similarities and differences.
 
-Brian’s latest feedback is “This is looking much better.” The D1–D4 implementation goal is complete and has been superseded by the delivered refinements through V8. That closes the implementation objective, not human acceptance of every interpretation, production admission or validation of a general profile generator.
+**Status: early working prototype; original useful automatic-analysis goal partially met; broader dimensional benchmark goal not achieved.** No credible completion percentage or delivery estimate has been established.
 
-V8 is a **reviewed example**, with seven authored interpretations tied to fourteen exact reviewed descriptions. It is not proof that the system can automatically discover or compose an equally useful portrait for another pastor. The ten detailed theological readings came from assurance-focused development; their selection can bias the apparent center. “Center” currently means an interpretive thread in the reviewed material, not measured predominance across sermons or a ministry.
+| Capability | Evidence of progress | Remaining acceptance gap |
+|---|---|---|
+| Evidence and assembly infrastructure | Compatible saved evidence, source coordinates, provenance, caching, dependency checks, bounded spending, CLI and final-document handoff work in bounded cases. | Technical execution does not establish semantic fidelity or useful pastor-level analysis. |
+| Reviewed readable examples | V8/profile 318 and P1/profile 130 are delivered review examples. | V8 includes seven authored interpretations; P1 includes four authored descriptions and three authored interpretations. These do not demonstrate automatic discovery. |
+| Automatic section | Profile 318, recordings 281/3973/4589: six discussion-level clauses, 126 reused local relationship rows (29 positive), one qualified growth-timing finding and a limited co-presence interpretation. | All 12 complete experimental bindings and all 12 proposed specific response descriptions remain withheld. Much of the section is broad discussion membership. Response conditions, adopted theology and reassurance/challenge relationships are unresolved. |
+| Existing mathematical benchmark | Immutable reviewed reference panels, Scripture-use feature snapshots and descriptive distance comparisons are implemented; see [benchmark workflow](reference-benchmarking.md). | This is a narrower Scripture-use space. It does not validate theological, pastoral or overall preaching similarity; meaningful broader geometry and sample stability remain unestablished. |
+| Generalization | Source-linked development outputs and focused integration checks exist. | The six windows are exposed development material. No untouched holdout or validated general automatic profile generator has been demonstrated. |
+
+## Acceptance for useful automatic analysis
+
+1. Produce a concise, substantive explanation of the declared sermon sample, beyond category labels, definitions or citations. The first bounded subject is salvation, personal receiving response and spiritual growth, including reassurance/challenge where supported.
+2. Require no human-authored pastor readings, portrait prose or pastor-specific connective warrants at runtime. Generic contracts/templates are allowed. Evaluation readings cannot become runtime evidence.
+3. Reuse compatible saved observations, individual leaf/refinement/composed answers and reviewed bindings first. Check source/context, meaning, model/provenance, eligibility and policy; a whole-pack miss is not global absence.
+4. Capture requested/described response, attached conditions/qualifications, gradual growth versus immediate perfection, voiced speaker, preacher adoption and proposition polarity at the existing responsible leaf/shared producer. End-stage prose consumes these distinctions.
+5. Preserve source coordinates, evidence/premise IDs, scope, attribution, polarity, meaning-changing qualifications and counterevidence through aggregation and into the readable section.
+6. Give interpretations explicit warrants, alternatives, defeaters and dependencies. Priority, dominance, frequency and causal claims need specific warrants. Co-presence alone establishes none of them.
+7. Expose omissions, unsupported dimensions and coverage limits. Topic attention is not belief; invitation is not listener uptake; local speech is not a stable temperament or complete theology.
+8. Exercise ordinary shared `pte` assembly, analysis support and final-document input with source links. Preserve V8/P1 behavior and established semantics; avoid a second general-purpose theological extractor.
+9. Assess original outputs unchanged for fidelity, qualifications, omissions, counterevidence, usefulness and coverage separately. Mechanical success and model approval are separate from semantic acceptance. Preserve the known main-question false acceptance as a regression.
+
+## Acceptance for dimensional benchmark comparison
+
+1. **Shared contracts:** Candidate and benchmark pastors use the same versioned dimensions, meanings, eligibility rules and scoring/aggregation rules. Retain the four families: preaching style, theological emphasis, theological orientation and pastoral/rhetorical orientation. Reuse the narrower Scripture-use implementation where compatible.
+2. **Defensible measurements:** Distinguish mention, description, endorsement and condition where needed. Define each dimension's target statement, units/scale, denominator or opportunities, aggregation, exclusions and non-characterization rules before assigning values. Model probabilities are not pastor scores.
+3. **Traceable values:** Each value retains contributing observations, source links, qualifications, exact sample, producer/model versions and calculation. Authored portraits and presumed benchmark identities are not measurement ground truth.
+4. **Comparable samples:** Declare sermon selection, time/topic coverage, sample size and dependence. Account for overlapping blocks, repeated material and unequal opportunities. Do not infer ministry-wide traits from a selected development sample.
+5. **Missingness and uncertainty:** Unknown is not zero, negative evidence or agreement. Retain measurement uncertainty and sampling limitations separately; abstain when evidence or comparability is insufficient. Do not label uncalibrated uncertainty as calibrated confidence.
+6. **Interpretable mathematics:** Report per-dimension differences first. Any aggregate distance/similarity needs explicit normalization, feature-family treatment, weights, missing-value policy and sensitivity checks. No overall quality, ideological or church-fit score is implied. Broader dimensions need not be forced into an unjustified scalar.
+7. **Benchmark integrity:** Reference membership is reviewed and versioned. Use identical evidence requirements for candidate and references; preserve immutable panel snapshots and input lineage. A well-known theological identity cannot fill a missing value.
+8. **Validation:** On independent material, check fidelity of measurements and whether the comparisons reflect supported differences. Check stability under reasonable sample and weight changes, and report failures/abstentions. A plausible nearest neighbor is not validation.
+9. **Reader explanation:** Show which dimensions drive a result, with evidence, coverage, uncertainty and contrary examples. Numerical comparison and readable analysis must agree on the underlying meanings.
 
 ## Reader experience
 
-1. **Opening portrait:** answer what kind of preacher the available sample suggests. Connect supported observations through explicit, reviewed reasoning. Keep a short sample limitation above the narrative and meaning-changing qualifications in the relevant sentence. Put technical details in the reasoning disclosure.
-2. **At a glance:** concise dimensional descriptions or explicit unknowns. Distinguish supported examples, preliminary impressions, potential benefits and unresolved questions. No single score or invented High/Moderate/Low bins.
-3. **Dimensional evidence:** preserve the four analytical families below, recording-level coverage, variation and missingness.
-4. **Why this assessment:** each substantive interpretation links to its warrant, supporting reviewed points, source observations and passages. Show limitations, alternatives and contrary evidence. Valid IDs and hashes establish traceability/compatibility, not entailment.
-5. **Source navigation:** retain eligible full transcript windows, real block/time/source identities and watch links. Quotations are optional later illustrations of an already-supported point.
+Lead with a readable assessment and at-a-glance dimensions, then eligible benchmark comparisons and the four analytical families, followed by warrants, observations, sermons and source navigation. Unsupported comparison stays visibly unavailable. A shorter faithful account is preferable to imitation of the Henry Johnson example; do not optimize toward an authored reference portrait.
 
-A useful portrait may be shorter than an aspirational example. Do not tune wording, thresholds or measurements to imitate the Henry Johnson reference or claim a percentage of quality parity.
+## Scope and authority
 
-## Four analytical families
+The original automatic-section development slice used profile 318 and at most six complete existing windows (30 blocks), not new recordings. It explicitly excluded comparisons/rankings. Brian has now added dimensional benchmark comparison to the **product goal**, and requested current goals/plans and obsolete-document cleanup. That is not evidence that broader comparisons are implemented or validated, nor a new frozen paid/corpus execution approval.
 
-| Family | Reader question | Boundary |
-|---|---|---|
-| Preaching style | How does this sample develop ideas? | Reviewed examples support a repertoire; they do not establish dominance, frequency, skill or audience effectiveness. |
-| Theological emphasis | Which subjects receive attention? | Topic attention is not belief. An apparent interpretive center needs adopted/local-use evidence and an explicit warrant, not topic scores alone. |
-| Theological orientation | What is actually described, affirmed, rejected or qualified? | Reuse the existing local leaves and reviewed bindings within their exact meanings. Preserve voice, adoption, polarity, conditions and unknowns; do not infer a school or complete theology. |
-| Pastoral/rhetorical orientation | What response or posture is expressed? | Reassurance/challenge can be provisional interpretations of supported local address. Invited speech is not actual response or evidence of a listener’s saving state; local address is not a stable temperament. |
+The earlier fresh $3 allowance superseded unused old credit. Its conservative charge was $0.738711444, leaving $2.261288556; known list-price usage was $0.423729044 and invoice reconciliation remains unknown. Brian removed the two-iteration stop and authorized continued runs for that goal within budget. Preserve that authorization history without treating remaining credit as a new experiment packet. This documentation task makes no paid calls or dataset runs.
 
-## Delivered P1: one cached second profile
-
-**Implemented, generated and artifact-reviewed on 2026-10-23 under Brian’s explicit P1 instruction. Stop after this case.** Profile **130** uses only recordings **1037 / 350 / 4430**, already present in the existing twelve-source inventory. Its 154 eligible blocks give the largest remaining coverage after excluding 318; selection did not use positive theological answers. The reviewed profile has fifteen effective members, but the other twelve were neither added to the sample nor inspected for this delivery.
-
-The second readable profile delivers an opening account of preaching approach, a potential strength and a concrete review question, with topic emphases, an at-a-glance table, local accounts, explicit warrants, original observations and full source links below. An apparent **adopted theological center and pastoral posture remain unknown**. Topic attention is not belief, practical application is not listener attribution, and the profile cannot supply missing upstream meanings.
-
-- **Automatically reused:** 154 topic blocks, 154 treatment blocks, 47 routed salvation blocks and 220 raw leaf observations; 1,875 observation records in total. The 220 raw observations come from 36 saved full/refinement answers across nine packs on four blocks of recording 4430. Dependence and original semantics remain visible; these are not 220 independent findings or new admissions. Exact-current Scripture lookups supplied no persisted run for these recordings. The curated reviewed binding packet is incompatible with profile 130; other G1/G2/G3 stores were not inventoried, so this does not establish global absence.
-- **Manually authored:** four source-reviewed style descriptions and three cross-point interpretations, each with exact supporting points, a warrant, limits and an alternative. Codex authored them; Brian’s concrete wording acceptance remains pending. No theological or listener/adoption binding was authored, and no profile 318 wording was transferred.
-- **Remaining repeatability gap:** automatic assembly exposes compatible evidence and missing states, but this case still requires manual local descriptions and connective warrants for a useful portrait. Adopted theology and pastoral posture require compatible upstream bindings before any stronger interpretation. No general automatic portrait generator has been validated.
-
-Use the [current workflow](PASTOR_PROFILE_DESCRIPTION.md) to open or reproduce the result. V8 and its original default command remain preserved; its current description fingerprint is unchanged. P1 is a development portability case, not statistical validation, a comparison benchmark or ministry stability evidence. The specific consequential-gap report records blocked statements, inspected reuse outcomes, exact missing fields, responsible producers, smallest remedies, acceptance checks and authorization boundaries. No third case, new collection, model call, semantic expansion or quotation execution follows automatically.
-
-## Consequential gaps and boundaries
-
-The delivered eight-gap map remains: complete affirmed-belief coverage, pastoral address coverage, representative sampling, Scripture argument use, comparison, speaker identity, dominant style and short quotations. Order remedies by reader impact and actual reuse evidence; do not assume that every unknown needs a detector.
-
-Every actionable gap must identify the blocked statement, inspected compatible sources and outcomes, exact missing information, responsible producer, smallest remedy, acceptance check and authorization boundary. A full-pack miss is not global constituent absence. Support/refutation, voice/adoption and attached qualifications belong at the existing leaf/shared producer. Profile interpretation reuses those judgments; it cannot reconstruct missing semantics.
-
-No new measurements, provider/model calls, broader collection, production admission, comparison/ranking, calibrated confidence, single pastor score, ministry-wide stability or Ollama quotation execution is released. Prior binding, collector and editorial model failures do not trigger automatic variants. Optional quotes remain last: contiguous verbatim center-supported text, with eligible real neighbors only where required for faithful scope.
-
-## Current workflow and history
-
-Use [the profile workflow](PASTOR_PROFILE_DESCRIPTION.md), [the current status index](review-proposals/README.md), and the read-only plan check:
-
-```bash
-pte analysis structure-readiness --segment-plan --json
-```
-
-The [pre-portability product snapshot](PASTOR_PROFILE_PRODUCT_PLAN.historical-before-portability-2026-10-23.md) preserves the full earlier chronology. The [implementation history](PASTOR_PROFILE_IMPLEMENTATION_PLAN.historical-before-portability-2026-10-23.md) preserves milestones, experiments and completed increments. Historical commands and recommendations are not current execution authorization. No evidence, failed-run receipt or prior profile artifact was deleted.
+Keep legacy quarantine, admission and quotation-execution holds. No model switch, threshold tuning, new recordings, broad corpus evaluation or automatic successor experiment follows from this roadmap. Historical records remain immutable. The [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) names the next concrete checkpoint and later milestones.

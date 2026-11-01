@@ -1,6 +1,6 @@
 # Local editorial synthesis: closed experiment status
 
-**Current as of 2026-10-23: no active Ollama editorial synthesis increment.** The current product is the provider-free V8 [reviewed portrait workflow](PASTOR_PROFILE_DESCRIPTION.md). The [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) is the active engineering authority.
+**Historical closed experiment; status clarified 2026-11-01.** No Ollama editorial synthesis increment is active. V8 remains a [reviewed example workflow](PASTOR_PROFILE_DESCRIPTION.md), not the complete current product goal. Follow the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) and [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for automatic analysis and dimensional benchmark objectives.
 
 Do not run `pte analysis profile-synthesis --run` as a follow-up to the current plan. The command remains implemented for historical development; a new source/configuration fingerprint could create a new request. Its presence is not authorization to retry, change prompts/schemas, switch models or run it against V8. Cached reconstruction also depends on matching historical inputs, so the current CLI is not advertised as a portable replay of old receipts after later source changes.
 

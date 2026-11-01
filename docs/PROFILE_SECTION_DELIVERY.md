@@ -1,7 +1,14 @@
 # Bounded automatic section delivery
 
-This active sequence delivers one experimental salvation, response and growth
-section for profile 318 (281, 3973, 4589). It does not change V8/P1 or admission.
+This page records the implemented experimental salvation, response and growth
+workflow for profile 318 (281, 3973, 4589), with historical execution details.
+**Current product acceptance, 2026-11-01: partial.** The goal-tool closure and
+`PASS_BOUNDED_DISCUSSION_ANALYSIS` accepted a narrow slice; they overstated completion
+of the original useful automatic-analysis goal. Specific responses/conditions and
+reassurance/challenge remain unresolved. Follow the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md)
+and [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for current goals,
+including dimensional benchmarks. No continuation is active merely because its
+CLI exists. V8/P1 and admission remain unchanged.
 
 ## Current bounded outcome, 2026-11-01
 
@@ -116,7 +123,7 @@ and assesses each requested dimension as unavailable. It cannot retry, advance a
 window or confer semantic acceptance. `section-report --plan PLAN` reads this
 assessment even after the reporting implementation changes.
 
-## Authorized continuation
+## Historical authorized continuation and implemented mechanics
 
 `section-continue-prepare --plan PRIOR` preserves the allowance and fixed six windows, reuses source requests, and freezes the current verifier. Repeated `--source-window ID` options refresh only explicitly selected fixed-window source requests. Every source and support batch must still fit its complete reservation before execution. Historical freezes and assessments are retained. The indexed verifier names each exact item path in every question; field meanings and the .90 eligibility threshold remain unchanged.
 
