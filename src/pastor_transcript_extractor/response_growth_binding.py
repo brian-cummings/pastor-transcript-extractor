@@ -16,6 +16,26 @@ FIELD_LOCAL_CRITERIA = 'qualified-response-growth-field-local-criteria-v7'
 RANGE_TRANSPORT = 'response-growth-source-unit-ranges-v1'
 CONDITION_ATTACHMENT_VERSION = 'source-logical-condition-attachments-v1'
 DIMENSION_VERIFICATION_VERSION = 'response-growth-dimension-correctness-v1'
+RESPONSE_CONDITIONS_RECIPE = 'self-contained-response-conditions-v1'
+RESPONSE_CONDITIONS_PROMPT = '''
+The response-and-conditions dimension consumes requested_response by itself, not
+the surrounding binding. Construct this field only after binding the complete
+point. State the specific response and its immediately explained meaning, whose
+response it is, whether requested, described, reported or performed, and what the
+speaker adopts or rejects. Preserve the point's polarity. Include every attached
+meaning-changing condition, exception, limitation and qualification in this field
+even if already present elsewhere in the binding. Retain the source-stated
+consequence when necessary to explain what a condition conditions. Do not replace
+the response with a vague instruction to take a topic seriously or an isolated
+metaphor when the passage explains it. Preserve dependence, inability, concessions,
+and denial of a misleading inference when they restrict this exact response.
+Select one complete response point rather than two fragments when needed. Do not
+merge unrelated propositions; do not invent a present invitation from reported
+speech or infer audience uptake from an invitation or collective prayer. A
+performed prayer can be described as a prayer, with its expressed qualifications.
+Not-stated remains valid when this exact point establishes no specific response.
+No field is made true by repeating it: source support remains independently checked.
+'''
 CONDITION_ATTACHMENT_PROMPT = '''
 For each conditions entry, return one corresponding condition_attachments record
 in response_growth. condition_index is zero-based. Name the exact consequence
@@ -114,7 +134,7 @@ def range_schema(*,condition_attachments=False):
     return convert(schema(condition_attachments=condition_attachments))
 
 
-def request(window,*,unit_ranges=False,condition_attachments=False):
+def request(window,*,unit_ranges=False,condition_attachments=False,response_conditions=False):
     texts, mapping = window.target()
     policy = hosted.BINDING_POLICY
     unit_rule='''\nFor this request every evidence span is a contiguous source-unit range,
@@ -126,7 +146,8 @@ Unit boundaries are not proof that a thought is complete: extend ranges to retai
 all necessary restrictions. Never select unrelated material to hide a missing link.
 '''
     body = dict(model=policy['model'], messages=[dict(role='system', content=PROMPT+(unit_rule if unit_ranges else '')+
-        (CONDITION_ATTACHMENT_PROMPT if condition_attachments else '')),
+        (CONDITION_ATTACHMENT_PROMPT if condition_attachments else '')+
+        (RESPONSE_CONDITIONS_PROMPT if response_conditions else '')),
         dict(role='user', content=requests.wire(dict(texts=texts, block_mapping=mapping,
             **(dict(source_units=source_passages.inventory(window)) if unit_ranges else {}),
             source_identity={k:v for k,v in asdict(window).items() if k!='blocks'})))],
@@ -137,6 +158,7 @@ all necessary restrictions. Never select unrelated material to hide a missing li
         dict(contract=VERSION, recipe=PRODUCER_RECIPE if unit_ranges else 'complete-point-before-presentation-v2',
             **(dict(span_transport=RANGE_TRANSPORT) if unit_ranges else {}),
             **(dict(condition_attachment_contract=CONDITION_ATTACHMENT_VERSION) if condition_attachments else {}),
+            **(dict(response_conditions_recipe=RESPONSE_CONDITIONS_RECIPE) if response_conditions else {}),
             window_digest=evidence.digest(asdict(window))),
         namespace=hosted.BINDING_NAMESPACE, version=requests.DEEPINFRA_BINDING_VERSION,
         runtime_identity=deepcopy(policy))

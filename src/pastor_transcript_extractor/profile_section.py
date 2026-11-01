@@ -36,10 +36,10 @@ def inventory(base_dir):
     return segment_cache_inventory.build(base_dir, profile_id=318, video_ids=(281,3973,4589))
 
 
-def windows(inv):
+def windows(inv, coordinates=None):
     sources = {s['video_id']:s for s in inv['sermons']}
     result = []
-    for vid, first, last in WINDOWS:
+    for vid, first, last in (WINDOWS if coordinates is None else coordinates):
         s = sources[vid]
         if file_hash(s['source_path']) != s['source_sha256']:
             raise ValueError('Frozen source changed')
@@ -129,8 +129,12 @@ def load(path):
         if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Continuation predecessor changed')
     allowance.ceiling(p)
     inv = inventory(Path(p['base_dir']))
+    coordinates=None
+    if p.get('response_conditions_goal'):
+        from . import response_conditions_dimension as dimension
+        coordinates=dimension.validate_plan(p)
     if (inv['content_fingerprint'] != p['inventory_fingerprint'] or
-        digest([asdict(w) for w in windows(inv)]) != digest([t['window'] for t in p['tasks']])):
+        digest([asdict(w) for w in windows(inv,coordinates)]) != digest([t['window'] for t in p['tasks']])):
         raise ValueError('Membership, inventory or complete source windows changed')
     return p, path.parent
 
@@ -530,6 +534,9 @@ def attach_dimensions(p,root,record):
             for k,name in [('input','input.json'),('result','result.json')]}
         findings.extend(result['findings'])
     record['dimension_findings']=findings;by_id={o['id']:o for o in record['machine_observations']};seen=set();added=[]
+    if p.get('response_conditions_goal'):
+        from . import response_conditions_dimension as dimension
+        record['response_conditions_dimension']=dimension.sample_record(p,root,record)
     for row in findings:
         if not row['eligible']:continue
         o=by_id[row['observation_id']];vid=o['source_refs'][0]['video_id'];key=(vid,row['field'])
@@ -563,7 +570,7 @@ def attach_dimensions(p,root,record):
         record['hypotheses'].append(h)
         record['claims'].append(dict(id=h['id'],wording=wording,evidence_ids=receiving['evidence_ids'],
             observation_input_ids=receiving.get('observation_input_ids',[]),machine_observation_ids=growth['machine_observation_ids'],dimension_field='growth',
-            upstream_claim_ids=h['premise_ids'],scope=dict(video_ids=h['scope_video_ids'],meaning=LIMIT),assertion_force='sample_membership',
+            upstream_claim_ids=h['premise_ids'],scope=dict(video_ids=h['scope_video_ids'],meaning=p.get('limitation',LIMIT)),assertion_force='sample_membership',
             assertion_contract=dict(version=measurements.force.VERSION,declared_force='sample_membership',allowed_forces=['local_observation','sample_membership']),
             analytical_basis=h,limits=h['defeaters'],alternative=h['alternatives']))
     record['reader']['claims']=record['claims'];record['reader']['portrait']['entries']=record['claims']
@@ -789,7 +796,7 @@ def assemble_record(p, results):
         cid = 'section-'+o['id']
         claims.append(dict(id=cid,wording=o['response_growth']['reader_statement'],
             evidence_ids=[], machine_observation_ids=[o['id']], upstream_claim_ids=[],
-            scope=dict(video_ids=sorted({r['video_id'] for r in o['source_refs']}),meaning='Selected complete source window only. '+LIMIT),
+            scope=dict(video_ids=sorted({r['video_id'] for r in o['source_refs']}),meaning='Selected complete source window only. '+p.get('limitation',LIMIT)),
             assertion_force='local_observation', analytical_basis=producer.VERSION))
     facets = {f:[o['id'] for o in eligible if f in o['response_growth']['facets']] for f in producer.FACETS}
     hypotheses = []
@@ -809,7 +816,7 @@ def assemble_record(p, results):
         hypotheses.append(h)
         claims.append(dict(id=h['id'],wording=h['conclusion'],evidence_ids=[],
             machine_observation_ids=premises, upstream_claim_ids=['section-'+i for i in premises],
-            scope=dict(video_ids=h['scope_video_ids'],meaning=LIMIT),assertion_force='sample_membership',
+            scope=dict(video_ids=h['scope_video_ids'],meaning=p.get('limitation',LIMIT)),assertion_force='sample_membership',
             analytical_basis=h['warrant'],limits=h['defeaters'],alternative=h['alternatives']))
     for c in claims:
         check_strength(c)
@@ -818,8 +825,8 @@ def assemble_record(p, results):
         machine_windows={t['id']:t['window'] for t in p['tasks']},claims=claims,
         reader=dict(claims=claims,portrait=dict(entries=claims),synthesis_rule='Verified local examples and explicit selected-example membership only.'),
         coverage=p['coverage'],hypotheses=hypotheses,
-        gaps=[dict(id='coverage',withheld='Complete profile characterization',cause=LIMIT,remedy='Independent holdout and broader separately authorized evidence')]+
-            [dict(id='unknown-'+str(i),withheld=v,cause='Not established by selected evidence',remedy='Retain unknown') for i,v in enumerate(UNKNOWN)],
+        gaps=[dict(id='coverage',withheld='Complete profile characterization',cause=p.get('limitation',LIMIT),remedy='Independent holdout and broader separately authorized evidence')]+
+            [dict(id='unknown-'+str(i),withheld=v,cause='Not established by selected evidence',remedy='Retain unknown') for i,v in enumerate(p.get('unknowns',UNKNOWN))],
         production_admission='not_admitted')
 
 
@@ -994,11 +1001,16 @@ def render(path):
         evidence_kind=('mixed_qualified_dimension_and_measurements' if c['evidence_ids'] else 'qualified_source_dimension') if c.get('dimension_field') else 'qualified_machine_binding' if 'machine_observation_ids' in c else 'admitted_local_relationship') for c in record['claims']}
     document['unknowns']=list(dict.fromkeys(p['unknowns']+record.get('analysis_unknowns',[])+
         (['Voiced speaker, preacher adoption, polarity and attached conditions are not supplied by local relationship measurements.'] if record.get('materialized_analysis') else [])))
-    document['limitation']=LIMIT
+    document['limitation']=p.get('limitation',LIMIT)
     if record.get('materialized_analysis'):document['materialized_analysis']=record['materialized_analysis']
     if record.get('dimension_packets'):document['dimension_packets']=record['dimension_packets']
+    if record.get('response_conditions_dimension'):
+        document['response_conditions_dimension']=record['response_conditions_dimension']
+        response_claims={c['id'] for c in record['claims'] if c.get('dimension_field')=='requested_response'}
+        document['response_conditions_dimension']['readable_released_claim_ids']=[
+            e['claim_id'] for e in document['entries'] if e['support_status']=='supported' and e['claim_id'] in response_claims]
     Store(root).write_immutable('document-input.json',document)
-    lines=['# Salvation, personal response and spiritual growth','',LIMIT,'']
+    lines=['# Salvation, personal response and spiritual growth','',p.get('limitation',LIMIT),'']
     if record.get('materialized_analysis'):
         lines.extend(['Relationship findings describe what is discussed in these selected passages. They do not by themselves establish which reported views the preacher adopts or how every condition applies.',''])
     sources={t['id']:t['window'] for t in p['tasks']}

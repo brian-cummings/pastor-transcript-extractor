@@ -18,6 +18,22 @@ def response_conditions_freeze(base_dir:Path=typer.Option(...,'--base-dir'),obje
     except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
 
 
+@app.command('response-conditions-prepare')
+def response_conditions_prepare(base_dir:Path=typer.Option(...,'--base-dir'),freeze:Path=typer.Option(...,'--freeze'),implementation_freeze:Path|None=typer.Option(None,'--implementation-freeze')):
+    """Prepare bounded development or implementation-locked confirmation in the section workflow."""
+    from ... import response_conditions_dimension as dimension
+    try:typer.echo(json.dumps(dimension.prepare(base_dir,freeze,implementation_freeze=implementation_freeze),indent=2))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('response-conditions-lock')
+def response_conditions_lock(plan:Path=typer.Option(...,'--plan')):
+    """Lock implementation before generating or inspecting frozen confirmation outputs."""
+    from ... import response_conditions_dimension as dimension
+    try:typer.echo(json.dumps(dimension.lock_implementation(plan),indent=2))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
 @app.command('section-prepare')
 def section_prepare(objective:Path=typer.Option(...,'--objective'),previous_allowance:Path=typer.Option(...,'--previous-allowance'),base_dir:Path=typer.Option(...,'--base-dir')):
     """Freeze the authorized six-window automatic section and superseding $3 allowance."""

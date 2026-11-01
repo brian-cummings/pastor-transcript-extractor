@@ -6,6 +6,7 @@ from .profile_support_validation import file_hash
 
 VERSION='profile-support-additional-allowance-v1'
 VERSION_V2='profile-support-additional-allowance-v2'
+VERSION_V3='profile-support-response-conditions-allowance-v3'
 
 
 def ceiling(packet):
@@ -14,15 +15,15 @@ def ceiling(packet):
     path=Path(ref['path'])
     if file_hash(path)!=ref['sha256']:raise ValueError('Acceptance allowance changed')
     authorization=json.loads(path.read_text());start=Decimal(authorization['starting_conservative_usd']);extra=Decimal(authorization['additional_usd'])
-    maximum=Decimal(3) if authorization['version']==VERSION_V2 else Decimal(2)
-    if (authorization['version'] not in (VERSION,VERSION_V2) or not start.is_finite() or start<0
+    maximum=Decimal(5) if authorization['version']==VERSION_V3 else Decimal(3) if authorization['version']==VERSION_V2 else Decimal(2)
+    if (authorization['version'] not in (VERSION,VERSION_V2,VERSION_V3) or not start.is_finite() or start<0
         or not extra.is_finite() or not 0<extra<=maximum
         or authorization['spend_root']!=packet['budget']['spend_root']
         or file_hash(authorization['objective']['path'])!=authorization['objective']['sha256']):raise ValueError('Invalid goal allowance authorization')
     active=Path(authorization['spend_root'])/'active-profile-support-allowance.json'
     if active.exists():
         if json.loads(active.read_text())['authorization']!=ref:raise ValueError('Goal allowance superseded; historical receipts remain readable')
-    elif authorization['version']==VERSION_V2:raise ValueError('New goal allowance is not active')
+    elif authorization['version'] in (VERSION_V2,VERSION_V3):raise ValueError('New goal allowance is not active')
     limit=start+extra
     if Decimal(packet['budget']['cumulative_ceiling_usd'])!=limit:raise ValueError('Goal ceiling differs from authorization')
     return limit
