@@ -68,7 +68,10 @@ def _inventory(window,texts):
     for field,text in texts.items():
         # Reuse the source unit splitter. Context units are coordinates in their
         # named bounded field, never misrepresented as target-block timestamps.
-        w=deepcopy(asdict(window));w['blocks'][0]['target_text']=text
+        w=deepcopy(asdict(window))
+        # A named field is already the complete bounded text. Keeping later
+        # target blocks here appends them again, inventing context and offsets.
+        w['blocks']=[{**w['blocks'][0],'target_text':text}]
         fields[field]=source_passages.inventory(evidence.SourceWindow(**w))['units']
     return fields
 

@@ -35,6 +35,25 @@ def results(p):
 
 
 class ProfileAnalysisSupportTests(unittest.TestCase):
+    def test_multiblock_field_inventory_cannot_append_target_blocks_or_invent_context(self):
+        window=s.evidence.SourceWindow('multi',777,9,'source',1,tuple(
+            dict(block_id=i,target_text=text,start_seconds=i*60,end_seconds=(i+1)*60,segment_indexes=[i])
+            for i,text in ((1,'First complete sentence.'),(2,'Second complete sentence.'))),'test')
+        texts,_=window.target();fields=s._inventory(window,texts)
+        self.assertEqual([],fields['leading_context']);self.assertEqual([],fields['trailing_context'])
+        self.assertEqual(texts['target_text'],''.join(u['text'] for u in fields['target_text']))
+        for unit in fields['target_text']:
+            self.assertLessEqual(unit['end'],len(texts['target_text']))
+            self.assertEqual(unit['text'],texts['target_text'][unit['start']:unit['end']])
+        self.assertEqual('Second complete sentence.',fields['target_text'][-1]['text'])
+        source=dict(window=dict(video_id=9,anchor_block_id=1,source_sha256='source'),
+            fields=fields,texts=texts,context_sha256=s.context_digest(texts))
+        last=fields['target_text'][-1]['id']
+        bound=s.validate_answer(dict(sources={'multi':source}),dict(judgment='supported',
+            evidence=[dict(passage_id='multi',field='target_text',start_unit=last,end_unit=last)],
+            qualifications=[],reason='The last real source unit must bind.'))
+        self.assertEqual('Second complete sentence.',bound['bound_evidence'][0]['span']['text'])
+
     def test_all_claims_independent_of_profile_and_roundtrip(self):
         p=plan();self.assertEqual(len(p['items']),2);self.assertEqual(p['profile']['id'],777)
         self.assertTrue(all(i['case'] for i in p['items']))
