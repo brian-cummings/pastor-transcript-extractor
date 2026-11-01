@@ -6,7 +6,7 @@ limitations. Both construct iterations are closed. G1 remains design-only with
 an explicit implementation/expansion hold; its authored cases are not empirical
 validation. See the separate [G2 decision](../../../evaluation/g2-binding/feasibility-stage-gate-v2.md)
 and [G3 decision](../../../evaluation/g3-address/feasibility-stage-gate-v2.md).
-The [next architecture proposal](../../PASTOR_PROFILE_EVIDENCE_ARCHITECTURE.md)
+The [next architecture proposal](../../PASTOR_PROFILE_PRODUCT_PLAN.md)
 recommends shared evidence/profile-field contracts and provider-free consumer
 acceptance. Full collection, G4, projection/comparison and scoring remain held.
 The original design tradeoffs below are retained as historical rationale.
@@ -125,5 +125,5 @@ Preserve G3 circumstance relevance separately from human-recipient circumstance
 binding; current-listener adoption remains a composition with independent framing.
 No further construct-tuning calls are proposed. Candidate discovery/recall,
 calibration, denominators and request economics are later validation tasks.
-The next concrete design artifact is [the evidence architecture proposal](../../PASTOR_PROFILE_EVIDENCE_ARCHITECTURE.md);
+The next concrete design artifact is [the evidence architecture proposal](../../PASTOR_PROFILE_PRODUCT_PLAN.md);
 consumer implementation, G1 and collection still need separate decisions.

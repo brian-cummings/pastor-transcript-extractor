@@ -1,180 +1,57 @@
-"""Read-only current planning/retirement registry; never inference."""
+"""Read-only current product status; no planning archives or inference."""
 from pastor_transcript_extractor import evidence_pipeline_trace as trace
 
-HERE=trace.ROOT/'docs/review-proposals/pastor-profile-implementation-plan-v1'
+STATUS_PATH=trace.ROOT/'docs/PROFILE_STATUS.json'
 OLD_SELECTION_INPUT='19a1137161528d5c4eec95242148f05abb155b2fe710d2a0d59846cceabaa8a2'
 
 
 def verify():
-    plan=trace.read(HERE/'plan-v32.json',True)
-    if (plan['version']!='pastor-profile-product-and-implementation-status-v32'
+    plan=trace.read(STATUS_PATH,True)
+    if (plan['version']!='pastor-profile-current-status-v1'
+            or plan['status']!='AUTOMATIC_ANALYSIS_PARTIAL_DIMENSIONAL_BENCHMARK_GOAL_NOT_ACHIEVED'
             or plan['analytical_families']!=['preaching_style','theological_emphasis','theological_orientation','pastoral_rhetorical_orientation']
-            or any(plan[k] for k in ('model_probability_is_pastor_score','benchmark_percentages_authorized','single_pastor_score_proposed','draft_is_measurement_ground_truth'))
-            or plan['high_labels_require_explicit_rules'] is not True
-            or plan['status']!='AUTOMATIC_ANALYSIS_PARTIAL_DIMENSIONAL_BENCHMARK_GOAL_NOT_ACHIEVED' or plan['exact_span_extraction_required_upstream'] is not False
-            or plan['pipeline_order']!=['existing_segment_observations','supported_evidence_accumulation','bounded_profile_review','reviewed_portrait_interpretation','strongest_supporting_segment','optional_Ollama_illustrative_quote']
+            or any(plan[k] for k in ('model_probability_is_pastor_score','benchmark_percentages_authorized',
+                'single_pastor_score_proposed','draft_is_measurement_ground_truth',
+                'provider_execution','new_collection','new_projection_scoring','quote_implementation',
+                'topic_presence_implies_position','quotes_change_measurements','exact_span_extraction_required_upstream'))
+            or not plan['high_labels_require_explicit_rules']
+            or plan['pipeline_order'][-1]!='optional_Ollama_illustrative_quote'
             or plan['quote_context']!=['preceding_segment','center_segment','following_segment']
-            or plan['quote_anchor']!='substantive_content_in_center'
-            or plan['topic_presence_implies_position'] is not False
-            or plan['quotes_change_measurements'] is not False
-            or any(plan[k] for k in ('provider_execution','new_collection','new_projection_scoring','quote_implementation'))):
-        raise ValueError('Current segment/quotation planning scope differs')
+            or plan['quote_anchor']!='substantive_content_in_center'):
+        raise ValueError('Current planning and quotation boundaries differ')
     product=plan['product_goal']
     section=plan['automatic_section_delivery']
     if (product['status']!='not_achieved'
             or product['automatic_analysis_acceptance']!='partial'
             or product['broad_dimensional_benchmark_validated']
-            or product['goal_tool_closure_is_full_product_acceptance']
             or not all(product[k] for k in ('existing_scripture_use_benchmark_implemented',
                 'no_model_probability_as_pastor_score','unknown_is_not_zero',
                 'reuse_existing_benchmark_machinery','sampling_confirmation_independent_of_exposed_windows',
                 'no_new_paid_or_dataset_run_frozen_by_documentation_update'))
-            or not section['closure_overstated_product_acceptance']
             or section['eligible_complete_bindings']!=0
             or section['eligible_specific_response_descriptions']!=0
             or section['qualified_growth_dimensions']!=1
             or any(section[k] for k in ('general_generator_validated','independent_holdout',
                 'production_admission','quarantine_changed','remaining_credit_is_new_experiment_authorization'))):
         raise ValueError('Product acceptance and dimensional benchmark readiness differ')
-    goal=plan['implementation_goal']
-    if (goal['status']!='complete' or not goal['implementation_scope_complete']
-            or any(goal[k] for k in ('formal_reader_acceptance','general_generator_validated','new_goal_created'))):
-        raise ValueError('Implementation goal closure differs')
-    portability=plan['portability_proposal']
-    if (portability['status']!='DELIVERED_ARTIFACT_REVIEWED_READER_ACCEPTANCE_PENDING' or portability['selected_profile_id'] != 130
-            or portability['max_additional_profiles']!=1
-            or portability['recording_ids'] != [1037,350,4430]
-            or portability['authored_style_descriptions'] != 4 or portability['authored_interpretations'] != 3
-            or any(portability[k] for k in ('reader_acceptance','general_generator_validated',
-                'provider_requests','metadata_reads','database_writes','new_measurements','collection',
-                'production_admission','benchmark_comparison','confidence_calibrated','ministry_stability',
-                'quote_execution','full_pack_miss_proves_constituent_absence','profile_318_wording_transplant',
-                'source_frame_reinterpretation'))
-            or not all(portability[k] for k in ('execution_authorized','implemented','executed','new_goal_created','implementation_complete','artifact_review_complete','stop_after_this_case',
-                'cached_evidence_only','reuse_existing_cli_and_loader',
-                'requires_real_cli_input_before_handoff','manual_interpretation_disclosure',
-                'unknowns_do_not_block_supported_output','original_profile_318_reproducible',
-                'v8_is_reader_quality_reference_not_semantic_ground_truth'))
-            or trace.digest(trace.ROOT/portability['authored_file']) != portability['authored_sha256']):
-        raise ValueError('Completed portability scope differs')
-    reuse=plan['profile_reuse_increment']
-    if (reuse['status']!='DELIVERED_BOUNDED_ARTIFACT_VERIFIED'
-            or reuse['main_path']!=['R1','R3','R4']
-            or reuse['conditional_branch']!='R2' or reuse['held_followup']!='R5'
-            or reuse['steps']['R2']['status']!='conditional' or reuse['steps']['R5']['status']!='held'
-            or reuse['semantic_owner']!='responsible_upstream_category_leaf_or_existing_shared_binding'
+    reuse=plan['reuse_policy']
+    if (reuse['semantic_owner']!='responsible_upstream_category_leaf_or_existing_shared_binding'
             or reuse['quote_input']!=['established_point','eligible_center_block','labeled_eligible_neighbors']
             or not reuse['reuse_before_new_inference'] or not reuse['changed_outputs_require_new_version']
             or any(reuse[k] for k in ('full_pack_miss_proves_constituent_absence','end_stage_general_extractor',
-                    'quote_supplies_analytical_authority','standalone_inventory_gate',
-                    'failed_experiment_automatically_starts_variant','unknowns_block_supported_delivery'))):
-        raise ValueError('Reuse-first responsibility and delivery scope differs')
-    descriptions=plan['description_increment']
-    if (descriptions['status']!='BOUNDED_RUN_VERIFIED_WORDING_REVIEW_PENDING'
-            or descriptions['sequence']!=['D1','D2','D3','D4']
-            or any(descriptions[k] for k in ('provider_execution','full_transcript_reprocessing',
-                'new_measurements','collection','production_admission','quote_execution',
-                'example_is_measurement_ground_truth','promote_reviewed_proposals_to_production',
-                'infer_missing_meaning_from_topic_or_probability','listener_directive_run_is_next',
-                'technical_delivery_is_reader_acceptance'))
-            or not all(descriptions[k] for k in ('preserve_clause_evidence_links',
-                'preserve_meaning_changing_qualifications','preserve_unknowns_and_counterevidence',
-                'require_full_sermon_coverage_for_sermon_summary','changed_outputs_require_new_version'))):
-        raise ValueError('Human-friendly description planning scope differs')
-    editorial=plan['direct_editorial_revision']
-    if (editorial['version']!='pastor-profile-description-v7'
-            or editorial['status']!='GENERATED_VERIFIED_WORDING_REVIEW_PENDING'
-            or not editorial['dataset_generation'] or not editorial['saved_artifact_review_complete']
-            or any(editorial[k] for k in ('provider_requests','metadata_reads','database_writes',
-                'new_measurements','quote_execution','reader_acceptance'))
-            or not all(editorial[k] for k in ('full_point_digest_required','changed_point_uses_fuller_wording',
-                'original_evidence_unchanged','scope_and_proposal_status_preserved','clause_evidence_links_preserved',
-                'merged_groups_require_all_exact_inputs','merged_groups_require_common_recording',
-                'all_original_point_links_preserved'))
-            or trace.digest(trace.ROOT/editorial['authored_file'])!=editorial['authored_sha256']):
-        raise ValueError('Direct editorial revision scope differs')
-    portrait=plan['portrait_increment']
-    if (portrait['version']!='pastor-profile-description-v8'
-            or portrait['status']!='GENERATED_REVIEWED_READER_ACCEPTANCE_PENDING'
-            or any(portrait[k] for k in ('reader_acceptance','semantic_admission','provider_requests',
-                'metadata_reads','database_writes','new_measurements','production_activation',
-                'benchmark_comparison','ministry_stability','confidence_calibrated','quote_execution',
-                'full_transcript_reprocessing','source_frame_reinterpretation'))
-            or not all(portrait[k] for k in ('requires_exact_complete_support','requires_warrant_limits_and_alternative',
-                'withholds_changed_support','counterevidence_and_source_links_preserved','assurance_selection_bias_visible',
-                'existing_examples_reused_not_reselected','dataset_generation','saved_artifact_review_complete'))
-            or trace.digest(trace.ROOT/portrait['authored_file'])!=portrait['authored_sha256']):
-        raise ValueError('Reviewed portrait interpretation scope differs')
-    synthesis=plan['editorial_synthesis']
-    if (synthesis['status']!='V2_EXECUTED_SEMANTICALLY_REJECTED_KEEP_V5'
-            or synthesis['version']!='pastor-profile-synthesis-v2'
-            or synthesis['agent_generation_requests']!=1 or synthesis['agent_metadata_reads']!=2
-            or synthesis['review_provider_requests']!=0 or synthesis['review_metadata_reads']!=0
-            or synthesis['semantic_verdict']!='REJECT_SYNTHESIS_KEEP_V5'
-            or not synthesis['sentence_review_complete']
-            or not all(synthesis[k] for k in ('required_portrait_in_generation_schema',
-                'optional_sections_exclude_portrait','evidence_packet_unchanged','prior_run_preserved'))
-            or synthesis['input']!='existing_supported_descriptions_and_scoped_reviewed_proposals'
-            or synthesis['max_generation_requests']!=1
-            or synthesis['context_size']!=32768 or synthesis['max_output_tokens']!=3072
-            or synthesis['confidence_owned_by']!='code_existing_coverage_and_limits'
-            or any(synthesis[k] for k in ('automatic_retries','model_pulls','cloud_or_provider_fallback',
-                'new_measurements','collection','production_admission','quote_execution',
-                'benchmark_comparison_available','comparative_uniqueness_authorized',
-                'confidence_calibrated','citations_prove_entailment','semantic_acceptance'))
-            or not all(synthesis[k] for k in ('no_raw_transcripts','no_raw_probability_inventory',
-                'source_analysis_unchanged','requires_semantic_review','raw_response_and_usage_preserved',
-                'cached_reconstruction_no_network','default_description_command_provider_free'))):
-        raise ValueError('Bounded editorial synthesis scope differs')
-    development=plan['binding_development']
-    if (development['passages']!=3 or development['development_references']!=10
-            or not development['semantic_comparison_complete'] or development['reference_visible_to_generation']
-            or any(development[k] for k in ('broader_collection','production_activation','automatic_acceptance','profile_projection'))):
-        raise ValueError('Bounded automatic development scope differs')
-    revision=plan['binding_revision']
-    if (revision['passages']!=3 or revision['development_references']!=10
-            or revision['status']!='EXECUTED_COMPARED_STOP_MENU_TUNING' or revision['executor']!='Brian'
-            or revision['live_provider_requests']!=39 or revision['review_provider_requests']!=0 or revision['min_probability']!=.8
-            or not revision['live_results_available'] or not revision['semantic_comparison_complete']
-            or any(revision[k] for k in ('reference_visible_to_generation','broader_collection','production_activation','automatic_acceptance','profile_projection','backend_comparison','ollama_execution','proposed_architecture_executed'))):
-        raise ValueError('Completed same-case V2 development scope differs')
-    connected=plan['connected_binding_development']
-    if (connected['status']!='EXECUTED_FAILED_REVIEWED_NO_RERUN' or connected['executor']!='Brian'
-            or connected['passages']!=3 or connected['development_references']!=10 or connected['max_generation_requests']!=3
-            or connected['live_provider_requests']!=3 or connected['metadata_reads']!=7
-            or connected['review_provider_requests']!=0 or connected['review_metadata_reads']!=0
-            or connected['compiled_bindings']!=0 or not connected['semantic_comparison_complete']
-            or any(connected[k] for k in ('reference_visible_to_generation','broader_collection','new_measurements','production_activation','automatic_acceptance','profile_projection','benchmark_comparison','ollama_quotation_execution','model_pulls','automatic_retries','provider_fallback'))):
-        raise ValueError('Completed failed connected extraction scope differs')
+                'quote_supplies_analytical_authority','standalone_inventory_gate',
+                'failed_experiment_automatically_starts_variant','unknowns_block_supported_delivery'))):
+        raise ValueError('Reuse-first responsibility differs')
+    for name,expected in plan['active_document_hashes'].items():
+        if trace.digest(trace.ROOT/name)!=expected:
+            raise ValueError('Current documentation differs: '+name)
     path=trace.ROOT/plan['plan_path']
-    if trace.digest(trace.ROOT/plan['agents_path'])!=plan['agents_sha256']:
-        raise ValueError('Project reuse instructions differ from current plan')
-    if trace.digest(path)!=plan['plan_sha256']:raise ValueError('Current plan text differs')
     implementation=trace.ROOT/plan['implementation_path']
-    if trace.digest(implementation)!=plan['implementation_sha256']:
-        raise ValueError('Current implementation plan text differs')
     if implementation.name not in path.read_text() or path.name not in implementation.read_text():
         raise ValueError('Product and implementation plans must reference each other')
-    manifest=trace.ROOT/plan['archive_manifest_path']
-    if trace.digest(manifest)!=plan['archive_manifest_sha256']:
-        raise ValueError('Planning archive manifest differs')
-    for row in trace.read(manifest,True)['archives']:
-        if trace.digest(trace.ROOT/row['archive_path'])!=row['original_sha256'] or row['archive_sha256']!=row['original_sha256']:
-            raise ValueError('Historical planning document differs')
-    cleanup=plan['documentation_cleanup']
-    if not cleanup['preserve_exact_snapshots'] or cleanup['delete_evidence']:
-        raise ValueError('Documentation preservation scope differs')
-    for row in cleanup['archives']:
-        if (trace.digest(trace.ROOT/row['archive_path'])!=row['original_sha256']
-                or row['archive_sha256']!=row['original_sha256']):
-            raise ValueError('Pre-portability documentation snapshot differs')
-    for name,expected in cleanup['active_docs'].items():
-        if trace.digest(trace.ROOT/name)!=expected:
-            raise ValueError('Active profile documentation differs')
     return plan,path
 
 
 def reject_closed_selection(approved):
     if approved==OLD_SELECTION_INPUT:
-        verify()
         raise ValueError('Exact-span selection is retired. Use segment evidence first; illustrative Ollama quotes belong at the tail. No provider client opened.')

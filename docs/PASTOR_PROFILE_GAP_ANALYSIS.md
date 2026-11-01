@@ -1,23 +1,6 @@
-# Desired PastorProfile and measurement gap analysis V1
+# Desired pastor characteristics and measurement gaps
 
-**Historical design/gap record; not the current execution plan (2026-11-01).** Opening G1/G2/G3 approvals, pending choices and holds below describe their original scope. Current goals, acceptance and next checkpoint are in the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) and [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md). Existing meanings and historical decisions remain preserved; do not resume the old queue from this page.
-
-Status: **C01–C20 and D01–D06 approved as design direction** by Brian. The next
-G1 design is approved and implementation/expansion are explicitly on hold.
-[G2/G3 contract designs](review-proposals/g2-g3-v1/REVIEW.md) are now approved
-alongside G1. Brian selects a [small G2 feasibility proposal](review-proposals/g2-feasibility-v1/REVIEW.md)
-first; its provider/dataset command is prepared but reserved for Brian to run. This defines the desired
-product independently of the
-existing inventory, then assesses the [59-signal registry](review-proposals/pastor-contracts-v1/REGISTRY.md)
-as a possible evidence supply. The registry remains intact as the contract for
-current observations. Its blocked uses are safeguards, not a definition of what
-PTE ultimately wants to know.
-
-This exercise precedes the observed-profile consumer acceptance packet. It adds
-no questions, runs no collection or evaluation, implements no projection or
-clustering, and grants no production activation. The six existing proposals are
-retained as the current-measurement slate; Brian's feedback supports that scope
-in principle, without turning this design exercise into a new collection decision.
+This is the desired-characteristic and semantic-fit specification, not an execution plan. Use the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) and [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for current acceptance, measured progress and next actions. The 59-signal registry defines existing measurement meanings; the C01–C20/D01–D06 catalog defines desired reader questions. Semantic fit does not establish validated observations, production admission or numerical comparison readiness.
 
 ## Desired profile, before considering available measurements
 
@@ -153,162 +136,12 @@ profile characteristics after the relevant evidence and use gates are satisfied.
 | **D05 Meaningful outlier behavior** | Supported departures in positions, attention, treatment, development or posture. | Potentially derivable; need uncertainty, sample/series checks and dimension-specific explanations. Missing C12–C14 cannot be replaced by citation/style counts. | No outlier leaf; resolve input gaps for the requested lens. |
 | **D06 Noteworthy candidates** | Separate C10/C12/C13/C14/C15/C17 and D02/D04/D05 lenses. | Partially supportable as a future product. Depth, coherence and posture are missing; breadth/basic patterns can become inputs after their gates. | No single quality score. Cards contain reason, scope, evidence, counterevidence and limitations; final judgment remains human. |
 
-## Concrete missing-observation contracts to design next
+## Producer responsibilities
 
-The recommendation is to design reusable **evidence capabilities** that answer the
-missing product questions, rather than adding one score for every desired noun.
-These are design candidates, not implemented packs, model choices or approved
-taxonomy changes. Existing collection questions stay frozen.
+Bound propositions need their object, polarity, speaker, adoption, attached conditions and qualifications at the existing category-leaf/shared binding producer. Topic attention or literal quotation cannot supply these distinctions. Reuse compatible constituent observations first.
 
-### G1 Bound propositions, adoption and qualifications — bounded capability proof
+Text/argument/application relations require eligible endpoints and source support for the relation; co-location alone is insufficient. Observable pastoral address requires act, recipient, voiced frame and relevant restrictions. Neither invitation nor narrated care proves listener uptake, private empathy or enduring pastoral posture.
 
-G1 goes first as a bounded proof of a reusable binding capability, not as the
-start of exhaustive doctrinal extraction or a priority ranking above G2/G3. The
-[prepared G1 contract and twenty authored cases](review-proposals/g1-binding-v1/REVIEW.md)
-cover assurance and one synthetic city ramp proposition. They are contract examples,
-not empirical evidence of model accuracy.
+Coherence/tension interpretations must reuse qualified propositions and relations, retain scope and counterevidence, and provide an explicit warrant. End-stage profiles cannot fill missing local meanings from raw text.
 
-A sermon observation should identify a grounded claim span, voice, object/referent,
-relation, polarity, conditions, stated qualification and explicit epistemic status.
-A quote can be adopted, reported, rejected or unresolved; topic/function scores
-cannot choose among these for a particular claim. Opposing propositions require
-their own spans. Normalize only as far as the text supports; retain the source
-wording and unknown fields. Code can validate bounds and retain candidates;
-semantic claim binding needs its own versioned contract and review.
-
-Prepare one small design exercise with two targeted downstream questions:
-**assurance known/permanent/lost/retained under stated conditions**, and **a named
-public object/proposition approved/opposed/prescribed**. These exercise theological
-and public treatment distinctions without making a universal doctrine taxonomy.
-This capability also supports C02/C04/C18/C20; it does not claim to solve all topics.
-
-Prepared conceptual cases: “you may know acceptance now” without a permanence
-claim; “can be lost if X” with a stated condition; approval of policy A plus
-criticism of policy B; reporting a speaker's argument while rejecting it; an
-explicitly unresolved alternative. Expected fields and non-characterizations
-should be authored by PTE development before any model run. Projection must
-retain qualified/mixed/date-specific claims rather than pick one overall stance.
-
-### G2 Text/argument/application binding and development facets
-
-The [G2 V1 contract](review-proposals/g2-g3-v1/G2_CONTRACT.md) now specifies
-source nodes, semantic edges, performed operations and independent development
-facets for C06/C10/C11/C13, with authored contrasts. These are observation designs,
-not validated measures of depth or faithful interpretation.
-
-Identify a grounded explanation episode and its subject/claim, biblical anchors
-where present, stated reasons, explanatory steps, substantive distinctions,
-engagement with alternatives, qualifications and worked implications. For an
-application, identify the requested response, rationale, circumstances, obstacles
-and concrete guidance. Count only demonstrable facets; episode length, vocabulary,
-number of citations and presence of argument alone are insufficient.
-
-A short passage can develop a precise distinction; a long passage can repeat a
-bare assertion. One can be strong in explanation but weak in alternatives, and
-another in concrete application without extensive doctrinal analysis. Preserve
-that profile of facets. Require human assessment of the adequacy of an explanation;
-facet presence is not a certification of soundness or depth in every subject.
-This capability serves C06/C10/C11/C13 and supplies relational evidence for C14.
-Reuse Scripture and grounded style evidence where compatible instead of rerunning
-those collectors just to add links.
-
-### G3 Observable pastoral address
-
-The [G3 V1 contract](review-proposals/g2-g3-v1/G3_CONTRACT.md) now specifies
-utterance–addressee–circumstance binding and adopted multi-act address patterns
-for C12. It preserves qualifications and rejects inference of inner empathy or
-actual listener effects. Authored contrasts are design expectations only.
-
-Identify the listener circumstance addressed (for example grief, doubt or moral
-failure), the pastor's address acts, the actual words supporting them, and relevant
-qualifications. Distinguish acknowledgment/perspective-taking, reassurance,
-challenge, warning, invitation and concrete care without declaring them a single
-opposed kindness/harshness spectrum. More than one can occur in a passage.
-
-A service appeal alone does not show acknowledgment of a sufferer's experience.
-Acknowledging grief and giving a command to others are different observations.
-Explicitly critical treatment may coexist with respectful recognition of a
-person's difficulty. Claims must concern demonstrated address, not the pastor's
-inner emotions, moral worth or listener experience. These authored contrasts
-should define C12 before a new posture measurement is considered.
-
-### G4 Articulated coherence and tension review
-
-Reuse G1 propositions/conditions and G2 stated inferential links. Observe when a
-speaker explicitly connects claims, qualifies their applicability, recognizes a
-tension or offers reconciliation. Projection can then search for compatible and
-apparently conflicting claims within matched subjects/scopes, preserving review
-candidates and alternative explanations.
-
-A saving-benefit → conduct claim and a conduct-as-condition claim are not necessarily
-contradictory if they concern different benefits/conditions. Stable topic rates
-say nothing about that distinction. Logical compatibility and sound inference need
-bounded review; unresolved tension is not automatically incoherence, and no detected
-conflict is not comprehensive coherence. No new global coherence Noul or pastor
-quality Score is proposed.
-
-## Recommended sequence and stopping conditions
-
-1. **Retain the approved desired-profile direction.** Brian approved C01–C20 as
-   the desired characteristic catalog and D01–D06 as downstream constructs, with
-   their stated meanings and explicit unknowns. They are product requirements,
-   not approved question packs or numeric features.
-2. **Retain the approved bounded G1 design and explicit hold.** Assurance and one
-   public-policy proposition remain its two subjects. Brian now directs no G1
-   implementation or expansion yet; authored cases are not empirical proof.
-3. **Retain the joint design decision and bounded G2 scope.**
-   [G2/G3 contracts and the joint comparison](review-proposals/g2-g3-v1/REVIEW.md)
-   are approved alongside G1. The [bounded G2 proposal](review-proposals/g2-feasibility-v1/REVIEW.md)
-   now supplies a fixed packet, exact questions, controls, command and decision
-   criteria. Brian executes provider/dataset validation; no broader work is activated.
-   G2 serves developed treatment and G3 serves observable address. Designing them does not automatically
-   authorize broader G1 extraction. G4 remains deferred and must reuse G1/G2
-   claims and relations. Development prepares concrete bounded options; Brian
-   chooses from reviewable proposals rather than designing experiments.
-4. **Prepare projection rules for already suitable inputs** (attention, finite style,
-   treatment, appeals, breadth and measured-pattern consistency) after their desired
-   estimands are accepted. Treat coverage/validation gaps as such; do not create new
-   semantics merely because current comparative use is gated.
-5. **Then return to the provider-free consumer acceptance packet.** Its cases must
-   exercise both the existing observations and missing desired fields. A sparse
-   safe profile must visibly remain incomplete relative to the desired catalog.
-   Only later prepare a separate bounded measurement validation and, ultimately,
-   a concrete cost/scope/activation proposal for broader collection.
-
-This changes the next step from implementing an observed-profile view to designing
-what that view must eventually represent. The current registry remains the
-measurement-side contract; this desired catalog is the product-side contract.
-Their mapping, not either inventory alone, decides whether broader collection will
-produce the pastor understanding PTE wants.
-
-## Evidence basis and scope of review
-
-This is a contract/inventory analysis, not an empirical accuracy or corpus-coverage
-evaluation. Current support was checked against the [V1 registry](review-proposals/pastor-contracts-v1/registry-v1.json),
-[canonical topic inventory](../src/pastor_transcript_extractor/sermon_topics.py),
-[salvation definitions](../src/pastor_transcript_extractor/sermon_salvation_relationships.py),
-[action/public/material definitions](../src/pastor_transcript_extractor/sermon_leaf_packs.py),
-and [homiletic definitions](../src/pastor_transcript_extractor/sermon_semantic_dimensions.py).
-Outside-registry Scripture and span evidence is documented in
-[sermon analysis](SERMON_ANALYSIS.md#structural-scripture-profile-iteration-3) and
-[semantic style analysis](SEMANTIC_STYLE_ANALYSIS.md#evidence-and-derivation-layers).
-Their existence does not grant compatibility or readiness for the proposed new uses.
-
-
-## Current evidence status and next architecture proposal — 2026-10-14
-
-The desired C01–C20 and D01–D06 meanings and existing-registry gap matrix remain
-intact. G2 and G3 have now passed **bounded construct feasibility**, with conservative
-relation/binding recall limits. Neither makes the affected desired characteristics
-fully measured in production. G2 does not validate every interpretive operation or
-depth; G3 does not establish recurring posture, private empathy or listener benefit.
-Automatic candidate discovery/recall and population opportunities remain untested.
-G1 is approved as bounded design only, not provider/dataset feasibility; its
-implementation/expansion hold persists. G4 remains deferred.
-
-Close G2/G3 construct iteration. The [next architecture proposal](PASTOR_PROFILE_EVIDENCE_ARCHITECTURE.md)
-returns to the product-first bridge: common provenance, distinct observations,
-profile-field estimands/unknowns and coverage rules, then a provider-free consumer
-acceptance packet. This is proposed design work, not activation of collection,
-projection, comparison or quality scoring. The original recommended sequence above
-is advanced by these bounded results; no further TypeSafe polishing is proposed.
+The [current implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) defines the next bounded response/qualification checkpoint, its inspected evidence and acceptance. The desired catalog does not activate another G1/G2/G3 collector, model variant, broad corpus run or scoring experiment.

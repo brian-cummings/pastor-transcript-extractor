@@ -1,265 +1,60 @@
-# Bounded automatic section delivery
+# Automatic section workflow
 
-This page records the implemented experimental salvation, response and growth
-workflow for profile 318 (281, 3973, 4589), with historical execution details.
-**Current product acceptance, 2026-11-01: partial.** The goal-tool closure and
-`PASS_BOUNDED_DISCUSSION_ANALYSIS` accepted a narrow slice; they overstated completion
-of the original useful automatic-analysis goal. Specific responses/conditions and
-reassurance/challenge remain unresolved. Follow the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md)
-and [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for current goals,
-including dimensional benchmarks. No continuation is active merely because its
-CLI exists. V8/P1 and admission remain unchanged.
+**Current product acceptance: partial.** The shared final-document handoff works for profile 318, recordings 281/3973/4589. It does not yet produce the specific, useful explanation required by the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). Follow the [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for the next checkpoint; command availability does not authorize another run.
 
-## Current bounded outcome, 2026-11-01
+## Delivered capability and evidence limits
 
-The shared handoff now delivers six supported discussion-level clauses: four
-admitted-relationship findings, one independently qualified gradual-growth
-finding, and an explicit selected-sample membership interpretation connecting
-receiving-response discussion with growth over time. The interpretation retains
-its warrant, alternative explanation and parent dependencies. The source-specific
-timing judgment passed at .93; every complete binding and every specific proposed
-requested-response description remains withheld.
+The section has six discussion-level clauses: four admitted-relationship findings, one independently qualified gradual-growth finding, and a limited selected-sample co-presence interpretation. The latter connects receiving-response discussion with growth over time while explicitly withholding causal sequence, relative emphasis and a complete receiving/growth account. Its warrant, alternative, defeaters and two parent dependencies remain explicit.
 
-Source review accepts this narrow development section. It does not establish an
-adopted theological position, complete response conditions, actual listener growth,
-or how reassurance and challenge relate. The final analysis consumes structured
-evidence; generic code composes unchanged meanings and the qualified dimension,
-and the ordinary instant Qwen recipe verifies the unchanged clauses. No
-pastor-authored local reading or connective warrant is a runtime input.
+The local timing judgment passes at .93. All 12 complete experimental source bindings and all 12 specific proposed response descriptions remain withheld. The ordinary support result does not validate full-profile fidelity or coverage. Detailed response conditions, adopted theology and reassurance/challenge relationships remain unknown. A narrow discussion-level assessment is not full product acceptance.
 
-The final shared conservative allowance delta is $0.738711444 of the approved $3,
-leaving $2.261288556. Known list-price usage is $0.423729044; the remaining charge
-retains uncertainty reservations. The invoice is not reconciled. The application
-base `evaluation/profile-section-v1/DELIVERY_318.md` index links the draft,
-structured document input, full trace, separate acceptance assessment, source
-review, costs and exact offline inspection commands. Earlier index bytes are
-preserved under `index-history`; all historical evidence remains unchanged.
+The fixed sample contains 30 blocks in six complete windows:
 
-## Historical first outcome, 2026-10-30
+- v281b122–124
+- v3973b68–70
+- v3973b74–78
+- v3973b88–97
+- v4589b43–48
+- v4589b49–51
 
-The bounded delivery **failed to produce a substantive section**. All six frozen
-windows (30 existing blocks) were exercised. Twelve final candidate readings
-yielded ten mechanically compiled experimental observations, but no complete
-binding passed every unchanged field check. The ordinary support recipe and final
-renderer executed with zero eligible claims; Qwen made no downstream request.
-The draft exposes unknowns, not an automatically validated analysis.
+These are exposed development material, not an independent holdout or representative ministry sample. No benchmark comparison is established by this section.
 
-Source review of unchanged initial/corrective outputs found consequential loss
-of an immediate self-correction and a changed hypothetical antecedent/polarity.
-Some other local prose is reasonable; that does not validate complete bindings or
-justify lowering the frozen gates. The two-point cap also omitted distinctions
-needed for the requested section, and one window explicitly reported saturation.
-The review packet is evaluation-only and is never a runtime reading or warrant.
+The application-base `evaluation/profile-section-v1/DELIVERY_318.md` and `.json` index the draft, structured document input, source-review packet, clause trace, qualified/withheld evidence and cost ledger. Conservative charge is $0.738711444 of the earlier fresh $3 allowance, leaving $2.261288556. Known list-price usage is $0.423729044; the invoice remains unreconciled. No allowance resets or new run packets follow from this page.
 
-Two implementation iterations are spent. Mechanical transport work preserved
-the Flash source role, Jev checks and Qwen support role: existing whitespace
-cancellation was applied to Flash after a demonstrated loop; the final iteration
-kept the full enum contract locally while giving the provider a JSON shape, and
-complete correction headroom was reserved before execution. All original failed
-attempts and receipts remain unchanged. These historical decisions and receipts remain immutable. Brian subsequently removed the two-iteration stop and authorized continued bounded runs until the original $3 allowance is exhausted or the goal is achieved.
+## Shared assembly contracts
 
-The final conservative charge is **$0.221478316**, with **$2.778521684** left from
-the fresh $3. Nineteen physical paid sends are reconciled; three lack final usage
-and retain full reservations. Known list-price usage is $0.074022316, not the total
-invoice. The application-base index is
-`evaluation/profile-section-v1/DELIVERY_318.md` with JSON beside it. It links the
-actual draft, structured input, empty released-clause trace, twelve withheld
-candidate traces, all original/corrective outputs, source review, costs and exact
-`pte` commands. `section-review-prepare` and `section-report` inspect these offline.
+`profile_section.py` integrates existing assembly, source proof, support and final-document consumers. V8/P1 behavior remains unchanged. Runtime inputs do not require pastor-specific authored readings, portrait prose or connective warrants. Source text is available for upstream analysis/support verification; end-stage profiles do not repair missing theology.
 
-The next prioritized proposal belongs at the source producer: bind a complete
-proposition with its attached restriction/self-correction before address and
-presentation. Reuse current evidence and failed cases. Do not reconstruct the
-missing meanings in profile prose, lower thresholds, change model roles or launch
-unbounded retries. The subsequent user authorization permits further frozen iterations within the same allowance. No admission, whole-profile
-accuracy or independent generalization is established.
+Compatible admitted relationship observations are loaded from the fixed blocks using materialized-only assembly before authored hooks. Preserve question/model/source identities, thresholds and all observation states. The current literal composition mode copies complete admitted meanings, retaining every disjunct. Generic membership warrants add no theological, frequency, comparative or causal claim.
 
-## Frozen sequence
+Assertion support binds unchanged candidate identity to a whole-statement force inventory and measurement-entitlement judgment. Missing authority, unresolved entitlement or incomplete force inventory withholds the clause. The judgment is model assessment, not proof; independent semantic review remains required. The known main-question false acceptance remains a regression. Instant Qwen retains its support role and 2,048 output-token cap.
 
-1. Freeze six complete adjacent-block windows, source/membership hashes, reuse
-   outcomes, acceptance checks and the new $3 allowance baseline. Reuse the
-   completed readiness audit; historical machine bindings remain partial or
-   unverified at their existing authority. No authored reading is runtime input.
-2. Supply missing observations at the shared source-binding producer. Reuse its
-   literal compiler, voice/adoption/polarity, conditions, qualification, relation
-   and address contracts. Add only response/growth facets and a qualified local
-   presentation. Preserve Flash source generation and Jev field checks. One
-   mechanical correction; valid uncertainty never requests another answer.
-3. Assemble unchanged qualified local presentations and a deterministic,
-   sample-membership interpretation with explicit premises, warrant, alternatives
-   and contrary records. Use the ordinary analysis-support plan, Qwen instant
-   recipe, constituent caches, dependency propagation and document-input contract.
-4. Render supported entries with source links, trace and explicit unknowns. Review
-   original outputs for fidelity, qualifications, omissions, contrary evidence,
-   usefulness and coverage separately. Further demonstrated-gap iterations now follow Brian’s explicit authorization,
-   with each complete batch reserved against the unchanged original allowance.
+Source proposals retain complete source coordinates, evidence units, voice/adoption, polarity, conditions and qualifications. Typed attachment distinguishes prerequisites, exceptions, time scope, concessions and unresolved dependency. Code checks structure and literal coordinates; it does not reinterpret source meaning. Unresolved semantics remain unknown rather than triggering agreement-seeking retries.
 
-Acceptance: no pastor-authored runtime bridges; substantive supported clauses;
-preserved attribution/conditions/counterevidence; visible unread or insufficient
-coverage; exact cache/provenance/dependency and budget checks; mechanical and model
-success distinguished from source-reviewed semantic acceptance. Unsupported
-comparative priority, dominance, frequency or causality requires an explicit
-warrant. The unchanged historical “main question” false acceptance remains a
-regression. An untouched holdout is required only for later generalization claims.
+Every complete binding requires all applicable checks at the unchanged .90 threshold. Field-local criteria grade the specific field while preserving its relevant source restrictions. Changed question meanings cannot reuse an incompatible answer. Independent dimension qualification does not qualify a whole binding, admit a legacy leaf or release a quarantined measurement.
 
-The frozen source checks include projected listener invitations (281:122–124),
-reported and adopted victory-over-sin discourse (3973:68–70), reassurance beside
-warning (3973:74–78), deliberate yielding versus mistakes and repentance versus
-works (3973:88–97), gradual growth (4589:43–48), and choice versus already being
-perfect (4589:49–51). Selection follows demonstrated source-review gaps, not a
-representative sample. Entire windows and adjacent block context are retained.
-Two observations per window is a declared coverage cap, never exhaustive recall.
+## Independent dimensions and dependencies
 
-Artifacts live under the configured base. Each source batch reserves its initial
-request, one complete mechanical correction and Jev verification below $0.50.
-Qwen support batches separately reserve initial/corrective generations and existing
-stream recovery below $0.50. Unknown usage halts execution. The new allowance
-supersedes unused old credit; historical artifacts remain immutable.
+Requested-response correctness includes every meaning-changing restriction relevant to that description. A separate presence check prevents qualifying absence/metacommentary as an actual requested response. Both checks must qualify. Growth timing checks apply only to already proposed gradual-growth/immediate-perfection values; timing proof establishes only that exact local dimension.
 
-`pte analysis profile-support section-failure-handoff --plan PLAN` closes a
-demonstrated unknown-usage stop offline. It preserves the original attempt and its
-full reservation, emits a failed draft/document input with no unsupported clauses,
-and assesses each requested dimension as unavailable. It cannot retry, advance a
-window or confer semantic acceptance. `section-report --plan PLAN` reads this
-assessment even after the reporting implementation changes.
+Dimension inputs/results are reconstructed from original source receipts and verifier bundles, checked for exact compatibility and revalidated on reuse. Hand-authored replacement values cannot enter this path. Ordinary support exposes only the qualified dimension; unqualified full-binding prose remains withheld.
 
-## Historical authorized continuation and implemented mechanics
+The assembler emits one source-ordered eligible example per recording/dimension and retains all findings in the structured record. Mixed interpretations can combine admitted relationship evidence with qualified dimensions, but every required parent must pass support before release. Preserve both evidence kinds and all source links. Local timing does not establish adoption, actual progress or timing elsewhere.
 
-`section-continue-prepare --plan PRIOR` preserves the allowance and fixed six windows, reuses source requests, and freezes the current verifier. Repeated `--source-window ID` options refresh only explicitly selected fixed-window source requests. Every source and support batch must still fit its complete reservation before execution. Historical freezes and assessments are retained. The indexed verifier names each exact item path in every question; field meanings and the .90 eligibility threshold remain unchanged.
+## CLI tie-in
 
-The continuation reuses `source_passages` unit ranges for upstream binding spans.
-The model selects contiguous existing unit IDs; code copies and literally checks
-the complete span. This supplies analytical binding evidence, not illustrative
-quotation selection or a repair in final prose. Historical literal-text requests
-remain readable. Every model-created role, attachment and meaning still requires
-independent verification.
+First regenerate/search the configured-base catalog before option lookup:
 
-The verifier state contains proposed contract fields and the complete source,
-without compiler/admission metadata. Exact field paths avoid duplicating long
-quotations in each question. Established condition attachment and qualification
-boundary rules distinguish prerequisites from concessions and uncertainty. Neither
-this presentation change nor successful literal binding confers eligibility.
+```bash
+pte docs cli --output /Users/briancummings/Documents/PastorSearchData/docs/CLI_REFERENCE.md
+```
 
-A separately frozen source-reasoning option retains the dated Flash model and
-source role; Jev stays the verifier and Qwen stays instant analysis support. The
-OpenAI endpoint's live schema accepts string effort levels; its incompatible
-numeric-effort rejection is preserved with a full unknown-usage reservation.
-The string-valued `high` configuration reserves all billed reasoning within the
-same 65,536-token output cap, one mechanical correction and bounded streaming
-recovery. Complete 131,072-byte input tiers remain below the $0.50 batch ceiling.
-No historical policy or receipt is rewritten.
+Inspect the saved bounded result without new inference:
 
-The opt-in `--logical-condition-scopes` continuation contract requires one indexed
-attachment record per proposed condition, naming its consequence, dependency role
-and literal evidence. This responds to demonstrated temporal/concession placement
-errors, not a below-threshold score. Pure time scope and concessions cannot remain
-in a logical-condition container merely by receiving that label. Code rejects
-inconsistent declared placement; it never moves or reinterprets source meaning.
-An explicitly unresolved dependency remains unresolved without a corrective retry
-and cannot become eligible. Existing source contracts and historical outputs retain
-their meanings. A neutral account-access fixture checks structural enforcement;
-no pastor-specific reference reading or expected answer enters runtime prompts.
+```bash
+pte analysis profile-support section-report --plan /Users/briancummings/Documents/PastorSearchData/evaluation/profile-section-v1/continuations/0c9338eeab7a21e0e2385478e2357ac69bdae57f632c5fa946f6157c89326980/plan.json --json
+```
 
-## Reusing admitted materialized relationships
+The implemented workflow under `pte analysis profile-support` provides `section-continue-prepare`, `section-source`, `section-analysis-prepare`, `section-analysis`, `section-dimensions-prepare`, `section-dimensions`, `section-support-prepare`, `section-support`, `section-render`, `section-review-prepare` and `section-report`. Prepared freezes carry exact approval fingerprints, reuse compatibility, dependency proof, bounded recovery and cost reservations. Each batch reserves at most $0.50 against its approved allowance.
 
-The optional `section-continue-prepare --plan PRIOR --reuse-materialized` path
-also consumes compatible admitted salvation relationship observations from the
-same fixed blocks. It calls ordinary profile assembly in materialized-only mode,
-before reviewed readings or authored presentation inputs are attached. It retains
-each saved question, model, threshold, source identity and observation state.
-Quarantined receiving-response and obedience leaves remain unavailable.
-
-`section-analysis-prepare --plan PLAN` freezes a bounded instant-Qwen analysis
-request using these structured observations and their existing meaning contracts.
-No raw transcript or authored pastor interpretation enters this drafting request.
-`section-analysis --plan PLAN --approve-input FINGERPRINT` produces at most four
-unchanged clauses and one explicitly warranted selected-relationship membership
-interpretation. Zero clauses and unknowns are valid outcomes. Mechanical correction
-is limited to one receipted attempt; semantic uncertainty is not a retry trigger.
-
-Then run `section-support-prepare`, each frozen `section-support` batch, and
-`section-render` with that plan. Each generated clause receives the ordinary
-whole-statement analysis-support check against its original source and complete
-declared measurement inputs. The handoff distinguishes admitted local relationship
-evidence from eligible experimental bindings. A relationship being discussed does
-not establish its voiced speaker, preacher adoption, polarity, attached conditions
-or gradual versus immediate change. These limits remain visible in the rendered
-section and structured trace. The source-binding gates and admission policy are
-unchanged. A model-supported clause still needs separate semantic assessment;
-successful execution alone does not satisfy the section's usefulness criterion.
-
-Generated relationship clauses now declare their own assertion force. The adapter
-does not infer local force from an observation-role tag. The opt-in ordinary support
-contract independently inventories literal assertion excerpts and their force;
-the final consumer withholds supported judgments whose inventory requires absent
-authority, or whose inventory is incomplete. These semantic failures remain valid
-outputs and never trigger mechanical correction. This extension leaves the default
-support schema and historical cache identities unchanged. Neutral fixtures cover
-local observation, warranted membership, frequency, comparison, dominance and
-causality; no pastor-specific wording filter supplies the classification.
-
-The assertion inventory separately judges measurement entitlement under the exact
-admitted meanings. Disjunctive findings do not establish every alternative or a
-narrower one; source support cannot silently create that missing observation.
-Missing distinctions and unresolved entitlement withhold the unchanged statement
-without a mechanical retry. This judgment remains a model assessment, not an
-automatic proof of semantic correctness. The original draft can be reused exactly
-when only this support contract changes.
-
-`section-continue-prepare --plan PRIOR --literal-materialized` freezes constrained
-composition from the admitted meanings themselves. The same analysis commands
-compile those full meanings verbatim, with no draft inference or pastor-authored
-inputs. The generic question-area groups supply only selected-relationship
-membership hypotheses, explicit warrants, selection alternatives and defeaters.
-No disjunct is chosen and no theological connection is added. The ordinary Qwen
-support recipe still checks the resulting unchanged clauses. This is a narrower
-fallback inside the same adapter, not permission to release failed model prose or
-claim missing growth timing, response conditions or adoption.
-
-The current assertion audit references the frozen candidate ID and returns all
-forces found anywhere in the whole statement, plus whole-statement measurement
-entitlement. It avoids copying long candidate excerpts or repeating an assertion
-record for each source row. Candidate identity and the complete request fingerprint
-bind the result to unchanged wording. The instant model and 2,048-token output cap
-remain fixed; historical excerpt-format failures and token-truncated responses
-remain preserved with their recorded usage.
-
-`--field-local-criteria` is an opt-in correction to the existing isolated Jev
-checks. Each field's true/false criteria explicitly grade that field, including its
-relevant source restrictions, rather than treating an absent or erroneous unrelated
-proposal as a failure of this field. The complete source and field meanings remain
-present. Complete-binding release still requires every original check at .90,
-including response/growth and unchanged local prose. Old questions, scores and
-proof bundles keep their original contracts. New bundles record the exact criteria
-version; changed questions cannot reuse old answers as though they were identical.
-
-## Independently qualified response/growth dimensions
-
-The existing combined response/growth judgment does not identify which of its
-components is unresolved. `section-continue-prepare --plan PRIOR --dimension-checks`
-freezes narrow independent checks of the already generated requested-response and
-growth-timing values. `section-dimensions-prepare --plan PLAN` rebuilds every input
-from its original source receipt and original verification bundle before freezing
-the requests. `section-dimensions --plan PLAN --batch WINDOW --approve-input FP`
-executes one bounded Jev batch, with no retry or rewritten source reading.
-
-Response correctness includes every meaning-changing restriction relevant to the
-description; a separate presence judgment prevents emitting absence/metacommentary
-as an actual requested response. Only explicitly proposed gradual/immediate timing
-values receive a timing check. Each necessary judgment must pass .90. A qualified
-dimension is an experimental observation of that exact local dimension only; it
-does not make the whole binding eligible, admit a legacy leaf, or authorize claims
-about adoption, uptake or a complete doctrine. Old combined judgments and original
-outputs remain unchanged. The dimension result and each receipt are checked again
-on reuse; hand-authored replacement values cannot enter through this path.
-
-Ordinary `section-support-prepare` consumes eligible dimension results separately
-from complete bindings. It emits one source-ordered example per recording and
-dimension, retaining every result in the record. The support case exposes only
-the qualified dimension as analytical evidence; unqualified binding prose remains
-withheld. A mixed membership interpretation can combine admitted relationship
-measurements with a qualified timing value through the same source/citation reader.
-Its parents must each pass ordinary support before the final consumer releases it.
-The structured trace retains both evidence kinds and all source links. A scoped
-timing finding does not resolve conditions, actual progress, adoption, or timing
-outside that exact point.
+Optional preparation modes include `--reuse-materialized`, `--literal-materialized`, `--field-local-criteria` and `--dimension-checks`. They describe implementation capabilities, not an automatic successor experiment. No broad jobs, model switching, threshold tuning, quarantine changes, quotation execution or production admission is released here.

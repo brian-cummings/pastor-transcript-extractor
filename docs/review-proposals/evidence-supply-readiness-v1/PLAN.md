@@ -29,7 +29,7 @@ Do not add another planning cycle or ask Brian to design the sample.
   accepted and closed, including A12/C05 and A15/C10 deviations; 15/17 exact
   matches and 17 invariant passes remain unchanged.
 - [Desired-profile gap analysis](../../PASTOR_PROFILE_GAP_ANALYSIS.md),
-  [architecture](../../PASTOR_PROFILE_EVIDENCE_ARCHITECTURE.md),
+  [architecture](../../PASTOR_PROFILE_PRODUCT_PLAN.md),
   [59-leaf registry](../pastor-contracts-v1/REGISTRY.md),
   [shared contract](../profile-evidence-v1/CONTRACT.md),
   [field catalog](../profile-evidence-v1/FIELD_CATALOG.md) and

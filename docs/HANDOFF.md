@@ -13,4 +13,4 @@ Brian wants useful automatic source-grounded pastor analysis plus mathematical d
 
 Use `pte analysis structure-readiness --segment-plan --json` to verify the current sealed documentation registry. Regenerate/search the configured-base CLI catalog before command lookup. Generated reports belong under `/Users/briancummings/Documents/PastorSearchData`; source-controlled plans are authored contracts.
 
-The [old accumulated handoff](HANDOFF.historical-before-benchmark-goal-2026-11-01.md) is historical only. Its commands, pending decisions, AUTHORIZED labels and next actions are not a current work queue. All dated proposals and prior sealed registries likewise preserve historical decisions rather than override this handoff. Keep immutable evidence; do not delete old receipts to eliminate ambiguity.
+Keep only current goals, operating contracts and relevant evidence in the working tree. Git is the history store. Remove obsolete plans and snapshots instead of retaining archive pages or versioned planning registries. Source evidence, cost receipts and failed outputs needed to assess current claims remain application data, not an agent work queue.

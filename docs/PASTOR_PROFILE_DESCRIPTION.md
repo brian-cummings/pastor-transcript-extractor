@@ -55,4 +55,4 @@ Current manifest: `b1f0bd2b0830157196e722586daaed08aca87c84bc0fbc949d758685c2b92
 
 The old D1–D4 goal is complete. The separately authorized P1 case is delivered and artifact-reviewed, with automatic reuse, manual interpretation and missing upstream meaning disclosed. Stop after this case and its report. Brian’s concrete reader acceptance remains pending; no further case, semantic expansion or model experiment is active.
 
-The [Ollama synthesis experiments](PASTOR_PROFILE_SYNTHESIS.md) are closed diagnostic history. Do not run them as the default next step. Their rejected outputs remain preserved alongside all earlier profile versions. [Historical snapshots](PASTOR_PROFILE_HISTORY.md) preserve earlier workflow descriptions; their command examples do not override current holds.
+The reviewed examples remain available, but their authored interpretations are not proof of automatic generation. Use the [current implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for next steps. Closed synthesis experiments are not an active workflow; their evidence remains in the configured application base. Git retains previous workflow descriptions.

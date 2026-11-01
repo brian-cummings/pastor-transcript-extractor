@@ -263,12 +263,12 @@ def analysis_structure_readiness(
     if segment_plan:
         if any((unit_span_check, typesafe_selection, run_selection, typesafe_windows, reviewed_membership, prepare_handoff, check_handoff, handoff_proposal, evidence_trace, check_only)) or approve_input is not None:
             raise typer.BadParameter("--segment-plan is a separate read-only mode")
-        from pastor_transcript_extractor.segment_evidence_plan import verify
+        from pastor_transcript_extractor.segment_evidence_plan import STATUS_PATH, verify
         try:
             plan, path = verify()
         except (ValueError, OSError, KeyError) as error:
             raise typer.BadParameter(str(error)) from error
-        output = dict(status=plan['status'], fingerprint=plan['content_fingerprint'], path=str(path), implementation_path=str(path.parent/Path(plan['implementation_path']).name), pipeline_order=plan['pipeline_order'], product_order=plan['product_order'], analytical_families=plan['analytical_families'], next_deliverables=plan['next_deliverables'], next_step=plan['next_step'], retired_paths=plan['retired_paths'], provider_requests=0)
+        output = dict(status=plan['status'], fingerprint=plan['content_fingerprint'], status_path=str(STATUS_PATH), path=str(path), implementation_path=str(path.parent/Path(plan['implementation_path']).name), product_goal=plan['product_goal'], pipeline_order=plan['pipeline_order'], product_order=plan['product_order'], analytical_families=plan['analytical_families'], next_deliverables=plan['next_deliverables'], next_step=plan['next_step'], retired_paths=plan['retired_paths'], provider_requests=0)
         console.print_json(data=output) if as_json else console.print(output, markup=False)
         return
     if unit_span_check:

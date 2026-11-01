@@ -9,8 +9,7 @@ all 59 signals from the downstream design in a versioned registry. It starts no
 collection, classification, projection engine, or clustering work.
 
 Read the [59-record summary](REGISTRY.md), or inspect [complete records](registry-v1.json).
-The [design document](../../TYPESAFE_TOPIC_ANALYSIS_PLAN.md#downstream-pastor-understanding-contract--2026-10-13)
-remains the downstream architecture authority. The [builder/checker](build_registry.py)
+The complete records and their shared policies define the current measurement contracts; the [product plan](../../PASTOR_PROFILE_PRODUCT_PLAN.md) defines the desired product. The [builder/checker](build_registry.py)
 imports only local canonical question definitions, never provider clients or a database.
 
 ## What is concrete now

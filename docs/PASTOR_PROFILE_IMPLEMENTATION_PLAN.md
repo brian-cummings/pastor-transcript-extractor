@@ -83,8 +83,8 @@ Inspect the saved automatic-section result without new inference:
 pte analysis profile-support section-report --plan /Users/briancummings/Documents/PastorSearchData/evaluation/profile-section-v1/continuations/0c9338eeab7a21e0e2385478e2357ac69bdae57f632c5fa946f6157c89326980/plan.json --json
 ```
 
-The exact saved plan is historical and can report compatibility limits after source changes; do not regenerate or pay to make a historical fingerprint current. Original artifacts remain authoritative evidence of that run. The status registry verifies current document hashes and historical snapshots. This request needs only focused plan/CLI checks and inexpensive static checks, not dataset evaluation.
+The exact saved plan is historical and can report compatibility limits after source changes; do not regenerate or pay to make a historical fingerprint current. Original artifacts remain authoritative evidence of that run. The status registry verifies current document hashes and acceptance boundaries; it has no archive dependency. This request needs only focused plan/CLI checks and inexpensive static checks, not dataset evaluation.
 
-## History and holds
+## Operating boundaries
 
-[History index](PASTOR_PROFILE_HISTORY.md) links byte-preserved earlier plans and the old handoff. D1–D4/P1 completion is historical implementation scope only. No successor source run, automatic provider/model variant, new recordings, broad corpus jobs, production admission, quarantine change, quotation execution or calibrated overall score is authorized by this documentation update. Benchmark comparison is now a product objective; the original section's no-comparison boundary remains correct for that historical run.
+Keep one current product plan, implementation plan, handoff and status file. Remove obsolete planning documents; Git retains their history. Keep relevant evidence/receipts needed to assess present claims. No successor source run, automatic provider/model variant, new recordings, broad corpus jobs, production admission, quarantine change, quotation execution or calibrated overall score is authorized by this documentation update. Benchmark comparison is a product objective, not a validated capability.

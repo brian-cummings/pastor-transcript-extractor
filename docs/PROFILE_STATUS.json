@@ -1,0 +1,181 @@
+{
+  "status": "AUTOMATIC_ANALYSIS_PARTIAL_DIMENSIONAL_BENCHMARK_GOAL_NOT_ACHIEVED",
+  "decision_owner": "Brian",
+  "plan_path": "docs/PASTOR_PROFILE_PRODUCT_PLAN.md",
+  "pipeline_order": [
+    "existing_segment_observations",
+    "supported_evidence_accumulation",
+    "bounded_profile_review",
+    "reviewed_portrait_interpretation",
+    "strongest_supporting_segment",
+    "optional_Ollama_illustrative_quote"
+  ],
+  "quote_context": [
+    "preceding_segment",
+    "center_segment",
+    "following_segment"
+  ],
+  "quote_anchor": "substantive_content_in_center",
+  "overflow": "only_to_complete_same_thought_or_preserve_qualifiers_attribution",
+  "quote_mode": "one_contiguous_verbatim_excerpt_or_withhold",
+  "quotes_change_measurements": false,
+  "exact_span_extraction_required_upstream": false,
+  "topic_presence_implies_position": false,
+  "next_step": "Qualify_one_specific_response_with_attached_qualifications_at_existing_upstream_producer_then_useful_automatic_analysis_then_validated_dimension_then_benchmark_comparison",
+  "provider_execution": false,
+  "new_collection": false,
+  "new_projection_scoring": false,
+  "quote_implementation": false,
+  "retired_paths": {
+    "context-extraction-probe-v1": "closed_no_automatic_execution",
+    "context-evidence-architecture-v1": "closed_no_automatic_execution",
+    "minute-evidence-handoff-v1": "closed_no_automatic_execution",
+    "minute-evidence-handoff-implementation-v1": "closed_no_automatic_execution",
+    "typesafe-selected-window-bridge-v1": "closed_no_automatic_execution",
+    "typesafe-position-selection-v1": "closed_no_automatic_execution",
+    "typesafe-position-selection-source-audit-v1": "closed_no_automatic_execution",
+    "existing-source-unit-span-readiness-v1": "closed_no_automatic_execution",
+    "collector-retrieval-design-v1": "closed_no_automatic_execution",
+    "collector-retrieval-implementation-v1": "closed_no_automatic_execution",
+    "collector-retrieval-repair-v1.1": "closed_no_automatic_execution",
+    "fresh-discovery-readiness-v1": "closed_no_automatic_execution",
+    "fresh-discovery-readiness-v2": "closed_no_automatic_execution",
+    "fresh-discovery-readiness-v3": "closed_no_automatic_execution",
+    "source-unit-repair-v1": "closed_no_automatic_execution",
+    "minute-membership-reconciliation-v1": "closed_no_automatic_execution"
+  },
+  "product_order": [
+    "readable_assessment",
+    "at_a_glance",
+    "benchmark_comparison_unavailable_until_validated",
+    "four_family_dimensional_analysis",
+    "supporting_observations",
+    "sermons_and_transcript_segments"
+  ],
+  "analytical_families": [
+    "preaching_style",
+    "theological_emphasis",
+    "theological_orientation",
+    "pastoral_rhetorical_orientation"
+  ],
+  "next_deliverables": [
+    "One_qualified_upstream_response_distinction_or_exact_blocker",
+    "Useful_automatic_individual_analysis",
+    "One_validated_shared_dimension_and_aggregate",
+    "Evidence_grounded_benchmark_comparison_on_validated_dimensions"
+  ],
+  "high_labels_require_explicit_rules": true,
+  "model_probability_is_pastor_score": false,
+  "benchmark_percentages_authorized": false,
+  "single_pastor_score_proposed": false,
+  "missing_dimensions_silently_disappear": false,
+  "draft_is_measurement_ground_truth": false,
+  "implementation_path": "docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md",
+  "agents_path": "AGENTS.md",
+  "product_goal": {
+    "objective": "Useful automatically assembled source-grounded pastor analysis and mathematical dimensional comparison with benchmark pastors",
+    "status": "not_achieved",
+    "automatic_analysis_acceptance": "partial",
+    "broad_dimensional_benchmark_validated": false,
+    "existing_scripture_use_benchmark_implemented": true,
+    "current_request": "documentation_status_alignment",
+    "next_checkpoint": "qualified_specific_response_with_attached_conditions_and_qualifications",
+    "milestones": [
+      "reliable_qualified_observations",
+      "useful_automatic_individual_analysis",
+      "validated_shared_dimension_and_sample_aggregate",
+      "validated_benchmark_comparison"
+    ],
+    "comparison_acceptance": [
+      "shared_versioned_meanings_and_scoring",
+      "defensible_dimension_units_denominators_and_aggregation",
+      "traceable_source_values_and_qualifications",
+      "comparable_declared_samples_and_dependence",
+      "explicit_missingness_uncertainty_and_abstention",
+      "explicit_normalization_weights_and_sensitivity",
+      "reviewed_benchmark_membership_and_immutable_lineage",
+      "independent_semantic_and_sample_stability_validation",
+      "readable_evidence_linked_difference_explanation"
+    ],
+    "no_model_probability_as_pastor_score": true,
+    "unknown_is_not_zero": true,
+    "reuse_existing_benchmark_machinery": true,
+    "sampling_confirmation_independent_of_exposed_windows": true,
+    "no_new_paid_or_dataset_run_frozen_by_documentation_update": true
+  },
+  "automatic_section_delivery": {
+    "status": "narrow_development_slice_delivered_original_usefulness_partial",
+    "profile_id": 318,
+    "video_ids": [
+      281,
+      3973,
+      4589
+    ],
+    "frozen_windows": [
+      "v281b122-124",
+      "v3973b68-70",
+      "v3973b74-78",
+      "v3973b88-97",
+      "v4589b43-48",
+      "v4589b49-51"
+    ],
+    "blocks": 30,
+    "clauses": 6,
+    "qualified_growth_dimensions": 1,
+    "eligible_complete_bindings": 0,
+    "eligible_specific_response_descriptions": 0,
+    "reused_relationship_rows": 126,
+    "positive_relationship_rows": 29,
+    "general_generator_validated": false,
+    "independent_holdout": false,
+    "production_admission": false,
+    "quarantine_changed": false,
+    "final_plan": "evaluation/profile-section-v1/continuations/0c9338eeab7a21e0e2385478e2357ac69bdae57f632c5fa946f6157c89326980/plan.json",
+    "delivery_index": "evaluation/profile-section-v1/DELIVERY_318.md",
+    "fresh_allowance_usd": "3.000000000",
+    "conservative_charge_usd": "0.738711444",
+    "remaining_credit_usd": "2.261288556",
+    "known_list_price_usd": "0.423729044",
+    "actual_invoice": "unknown_unreconciled",
+    "remaining_credit_is_new_experiment_authorization": false,
+    "models": {
+      "source": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+      "verification": "jev-1.13.0",
+      "analysis_support": "Qwen/Qwen3.8-27B_instant"
+    }
+  },
+  "version": "pastor-profile-current-status-v1",
+  "date": "2026-11-01",
+  "authority": "Current goals and acceptance only. Brian requested removal of obsolete planning history; Git stores previous versions.",
+  "reuse_policy": {
+    "semantic_owner": "responsible_upstream_category_leaf_or_existing_shared_binding",
+    "quote_input": [
+      "established_point",
+      "eligible_center_block",
+      "labeled_eligible_neighbors"
+    ],
+    "reuse_before_new_inference": true,
+    "changed_outputs_require_new_version": true,
+    "full_pack_miss_proves_constituent_absence": false,
+    "end_stage_general_extractor": false,
+    "quote_supplies_analytical_authority": false,
+    "standalone_inventory_gate": false,
+    "failed_experiment_automatically_starts_variant": false,
+    "unknowns_block_supported_delivery": false
+  },
+  "documentation_policy": "Current plans and relevant operating contracts only; obsolete planning snapshots and archive registries belong in Git.",
+  "active_document_hashes": {
+    "AGENTS.md": "24541e03fc0aff2cfb4e0961a81f180e9c4280c8fd819a249434f9fb9dd41a9c",
+    "README.md": "cf1fccc884e1834642c321fadb33fda1952f28ddb6214f93db5e0ba8543af52c",
+    "docs/PASTOR_PROFILE_PRODUCT_PLAN.md": "c6a7014dc09d77a6b38bbcb2f887a7f2bc40124f00e843494496484d77de7272",
+    "docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md": "28767aa72743abfa04a8818b7e0ddd4aaf65a5d47edaba38e71e60e2e0384bc6",
+    "docs/HANDOFF.md": "7bd19d74a1256478f85a44affcb114505b1a34429e0b775ce21b02f11bf81184",
+    "docs/review-proposals/README.md": "553d17c571bb5e43858ce3bf202bc9f08a308aa31c6104e70f878475062fbf85",
+    "docs/PROFILE_SECTION_DELIVERY.md": "0e63ce92fcfbf2da1db21a1030c6527185efc7f24889d0c64545e843ea27eed1",
+    "docs/PROFILE_ANALYSIS_SUPPORT.md": "3d5021a4f000bf55a87221d6557f1750d8f02a4a676a0195f87a3265382c3903",
+    "docs/PASTOR_PROFILE_DESCRIPTION.md": "7c43a713b998e97572efbe6ab40545cc2c2813f94c2ada4121865d043eb4b7ab",
+    "docs/SEGMENT_EVIDENCE_PLAN.md": "acb1a4b11479fc15b15215fbfd64819af3be6ce47a8d0b292b467cb7e115cd14",
+    "docs/reference-benchmarking.md": "1021201337825a03cacbcf2ff8e9abb0aa6516ba47b6f3faf896d96db29cd08e"
+  },
+  "content_fingerprint": "61f15952d6393174ae2c0eedf9e3f24b88c5a2d334d6299c2c9d2961ed16d6a0"
+}

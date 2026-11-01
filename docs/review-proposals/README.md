@@ -14,7 +14,7 @@
 
 ## Current registry and inspection
 
-[Sealed registry v32](pastor-profile-implementation-plan-v1/plan-v32.json) pins current plans, correction of acceptance, benchmark objective and historical snapshots. Verify it without providers:
+[Current status](../PROFILE_STATUS.json) records the current goal, evidence limits, next checkpoint and active-document hashes. Verify it without providers:
 
 ```bash
 pte analysis structure-readiness --segment-plan --json
@@ -22,8 +22,6 @@ pte analysis structure-readiness --segment-plan --json
 
 The automatic-section index is `/Users/briancummings/Documents/PastorSearchData/evaluation/profile-section-v1/DELIVERY_318.md` with JSON beside it. It preserves the narrow PASS, complete trace, source-review outputs and conservative costs. Read that PASS together with the product-level partial acceptance correction; do not rewrite the historical assessment.
 
-## Historical proposals and obsolete execution instructions
+## Documentation policy
 
-Everything in dated/versioned review proposal folders is a historical decision/contract or diagnostic unless the active implementation plan specifically identifies it as current. Prior approval labels, model pins, pending decisions, commands and completion strings apply to their recorded scope/date. They do not authorize replay, release quarantine or override later user decisions. Reusable evidence/contracts remain available under compatibility rules.
-
-The [previous status index](README.historical-before-benchmark-goal-2026-11-01.md), [history index](../PASTOR_PROFILE_HISTORY.md) and exact snapshots preserve the old queue. Closed TypeSafe V1/V2, connected binding, editorial synthesis, discovery/collector and exact-span branches remain closed. No immutable evidence, previous plan JSON, failed response or receipt was deleted.
+Keep only current plans, supported workflow instructions and contracts/evidence still needed for the current product. Superseded plans, duplicate snapshots and archive indexes are removed; Git supplies history. Existing evidence and contract files are not new execution authorization. Follow the active implementation plan rather than an old proposal's pending-decision or next-action text.
