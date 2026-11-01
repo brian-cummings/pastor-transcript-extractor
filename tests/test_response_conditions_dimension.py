@@ -13,6 +13,21 @@ from test_profile_section import reading
 
 
 class ResponseConditionsTests(unittest.TestCase):
+    def test_response_anchor_revision_is_opt_in_and_bounded_without_changing_checks(self):
+        window,_,value,checked=reading()
+        original=producer.request(window,response_conditions=True)
+        revised=producer.request(window,response_conditions=True,response_conditions_revision=2)
+        self.assertEqual(original,producer.request(window,response_conditions=True))
+        self.assertNotEqual(original.fingerprint,revised.fingerprint)
+        self.assertEqual(original.body['model'],revised.body['model'])
+        self.assertEqual(original.body['response_format'],revised.body['response_format'])
+        self.assertEqual(producer.RESPONSE_CONDITIONS_RECIPE_V2,revised.source_identity['response_conditions_recipe'])
+        self.assertIn('closing prayer',revised.body['messages'][0]['content'])
+        self.assertEqual('point_limit',producer.inspect(value,window,revised,'receipt')['errors'][0]['code'])
+        self.assertTrue(all(not r['eligible'] for r in producer.dimension_findings(checked['observations'],
+            dict(output={k:dict(type='noul',noul=.89) for k in producer.dimension_verification(window,checked['observations']).body['questions']}),
+            producer.dimension_verification(window,checked['observations']))))
+
     def test_selection_ignores_order_text_and_answers_excludes_development_and_overlap(self):
         sources=[dict(video_id=v,eligible_block_ids=list(range(1,140)),text='ignored',answers=[1])
             for v in (281,3973,4589)]

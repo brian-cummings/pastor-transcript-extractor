@@ -123,6 +123,8 @@ def validate_plan(p):
         raise ValueError('Confirmation selection changed')
     if goal['module_sha256']!=file_hash(__file__):
         raise ValueError('Dimension implementation changed after freeze')
+    if goal.get('predecessor') and file_hash(goal['predecessor']['path'])!=goal['predecessor']['sha256']:
+        raise ValueError('Development predecessor changed')
     coordinates=(freeze['development'] if goal['phase']=='development' else
         [[c['video_id'],c['first'],c['last']] for c in freeze['confirmation']])
     if goal['phase'] not in ('development','confirmation'):
@@ -137,30 +139,55 @@ def validate_plan(p):
     return coordinates
 
 
-def prepare(base_dir, freeze_path, *, implementation_freeze=None):
+def prepare(base_dir, freeze_path, *, implementation_freeze=None, predecessor=None, source_windows=(), revision=1):
     freeze=read_freeze(freeze_path);inv=section.inventory(base_dir)
     if inv['content_fingerprint']!=freeze['inventory_fingerprint']:
         raise ValueError('Frozen source inventory changed')
     phase='confirmation' if implementation_freeze else 'development'
+    prior=None;selected=set(source_windows)
     if implementation_freeze:
+        if predecessor or selected:raise ValueError('Confirmation cannot revise selected development points')
         locked=json.loads(Path(implementation_freeze).read_text())
         if locked['code_identity']!=section.identity() or locked['module_sha256']!=file_hash(__file__):
             raise ValueError('Implementation changed after confirmation lock')
+        revision=locked.get('semantic_revision',1)
+    elif predecessor:
+        prior=json.loads(Path(predecessor).read_text())
+        if prior['input_fingerprint']!=digest({k:v for k,v in prior.items() if k!='input_fingerprint'}):
+            raise ValueError('Development predecessor changed')
+        if (prior['response_conditions_goal']['phase']!='development' or
+            prior['response_conditions_goal']['freeze']['sha256']!=file_hash(freeze_path) or
+            revision!=prior['response_conditions_goal']['semantic_revision']+1 or revision!=2 or
+            not selected or not selected<={t['id'] for t in prior['tasks']}):
+            raise ValueError('Revision requires the next implemented recipe and explicit existing development windows')
+        if (Path(predecessor).parent/'implementation-freeze.json').exists():
+            raise ValueError('Cannot revise a locked implementation')
+    elif revision!=1 or selected:
+        raise ValueError('A semantic revision requires its frozen predecessor')
     ref,auth=authorize(base_dir,freeze_path)
     coordinates=freeze['development'] if phase=='development' else [[c['video_id'],c['first'],c['last']] for c in freeze['confirmation']]
     tasks=[];x=section.x;producer=section.producer
     correction_reserve=x.provider.reserved_usd(x.requests.DEEPINFRA_BINDING_FEEDBACK_VERSION+'-stream-v1')
     for window in section.windows(inv,coordinates):
+        if prior and window.id not in selected:
+            tasks.append(deepcopy(next(t for t in prior['tasks'] if t['id']==window.id)))
+            continue
         spec=producer.local_enum_transport(x.provider.streaming_request(producer.request(window,
-            unit_ranges=True,condition_attachments=True,response_conditions=True)))
+            unit_ranges=True,condition_attachments=True,response_conditions=True,response_conditions_revision=revision)))
         spec=producer.reasoning_request(spec)
         reserved=x.requests.request_reservation(spec)+correction_reserve+x.requests.reservation('source_verification')
         if reserved>Decimal('.50'):raise ValueError('Source batch exceeds fifty cents')
         tasks.append(dict(id=window.id,window=asdict(window),request=asdict(spec),
             reserved_usd=str(reserved),maximum_paid_attempts=5))
     goal=dict(freeze=dict(path=str(Path(freeze_path).resolve()),sha256=file_hash(freeze_path)),
-        phase=phase,module_sha256=file_hash(__file__),semantic_revision=1,
-        documented_failure='Existing response strings omit immediately explained response content and restrictions retained elsewhere in the binding. Correctness question and .90 gates unchanged.')
+        phase=phase,module_sha256=file_hash(__file__),semantic_revision=revision,
+        documented_failure=('Existing response strings omit immediately explained response content and restrictions retained elsewhere in the binding.' if revision==1 else
+            'Response-point boundaries omit the surrounding imperative/application and a qualifying performed prayer, leaving projected speech or a metaphor isolated from the complete response. Unchanged valid uncertainty is not retried.'),
+        verification_policy='Correctness questions and .90 gates unchanged.')
+    if prior:
+        goal['predecessor']=dict(path=str(Path(predecessor).resolve()),sha256=file_hash(predecessor))
+        goal['refreshed_source_windows']=sorted(selected)
+        goal['unchanged_source_reuse']='Exact original requests/receipts and constituent answers; including valid uncertainty. No new request for unaffected windows.'
     if implementation_freeze:
         goal['implementation_freeze']=dict(path=str(Path(implementation_freeze).resolve()),sha256=file_hash(implementation_freeze))
     limit=f"{len(tasks)} {phase} windows in three previously exposed recordings; independently coordinate-selected confirmation is not untouched material. Local selected points only; no frequency, ministry-wide trait, benchmark distance or production admission."
@@ -186,6 +213,7 @@ def lock_implementation(plan):
     p,root=section.load(plan)
     if p['response_conditions_goal']['phase']!='development':raise ValueError('Lock development implementation only')
     value=dict(version=VERSION,code_identity=section.identity(),module_sha256=file_hash(__file__),
+        semantic_revision=p['response_conditions_goal']['semantic_revision'],
         development_plan=dict(path=str(Path(plan).resolve()),sha256=file_hash(plan)),
         confirmation_freeze=p['response_conditions_goal']['freeze'],
         policy='No semantic changes after this lock; confirmation outputs reviewed unchanged.')

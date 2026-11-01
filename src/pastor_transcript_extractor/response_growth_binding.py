@@ -17,6 +17,27 @@ RANGE_TRANSPORT = 'response-growth-source-unit-ranges-v1'
 CONDITION_ATTACHMENT_VERSION = 'source-logical-condition-attachments-v1'
 DIMENSION_VERIFICATION_VERSION = 'response-growth-dimension-correctness-v1'
 RESPONSE_CONDITIONS_RECIPE = 'self-contained-response-conditions-v1'
+RESPONSE_CONDITIONS_RECIPE_V2 = 'response-anchor-through-explained-application-v2'
+RESPONSE_ANCHOR_PROMPT = '''
+For this bounded correction return at most ONE complete response-bearing point.
+Start with the literal human-response anchor: the command, invitation, described
+action, or performed prayer. Do not spend that point on background assertions
+that supply no human response. If no relevant response is supported, abstain.
+Read from that anchor through the source's explanation and application of the
+same response before choosing its boundaries. A metaphor alone is incomplete
+when the source immediately explains or performs what the response means. A
+closing prayer may perform or explain the invitation: preserve its stated limits,
+dependence and uncertainty without assuming the audience participated. Likewise,
+a projected example of responding does not cancel an actual surrounding command
+to that same response. Retain both speech roles when the point contains both.
+Use response_growth.evidence for literal ranges covering the response anchor and
+the attached explanation/restrictions. Construct requested_response from that
+complete point, including the specific action, its source-stated dependency or
+consequence, and attached qualifications. Do not invent a connective relation
+between separate points. A time expression by itself is not a requested action.
+The one-point cap deliberately leaves other points unrecovered; disclose them
+through the existing saturation/unknown fields rather than claiming exhaustion.
+'''
 RESPONSE_CONDITIONS_PROMPT = '''
 The response-and-conditions dimension consumes requested_response by itself, not
 the surrounding binding. Construct this field only after binding the complete
@@ -134,7 +155,8 @@ def range_schema(*,condition_attachments=False):
     return convert(schema(condition_attachments=condition_attachments))
 
 
-def request(window,*,unit_ranges=False,condition_attachments=False,response_conditions=False):
+def request(window,*,unit_ranges=False,condition_attachments=False,response_conditions=False,response_conditions_revision=1):
+    if response_conditions_revision not in (1,2):raise ValueError('Unsupported response semantic revision')
     texts, mapping = window.target()
     policy = hosted.BINDING_POLICY
     unit_rule='''\nFor this request every evidence span is a contiguous source-unit range,
@@ -147,7 +169,8 @@ all necessary restrictions. Never select unrelated material to hide a missing li
 '''
     body = dict(model=policy['model'], messages=[dict(role='system', content=PROMPT+(unit_rule if unit_ranges else '')+
         (CONDITION_ATTACHMENT_PROMPT if condition_attachments else '')+
-        (RESPONSE_CONDITIONS_PROMPT if response_conditions else '')),
+        (RESPONSE_CONDITIONS_PROMPT if response_conditions else '')+
+        (RESPONSE_ANCHOR_PROMPT if response_conditions and response_conditions_revision==2 else '')),
         dict(role='user', content=requests.wire(dict(texts=texts, block_mapping=mapping,
             **(dict(source_units=source_passages.inventory(window)) if unit_ranges else {}),
             source_identity={k:v for k,v in asdict(window).items() if k!='blocks'})))],
@@ -158,7 +181,7 @@ all necessary restrictions. Never select unrelated material to hide a missing li
         dict(contract=VERSION, recipe=PRODUCER_RECIPE if unit_ranges else 'complete-point-before-presentation-v2',
             **(dict(span_transport=RANGE_TRANSPORT) if unit_ranges else {}),
             **(dict(condition_attachment_contract=CONDITION_ATTACHMENT_VERSION) if condition_attachments else {}),
-            **(dict(response_conditions_recipe=RESPONSE_CONDITIONS_RECIPE) if response_conditions else {}),
+            **(dict(response_conditions_recipe=RESPONSE_CONDITIONS_RECIPE_V2 if response_conditions_revision==2 else RESPONSE_CONDITIONS_RECIPE) if response_conditions else {}),
             window_digest=evidence.digest(asdict(window))),
         namespace=hosted.BINDING_NAMESPACE, version=requests.DEEPINFRA_BINDING_VERSION,
         runtime_identity=deepcopy(policy))
@@ -231,6 +254,8 @@ def inspect(output, window, spec, receipt):
     ranged=spec.source_identity.get('span_transport')==RANGE_TRANSPORT
     attached=spec.source_identity.get('condition_attachment_contract')==CONDITION_ATTACHMENT_VERSION
     errors = reading_diagnostics.shape_errors(reading,(range_schema if ranged else schema)(condition_attachments=attached))
+    if not errors and spec.source_identity.get('response_conditions_recipe')==RESPONSE_CONDITIONS_RECIPE_V2 and len(reading['claims'])>1:
+        errors.append(dict(path='$.claims',code='point_limit',message='This frozen response-anchor correction permits at most one complete point.'))
     if errors:
         return dict(errors=errors, observations=[])
     if ranged:

@@ -19,10 +19,11 @@ def response_conditions_freeze(base_dir:Path=typer.Option(...,'--base-dir'),obje
 
 
 @app.command('response-conditions-prepare')
-def response_conditions_prepare(base_dir:Path=typer.Option(...,'--base-dir'),freeze:Path=typer.Option(...,'--freeze'),implementation_freeze:Path|None=typer.Option(None,'--implementation-freeze')):
+def response_conditions_prepare(base_dir:Path=typer.Option(...,'--base-dir'),freeze:Path=typer.Option(...,'--freeze'),implementation_freeze:Path|None=typer.Option(None,'--implementation-freeze'),predecessor:Path|None=typer.Option(None,'--predecessor'),source_window:list[str]=typer.Option([],'--source-window'),revision:int=typer.Option(1,'--revision')):
     """Prepare bounded development or implementation-locked confirmation in the section workflow."""
     from ... import response_conditions_dimension as dimension
-    try:typer.echo(json.dumps(dimension.prepare(base_dir,freeze,implementation_freeze=implementation_freeze),indent=2))
+    try:typer.echo(json.dumps(dimension.prepare(base_dir,freeze,implementation_freeze=implementation_freeze,
+        predecessor=predecessor,source_windows=source_window,revision=revision),indent=2))
     except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
 
 
