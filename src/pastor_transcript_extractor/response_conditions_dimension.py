@@ -168,7 +168,8 @@ def prepare(base_dir, freeze_path, *, implementation_freeze=None, predecessor=No
     coordinates=freeze['development'] if phase=='development' else [[c['video_id'],c['first'],c['last']] for c in freeze['confirmation']]
     tasks=[];x=section.x;producer=section.producer
     correction_reserve=x.provider.reserved_usd(x.requests.DEEPINFRA_BINDING_FEEDBACK_VERSION+'-stream-v1')
-    for window in section.windows(inv,coordinates):
+    for window in section.windows(inv,coordinates,stratum=('independent_coordinate_confirmation'
+            if phase=='confirmation' else 'selected_gap_and_contrast')):
         if prior and window.id not in selected:
             tasks.append(deepcopy(next(t for t in prior['tasks'] if t['id']==window.id)))
             continue

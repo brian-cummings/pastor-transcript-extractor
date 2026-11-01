@@ -36,7 +36,7 @@ def inventory(base_dir):
     return segment_cache_inventory.build(base_dir, profile_id=318, video_ids=(281,3973,4589))
 
 
-def windows(inv, coordinates=None):
+def windows(inv, coordinates=None, *, stratum='selected_gap_and_contrast'):
     sources = {s['video_id']:s for s in inv['sermons']}
     result = []
     for vid, first, last in (WINDOWS if coordinates is None else coordinates):
@@ -52,7 +52,7 @@ def windows(inv, coordinates=None):
         selected = tuple(dict(block_id=k, target_text=sermon_topics.resolve_topic_block_context(blocks[k])['target_text'],
             **{f:blocks[k][f] for f in ('start_seconds','end_seconds','segment_indexes')}) for k in ids)
         result.append(SourceWindow(f'v{vid}b{first}-{last}',318,vid,s['source_sha256'],first,
-            selected,'selected_gap_and_contrast'))
+            selected,stratum))
     return result
 
 
@@ -134,7 +134,8 @@ def load(path):
         from . import response_conditions_dimension as dimension
         coordinates=dimension.validate_plan(p)
     if (inv['content_fingerprint'] != p['inventory_fingerprint'] or
-        digest([asdict(w) for w in windows(inv,coordinates)]) != digest([t['window'] for t in p['tasks']])):
+        digest([asdict(w) for w in windows(inv,coordinates,stratum=('independent_coordinate_confirmation'
+            if p.get('response_conditions_goal',{}).get('phase')=='confirmation' else 'selected_gap_and_contrast'))]) != digest([t['window'] for t in p['tasks']])):
         raise ValueError('Membership, inventory or complete source windows changed')
     return p, path.parent
 
