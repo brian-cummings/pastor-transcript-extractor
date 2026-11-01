@@ -38,6 +38,15 @@ def prepare(path):
         coverage=dict(windows=len(cases),blocks=sum(len(c['window']['blocks']) for c in cases),final_candidates=sum(len(c['candidates']) for c in cases),
             eligible=sum(i['eligibility']['eligible'] for c in cases for i in c['candidates']),
             saturated_windows=[c['id'] for c in cases if c['source_status']=='saturated']))
+    if p.get('dimension_contract'):
+        from . import profile_section as section
+        dimensions=[]
+        for task in p['tasks']:
+            result=section.read_dimension_result(p,root,task['id']);ref=root/'dimensions'/task['id']/'result.json'
+            dimensions.append(dict(window_id=task['id'],result=dict(path=str(ref),sha256=file_hash(ref)),
+                receipt=result['receipt'],findings=result['findings']))
+        packet.update(version='profile-section-source-review-v2',dimensions=dimensions)
+        packet['coverage']['qualified_dimensions']=sum(f['eligible'] for item in dimensions for f in item['findings'])
     packet['fingerprint']=digest(packet);out=root/'source-review';Store(out).write_immutable('packet.json',packet)
     lines=['# Original source output review','',packet['scope'],'',packet['authority'],'',
         'Scores retain their frozen diagnostic meaning; they are not calibrated probabilities of semantic truth. No wording below is repaired.','']
@@ -54,5 +63,13 @@ def prepare(path):
         lines.extend(['### Complete frozen source',''])
         for block in case['window']['blocks']:
             lines.extend([f"Block {block['block_id']} · {block['start_seconds']}–{block['end_seconds']} seconds",'',block['target_text'],''])
+    if packet.get('dimensions'):
+        lines.extend(['## Independently checked response/growth dimensions','',
+            'A qualified dimension is not a complete-binding approval, preacher adoption finding, legacy measurement or production admission. Every original value, including withheld values, remains below.',''])
+        for item in packet['dimensions']:
+            lines.extend(['### '+item['window_id'],''])
+            for row in item['findings']:
+                lines.extend([row['field']+': '+row['value'],'',
+                    'Eligible: '+str(row['eligible'])+'; original checks: '+json.dumps(row['checks']),''])
     (out/'packet.md').write_text('\n'.join(lines)+'\n')
     return dict(packet=str(out/'packet.json'),review=str(out/'packet.md'),coverage=packet['coverage'],provider_calls=0)
