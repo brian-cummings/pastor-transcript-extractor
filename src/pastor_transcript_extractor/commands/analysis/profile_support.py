@@ -10,6 +10,14 @@ app=typer.Typer(help='Prepare and run evidence-linked profile analysis support b
 analysis_app.add_typer(app,name='profile-support')
 
 
+@app.command('response-conditions-freeze')
+def response_conditions_freeze(base_dir:Path=typer.Option(...,'--base-dir'),objective:Path=typer.Option(...,'--objective'),plan:Path=typer.Option(...,'--plan')):
+    """Freeze at most four coordinate-selected existing confirmation windows, without inference."""
+    from ... import response_conditions_dimension as dimension
+    try:typer.echo(json.dumps(dimension.freeze_confirmation(base_dir,objective,plan),indent=2))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
 @app.command('section-prepare')
 def section_prepare(objective:Path=typer.Option(...,'--objective'),previous_allowance:Path=typer.Option(...,'--previous-allowance'),base_dir:Path=typer.Option(...,'--base-dir')):
     """Freeze the authorized six-window automatic section and superseding $3 allowance."""
