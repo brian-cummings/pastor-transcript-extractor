@@ -272,7 +272,9 @@ class AudioSpanCache:
                 span_payload["non_silent_fraction"] = measure_non_silent_fraction(wav_path)
                 manifest["span"] = span_payload
                 _write_json(manifest_path, manifest)
-            return CachedSpan(**{**span_payload, "cache_hit": True})
+            return CachedSpan(**{
+                **span_payload, "wav_path": str(wav_path), "cache_hit": True,
+            })
         if not source_audio_path.exists():
             raise AcousticEvidenceUnavailableError(f"local audio is unavailable: {source_audio_path}")
         wav_path.parent.mkdir(parents=True, exist_ok=True)
@@ -360,20 +362,26 @@ class AudioSpanCache:
             indexed = self._span_manifest_index.get(manifest_key)
         if indexed is None:
             return None
-        _manifest_path, manifest = indexed
+        manifest_path, manifest = indexed
         try:
             span_payload = dict(manifest["span"])
             wav_path = Path(span_payload["wav_path"])
             expected_sha256 = str(span_payload["wav_sha256"])
         except (KeyError, TypeError):
             return None
+        if not wav_path.is_file():
+            # Cache directories may move; retain the source/observation binding
+            # from the manifest and verify the adjacent clip's exact bytes.
+            wav_path = manifest_path.with_suffix(".wav")
         if not self._verify_cached_span_file(wav_path, expected_sha256):
             return None
         if span_payload.get("non_silent_fraction") is None:
             span_payload["non_silent_fraction"] = measure_non_silent_fraction(
                 wav_path
             )
-        return CachedSpan(**{**span_payload, "cache_hit": True})
+        return CachedSpan(**{
+            **span_payload, "wav_path": str(wav_path), "cache_hit": True,
+        })
 
     def _ensure_span_manifest_index(self) -> None:
         if self._span_manifest_index is not None:

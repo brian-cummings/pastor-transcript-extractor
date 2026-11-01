@@ -328,6 +328,33 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
         self.assertIn("-nostdin", arguments)
         self.assertEqual(subprocess.DEVNULL, kwargs["stdin"])
 
+        moved_root = self.root / "moved-cache"
+        cache.root.rename(moved_root)
+        original_manifest = (moved_root / "spans" / Path(first.wav_path).name).with_suffix(".json")
+        historical_bytes = original_manifest.read_bytes()
+        moved = AudioSpanCache(moved_root).prepare(
+            observation=self.a, source_audio_path=source, span=span,
+        )
+        self.assertTrue(moved.cache_hit)
+        self.assertEqual(str(moved_root / "spans" / Path(first.wav_path).name), moved.wav_path)
+        self.assertEqual(historical_bytes, original_manifest.read_bytes())
+        self.assertEqual(first.wav_sha256, moved.wav_sha256)
+
+        # The same immutable binding also works with the parent offline.
+        source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        source.unlink()
+        offline = AudioSpanCache(moved_root).prepare(
+            observation=self.a, source_audio_path=source, span=span,
+            expected_source_audio_sha256=source_hash,
+        )
+        self.assertEqual(moved.wav_path, offline.wav_path)
+        Path(moved.wav_path).write_bytes(b"corrupt-relocated-audio")
+        with self.assertRaises(AcousticEvidenceUnavailableError):
+            AudioSpanCache(moved_root).prepare(
+                observation=self.a, source_audio_path=source, span=span,
+                expected_source_audio_sha256=source_hash,
+            )
+
     def test_audio_span_cache_invalidates_when_source_content_changes(self):
         source = self.root / "source.wav"
         source.write_bytes(b"source-version-one")
