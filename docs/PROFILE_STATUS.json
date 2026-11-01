@@ -167,22 +167,22 @@
   "active_document_hashes": {
     "AGENTS.md": "24541e03fc0aff2cfb4e0961a81f180e9c4280c8fd819a249434f9fb9dd41a9c",
     "README.md": "cf1fccc884e1834642c321fadb33fda1952f28ddb6214f93db5e0ba8543af52c",
-    "docs/PASTOR_PROFILE_PRODUCT_PLAN.md": "7544ba510a2d67787a89a1f0cab46c60a51efd34df15fa52a7a2ba4039a77142",
-    "docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md": "e383259da24979b0b3dbc0bd9917e3af842446edf2e9fc8c8a7ea50d66fea0d5",
-    "docs/HANDOFF.md": "bb4b6da94eb66db143a3296b332c1753a69d4f2018d79c13134c723be7c04d2d",
-    "docs/review-proposals/README.md": "346b8519e43d0e90412b639e80492e501c27fff3b1034c1462a4eab091d6e3ad",
-    "docs/PROFILE_SECTION_DELIVERY.md": "b99e164385b12adb4bebefd8df041ed239be97aa240c84c4dfdb206aa75118d4",
+    "docs/PASTOR_PROFILE_PRODUCT_PLAN.md": "5901de10abb165174777c9220b22596166f2058134bcc35d27bf861aec6900b4",
+    "docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md": "31ed1fc73805d7ff55af0b2f6f68c12fdb60ec79da93763b0df10a4fbc06295a",
+    "docs/HANDOFF.md": "26e097c9e5b96d1caba5dfdb304f6a783965f627c5e19cf6d909f1ebd57d23dc",
+    "docs/review-proposals/README.md": "23711fbc05f9fcde49d02daa0cbaf390d85c2da99527dab1f694d9ac80b326f5",
+    "docs/PROFILE_SECTION_DELIVERY.md": "b0201e7868906f6ec5d6836ec006373a1ca3f4240ef3b8a0d1c69f973db46527",
     "docs/PROFILE_ANALYSIS_SUPPORT.md": "3d5021a4f000bf55a87221d6557f1750d8f02a4a676a0195f87a3265382c3903",
     "docs/PASTOR_PROFILE_DESCRIPTION.md": "7c43a713b998e97572efbe6ab40545cc2c2813f94c2ada4121865d043eb4b7ab",
     "docs/SEGMENT_EVIDENCE_PLAN.md": "acb1a4b11479fc15b15215fbfd64819af3be6ce47a8d0b292b467cb7e115cd14",
     "docs/reference-benchmarking.md": "1021201337825a03cacbcf2ff8e9abb0aa6516ba47b6f3faf896d96db29cd08e"
   },
   "response_conditions_goal": {
-    "status": "frozen_development_execution_in_progress",
+    "status": "revision_2_targeted_execution_in_progress",
     "objective": "/Users/briancummings/.codex/attachments/4b9d0afe-ed14-4231-ba84-e355b9df7783/goal-objective.md",
     "provider_ceiling_usd": "5",
     "maximum_batch_usd": ".50",
-    "semantic_revisions_used": 1,
+    "semantic_revisions_used": 2,
     "semantic_revisions_maximum": 3,
     "development_windows": [
       "v281b122-124",
@@ -200,14 +200,23 @@
     ],
     "confirmation_untouched": false,
     "confirmation_independently_selected": true,
-    "provider_calls": 0,
-    "new_provider_charge_usd": "0",
     "numeric_pastor_score": null,
     "confirmation_implementation_locked": false,
     "approval_blocker": null,
-    "current_plan": "evaluation/response-conditions-dimension-v1/7c3d099cba978a8a8977362a600e526198b215a6a3aec6d89611ac77477367d4/development/a1d074384b950ee1d5cf3aee6c092f7c71961b1a02c8cf44c58e739572cbc5c1/plan.json",
+    "current_plan": "evaluation/response-conditions-dimension-v1/7c3d099cba978a8a8977362a600e526198b215a6a3aec6d89611ac77477367d4/development/de3786e05fbb16cabaa7c4d5fa872d8356b10ca5f909a17f8aefda2d25c1a7bd/plan.json",
     "helper_accounting": "At most two helpers used; exact per-helper token accounting unavailable.",
-    "dispatch_authority": "Brian instructed Codex to pursue the goal after explicit payload/provider request."
+    "dispatch_authority": "Brian instructed Codex to pursue the goal after explicit payload/provider request.",
+    "revision_1": {
+      "provider_attempts": 20,
+      "conservative_charge_usd": "0.079089044",
+      "response_values_qualified": 0,
+      "response_values_withheld": 12,
+      "growth_values_qualified": 1,
+      "released_clauses": 0,
+      "support_failure": "duplicated multi-block field inventory; fixed without remapping old citations"
+    },
+    "confirmed_prior_exposure": "v4589b33-35 overlaps earlier v4589b31-33 at block 33; 91-manifest metadata audit",
+    "unchanged_source_windows_reused": 4
   },
-  "content_fingerprint": "ce1f9b571acff288c21674b0c6e81899469c896837f525055f8dc672b5118548"
+  "content_fingerprint": "b74c12d0956b51eba30d1c47750b4b4ae13cb6deb1d5d63e1e0b226cfcf6bc46"
 }

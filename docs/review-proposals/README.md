@@ -10,7 +10,7 @@
 | Automatic section/profile 318 | Shared final-document handoff works; six discussion-level clauses, one qualified local growth dimension. Zero eligible complete bindings or specific response descriptions. Original useful-analysis goal partially met. [Delivery mechanics/history](../PROFILE_SECTION_DELIVERY.md). |
 | Dimensional comparison | Now an explicit product goal. Validated broad theological/pastoral dimensions and comparisons are not delivered. Existing narrower [Scripture-use benchmarking](../reference-benchmarking.md) is implemented and should be reused where compatible. |
 | Next checkpoint | One qualified response description with attached conditions/qualifications at the existing producer, then useful automatic analysis, then a validated dimension/aggregate and benchmark comparison. Prepared acceptance and execution boundaries are in the implementation plan. |
-| Current execution | One response-and-conditions dimension: six development windows and four frozen additional existing windows, new $5 cap. Revision 1 implemented; first external dispatch blocked by automatic approval review pending explicit payload/provider approval. No provider call ran; semantic acceptance pending. |
+| Current execution | One response-and-conditions dimension: six development windows and four frozen additional existing windows, new $5 cap. Explicit dispatch request was followed by Brian's instruction to pursue. Revision 1 ran: 0/12 response values qualified and a citation-inventory bug blocked support. Deterministic fix tested; revision 2 targets two demonstrated omissions and reuses four unchanged requests/answers. Confirmation unopened; acceptance pending. |
 
 ## Current registry and inspection
 

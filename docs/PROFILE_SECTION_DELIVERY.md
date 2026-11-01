@@ -1,6 +1,6 @@
 # Automatic section workflow
 
-**Current product acceptance: partial.** The shared final-document handoff works for profile 318, recordings 281/3973/4589. It does not yet produce the specific, useful explanation required by the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). Follow the [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for the next checkpoint; the active November 1 objective separately authorizes the bounded response-and-conditions check, subject to explicit external-dispatch approval. Historical results below remain unchanged.
+**Current product acceptance: partial.** The shared final-document handoff works for profile 318, recordings 281/3973/4589. It does not yet produce the specific, useful explanation required by the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). Follow the [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for the next checkpoint; the active November 1 objective separately authorizes the bounded response-and-conditions check, with the explicit payload/provider request subsequently authorized by Brian's instruction to pursue. Historical results below remain unchanged.
 
 ## Delivered capability and evidence limits
 
@@ -67,4 +67,4 @@ Use `pte analysis profile-support response-conditions-freeze`, `response-conditi
 
 The four extra windows are `v281b89-91`, `v3973b63-65`, `v4589b33-35`, `v3973b53-55`. Selection is independent of generated answers. The recordings were already reviewed; unseen-block status is unproven, so no untouched-holdout claim is permitted. Freeze implementation before generating/reading their outputs and evaluate unchanged.
 
-At this checkpoint the first provider dispatch was rejected by automatic approval review for missing explicit payload/destination authorization; no provider call ran. Source-supported prose, semantic success and confirmation are pending, not established by the implementation or focused tests. The fresh $5 cap replaces unused earlier goal credit while preserving historical evidence.
+Revision 1 completed the actual source/dimension/support/document path: 0/12 response values qualified, one growth value qualified, and a citation-inventory bug caused support component failure. The fixed named-field inventory no longer appends later target blocks or invents empty context. Original failed attempts and the $0.079089044 charge remain preserved. Revision 2 targets only two demonstrated boundary losses; the other four requests/answers and valid uncertainty are reused exactly. Source-supported response prose and confirmation remain pending. The fresh $5 cap replaces unused earlier credit, without modifying historical evidence.
