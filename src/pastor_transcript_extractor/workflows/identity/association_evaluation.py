@@ -3,7 +3,6 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import hashlib
-import json
 import shlex
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -23,6 +22,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     build_shadow_association_input_fingerprint,
     evaluate_shadow_association,
     load_reusable_shadow_association,
+    refresh_shadow_association_receipt,
     should_activate_cross_source_fallback,
     write_shadow_association,
 )
@@ -208,10 +208,7 @@ class AssociationEvaluator:
                 "artifact_path": str(saved_path), "comparison_count": len(reused_comparisons),
                 "artifact_sha256": hashlib.sha256(saved_path.read_bytes()).hexdigest(),
             }
-            report.pop("result_sha256", None)
-            report["result_sha256"] = hashlib.sha256(json.dumps(
-                report, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-            ).encode()).hexdigest()
+            refresh_shadow_association_receipt(report)
         return AssociationEvaluationResult(report, None)
 
     def _saved_name_conflict_comparisons(self, candidate, audio_sha256, profiles,

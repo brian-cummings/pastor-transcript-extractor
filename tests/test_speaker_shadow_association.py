@@ -556,6 +556,12 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         initial = evaluator(compare).evaluate(**kwargs).report
         path = write_shadow_association(root, initial)
         historical = path.read_bytes()
+        tampered = json.loads(historical)
+        tampered["candidate"]["normalized_names"] = ["jane smith"]
+        tampered_path = self.root / "tampered-association.json"
+        tampered_path.write_text(json.dumps(tampered))
+        with self.assertRaisesRegex(ValueError, "failed verification"):
+            association_name_variant_candidate(self.database, tampered_path)
         self.assertEqual(3, len(calls))
         media_by_video = {o.video_id: SimpleNamespace(content_sha256=f"audio-{o.input_fingerprint}")
                           for o in observations}

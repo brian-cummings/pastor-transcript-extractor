@@ -697,6 +697,9 @@ def profile_names_compatible(candidate_names, profile_names, alias_groups=()) ->
     )
 
 
+FUZZY_NAME_REVIEW_MIN_SIMILARITY = 0.8
+
+
 def fuzzy_name_similarity(names) -> float:
     names = sorted(set(names))
     return min((SequenceMatcher(None, a, b).ratio()

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from pastor_transcript_extractor.speaker_registry import (
     NAME_VARIANT_REVIEW_PREFIX,
+    FUZZY_NAME_REVIEW_MIN_SIMILARITY,
     approved_profile_name_variant_reviews,
     normalize_person_name,
     fuzzy_name_similarity,
@@ -62,7 +63,7 @@ def list_name_variant_candidates(database: Database, profile_id: int | None = No
         if approval and set(names).issubset(approval["normalized_names"]):
             continue
         similarity = fuzzy_name_similarity(names)
-        if similarity < 0.8:
+        if similarity < FUZZY_NAME_REVIEW_MIN_SIMILARITY:
             continue
         candidates.append(NameVariantCandidate(
             canonical, tuple(displays.values()), names,
@@ -75,12 +76,11 @@ def association_name_variant_candidate(database: Database, report_path: Path):
     """Review a saved unique voice match without moving its observation/claims."""
     from pastor_transcript_extractor.media_artifacts import get_registered_normalized_media_artifact
     from pastor_transcript_extractor.speaker_registry import reviewed_profile_name_alias_groups
+    from pastor_transcript_extractor.speaker_shadow_association import verify_shadow_association_receipt
     report_path = report_path.expanduser().resolve()
-    report = json.loads(report_path.read_text())
-    unhashed = dict(report)
-    receipt = unhashed.pop("result_sha256", None)
-    digest = hashlib.sha256(json.dumps(unhashed, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
-    if receipt != digest or report.get("artifact_kind") != "speaker_profile_shadow_association":
+    report = verify_shadow_association_receipt(json.loads(report_path.read_text()))
+    receipt = report["result_sha256"]
+    if report.get("artifact_kind") != "speaker_profile_shadow_association":
         raise ValueError("Association report failed verification")
     if report.get("outcome") != "conflicting_attribution":
         raise ValueError("Report does not contain a held name conflict")
@@ -136,7 +136,7 @@ def association_name_variant_candidate(database: Database, report_path: Path):
     if profile_names_compatible(candidate["normalized_names"], target_names, aliases):
         raise ValueError("These names are already compatible; no repeat review is needed")
     score = fuzzy_name_similarity(displays)
-    if score < 0.8:
+    if score < FUZZY_NAME_REVIEW_MIN_SIMILARITY:
         raise ValueError("Names are not close spelling variants; use attribution review")
     return NameVariantCandidate(profile_id, tuple(displays.values()), tuple(displays),
                                 tuple(sorted(c.id for c in attached)), score,

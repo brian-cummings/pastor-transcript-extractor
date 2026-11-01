@@ -24,6 +24,7 @@ from pastor_transcript_extractor.speaker_registry import (
     names_have_identity_conflict,
     profile_names_compatible,
     fuzzy_name_similarity,
+    FUZZY_NAME_REVIEW_MIN_SIMILARITY,
     reviewed_profile_name_alias_groups,
 )
 from pastor_transcript_extractor.storage import Database
@@ -69,14 +70,11 @@ class ProfileAssociationReadiness:
     reviewed_name_alias_groups: tuple[tuple[str, ...], ...] = ()
 
 
-_names_conflict = names_have_identity_conflict
-
-
 def _name_route_match(names, readiness) -> bool:
     profile_names = set(readiness.normalized_names)
     return bool(names and profile_names) and (
         profile_names_compatible(names, profile_names, readiness.reviewed_name_alias_groups)
-        or fuzzy_name_similarity(set(names) | profile_names) >= 0.8
+        or fuzzy_name_similarity(set(names) | profile_names) >= FUZZY_NAME_REVIEW_MIN_SIMILARITY
     )
 
 
@@ -182,7 +180,7 @@ def leave_one_out_profile_readiness(
         shadow_blockers.append("fewer_than_three_distinct_recordings")
     if len(member_observations) != len(member_ids):
         shadow_blockers.append("member_observation_missing")
-    if _names_conflict(normalized_names, readiness.reviewed_name_alias_groups):
+    if names_have_identity_conflict(normalized_names, readiness.reviewed_name_alias_groups):
         shadow_blockers.append("conflicting_explicit_attribution")
     shadow_blockers = list(dict.fromkeys(shadow_blockers))
 
@@ -745,7 +743,7 @@ def assess_profile_association_readiness(
             shadow_blockers.append("fewer_than_three_distinct_recordings")
         if len(member_observations) != len(member_ids):
             shadow_blockers.append("member_observation_missing")
-        if _names_conflict(names, alias_groups_by_profile.get(profile_id, ())):
+        if names_have_identity_conflict(names, alias_groups_by_profile.get(profile_id, ())):
             shadow_blockers.append("conflicting_explicit_attribution")
         if any(
             review[1] is None
@@ -875,7 +873,7 @@ def assess_profile_association_readiness(
         )
     profile_ids_by_name: dict[str, list[int]] = defaultdict(list)
     for item in readiness:
-        if not _names_conflict(item.normalized_names, item.reviewed_name_alias_groups):
+        if not names_have_identity_conflict(item.normalized_names, item.reviewed_name_alias_groups):
             for name in item.normalized_names:
                 profile_ids_by_name[name].append(item.profile_id)
     duplicate_name_profile_ids = {
@@ -1137,7 +1135,7 @@ def evaluate_shadow_association(
         if not profile_names_compatible(candidate_names, profile_names, aliases):
             outcome = "conflicting_attribution"
             reason = "candidate_name_conflicts_with_acoustic_profile"
-            if fuzzy_name_similarity(candidate_names | profile_names) >= 0.8:
+            if fuzzy_name_similarity(candidate_names | profile_names) >= FUZZY_NAME_REVIEW_MIN_SIMILARITY:
                 reason = "fuzzy_name_variant_requires_approval"
                 name_variant_review = {
                     "profile_id": matched["profile_id"],
@@ -1234,7 +1232,7 @@ def evaluate_shadow_association(
         span_selection=report["span_selection"],
         routing=report["routing"],
     )
-    report["result_sha256"] = _sha256_json(report)
+    refresh_shadow_association_receipt(report)
     return report
 
 
@@ -1328,6 +1326,22 @@ def build_shadow_association_input_fingerprint(
     )
 
 
+def refresh_shadow_association_receipt(report: dict[str, Any]) -> None:
+    report.pop("result_sha256", None)
+    report["result_sha256"] = _sha256_json(report)
+
+
+def verify_shadow_association_receipt(payload: object) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ValueError("cached shadow association must be an object")
+    expected_result = payload.get("result_sha256")
+    unhashed = dict(payload)
+    unhashed.pop("result_sha256", None)
+    if not isinstance(expected_result, str) or _sha256_json(unhashed) != expected_result:
+        raise ValueError("Association report failed verification")
+    return payload
+
+
 def load_reusable_shadow_association(
     output_root: Path,
     *,
@@ -1342,16 +1356,8 @@ def load_reusable_shadow_association(
     if not destination.exists():
         return None
     payload = json.loads(destination.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("cached shadow association must be an object")
-    expected_result = payload.get("result_sha256")
-    unhashed = dict(payload)
-    unhashed.pop("result_sha256", None)
-    if (
-        payload.get("input_fingerprint") != input_fingerprint
-        or not isinstance(expected_result, str)
-        or _sha256_json(unhashed) != expected_result
-    ):
+    verify_shadow_association_receipt(payload)
+    if payload.get("input_fingerprint") != input_fingerprint:
         raise ValueError(
             f"cached shadow association failed verification: {destination}"
         )
