@@ -46,6 +46,15 @@ class SectionTests(unittest.TestCase):
         self.assertTrue(all(o['section_eligibility']['eligible'] for o in producer.qualify(checked,dict(output=answers),new)))
         answers[next(iter(answers))]['noul']=.89
         self.assertFalse(producer.qualify(checked,dict(output=answers),new)[0]['section_eligibility']['eligible'])
+        legacy=producer.verification(window,checked['observations'],field_local=producer.FIELD_LOCAL_CRITERIA_V1)
+        self.assertEqual(producer.FIELD_LOCAL_CRITERIA_V1,legacy.version)
+        self.assertNotEqual(legacy.fingerprint,new.fingerprint)
+        extension=checked['observations'][0]['id']+':response_growth'
+        self.assertNotEqual(legacy.body['questions'][extension],old.body['questions'][extension])
+        self.assertEqual(new.body['questions'][extension],old.body['questions'][extension])
+        historical_parts=producer.verification_parts(window,checked['observations'],field_local=producer.FIELD_LOCAL_CRITERIA_V1)
+        for key,part in parts.items():
+            self.assertIn(part,[producer.verification_parts(window,checked['observations'])[key],historical_parts[key]])
 
     def test_field_local_proof_bundle_reconstructs_its_exact_question_contract(self):
         window,_,_,checked=reading()

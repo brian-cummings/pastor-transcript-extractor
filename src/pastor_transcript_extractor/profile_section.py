@@ -565,7 +565,8 @@ def load_field_bundle(path,window,checked):
     if (bundle['version']!=producer.FIELD_VERIFICATION_VERSION or bundle['window_digest']!=digest(asdict(window))
         or bundle['fingerprint']!=digest({k:v for k,v in bundle.items() if k!='fingerprint'})):
         raise ValueError('Field verification bundle differs')
-    local=bundle['canonical_contract_request']['source_identity'].get('field_criteria_contract')==producer.FIELD_LOCAL_CRITERIA
+    criteria=bundle['canonical_contract_request']['source_identity'].get('field_criteria_contract')
+    local=criteria if criteria in (producer.FIELD_LOCAL_CRITERIA_V1,producer.FIELD_LOCAL_CRITERIA) else False
     full=producer.verification(window,checked['observations'],field_local=local)
     if bundle['canonical_contract_request']!=asdict(full):raise ValueError('Canonical field contract differs')
     def response(ref,spec):

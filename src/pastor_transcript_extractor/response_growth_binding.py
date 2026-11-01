@@ -11,7 +11,8 @@ LOCAL_ENUM_TRANSPORT = 'source-local-enum-transport-v1'
 PRODUCER_RECIPE = 'complete-point-source-units-v3'
 VERIFICATION_VERSION = 'qualified-response-growth-field-focus-v4'
 FIELD_VERIFICATION_VERSION = 'qualified-response-growth-field-isolated-v5'
-FIELD_LOCAL_CRITERIA = 'qualified-response-growth-field-local-criteria-v6'
+FIELD_LOCAL_CRITERIA_V1 = 'qualified-response-growth-field-local-criteria-v6'
+FIELD_LOCAL_CRITERIA = 'qualified-response-growth-field-local-criteria-v7'
 RANGE_TRANSPORT = 'response-growth-source-unit-ranges-v1'
 CONDITION_ATTACHMENT_VERSION = 'source-logical-condition-attachments-v1'
 CONDITION_ATTACHMENT_PROMPT = '''
@@ -309,12 +310,15 @@ def verification(window, observations,*,field_local=False):
                 criteria={'true':'Correct and fully supported at its stated local scope.',
                           'false':'Unsupported, incomplete, misattributed or unresolved.'})
         if field_local:
-            for field in evidence.REQUIRED_CHECKS:
+            fields=(*evidence.REQUIRED_CHECKS,'response_growth','reader_statement') if field_local==FIELD_LOCAL_CRITERIA_V1 else evidence.REQUIRED_CHECKS
+            for field in fields:
                 body['questions'][item['id']+':'+field]['criteria']=dict(
                     true='The proposed '+field+' finding is correct and resolved under its stated field meaning, including every source restriction relevant to that finding. Justified empty or not-stated is allowed. Judge this field independently; an error or unavailable proposal in another field is not itself an error in this finding.',
                     false='The proposed '+field+' finding itself is wrong, unsupported, incomplete, unresolved, or loses a source restriction relevant to this finding. Do not grade unrelated fields here; they have their own required checks.')
     spec = replace(spec, body=body, namespace=VERSION, version=VERIFICATION_VERSION)
-    if field_local:spec=replace(spec,version=FIELD_LOCAL_CRITERIA,source_identity={**spec.source_identity,'field_criteria_contract':FIELD_LOCAL_CRITERIA})
+    if field_local:
+        criteria_version=FIELD_LOCAL_CRITERIA_V1 if field_local==FIELD_LOCAL_CRITERIA_V1 else FIELD_LOCAL_CRITERIA
+        spec=replace(spec,version=criteria_version,source_identity={**spec.source_identity,'field_criteria_contract':criteria_version})
     spec.preflight()
     return spec
 
@@ -352,13 +356,15 @@ def verification_parts(window,observations,reused_keys=(),*,field_local=False):
                 source_identity={**full.source_identity,'field':field,'item_index':i,'full_contract_request':full.fingerprint})
             part.preflight();parts[field+':'+str(i)]=part
 
-    if field_local:
+    if field_local and field_local!=FIELD_LOCAL_CRITERIA_V1:
         # The two extension questions already had field-specific criteria. Their
         # complete model-visible requests are unchanged, so retain their exact
         # original identities and answers rather than repurchasing uncertainty.
         old=verification_parts(window,observations,reused_keys,field_local=False)
+        scoped=verification_parts(window,observations,reused_keys,field_local=FIELD_LOCAL_CRITERIA_V1)
         for key,part in list(parts.items()):
             if part.body==old[key].body:parts[key]=old[key]
+            elif part.body==scoped[key].body:parts[key]=scoped[key]
     return parts
 
 
