@@ -309,7 +309,7 @@ def verification(window, observations,*,field_local=False):
                 criteria={'true':'Correct and fully supported at its stated local scope.',
                           'false':'Unsupported, incomplete, misattributed or unresolved.'})
         if field_local:
-            for field in (*evidence.REQUIRED_CHECKS,'response_growth','reader_statement'):
+            for field in evidence.REQUIRED_CHECKS:
                 body['questions'][item['id']+':'+field]['criteria']=dict(
                     true='The proposed '+field+' finding is correct and resolved under its stated field meaning, including every source restriction relevant to that finding. Justified empty or not-stated is allowed. Judge this field independently; an error or unavailable proposal in another field is not itself an error in this finding.',
                     false='The proposed '+field+' finding itself is wrong, unsupported, incomplete, unresolved, or loses a source restriction relevant to this finding. Do not grade unrelated fields here; they have their own required checks.')
@@ -352,6 +352,13 @@ def verification_parts(window,observations,reused_keys=(),*,field_local=False):
                 source_identity={**full.source_identity,'field':field,'item_index':i,'full_contract_request':full.fingerprint})
             part.preflight();parts[field+':'+str(i)]=part
 
+    if field_local:
+        # The two extension questions already had field-specific criteria. Their
+        # complete model-visible requests are unchanged, so retain their exact
+        # original identities and answers rather than repurchasing uncertainty.
+        old=verification_parts(window,observations,reused_keys,field_local=False)
+        for key,part in list(parts.items()):
+            if part.body==old[key].body:parts[key]=old[key]
     return parts
 
 

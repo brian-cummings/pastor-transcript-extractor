@@ -36,8 +36,12 @@ class SectionTests(unittest.TestCase):
             for key,question in part.body['questions'].items():
                 field=key.rsplit(':',1)[1]
                 self.assertEqual(new.body['questions'][key],question)
-                self.assertIn('proposed '+field+' finding',question['criteria']['true'])
-                self.assertIn('Judge this field independently',question['criteria']['true'])
+                if field in producer.evidence.REQUIRED_CHECKS:
+                    self.assertIn('proposed '+field+' finding',question['criteria']['true'])
+                    self.assertIn('Judge this field independently',question['criteria']['true'])
+                else:
+                    self.assertEqual(old.body['questions'][key],question)
+                    self.assertIn(part,producer.verification_parts(window,checked['observations']).values())
         answers={key:dict(type='noul',noul=.99) for key in new.body['questions']}
         self.assertTrue(all(o['section_eligibility']['eligible'] for o in producer.qualify(checked,dict(output=answers),new)))
         answers[next(iter(answers))]['noul']=.89
