@@ -34,6 +34,14 @@ def response_conditions_lock(plan:Path=typer.Option(...,'--plan')):
     except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
 
 
+@app.command('response-conditions-report')
+def response_conditions_report(plan:Path=typer.Option(...,'--plan')):
+    """Write provider-free Markdown/JSON status with separate fidelity, coverage and costs."""
+    from ... import response_conditions_dimension as dimension
+    try:typer.echo(json.dumps(dimension.report(plan),indent=2))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
 @app.command('section-prepare')
 def section_prepare(objective:Path=typer.Option(...,'--objective'),previous_allowance:Path=typer.Option(...,'--previous-allowance'),base_dir:Path=typer.Option(...,'--base-dir')):
     """Freeze the authorized six-window automatic section and superseding $3 allowance."""

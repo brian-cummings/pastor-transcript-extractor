@@ -1,6 +1,6 @@
 # Pastor profile implementation plan
 
-**Current authority: 2026-11-01.** Engineering companion to the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). Start with the [handoff](HANDOFF.md) and [status index](review-proposals/README.md). Only the documentation/status alignment is active in this request; the sequence below is the prioritized path, not automatic execution of all phases.
+**Current authority: 2026-11-01.** Engineering companion to the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). Start with the [handoff](HANDOFF.md) and [status index](review-proposals/README.md). The active bounded goal is one faithful response-and-conditions dimension through the existing analysis workflow. The objective attachment of November 1 supersedes the earlier documentation-only execution boundary; broader benchmark comparison remains a later phase.
 
 ## Current baseline and acceptance correction
 
@@ -36,9 +36,20 @@ Inspected reuse: compatible local relationship observations were reused; all exi
 
 Responsible insertion point: the existing category-leaf/shared response-growth binding producer. Smallest proposed change: resolve one demonstrated loss of response/attached restriction using compatible existing constituents and a narrow producer correction, retaining original outputs and frozen .90 gates. Specify the exact failure and contract change before any new call; do not retry valid uncertainty for agreement or start another menu of variants.
 
-Prepared deliverables: exact target statement, constituent reuse outcome, versioned smallest change if necessary, focused contract/metamorphic/stubbed tests and Markdown/JSON acceptance packet with exact CLI input. Codex prepares and interprets; Brian need not select passages, author JSON or annotate an open-ended corpus.
+Current implementation and exit criteria:
 
-Exit: a self-contained qualified observation that preserves meaning, or an unchanged-output failure report identifying the smallest blocker. Any dataset validation command goes to Brian unless a specific applicable execution authorization covers it. No new paid run is frozen by this plan; earlier same-goal authorization/remaining credit is preserved in the product plan, not silently reset or expanded.
+1. Confirmation coordinates are frozen before producer modification: `v281b89-91`, `v3973b63-65`, `v4589b33-35`, `v3973b53-55`. The fixed hash/coordinate rule reads eligibility and coordinates, never generated answers. Previously reviewed recordings and uncertain prior block exposure are disclosed; this is independently selected additional material, not untouched material.
+2. Reuse review inspected the twelve original proposals, attached restrictions and dimension answers, the 126 compatible local relationship rows, and G1/G2/G3 V2 result candidate spans. No exact candidate span set in those historical G1/G2/G3 results matched a complete development target; their different question/policy contracts cannot be promoted into response-description proof. Original response fields contain documented losses; no old uncertainty is repurchased unchanged.
+3. Semantic revision 1 is an opt-in request recipe in `response_growth_binding.py`. It requires the response field to preserve immediately explained response content, relevant consequence, voice/adoption, polarity, and meaning-changing restrictions already bound upstream. Schema, verifier meanings, models and .90 gates remain unchanged. No pastor-specific wording enters runtime.
+4. `response_conditions_dimension.py` adds a sample-level literal union with per-window inspection/recovery states, exact eligible and withheld descriptions, source/receipt lineage, null score/denominator and explicit unavailable comparison. Structured conditions are not falsely qualified from prose-only proof. Existing assembly, support and document paths carry the same dimension record.
+5. Execute the six frozen development source batches (each reserves $0.264896512 including correction/recovery and verification), then existing dimension/support/render steps. Review unchanged outputs separately from model approval. At most three evidence-driven semantic revisions total; valid uncertainty is not a reason for another answer.
+6. Lock implementation before preparing/opening confirmation outputs. Execute the same unchanged producer/checks on the four frozen windows. Report fidelity, qualification retention, unsupported releases, withheld opportunities and coverage separately. Require at least two useful specific supported findings from different windows; all-withheld is failure.
+
+Current execution limitation: automatic approval review rejected the first dispatch because sensitive external egress authorization did not explicitly identify payload and destinations. No provider call ran. The concrete request names sermon excerpts/source coordinates and proposed findings, DeepInfra Flash/Qwen and TypeSafe Jev. Approval is pending; no indirect execution is permitted.
+
+The fresh external-provider ceiling is $5, replacing unused prior credit. Keep worst-case reservation at or below $0.50 per batch, including bounded recovery; unresolved usage retains full reservation. Assistant ceiling is 200,000 tokens including at most two helpers with 20,000 each. Exact per-helper accounting is unavailable; report this limitation. No new recordings, broad jobs, production admission, threshold/model changes or automatic expansion.
+
+Exit: useful unchanged source-supported prose, traceable dimension record, actual assembly/support/document handoff and independent bounded confirmation assessment; otherwise concrete failure/blocker plus completed useful work. Generated results belong under the configured base. Brian need only approve concrete external payloads or inspect prepared results, not design experiments or author JSON.
 
 ### 2. Deliver useful automatic individual analysis
 
@@ -83,7 +94,7 @@ Inspect the saved automatic-section result without new inference:
 pte analysis profile-support section-report --plan /Users/briancummings/Documents/PastorSearchData/evaluation/profile-section-v1/continuations/0c9338eeab7a21e0e2385478e2357ac69bdae57f632c5fa946f6157c89326980/plan.json --json
 ```
 
-The exact saved plan is historical and can report compatibility limits after source changes; do not regenerate or pay to make a historical fingerprint current. Original artifacts remain authoritative evidence of that run. The status registry verifies current document hashes and acceptance boundaries; it has no archive dependency. This request needs only focused plan/CLI checks and inexpensive static checks, not dataset evaluation.
+The exact saved plan is historical and can report compatibility limits after source changes; do not regenerate or pay to make a historical fingerprint current. Original artifacts remain authoritative evidence of that run. The status registry verifies current document hashes and acceptance boundaries; it has no archive dependency. Run focused plan/CLI checks and inexpensive tests. The objective authorizes only the small frozen checks described above; broad dataset validation remains Brian's execution responsibility.
 
 ## Operating boundaries
 

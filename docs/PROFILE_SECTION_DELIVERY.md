@@ -1,6 +1,6 @@
 # Automatic section workflow
 
-**Current product acceptance: partial.** The shared final-document handoff works for profile 318, recordings 281/3973/4589. It does not yet produce the specific, useful explanation required by the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). Follow the [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for the next checkpoint; command availability does not authorize another run.
+**Current product acceptance: partial.** The shared final-document handoff works for profile 318, recordings 281/3973/4589. It does not yet produce the specific, useful explanation required by the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). Follow the [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md) for the next checkpoint; the active November 1 objective separately authorizes the bounded response-and-conditions check, subject to explicit external-dispatch approval. Historical results below remain unchanged.
 
 ## Delivered capability and evidence limits
 
@@ -58,3 +58,13 @@ pte analysis profile-support section-report --plan /Users/briancummings/Document
 The implemented workflow under `pte analysis profile-support` provides `section-continue-prepare`, `section-source`, `section-analysis-prepare`, `section-analysis`, `section-dimensions-prepare`, `section-dimensions`, `section-support-prepare`, `section-support`, `section-render`, `section-review-prepare` and `section-report`. Prepared freezes carry exact approval fingerprints, reuse compatibility, dependency proof, bounded recovery and cost reservations. Each batch reserves at most $0.50 against its approved allowance.
 
 Optional preparation modes include `--reuse-materialized`, `--literal-materialized`, `--field-local-criteria` and `--dimension-checks`. They describe implementation capabilities, not an automatic successor experiment. No broad jobs, model switching, threshold tuning, quarantine changes, quotation execution or production admission is released here.
+
+## Active response-and-conditions extension
+
+The existing producer now has an opt-in self-contained response recipe. It preserves response content, voice/adoption, polarity and attached meaning-changing restrictions in the exact dimension description. Original requests, schemas, model choices, verifier questions and .90 gates retain their meanings. The sample record contains qualified and withheld descriptions, per-window opportunities and recovery state, source/receipt proof, null score/denominator and unavailable benchmark comparison.
+
+Use `pte analysis profile-support response-conditions-freeze`, `response-conditions-prepare`, `response-conditions-lock` and `response-conditions-report` for preparation, implementation locking and provider-free Markdown/JSON inspection. Use existing `section-source`, `section-dimensions-prepare`, `section-dimensions`, `section-support-prepare`, `section-support`, `section-render` and `section-review-prepare` for actual integration. Regenerate/search the CLI catalog before looking up options.
+
+The four extra windows are `v281b89-91`, `v3973b63-65`, `v4589b33-35`, `v3973b53-55`. Selection is independent of generated answers. The recordings were already reviewed; unseen-block status is unproven, so no untouched-holdout claim is permitted. Freeze implementation before generating/reading their outputs and evaluate unchanged.
+
+At this checkpoint the first provider dispatch was rejected by automatic approval review for missing explicit payload/destination authorization; no provider call ran. Source-supported prose, semantic success and confirmation are pending, not established by the implementation or focused tests. The fresh $5 cap replaces unused earlier goal credit while preserving historical evidence.

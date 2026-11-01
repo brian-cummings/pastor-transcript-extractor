@@ -452,6 +452,8 @@ class SectionTests(unittest.TestCase):
             window=replace(window,source_sha256=section.file_hash(source));spec=producer.request(window)
             blocks=[dict(b,text=b['target_text']) for b in window.blocks]
             p=dict(input_fingerprint='frozen',dimension_contract=producer.DIMENSION_VERIFICATION_VERSION,
+                response_conditions_goal=dict(phase='development',freeze=dict(path='frozen-selection')),
+                limitation='One synthetic selected window; no representative score.',
                 profile=dict(id=window.profile_id,effective_member_video_ids=[window.video_id],membership_fingerprint='membership'),
                 inventory_fingerprint='inventory',coverage={},unknowns=section.UNKNOWN,acceptance_authorization=None,
                 source_identity=[dict(video_id=window.video_id,url='https://example.org/watch',source_path=str(source),source_sha256=window.source_sha256,gate=dict(eligible=True))],
@@ -479,6 +481,11 @@ class SectionTests(unittest.TestCase):
                 section.run_support(root/'plan.json','1','frozen',transport=support_wire)
                 delivery=section.render(root/'plan.json');self.assertEqual(1,delivery['model_supported'])
                 self.assertEqual(0,delivery['eligible_upstream']);self.assertEqual(1,delivery['qualified_dimensions'])
+                dimension=json.loads((root/'document-input.json').read_text())['response_conditions_dimension']
+                self.assertEqual([],dimension['aggregation']['eligible_finding_ids'])
+                self.assertEqual([],dimension['readable_released_claim_ids'])
+                self.assertIsNone(dimension['aggregation']['score'])
+                self.assertTrue(all(f['eligibility']=='withheld' for f in dimension['findings']))
                 record=core.read_record(root/'assembled-profile.json');claim=record['claims'][0]
                 case=section.machine_case(record,claim)
                 self.assertNotIn('binding',case['state']['bound_observations'][0])

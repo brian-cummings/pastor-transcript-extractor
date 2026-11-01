@@ -224,3 +224,45 @@ def sample_record(p,root,record):
         missingness=dict(unassessed='No completed source result',withheld='Proposed response not qualified; not source absence',
             saturated='Additional unrecovered points; no exhaustive denominator',unknown_is_zero=False),
         production_admission='not_admitted')
+
+
+def report(plan):
+    """Inspect saved outputs without inference; execution alone cannot yield PASS."""
+    path=Path(plan);p=json.loads(path.read_text());root=path.parent
+    if p['input_fingerprint']!=digest({k:v for k,v in p.items() if k!='input_fingerprint'}):
+        raise ValueError('Section freeze changed')
+    rows=[];findings=[]
+    for t in p['tasks']:
+        source=root/'sources'/t['id']/'result.json';dim=root/'dimensions'/t['id']/'result.json'
+        saved=json.loads(source.read_text()) if source.exists() else {}
+        ds=json.loads(dim.read_text()) if dim.exists() else {}
+        rows.append(dict(window_id=t['id'],source_state=saved.get('status','NOT_RUN'),
+            recovery_state=saved.get('source_status'),proposed_points=len(saved.get('observations',[])),
+            dimension_state='ASSESSED' if dim.exists() else 'NOT_RUN'))
+        findings.extend(r for r in ds.get('findings',[]) if r['field']=='requested_response')
+    handoff=root/'document-input.json';document=json.loads(handoff.read_text()) if handoff.exists() else {}
+    response_claims={c['id'] for c in json.loads((root/'assembled-profile.json').read_text())['claims']
+        if c.get('dimension_field')=='requested_response'} if (root/'assembled-profile.json').exists() else set()
+    released=[e for e in document.get('entries',[]) if e['claim_id'] in response_claims and e['support_status']=='supported']
+    conservative=section.ledger(p,root);start=Decimal(p['budget']['starting_conservative_usd'])
+    value=dict(version=VERSION,plan=dict(path=str(path.resolve()),sha256=file_hash(path)),
+        status='PENDING_INDEPENDENT_SEMANTIC_REVIEW' if handoff.exists() else 'PENDING_EXECUTION',
+        acceptance=False,phase=p['response_conditions_goal']['phase'],
+        windows=rows,qualified_response_proposals=sum(r['eligible'] for r in findings),
+        withheld_response_proposals=sum(not r['eligible'] for r in findings),
+        readable_specific_findings=len(released),
+        fidelity=dict(status='NOT_REVIEWED',unsupported_releases=None,preserved_qualifications=None),
+        coverage=dict(inspected_windows=sum(r['source_state']!='NOT_RUN' for r in rows),
+            selected_windows=len(rows),exhaustive_points=False,representative=False,
+            rate=None,score=None,all_withheld_is_success=False),
+        costs=dict(approved_usd='5',new_conservative_usd=str(conservative-start),
+            remaining_usd=str(section.allowance.ceiling(p)-conservative),
+            invoice_usd=None,unresolved_usage='Full reservation retained by existing ledger.'),
+        artifacts={name:str(root/name) for name in ('assembled-profile.json','document-input.json','draft-section.md','analysis-support.md') if (root/name).exists()},
+        production_admission='not_admitted')
+    value['fingerprint']=digest(value)
+    dest=root/'reports'/value['fingerprint'];Store(dest).write_immutable('report.json',value)
+    (dest/'report.md').write_text('# Response and conditions: bounded report\n\n'+value['status']+
+        '\n\nAcceptance remains pending separate unchanged-output semantic review. All-withheld is not successful measurement.\n\n'+
+        json.dumps({k:value[k] for k in ('phase','windows','qualified_response_proposals','withheld_response_proposals','readable_specific_findings','fidelity','coverage','costs')},indent=2)+'\n')
+    return dict(report=str(dest/'report.json'),markdown=str(dest/'report.md'),**value)
