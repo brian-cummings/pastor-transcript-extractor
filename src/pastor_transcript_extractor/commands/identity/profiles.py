@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 import typer
+from click import IntRange
 from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
@@ -47,6 +50,61 @@ from pastor_transcript_extractor.storage import Database
 
 
 console = Console()
+
+
+@identity_app.command(
+    "review-name-variants",
+    help="Review fuzzy name variants within a profile and choose its preferred name; no video review or profile merge.",
+)
+def review_name_variants_command(
+    reviewer: str = typer.Option(..., help="Stable human reviewer identifier."),
+    profile_id: int | None = typer.Option(None, help="One profile; default queues all fuzzy name conflicts."),
+    plan_only: bool = typer.Option(False, help="Write Markdown/JSON suggestions without prompts or registry changes."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    from pastor_transcript_extractor.speaker_name_variants import (
+        approve_name_variants, list_name_variant_candidates,
+    )
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter("Application database does not exist")
+    database = Database(paths.database, readonly=plan_only)
+    candidates = list_name_variant_candidates(database, profile_id)
+    root = paths.evaluation / "identity-name-variants"
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    report_path = root / f"{stamp}.json"
+    report = {"schema_version": 1, "reviewer": reviewer, "plan_only": plan_only,
+              "candidates": [asdict(c) for c in candidates], "approved": [], "deferred": []}
+
+    def save():
+        report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        lines = ["# Profile name variant review", "", "Fuzzy matches require human approval. Voice memberships and profile redirects are unchanged.", ""]
+        lines.extend(f"- Profile {c.profile_id}: {' / '.join(c.names)}" for c in candidates)
+        lines.extend(f"- Approved profile {r['profile_id']}: preferred name {r['preferred_name']}" for r in report["approved"])
+        report_path.with_suffix(".md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    save()
+    console.print(f"Name variant candidates: {len(candidates)}. Report: {report_path}")
+    for candidate in candidates:
+        console.print(f"Profile {candidate.profile_id}: " + " / ".join(candidate.names))
+        if plan_only:
+            continue
+        if not typer.confirm("Approve these names as variants of the same person?", default=False):
+            report["deferred"].append(candidate.profile_id)
+            save()
+            continue
+        for index, name in enumerate(candidate.names, 1):
+            console.print(f"  {index}. {name}")
+        choice = typer.prompt("Preferred name", default=1,
+                              type=IntRange(1, len(candidate.names)))
+        try:
+            receipt = approve_name_variants(database, candidate, candidate.names[choice - 1], reviewer)
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+        report["approved"].append(receipt)
+        save()
+        console.print(f"Saved preferred name: {receipt['preferred_name']}")
 
 
 @identity_app.command(
@@ -514,7 +572,7 @@ def profile_status_command(
         "member_observation_missing": "missing observation",
     }
     for profile in status.profiles:
-        identity = ", ".join(
+        identity = profile.preferred_name or ", ".join(
             profile.configured_identities or profile.names or tuple(f"{name} (unconfirmed)" for name in profile.proposed_names)
         ) or "unnamed"
         table.add_row(

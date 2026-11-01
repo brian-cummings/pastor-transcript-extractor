@@ -58,6 +58,7 @@ class ProfileStatus:
     needs: tuple[StatusNeed, ...]
     next_need: str
     proposed_names: tuple[str, ...] = ()
+    preferred_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -616,7 +617,10 @@ def build_profile_pipeline_status(
         # Display spellings are preserved for reporting, but identity conflict
         # semantics use the normalized person name. Capitalization or other
         # display-only variants must not turn one attribution into two people.
-        if len(normalized_names) > 1 or configured_name_ambiguity:
+        if (
+            "conflicting_explicit_attribution" in profile_readiness.shadow_blockers
+            or configured_name_ambiguity
+        ):
             claim_review_conflict_profile_ids.add(profile_id)
         needs: list[StatusNeed] = []
         if registry_profile.created_reason == DISCOVERY_PROFILE_REASON:
@@ -793,6 +797,7 @@ def build_profile_pipeline_status(
                 recording_count=len(video_ids),
                 source_count=len(source_ids),
                 names=names,
+                preferred_name=registry_profile.display_label,
                 proposed_names=tuple(sorted({name for member_id in member_ids for name in proposed_names_by_observation.get(member_id, ())})),
                 configured_identities=configured,
                 attributed_frontier_count=frontier_count,

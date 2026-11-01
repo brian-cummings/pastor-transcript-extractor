@@ -1674,6 +1674,22 @@ video links, proposed handling, and the exact single-profile validation command.
 It performs no model calls or registry mutations and is saved under the configured
 application evaluation directory.
 
+For close spelling variants of confirmed names within one profile, use:
+
+```bash
+pte identity review-name-variants --profile-id 130 --reviewer Brian --base-dir /path/to/app-data
+```
+
+The command suggests fuzzy matches, asks whether they identify the same person,
+and prompts for the preferred spelling. Omit `--profile-id` to queue all matching
+profiles, or add `--plan-only` to prepare suggestions without approval prompts.
+Approvals preserve original claims as aliases, append review events, and update
+the preferred display label. Markdown/JSON reports go under the configured
+evaluation directory. No audio comparisons, voice membership changes, or profile
+merges occur. Readiness reuses approved aliases; new conflicting names and
+different-speaker constraints remain blockers. Names already attached when a
+human approved a profile merge also retain their alias authority.
+
 Extracted names remain unconfirmed proposals until attached through name review.
 Neither capitalization nor a title separator establishes a speaker credit.
 Same-voice review does not approve a name. Rejected claims do not veto acoustic

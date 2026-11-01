@@ -419,6 +419,76 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         readiness = assess_profile_association_readiness(self.database, evidence)[0]
         self.assertIn("conflicting_explicit_attribution", readiness.automatic_blockers)
 
+    def test_fuzzy_name_approval_clears_conflict_and_persists_preference(self):
+        from pastor_transcript_extractor.speaker_name_variants import (
+            approve_name_variants, list_name_variant_candidates,
+        )
+        from pastor_transcript_extractor.speaker_profile_status import build_profile_pipeline_status
+        left, right, observations, evidence = self._named_alias_profiles()
+        record_profile_redirect(
+            self.database, from_profile_id=left.id, to_profile_id=right.id,
+            reviewer="system:automatic", reason="machine merge", review_event_key="fuzzy-merge",
+        )
+        candidate, = list_name_variant_candidates(self.database)
+        self.assertEqual({"Ron Clouzet", "Ron Couzet"}, set(candidate.names))
+        with self.database.connect() as connection:
+            before = connection.execute("SELECT COUNT(*) FROM profile_observation_events").fetchone()[0]
+        receipt = approve_name_variants(self.database, candidate, "Ron Clouzet", "Brian")
+        self.assertFalse(receipt["voice_membership_changed"])
+        self.assertEqual("Ron Clouzet", self.database.get_speaker_profile(right.id).display_label)
+        readiness = assess_profile_association_readiness(self.database, evidence)[0]
+        self.assertTrue(readiness.automatic_profile_ready)
+        self.assertEqual({"ron couzet", "ron clouzet"}, set(readiness.normalized_names))
+        self.assertEqual((), list_name_variant_candidates(self.database))
+        status = build_profile_pipeline_status(self.database, evidence).profiles[0]
+        self.assertEqual("Ron Clouzet", status.preferred_name)
+        self.assertNotEqual("attribution-conflict", status.state)
+        with self.database.connect() as connection:
+            self.assertEqual(before, connection.execute("SELECT COUNT(*) FROM profile_observation_events").fetchone()[0])
+        self._attach_alias_test_name(right.id, observations[4], "Jane Smith")
+        readiness = assess_profile_association_readiness(self.database, evidence)[0]
+        self.assertIn("conflicting_explicit_attribution", readiness.automatic_blockers)
+        self.assertEqual((), list_name_variant_candidates(self.database))
+
+    def test_fuzzy_name_cli_deferral_and_preferred_name_prompt(self):
+        from typer.testing import CliRunner
+        from pastor_transcript_extractor.cli import app
+        left, right, _, _ = self._named_alias_profiles()
+        record_profile_redirect(
+            self.database, from_profile_id=left.id, to_profile_id=right.id,
+            reviewer="system:automatic", reason="machine merge", review_event_key="fuzzy-cli-merge",
+        )
+        args = ["identity", "review-name-variants", "--profile-id", str(right.id),
+                "--reviewer", "Brian", "--base-dir", str(self.paths.root)]
+        runner = CliRunner()
+        preview = runner.invoke(app, [*args, "--plan-only"])
+        self.assertEqual(0, preview.exit_code, preview.output)
+        self.assertNotIn("Approve these names", preview.output)
+        self.assertIsNone(self.database.get_speaker_profile(right.id).display_label)
+        deferred = runner.invoke(app, args, input="n\n")
+        self.assertEqual(0, deferred.exit_code, deferred.output)
+        self.assertIsNone(self.database.get_speaker_profile(right.id).display_label)
+        approved = runner.invoke(app, args, input="y\n2\n")
+        self.assertEqual(0, approved.exit_code, approved.output)
+        self.assertIn("Preferred name", approved.output)
+        self.assertEqual("Ron Couzet", self.database.get_speaker_profile(right.id).display_label)
+
+    def test_fuzzy_name_approval_rejects_stale_queue_and_unlisted_choice(self):
+        from pastor_transcript_extractor.speaker_name_variants import (
+            approve_name_variants, list_name_variant_candidates,
+        )
+        left, right, observations, _ = self._named_alias_profiles()
+        record_profile_redirect(
+            self.database, from_profile_id=left.id, to_profile_id=right.id,
+            reviewer="system:automatic", reason="machine merge", review_event_key="fuzzy-stale-merge",
+        )
+        candidate, = list_name_variant_candidates(self.database)
+        with self.assertRaises(ValueError):
+            approve_name_variants(self.database, candidate, "Someone Else", "Brian")
+        self._attach_alias_test_name(right.id, observations[4], "Jane Smith")
+        with self.assertRaisesRegex(ValueError, "changed"):
+            approve_name_variants(self.database, candidate, "Ron Clouzet", "Brian")
+
     def test_cleared_human_merge_revokes_alias_authority(self):
         left, right, _, _ = self._named_alias_profiles()
         record_profile_redirect(

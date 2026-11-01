@@ -677,6 +677,38 @@ def record_name_claim_review(
     )
 
 
+NAME_VARIANT_REVIEW_PREFIX = "Approved profile name variants v1: "
+
+
+def approved_profile_name_variant_reviews(database: Database) -> dict[int, dict[str, Any]]:
+    """Read explicit name-only approvals from effective append-only reviews."""
+    approved = {}
+    with database.connect() as connection:
+        rows = connection.execute(
+            """SELECT review.* FROM profile_name_claim_events review
+               JOIN (SELECT claim_id, MAX(id) AS id FROM profile_name_claim_events
+                     GROUP BY claim_id) latest ON latest.id = review.id
+               WHERE review.action = 'attach' ORDER BY review.id"""
+        ).fetchall()
+    for row in rows:
+        reason = str(row["reason"])
+        reviewer = str(row["reviewer"]).strip().lower()
+        if not reason.startswith(NAME_VARIANT_REVIEW_PREFIX) or not reviewer or reviewer.startswith("system"):
+            continue
+        try:
+            payload = json.loads(reason[len(NAME_VARIANT_REVIEW_PREFIX):])
+            aliases = payload["normalized_names"]
+            if not isinstance(aliases, list) or not aliases or not all(isinstance(n, str) and n for n in aliases):
+                continue
+            if normalize_person_name(payload["preferred_name"]) not in aliases:
+                continue
+        except (ValueError, KeyError, TypeError):
+            continue
+        canonical = database.resolve_speaker_profile_id(int(row["profile_id"]))
+        approved[canonical] = payload
+    return approved
+
+
 def reviewed_profile_name_alias_groups(
     database: Database,
 ) -> dict[int, tuple[tuple[str, ...], ...]]:
@@ -721,6 +753,8 @@ def reviewed_profile_name_alias_groups(
             if len(aliases) > 1:
                 canonical = database.resolve_speaker_profile_id(int(event["to_profile_id"]))
                 groups.setdefault(canonical, []).append(aliases)
+    for profile, approval in approved_profile_name_variant_reviews(database).items():
+        groups.setdefault(profile, []).append(tuple(approval["normalized_names"]))
     return {profile: tuple(items) for profile, items in groups.items()}
 
 
