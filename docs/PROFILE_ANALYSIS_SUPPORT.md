@@ -16,6 +16,13 @@ released clauses**; this is an assessed bounded failure, not a successful automa
 analysis section. Original outputs, source-review findings and costs are linked
 from the application-base `evaluation/profile-section-v1/DELIVERY_318.md` index.
 
+The current bounded integration delivers six discussion-level clauses using
+compatible admitted relationship measurements and one independently qualified
+growth-timing dimension. Complete bindings remain withheld. A selected-membership
+interpretation retains its warrant, alternatives and two support dependencies;
+neither the dimension nor downstream model support confers legacy or production
+admission. The same index now links this assessed delivery and preserved history.
+
 The upstream response/growth extension preserves existing binding semantics and
 does not admit quarantined leaves. A final transport iteration moves enum grammar
 enforcement to the unchanged local validator, retaining every allowed choice in

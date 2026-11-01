@@ -3,7 +3,32 @@
 This active sequence delivers one experimental salvation, response and growth
 section for profile 318 (281, 3973, 4589). It does not change V8/P1 or admission.
 
-## Assessed outcome, 2026-10-30
+## Current bounded outcome, 2026-11-01
+
+The shared handoff now delivers six supported discussion-level clauses: four
+admitted-relationship findings, one independently qualified gradual-growth
+finding, and an explicit selected-sample membership interpretation connecting
+receiving-response discussion with growth over time. The interpretation retains
+its warrant, alternative explanation and parent dependencies. The source-specific
+timing judgment passed at .93; every complete binding and every specific proposed
+requested-response description remains withheld.
+
+Source review accepts this narrow development section. It does not establish an
+adopted theological position, complete response conditions, actual listener growth,
+or how reassurance and challenge relate. The final analysis consumes structured
+evidence; generic code composes unchanged meanings and the qualified dimension,
+and the ordinary instant Qwen recipe verifies the unchanged clauses. No
+pastor-authored local reading or connective warrant is a runtime input.
+
+The final shared conservative allowance delta is $0.738711444 of the approved $3,
+leaving $2.261288556. Known list-price usage is $0.423729044; the remaining charge
+retains uncertainty reservations. The invoice is not reconciled. The application
+base `evaluation/profile-section-v1/DELIVERY_318.md` index links the draft,
+structured document input, full trace, separate acceptance assessment, source
+review, costs and exact offline inspection commands. Earlier index bytes are
+preserved under `index-history`; all historical evidence remains unchanged.
+
+## Historical first outcome, 2026-10-30
 
 The bounded delivery **failed to produce a substantive section**. All six frozen
 windows (30 existing blocks) were exercised. Twelve final candidate readings
