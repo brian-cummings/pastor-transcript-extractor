@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+import hashlib
+import json
+import shlex
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -164,6 +167,17 @@ class AssociationEvaluator:
         )
         if reusable is not None:
             return AssociationEvaluationResult(reusable[1], reusable[0])
+        saved_comparisons, saved_path = self._saved_name_conflict_comparisons(
+            candidate, candidate_audio_sha256, profiles, span_selection, routing_payload,
+        )
+        reused_comparisons = []
+
+        def compare(a, b, audio_a, audio_b):
+            saved = saved_comparisons.get(b.input_fingerprint)
+            if saved is not None:
+                reused_comparisons.append(b.input_fingerprint)
+                return dict(saved)
+            return self._compare(a, b, audio_a, audio_b)
         if self._jobs > 1 and self._executor is None:
             self._executor = ThreadPoolExecutor(
                 max_workers=self._jobs,
@@ -176,7 +190,7 @@ class AssociationEvaluator:
                 candidate_audio_sha256=candidate_audio_sha256,
                 candidate_normalized_names=candidate_normalized_names,
                 profiles=profiles,
-                compare=self._compare,
+                compare=compare if saved_comparisons else self._compare,
                 policy_spec=self._policy_spec,
                 model_fingerprint=self._model_fingerprint,
                 minimum_same_exemplars=self._minimum_same_exemplars,
@@ -189,7 +203,65 @@ class AssociationEvaluator:
         except BaseException:
             self.close(cancel_futures=True)
             raise
+        if saved_path is not None:
+            report["saved_name_conflict_comparison_reuse"] = {
+                "artifact_path": str(saved_path), "comparison_count": len(reused_comparisons),
+                "artifact_sha256": hashlib.sha256(saved_path.read_bytes()).hexdigest(),
+            }
+            report.pop("result_sha256", None)
+            report["result_sha256"] = hashlib.sha256(json.dumps(
+                report, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+            ).encode()).hexdigest()
         return AssociationEvaluationResult(report, None)
+
+    def _saved_name_conflict_comparisons(self, candidate, audio_sha256, profiles,
+                                         span_selection, routing):
+        """Reuse exact acoustic inputs when only a name decision changed."""
+        directory = self._output_root / candidate.input_fingerprint[:16]
+        if not directory.is_dir():
+            return {}, None
+        expected = {r.profile_id: {e.observation.input_fingerprint: e.audio_sha256 for e in es}
+                    for r, es in profiles}
+        policy = {"version": self._policy_spec.policy.version,
+                  "review_status": self._policy_spec.review_status,
+                  "artifact_sha256": self._policy_spec.artifact_sha256,
+                  "automatic_use_allowed": self._policy_spec.automatic_use_allowed}
+        for path in sorted(directory.glob("*.json")):
+            try:
+                loaded = load_reusable_shadow_association(
+                    self._output_root, candidate_fingerprint=candidate.input_fingerprint,
+                    input_fingerprint=path.stem,
+                )
+                if loaded is None:
+                    continue
+                old = loaded[1]
+                if (old.get("association_version") not in {"speaker_shadow_association_v9", "speaker_shadow_association_v10"}
+                        or old.get("artifact_kind") != "speaker_profile_shadow_association"
+                        or old.get("outcome") != "conflicting_attribution"
+                        or old.get("reason") not in {"candidate_name_conflicts_with_acoustic_profile", "fuzzy_name_variant_requires_approval"}
+                        or old["candidate"]["input_fingerprint"] != candidate.input_fingerprint
+                        or old["candidate"]["normalized_audio_sha256"] != audio_sha256
+                        or old.get("model_fingerprint") != self._model_fingerprint
+                        or old.get("policy") != policy
+                        or old.get("minimum_same_exemplars") != self._minimum_same_exemplars
+                        or old.get("span_selection") != span_selection
+                        or old.get("routing") != routing
+                        or {p["profile_id"] for p in old["profiles"]} != set(expected)):
+                    continue
+                saved = {}
+                for profile in old["profiles"]:
+                    inputs = expected[profile["profile_id"]]
+                    if {c["exemplar_fingerprint"] for c in profile["comparisons"]} != set(inputs):
+                        raise ValueError("exemplars changed")
+                    for comparison in profile["comparisons"]:
+                        fingerprint = comparison["exemplar_fingerprint"]
+                        if comparison.get("reviewed_constraint") or comparison["exemplar_normalized_audio_sha256"] != inputs[fingerprint]:
+                            raise ValueError("comparison provenance changed")
+                        saved[fingerprint] = comparison
+                return saved, path
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+        return {}, None
 
     def close(self, *, cancel_futures: bool = False) -> None:
         if self._executor is None:
@@ -211,6 +283,18 @@ def persist_association_result(
 ) -> PersistedAssociationResult:
     """Persist one result and mirror its evidence onto extraction output."""
     destination = reusable_path or write_shadow_association(output_root, report)
+    if report.get("name_variant_review"):
+        command = shlex.join([
+            "pte", "identity", "review-name-variants",
+            "--association-report", str(destination.resolve()),
+            "--reviewer", "REVIEWER_ID", "--base-dir", str(database.database_path.parent.resolve()),
+        ])
+        destination.with_suffix(".name-review.md").write_text(
+            "# Name-only review for a saved voice match\n\n"
+            "The unique voice match is preserved. Approve the spelling variants "
+            "and choose a preferred name; this does not merge profiles or assign recordings.\n\n"
+            f"```bash\n{command}\n```\n", encoding="utf-8",
+        )
     extraction = database.get_latest_extraction_result_for_video(
         observation.video_id
     )

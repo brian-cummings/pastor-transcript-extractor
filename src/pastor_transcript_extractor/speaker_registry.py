@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import uuid
+from difflib import SequenceMatcher
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -675,6 +676,31 @@ def record_name_claim_review(
         reason=reason,
         event_fingerprint=fingerprint,
     )
+
+
+def names_have_identity_conflict(names, alias_groups=()) -> bool:
+    identities = {name: name for name in names}
+    for group in alias_groups:
+        for name in group:
+            identities.setdefault(name, name)
+        roots = {identities[name] for name in group}
+        if roots:
+            representative = min(roots)
+            identities = {name: representative if root in roots else root
+                          for name, root in identities.items()}
+    return len({identities[name] for name in names}) > 1
+
+
+def profile_names_compatible(candidate_names, profile_names, alias_groups=()) -> bool:
+    return not candidate_names or not profile_names or not names_have_identity_conflict(
+        set(candidate_names) | set(profile_names), alias_groups,
+    )
+
+
+def fuzzy_name_similarity(names) -> float:
+    names = sorted(set(names))
+    return min((SequenceMatcher(None, a, b).ratio()
+                for i, a in enumerate(names) for b in names[i + 1:]), default=1.0)
 
 
 NAME_VARIANT_REVIEW_PREFIX = "Approved profile name variants v1: "

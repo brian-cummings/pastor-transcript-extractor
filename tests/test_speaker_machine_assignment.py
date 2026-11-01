@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,6 +33,7 @@ from pastor_transcript_extractor.speaker_registry import (
     create_anonymous_profile,
     record_observation_difference,
     record_profile_redirect,
+    record_name_claim_review,
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
     ProfileAssociationReadiness,
@@ -221,6 +223,27 @@ class SpeakerMachineAssignmentTests(unittest.TestCase):
                 readiness=self.readiness,
                 policy=policy,
             )
+
+    def test_current_name_gate_accepts_approved_alias_but_not_new_fuzzy_name(self):
+        candidate = self._observation("alias-candidate")
+        claim = self.database.add_speaker_name_claim(
+            video_id=candidate.video_id, observation_id=candidate.id,
+            display_name="Ron Couzet", normalized_name="ron couzet",
+            claim_kind="reviewed_profile_attribution", channel="manual_review",
+            explicit_speaker_attribution=True, correlation_group_id="alias",
+            provenance_json="{}", artifact_path="review.json", claim_fingerprint="alias-candidate-name",
+            extractor_version="test",
+        )
+        record_name_claim_review(self.database, claim_id=claim.id, profile_id=self.profile.id,
+                                attach=True, reviewer="Brian", reason="name", review_event_key="alias-name")
+        self.readiness = (replace(self.readiness[0], normalized_names=("ron clouzet",),
+                                  reviewed_name_alias_groups=(("ron clouzet", "ron couzet"),)),)
+        plan = self._plan((candidate,), self.shadow_policy)
+        self.assertEqual(1, len(plan.candidates))
+        self.readiness = (replace(self.readiness[0], reviewed_name_alias_groups=()),)
+        plan = self._plan((candidate,), self.shadow_policy)
+        self.assertEqual((), plan.candidates)
+        self.assertEqual(1, plan.skipped_counts["current_attribution_conflict"])
 
     def test_shadow_plan_records_evidence_without_membership(self) -> None:
         candidate = self._observation("candidate")

@@ -489,6 +489,130 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "changed"):
             approve_name_variants(self.database, candidate, "Ron Clouzet", "Brian")
 
+    def test_early_association_accepts_approved_alias_and_holds_new_variants(self):
+        left, right, observations, evidence = self._named_alias_profiles()
+        readiness = next(r for r in assess_profile_association_readiness(self.database, evidence)
+                         if r.profile_id == right.id)
+        readiness = replace(readiness, normalized_names=("ron clouzet", "ron couzet"),
+                            reviewed_name_alias_groups=(("ron clouzet", "ron couzet"),))
+        exemplars = tuple(ShadowExemplar(right.id, o, Path("audio.wav"), f"audio-{o.input_fingerprint}")
+                          for o in observations[3:])
+
+        def evaluate(names, differences=()):
+            return evaluate_shadow_association(
+                candidate=observations[0], candidate_audio_path=Path("candidate.wav"),
+                candidate_audio_sha256="candidate-audio", candidate_normalized_names=names,
+                profiles=((readiness, exemplars),), compare=lambda *_: {"outcome": "same_speaker"},
+                policy_spec=self._policy_spec(), model_fingerprint="model",
+                reviewed_difference_pairs=differences,
+            )
+        self.assertEqual("proposed_match", evaluate(("ron couzet",))["outcome"])
+        unknown = evaluate(("ron clouzett",))
+        self.assertEqual("conflicting_attribution", unknown["outcome"])
+        self.assertEqual("fuzzy_name_variant_requires_approval", unknown["reason"])
+        self.assertIsNone(unknown["proposed_profile_id"])
+        self.assertTrue(unknown["name_variant_review"]["acoustic_match_preserved"])
+        genuine = evaluate(("jane smith",))
+        self.assertEqual("conflicting_attribution", genuine["outcome"])
+        self.assertIsNone(genuine["name_variant_review"])
+        constrained = evaluate(("ron couzet",), ((observations[0].id, observations[3].id),))
+        self.assertNotEqual("proposed_match", constrained["outcome"])
+        routed = select_routed_association_profiles(
+            ((readiness, exemplars),), candidate_source_id=999,
+            candidate_normalized_names=("ron clouzett",), source_id_by_video_id={},
+        )
+        self.assertEqual(1, len(routed))
+
+    def test_saved_voice_match_name_approval_reuses_comparisons_without_moving_claims(self):
+        from types import SimpleNamespace
+        from pastor_transcript_extractor.speaker_name_variants import (
+            association_name_variant_candidate, approve_name_variants,
+        )
+        from pastor_transcript_extractor.workflows.identity.association_evaluation import AssociationEvaluator
+        left, right, observations, evidence = self._named_alias_profiles()
+        readiness = next(r for r in assess_profile_association_readiness(self.database, evidence)
+                         if r.profile_id == right.id)
+        profiles = ((readiness, tuple(
+            ShadowExemplar(right.id, o, Path("audio.wav"), f"audio-{o.input_fingerprint}")
+            for o in observations[3:])),)
+        root = self.paths.evaluation / "speaker-associations/shadow-runs"
+        calls = []
+
+        def compare(*args):
+            calls.append(args)
+            return {"outcome": "same_speaker", "reason": "approved_policy_same_band"}
+
+        def evaluator(comparer, model="model", differences=()):
+            return AssociationEvaluator(
+                output_root=root, jobs=1, policy_spec=self._policy_spec(),
+                model_fingerprint=model, minimum_same_exemplars=2,
+                selections_by_observation_id={}, reviewed_difference_pairs=lambda: differences,
+                compare=comparer,
+            )
+        kwargs = dict(candidate=observations[0], candidate_audio_path=Path("candidate.wav"),
+                      candidate_audio_sha256=f"audio-{observations[0].input_fingerprint}",
+                      candidate_normalized_names=("ron couzet",), profiles=profiles,
+                      routing_payload={"route": "test", "exhaustive": True})
+        initial = evaluator(compare).evaluate(**kwargs).report
+        path = write_shadow_association(root, initial)
+        historical = path.read_bytes()
+        self.assertEqual(3, len(calls))
+        media_by_video = {o.video_id: SimpleNamespace(content_sha256=f"audio-{o.input_fingerprint}")
+                          for o in observations}
+        with patch("pastor_transcript_extractor.media_artifacts.get_registered_normalized_media_artifact",
+                   side_effect=lambda db, vid: media_by_video[vid]):
+            from typer.testing import CliRunner
+            from pastor_transcript_extractor.cli import app
+            preview = CliRunner().invoke(app, [
+                "identity", "review-name-variants", "--association-report", str(path),
+                "--reviewer", "Brian", "--plan-only", "--base-dir", str(self.paths.root),
+            ])
+            self.assertEqual(0, preview.exit_code, preview.output)
+            self.assertIn("Ron Clouzet", preview.output)
+            candidate = association_name_variant_candidate(self.database, path)
+            approve_name_variants(self.database, candidate, "Ron Clouzet", "Brian")
+            with self.assertRaisesRegex(ValueError, "already compatible"):
+                association_name_variant_candidate(self.database, path)
+        incoming_claim = next(c for c in self.database.list_speaker_name_claims()
+                              if c.observation_id == observations[0].id)
+        self.assertEqual(("attach", left.id), self.database.get_effective_name_claim_review(incoming_claim.id))
+        current = next(r for r in assess_profile_association_readiness(self.database, evidence)
+                       if r.profile_id == right.id)
+        kwargs["profiles"] = ((current, profiles[0][1]),)
+
+        def no_comparison(*args):
+            self.fail("Name-only approval must reuse saved voice comparisons")
+
+        refreshed = evaluator(no_comparison).evaluate(**kwargs).report
+        self.assertEqual("proposed_match", refreshed["outcome"])
+        self.assertEqual(3, refreshed["saved_name_conflict_comparison_reuse"]["comparison_count"])
+        self.assertEqual(historical, path.read_bytes())
+        replay_path = write_shadow_association(root, refreshed)
+        replay = load_reusable_shadow_association(root, candidate_fingerprint=observations[0].input_fingerprint,
+                                                  input_fingerprint=refreshed["input_fingerprint"])
+        self.assertEqual(replay_path, replay[0])
+        changed = evaluator(compare, model="different-model").evaluate(**kwargs).report
+        self.assertNotIn("saved_name_conflict_comparison_reuse", changed)
+        self.assertEqual(6, len(calls))
+        changed_audio_profiles = ((current, (replace(profiles[0][1][0], audio_sha256="changed-audio"),
+                                             *profiles[0][1][1:])),)
+        changed_audio = evaluator(compare).evaluate(**{**kwargs, "profiles": changed_audio_profiles}).report
+        self.assertNotIn("saved_name_conflict_comparison_reuse", changed_audio)
+        self.assertEqual(9, len(calls))
+        # A newly reviewed difference still overrides the saved same result.
+        constrained = evaluator(no_comparison, differences=((observations[0].id, observations[3].id),)).evaluate(**kwargs).report
+        self.assertNotEqual("proposed_match", constrained["outcome"])
+        self.assertEqual(2, constrained["saved_name_conflict_comparison_reuse"]["comparison_count"])
+
+        # A second approved spelling must retain the first alias decision.
+        from pastor_transcript_extractor.speaker_name_variants import list_name_variant_candidates
+        self._attach_alias_test_name(right.id, observations[4], "Ron Clouzett")
+        next_candidate, = list_name_variant_candidates(self.database, right.id)
+        approve_name_variants(self.database, next_candidate, "Ron Clouzet", "Brian")
+        from pastor_transcript_extractor.speaker_registry import approved_profile_name_variant_reviews
+        aliases = approved_profile_name_variant_reviews(self.database)[right.id]["normalized_names"]
+        self.assertEqual({"ron clouzet", "ron couzet", "ron clouzett"}, set(aliases))
+
     def test_cleared_human_merge_revokes_alias_authority(self):
         left, right, _, _ = self._named_alias_profiles()
         record_profile_redirect(

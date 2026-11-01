@@ -1690,6 +1690,22 @@ merges occur. Readiness reuses approved aliases; new conflicting names and
 different-speaker constraints remain blockers. Names already attached when a
 human approved a profile merge also retain their alias authority.
 
+Earlier association routing, voice-match attribution checks, and automatic
+assignment validation also recognize approved aliases. A new fuzzy spelling can
+route a profile for comparison but cannot authorize assignment. When a unique
+voice match is held by that spelling, the saved association includes a name-only
+review suggestion and a companion `.name-review.md` file with its exact command:
+
+```bash
+pte identity review-name-variants --association-report /path/to/association.json --reviewer Brian --base-dir /path/to/app-data
+```
+
+This approval does not move the incoming recording or its claims to another
+profile. On the next association pass, the earlier voice comparisons can be
+reused when observation/audio identities, exemplars, spans, model, policy, and
+routing still match. Current different-speaker constraints still take priority.
+Historical association JSON files are preserved unchanged.
+
 Extracted names remain unconfirmed proposals until attached through name review.
 Neither capitalization nor a title separator establishes a speaker credit.
 Same-voice review does not approve a name. Rejected claims do not veto acoustic

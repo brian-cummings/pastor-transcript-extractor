@@ -21,12 +21,15 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 )
 from pastor_transcript_extractor.speaker_registry import (
     normalize_person_name,
+    names_have_identity_conflict,
+    profile_names_compatible,
+    fuzzy_name_similarity,
     reviewed_profile_name_alias_groups,
 )
 from pastor_transcript_extractor.storage import Database
 
 
-SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v9"
+SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v10"
 SHADOW_ASSOCIATION_FINGERPRINT_VERSION = (
     "speaker_shadow_association_input_v8"
 )
@@ -66,22 +69,15 @@ class ProfileAssociationReadiness:
     reviewed_name_alias_groups: tuple[tuple[str, ...], ...] = ()
 
 
-def _names_conflict(
-    names: Sequence[str], alias_groups: Sequence[Sequence[str]],
-) -> bool:
-    # Preserve every display/matching spelling; collapse only the conflict test.
-    identities = {name: name for name in names}
-    for group in alias_groups:
-        for name in group:
-            identities.setdefault(name, name)
-        roots = {identities[name] for name in group}
-        if roots:
-            representative = min(roots)
-            identities = {
-                name: representative if root in roots else root
-                for name, root in identities.items()
-            }
-    return len({identities[name] for name in names}) > 1
+_names_conflict = names_have_identity_conflict
+
+
+def _name_route_match(names, readiness) -> bool:
+    profile_names = set(readiness.normalized_names)
+    return bool(names and profile_names) and (
+        profile_names_compatible(names, profile_names, readiness.reviewed_name_alias_groups)
+        or fuzzy_name_similarity(set(names) | profile_names) >= 0.8
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,7 +244,7 @@ def select_routed_association_profiles(
     return tuple(
         (readiness, exemplars)
         for readiness, exemplars in profiles
-        if bool(names & set(readiness.normalized_names))
+        if _name_route_match(names, readiness)
         or any(
             source_id_by_video_id.get(exemplar.observation.video_id)
             == candidate_source_id
@@ -306,7 +302,7 @@ def select_staged_association_profiles(
             == candidate_source_id
             for exemplar in exemplars
         )
-        name_match = bool(names & set(readiness.normalized_names))
+        name_match = _name_route_match(names, readiness)
         return confirmation_match, source_match, name_match
 
     priority = [item for item in locally_routable if any(priority_reason(item))]
@@ -1102,6 +1098,7 @@ def evaluate_shadow_association(
                     "automatic_blockers": list(readiness.automatic_blockers),
                 },
                 "normalized_names": list(readiness.normalized_names),
+                "reviewed_name_alias_groups": [list(group) for group in readiness.reviewed_name_alias_groups],
                 "comparison_counts": counts,
                 "comparisons": comparisons,
                 "meets_multi_exemplar_match": (
@@ -1125,6 +1122,7 @@ def evaluate_shadow_association(
         if normalized_name.strip()
     }
     proposed_profile_id: int | None = None
+    name_variant_review = None
     reason: str
     if any_failure:
         outcome = "analysis_failed"
@@ -1135,9 +1133,20 @@ def evaluate_shadow_association(
     elif len(matching_profiles) == 1:
         matched = matching_profiles[0]
         profile_names = set(matched["normalized_names"])
-        if candidate_names and profile_names and candidate_names != profile_names:
+        aliases = matched["reviewed_name_alias_groups"]
+        if not profile_names_compatible(candidate_names, profile_names, aliases):
             outcome = "conflicting_attribution"
             reason = "candidate_name_conflicts_with_acoustic_profile"
+            if fuzzy_name_similarity(candidate_names | profile_names) >= 0.8:
+                reason = "fuzzy_name_variant_requires_approval"
+                name_variant_review = {
+                    "profile_id": matched["profile_id"],
+                    "candidate_observation_id": candidate.id,
+                    "candidate_names": sorted(candidate_names),
+                    "profile_names": sorted(profile_names),
+                    "acoustic_match_preserved": True,
+                    "review_command": "pte identity review-name-variants --association-report ASSOCIATION_JSON --reviewer REVIEWER_ID --base-dir BASE_DIR",
+                }
         else:
             outcome = "proposed_match"
             reason = "unique_multi_exemplar_same_speaker_match"
@@ -1210,6 +1219,7 @@ def evaluate_shadow_association(
         "outcome": outcome,
         "reason": reason,
         "proposed_profile_id": proposed_profile_id,
+        "name_variant_review": name_variant_review,
         "profiles": profile_results,
     }
     report["input_fingerprint"] = build_shadow_association_input_fingerprint(

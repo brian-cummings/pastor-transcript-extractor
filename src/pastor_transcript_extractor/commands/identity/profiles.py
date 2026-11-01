@@ -59,17 +59,25 @@ console = Console()
 def review_name_variants_command(
     reviewer: str = typer.Option(..., help="Stable human reviewer identifier."),
     profile_id: int | None = typer.Option(None, help="One profile; default queues all fuzzy name conflicts."),
+    association_report: Path | None = typer.Option(None, exists=True, dir_okay=False,
+        help="Saved voice-match JSON held only by a fuzzy name conflict; no new audio comparisons."),
     plan_only: bool = typer.Option(False, help="Write Markdown/JSON suggestions without prompts or registry changes."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     from pastor_transcript_extractor.speaker_name_variants import (
-        approve_name_variants, list_name_variant_candidates,
+        approve_name_variants, list_name_variant_candidates, association_name_variant_candidate,
     )
     paths = build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter("Application database does not exist")
     database = Database(paths.database, readonly=plan_only)
-    candidates = list_name_variant_candidates(database, profile_id)
+    if association_report is not None and profile_id is not None:
+        raise typer.BadParameter("Choose --association-report or --profile-id")
+    try:
+        candidates = ((association_name_variant_candidate(database, association_report),)
+                      if association_report else list_name_variant_candidates(database, profile_id))
+    except (ValueError, KeyError, TypeError, OSError) as error:
+        raise typer.BadParameter(str(error)) from error
     root = paths.evaluation / "identity-name-variants"
     root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")

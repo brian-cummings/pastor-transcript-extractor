@@ -19,6 +19,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     SHADOW_ASSOCIATION_VERSION,
 )
 from pastor_transcript_extractor.storage import Database
+from pastor_transcript_extractor.speaker_registry import profile_names_compatible
 
 
 MACHINE_ASSIGNMENT_VERSION = "speaker_machine_assignment_v1"
@@ -385,7 +386,9 @@ def plan_machine_assignments(
             and claim.normalized_name.strip()
         }
         profile_names = set(profile_readiness.normalized_names)
-        if candidate_names and profile_names and candidate_names != profile_names:
+        if not profile_names_compatible(
+            candidate_names, profile_names, profile_readiness.reviewed_name_alias_groups,
+        ):
             _increment(skipped, "current_attribution_conflict")
             continue
         model_fingerprint = report.get("model_fingerprint")
