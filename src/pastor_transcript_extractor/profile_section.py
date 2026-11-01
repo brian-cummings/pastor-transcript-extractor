@@ -329,7 +329,7 @@ def reconcile_completed_wire(packet,spec):
     return dict(path=str(dest),sha256=file_hash(dest))
 
 
-def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logical_condition_scopes=False,reuse_materialized=False,literal_materialized=False):
+def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logical_condition_scopes=False,reuse_materialized=False,literal_materialized=False,field_local_criteria=False):
     """Freeze another authorized bounded step without replacing the allowance."""
     path=Path(path);prior=json.loads(path.read_text())
     if prior['input_fingerprint']!=digest({k:v for k,v in prior.items() if k!='input_fingerprint'}):
@@ -359,6 +359,7 @@ def prepare_continuation(path, source_windows=(), *,source_reasoning=False,logic
     current=ledger(prior,path.parent);limit=allowance.ceiling(prior)
     packet['policy'].update(semantic_iterations='until_original_allowance_or_goal',automatic_expansion=False)
     packet['field_isolated_verification']=producer.FIELD_VERIFICATION_VERSION
+    if field_local_criteria:packet['field_criteria_contract']=producer.FIELD_LOCAL_CRITERIA
     packet['source_feedback_headroom']=dict(maximum_input_cap=131072,maximum_corrections=1,
         maximum_correction_reservation_usd=str(correction_reserve))
     packet['continuation']=dict(predecessor=dict(path=str(path.resolve()),sha256=file_hash(path)),
@@ -520,7 +521,7 @@ def run_source(path, batch, approve_input, *, check_only=False, transport=None):
         rounds.append(dict(receipt=str(receipt),errors=checked['errors']))
     rows = []; verification = None
     if not checked['errors']:
-        verifier = producer.verification(window,checked['observations'])
+        verifier = producer.verification(window,checked['observations'],field_local=p.get('field_criteria_contract')==producer.FIELD_LOCAL_CRITERIA)
         if verifier:
             if p.get('field_isolated_verification')==producer.FIELD_VERIFICATION_VERSION:
                 rows,vpath=verify_fields(p,out,window,checked,transport or x.requests.typesafe_transport)
@@ -538,13 +539,14 @@ def run_source(path, batch, approve_input, *, check_only=False, transport=None):
 
 
 def verify_fields(p,out,window,checked,transport):
-    full=producer.verification(window,checked['observations'])
+    local=p.get('field_criteria_contract')==producer.FIELD_LOCAL_CRITERIA
+    full=producer.verification(window,checked['observations'],field_local=local)
     cached=x._cached(full,x._store(p,full));reused={};ref=None
     if cached and not cached['halt']:
-        reused=producer.reused_answers(cached['response'],full,producer.verification_parts(window,checked['observations']))
+        reused=producer.reused_answers(cached['response'],full,producer.verification_parts(window,checked['observations'],field_local=local))
         path=x._store(p,full).root/'receipts'/f'{full.fingerprint}.json'
         ref=dict(path=str(path),sha256=file_hash(path))
-    parts=producer.verification_parts(window,checked['observations'],reused)
+    parts=producer.verification_parts(window,checked['observations'],reused,field_local=local)
     receipts={}
     for field,spec in parts.items():
         _,path=obtain(p,spec,transport)
@@ -563,7 +565,8 @@ def load_field_bundle(path,window,checked):
     if (bundle['version']!=producer.FIELD_VERIFICATION_VERSION or bundle['window_digest']!=digest(asdict(window))
         or bundle['fingerprint']!=digest({k:v for k,v in bundle.items() if k!='fingerprint'})):
         raise ValueError('Field verification bundle differs')
-    full=producer.verification(window,checked['observations'])
+    local=bundle['canonical_contract_request']['source_identity'].get('field_criteria_contract')==producer.FIELD_LOCAL_CRITERIA
+    full=producer.verification(window,checked['observations'],field_local=local)
     if bundle['canonical_contract_request']!=asdict(full):raise ValueError('Canonical field contract differs')
     def response(ref,spec):
         if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Field receipt changed')
@@ -571,9 +574,9 @@ def load_field_bundle(path,window,checked):
         if raw is None or raw['halt']:raise ValueError('Field receipt incomplete')
         x.requests.validate_response(spec,raw['response'])
         files[ref['path']]=ref['sha256'];return raw['response']
-    reused=producer.reused_answers(response(bundle['reused_from'],full),full,producer.verification_parts(window,checked['observations'])) if bundle['reused_from'] else {}
+    reused=producer.reused_answers(response(bundle['reused_from'],full),full,producer.verification_parts(window,checked['observations'],field_local=local)) if bundle['reused_from'] else {}
     if sorted(reused)!=bundle['reused_keys']:raise ValueError('Reused field inventory differs')
-    parts=producer.verification_parts(window,checked['observations'],reused)
+    parts=producer.verification_parts(window,checked['observations'],reused,field_local=local)
     if set(parts)!=set(bundle['parts']):raise ValueError('Field-part inventory differs')
     answers={field:response(bundle['parts'][field],spec) for field,spec in parts.items()}
     return producer.qualify_parts(checked,full,parts,answers,reused),files

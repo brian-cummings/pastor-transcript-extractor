@@ -24,6 +24,44 @@ def reading():
 
 
 class SectionTests(unittest.TestCase):
+    def test_field_local_criteria_are_explicit_without_changing_old_questions_or_whole_binding_gate(self):
+        window,_,_,checked=reading();old=producer.verification(window,checked['observations'])
+        new=producer.verification(window,checked['observations'],field_local=True)
+        self.assertEqual(old,producer.verification(window,checked['observations']))
+        self.assertNotEqual(old.fingerprint,new.fingerprint)
+        self.assertEqual(old.body['state'],new.body['state'])
+        self.assertEqual(set(old.body['questions']),set(new.body['questions']))
+        parts=producer.verification_parts(window,checked['observations'],field_local=True)
+        for part in parts.values():
+            for key,question in part.body['questions'].items():
+                field=key.rsplit(':',1)[1]
+                self.assertEqual(new.body['questions'][key],question)
+                self.assertIn('proposed '+field+' finding',question['criteria']['true'])
+                self.assertIn('Judge this field independently',question['criteria']['true'])
+        answers={key:dict(type='noul',noul=.99) for key in new.body['questions']}
+        self.assertTrue(all(o['section_eligibility']['eligible'] for o in producer.qualify(checked,dict(output=answers),new)))
+        answers[next(iter(answers))]['noul']=.89
+        self.assertFalse(producer.qualify(checked,dict(output=answers),new)[0]['section_eligibility']['eligible'])
+
+    def test_field_local_proof_bundle_reconstructs_its_exact_question_contract(self):
+        window,_,_,checked=reading()
+        with TemporaryDirectory() as folder:
+            p=dict(field_criteria_contract=producer.FIELD_LOCAL_CRITERIA,budget=dict(spend_root=str(Path(folder)/'requests')))
+            def obtain(packet,spec,transport):
+                response=dict(model='jev-1.13.0',complete=True,usage=dict(input_tokens=100,output_tokens=0),
+                    output={key:dict(type='noul',noul=.99) for key in spec.body['questions']})
+                receipt=dict(request=asdict(spec),token_account=spec.preflight(),response=response,
+                    response_digest=section.digest(response),wire_response_digest=None,halt=None)
+                store=section.x._store(p,spec);path=store.root/'receipts'/f'{spec.fingerprint}.json'
+                store.write_immutable('receipts/'+path.name,receipt);return receipt,path
+            with patch.object(section,'obtain',side_effect=obtain) as send:
+                rows,path=section.verify_fields(p,Path(folder)/'result',window,checked,None)
+            self.assertEqual(24,send.call_count)
+            rebuilt,_=section.load_field_bundle(path,window,checked)
+            self.assertEqual(rows,rebuilt)
+            bundle=json.loads(path.read_text())
+            self.assertEqual(producer.FIELD_LOCAL_CRITERIA,bundle['canonical_contract_request']['source_identity']['field_criteria_contract'])
+
     def test_condition_attachment_contract_separates_dependency_from_time_and_concession(self):
         window,_,value,_=reading()
         text='If the account is verified, access is granted.'

@@ -191,3 +191,12 @@ record for each source row. Candidate identity and the complete request fingerpr
 bind the result to unchanged wording. The instant model and 2,048-token output cap
 remain fixed; historical excerpt-format failures and token-truncated responses
 remain preserved with their recorded usage.
+
+`--field-local-criteria` is an opt-in correction to the existing isolated Jev
+checks. Each field's true/false criteria explicitly grade that field, including its
+relevant source restrictions, rather than treating an absent or erroneous unrelated
+proposal as a failure of this field. The complete source and field meanings remain
+present. Complete-binding release still requires every original check at .90,
+including response/growth and unchanged local prose. Old questions, scores and
+proof bundles keep their original contracts. New bundles record the exact criteria
+version; changed questions cannot reuse old answers as though they were identical.

@@ -11,6 +11,7 @@ LOCAL_ENUM_TRANSPORT = 'source-local-enum-transport-v1'
 PRODUCER_RECIPE = 'complete-point-source-units-v3'
 VERIFICATION_VERSION = 'qualified-response-growth-field-focus-v4'
 FIELD_VERIFICATION_VERSION = 'qualified-response-growth-field-isolated-v5'
+FIELD_LOCAL_CRITERIA = 'qualified-response-growth-field-local-criteria-v6'
 RANGE_TRANSPORT = 'response-growth-source-unit-ranges-v1'
 CONDITION_ATTACHMENT_VERSION = 'source-logical-condition-attachments-v1'
 CONDITION_ATTACHMENT_PROMPT = '''
@@ -257,7 +258,7 @@ def inspect(output, window, spec, receipt):
     return checked
 
 
-def verification(window, observations):
+def verification(window, observations,*,field_local=False):
     """Same Jev role and full binding checks; assess the extension independently."""
     def proposal(value):
         # Coordinates and compiler/admission status are checked in code. They are
@@ -307,7 +308,13 @@ def verification(window, observations):
                 instruction=f'Read items[{i}] against the complete source.texts.target_text. '+instruction),
                 criteria={'true':'Correct and fully supported at its stated local scope.',
                           'false':'Unsupported, incomplete, misattributed or unresolved.'})
+        if field_local:
+            for field in (*evidence.REQUIRED_CHECKS,'response_growth','reader_statement'):
+                body['questions'][item['id']+':'+field]['criteria']=dict(
+                    true='The proposed '+field+' finding is correct and resolved under its stated field meaning, including every source restriction relevant to that finding. Justified empty or not-stated is allowed. Judge this field independently; an error or unavailable proposal in another field is not itself an error in this finding.',
+                    false='The proposed '+field+' finding itself is wrong, unsupported, incomplete, unresolved, or loses a source restriction relevant to this finding. Do not grade unrelated fields here; they have their own required checks.')
     spec = replace(spec, body=body, namespace=VERSION, version=VERIFICATION_VERSION)
+    if field_local:spec=replace(spec,version=FIELD_LOCAL_CRITERIA,source_identity={**spec.source_identity,'field_criteria_contract':FIELD_LOCAL_CRITERIA})
     spec.preflight()
     return spec
 
@@ -317,9 +324,9 @@ def qualify(checked, response, spec):
     return apply_findings(checked,findings,spec.fingerprint if spec else None)
 
 
-def verification_parts(window,observations,reused_keys=()):
+def verification_parts(window,observations,reused_keys=(),*,field_local=False):
     """Same questions and full source, with only each field's necessary proposals."""
-    full=verification(window,observations)
+    full=verification(window,observations,field_local=field_local)
     if full is None:return {}
     contexts=dict(proposition=('voice','adoption'),voice=(),adoption=('voice',),polarity=('voice',),
         conditions=('voice','scope','development_relations','evidence_nodes'),
