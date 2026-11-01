@@ -495,7 +495,7 @@ class SectionTests(unittest.TestCase):
                 dependency_plan=dict(profile=record['profile'],known_gaps=[],items=[dict(claim_id=c['id'],statement=c['wording'],scope=c['scope'],gap=None,
                     case=case if c is claim else combined) for c in (claim,mixed)])
                 withheld=core.document_input(dependency_plan,[dict(claim_id=claim['id'],judgment=dict(answer=dict(judgment='unresolved'),qualifications=[])),
-                    dict(claim_id=mixed['id'],judgment=dict(answer=dict(judgment='supported'),qualifications=[]))])
+                    dict(claim_id=mixed['id'],judgment=dict(answer=dict(judgment='supported'),qualifications=[],assertion_assessment=dict(status='within_authority')))])
                 self.assertEqual('dependency_unresolved',withheld['entries'][1]['support_status'])
                 bad=deepcopy(claim);bad['dimension_field']='requested_response'
                 with self.assertRaisesRegex(ValueError,'below threshold'):section.machine_case(record,bad)
