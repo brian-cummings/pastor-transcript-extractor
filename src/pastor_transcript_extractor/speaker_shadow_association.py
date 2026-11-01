@@ -19,7 +19,10 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
     PairOutcome,
     SpanSpec,
 )
-from pastor_transcript_extractor.speaker_registry import normalize_person_name
+from pastor_transcript_extractor.speaker_registry import (
+    normalize_person_name,
+    reviewed_profile_name_alias_groups,
+)
 from pastor_transcript_extractor.storage import Database
 
 
@@ -60,6 +63,25 @@ class ProfileAssociationReadiness:
     configured_normalized_names: tuple[str, ...] = ()
     review_ready: bool = False
     certified_exemplar_observation_ids: tuple[int, ...] = ()
+    reviewed_name_alias_groups: tuple[tuple[str, ...], ...] = ()
+
+
+def _names_conflict(
+    names: Sequence[str], alias_groups: Sequence[Sequence[str]],
+) -> bool:
+    # Preserve every display/matching spelling; collapse only the conflict test.
+    identities = {name: name for name in names}
+    for group in alias_groups:
+        for name in group:
+            identities.setdefault(name, name)
+        roots = {identities[name] for name in group}
+        if roots:
+            representative = min(roots)
+            identities = {
+                name: representative if root in roots else root
+                for name, root in identities.items()
+            }
+    return len({identities[name] for name in names}) > 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,7 +186,7 @@ def leave_one_out_profile_readiness(
         shadow_blockers.append("fewer_than_three_distinct_recordings")
     if len(member_observations) != len(member_ids):
         shadow_blockers.append("member_observation_missing")
-    if len(normalized_names) > 1:
+    if _names_conflict(normalized_names, readiness.reviewed_name_alias_groups):
         shadow_blockers.append("conflicting_explicit_attribution")
     shadow_blockers = list(dict.fromkeys(shadow_blockers))
 
@@ -687,6 +709,7 @@ def assess_profile_association_readiness(
         for pair in database.list_effective_observation_difference_pairs()
     }
     configured_names_by_profile: dict[int, set[str]] = defaultdict(set)
+    alias_groups_by_profile = reviewed_profile_name_alias_groups(database)
     for pastor in database.list_pastors():
         bound_id = database.get_pastor_speaker_profile_id(pastor.id)
         if bound_id is not None:
@@ -726,7 +749,7 @@ def assess_profile_association_readiness(
             shadow_blockers.append("fewer_than_three_distinct_recordings")
         if len(member_observations) != len(member_ids):
             shadow_blockers.append("member_observation_missing")
-        if len(names) > 1:
+        if _names_conflict(names, alias_groups_by_profile.get(profile_id, ())):
             shadow_blockers.append("conflicting_explicit_attribution")
         if any(
             review[1] is None
@@ -840,6 +863,7 @@ def assess_profile_association_readiness(
                 recording_count=len(video_ids),
                 source_count=len(source_ids),
                 normalized_names=names,
+                reviewed_name_alias_groups=alias_groups_by_profile.get(profile_id, ()),
                 configured_normalized_names=tuple(sorted(configured_names_by_profile.get(profile_id, ()))),
                 shadow_ready=not shadow_blockers,
                 automatic_profile_ready=not automatic_blockers,
@@ -855,10 +879,9 @@ def assess_profile_association_readiness(
         )
     profile_ids_by_name: dict[str, list[int]] = defaultdict(list)
     for item in readiness:
-        if len(item.normalized_names) == 1:
-            profile_ids_by_name[item.normalized_names[0]].append(
-                item.profile_id
-            )
+        if not _names_conflict(item.normalized_names, item.reviewed_name_alias_groups):
+            for name in item.normalized_names:
+                profile_ids_by_name[name].append(item.profile_id)
     duplicate_name_profile_ids = {
         profile_id
         for profile_ids in profile_ids_by_name.values()

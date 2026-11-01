@@ -29,6 +29,7 @@ from pastor_transcript_extractor.speaker_registry import (
     record_observation_difference,
     record_profile_redirect,
     record_name_claim_review,
+    reviewed_profile_name_alias_groups,
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
     ProfileAssociationReadiness,
@@ -341,6 +342,95 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
             2,
             len({item.observation.video_id for item in selected}),
         )
+
+    def _named_alias_profiles(self):
+        observations = [self._observation(f"alias-{i}") for i in range(6)]
+        left = self._profile(observations[:3])
+        right = self._profile(observations[3:])
+        for profile, observation, name in (
+            (left, observations[0], "Ron Couzet"),
+            (right, observations[3], "Ron Clouzet"),
+        ):
+            self._attach_alias_test_name(profile.id, observation, name)
+        evidence = self._evidence(tuple(
+            (a.input_fingerprint, b.input_fingerprint)
+            for a, b in ((observations[0], observations[1]),
+                         (observations[1], observations[2]),
+                         (observations[0], observations[2]),
+                         (observations[3], observations[4]),
+                         (observations[4], observations[5]),
+                         (observations[3], observations[5]))
+        ))
+        return left, right, observations, evidence
+
+    def _attach_alias_test_name(self, profile_id, observation, name):
+        claim = self.database.add_speaker_name_claim(
+            video_id=observation.video_id, observation_id=observation.id,
+            display_name=name, normalized_name=name.lower(),
+            claim_kind="reviewed_profile_attribution", channel="manual_review",
+            explicit_speaker_attribution=True, correlation_group_id=name,
+            provenance_json="{}", artifact_path="review.json",
+            claim_fingerprint=f"{observation.id}:{name}", extractor_version="test",
+        )
+        record_name_claim_review(
+            self.database, claim_id=claim.id, profile_id=profile_id, attach=True,
+            reviewer="Brian", reason="visually identified",
+            review_event_key=f"name:{claim.id}",
+        )
+
+    def test_human_merge_preserves_aliases_without_false_name_conflict(self):
+        left, right, observations, evidence = self._named_alias_profiles()
+        record_profile_redirect(
+            self.database, from_profile_id=left.id, to_profile_id=right.id,
+            reviewer="Brian", reason="confirmed same speaker",
+            review_event_key="alias-merge",
+        )
+        readiness = assess_profile_association_readiness(self.database, evidence)[0]
+        self.assertEqual(("ron clouzet", "ron couzet"), readiness.normalized_names)
+        self.assertTrue(readiness.automatic_profile_ready)
+        hidden = leave_one_out_profile_readiness(
+            readiness, candidate=observations[1],
+            observations_by_id={o.id: o for o in observations},
+            source_id_by_video_id={o.video_id: self.source.id for o in observations},
+            normalized_names_by_observation_id={
+                observations[0].id: ("ron couzet",),
+                observations[3].id: ("ron clouzet",),
+            },
+        )
+        self.assertNotIn("conflicting_explicit_attribution", hidden.shadow_blockers)
+        self._attach_alias_test_name(right.id, observations[4], "Jane Smith")
+        readiness = assess_profile_association_readiness(self.database, evidence)[0]
+        self.assertIn("conflicting_explicit_attribution", readiness.automatic_blockers)
+        record_observation_difference(
+            self.database, observation_a_id=observations[0].id,
+            observation_b_id=observations[3].id, different=True, reviewer="Brian",
+            reason="later contradiction", review_event_key="alias-difference",
+        )
+        readiness = assess_profile_association_readiness(self.database, evidence)[0]
+        self.assertIn("internal_reviewed_difference", readiness.automatic_blockers)
+
+    def test_machine_merge_does_not_approve_name_aliases(self):
+        left, right, observations, evidence = self._named_alias_profiles()
+        record_profile_redirect(
+            self.database, from_profile_id=left.id, to_profile_id=right.id,
+            reviewer="system:automatic", reason="machine merge",
+            review_event_key="machine-alias-merge",
+        )
+        readiness = assess_profile_association_readiness(self.database, evidence)[0]
+        self.assertIn("conflicting_explicit_attribution", readiness.automatic_blockers)
+
+    def test_cleared_human_merge_revokes_alias_authority(self):
+        left, right, _, _ = self._named_alias_profiles()
+        record_profile_redirect(
+            self.database, from_profile_id=left.id, to_profile_id=right.id,
+            reviewer="Brian", reason="same speaker", review_event_key="alias-merge",
+        )
+        self.assertIn(right.id, reviewed_profile_name_alias_groups(self.database))
+        record_profile_redirect(
+            self.database, from_profile_id=left.id, to_profile_id=None,
+            reviewer="Brian", reason="revoke", review_event_key="alias-clear",
+        )
+        self.assertEqual({}, reviewed_profile_name_alias_groups(self.database))
 
     def test_merged_certified_components_remain_ready(self) -> None:
         left = [self._observation(key) for key in ("a", "b", "c")]

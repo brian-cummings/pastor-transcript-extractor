@@ -677,6 +677,53 @@ def record_name_claim_review(
     )
 
 
+def reviewed_profile_name_alias_groups(
+    database: Database,
+) -> dict[int, tuple[tuple[str, ...], ...]]:
+    """Project names already accepted by effective human identity merges.
+
+    Only claims attached at approval time participate. Later claims and cleared
+    redirects cannot silently acquire alias authority from an older decision.
+    """
+    groups: dict[int, list[tuple[str, ...]]] = {}
+    with database.connect() as connection:
+        redirects = connection.execute(
+            """
+            SELECT event.* FROM speaker_profile_redirect_events event
+            JOIN (
+                SELECT from_profile_id, MAX(id) AS id
+                FROM speaker_profile_redirect_events GROUP BY from_profile_id
+            ) latest ON latest.id = event.id
+            WHERE event.action = 'redirect'
+            """
+        ).fetchall()
+        for event in redirects:
+            reviewer = str(event["reviewer"]).strip().lower()
+            if not reviewer or reviewer == "system" or reviewer.startswith("system:"):
+                continue
+            names = connection.execute(
+                """
+                SELECT DISTINCT claim.normalized_name
+                FROM profile_name_claim_events review
+                JOIN speaker_name_claims claim ON claim.id = review.claim_id
+                WHERE review.profile_id IN (?, ?) AND review.action = 'attach'
+                  AND review.created_at <= ?
+                  AND review.id = (
+                      SELECT MAX(prior.id) FROM profile_name_claim_events prior
+                      WHERE prior.claim_id = review.claim_id
+                        AND prior.created_at <= ?
+                  )
+                """,
+                (event["from_profile_id"], event["to_profile_id"],
+                 event["created_at"], event["created_at"]),
+            ).fetchall()
+            aliases = tuple(sorted({str(row[0]).strip() for row in names if str(row[0]).strip()}))
+            if len(aliases) > 1:
+                canonical = database.resolve_speaker_profile_id(int(event["to_profile_id"]))
+                groups.setdefault(canonical, []).append(aliases)
+    return {profile: tuple(items) for profile, items in groups.items()}
+
+
 def record_profile_redirect(
     database: Database,
     *,
