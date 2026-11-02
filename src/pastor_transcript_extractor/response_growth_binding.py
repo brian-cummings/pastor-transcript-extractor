@@ -16,6 +16,8 @@ FIELD_LOCAL_CRITERIA = 'qualified-response-growth-field-local-criteria-v7'
 RANGE_TRANSPORT = 'response-growth-source-unit-ranges-v1'
 CONDITION_ATTACHMENT_VERSION = 'source-logical-condition-attachments-v1'
 DIMENSION_VERIFICATION_VERSION = 'response-growth-dimension-correctness-v1'
+PRESENCE_CONTRACT = 'response-growth-candidate-presence-v2'
+PRESENCE_DIAGNOSTIC = 'response-growth-presence-only-diagnostic-v1'
 RESPONSE_CONDITIONS_RECIPE = 'self-contained-response-conditions-v1'
 RESPONSE_CONDITIONS_RECIPE_V2 = 'response-anchor-through-explained-application-v2'
 RESPONSE_ANCHOR_PROMPT = '''
@@ -376,7 +378,22 @@ def qualify(checked, response, spec):
     return apply_findings(checked,findings,spec.fingerprint if spec else None)
 
 
-def dimension_verification(window,observations):
+def presence_question(index):
+    """Candidate specificity only; source correctness has its own question."""
+    return dict(type='noul', instructions=(
+        f'Inspect items[{index}].response_growth.requested_response for this exact point. '
+        'Does the description identify a specific human response that is requested, described, reported or performed? '
+        'A response can be a concrete act or a named responsive attitude such as repentance. '
+        'Judge the content of this candidate description, not whether the source supports it; that is the separate correctness check. '
+        'Do not borrow a response from another item or another point in the source. '
+        'A statement that actual listener uptake is unknown does not erase an explicitly described request. '
+        'Background or divine action alone, a statement that no response is established, uncertainty alone, or metacommentary alone does not qualify.'),
+        criteria=dict(
+            true='The candidate identifies a specific human response at this point, regardless of whether its attribution or source correctness passes the separate check.',
+            false='The candidate identifies no specific human response at this point: it contains only background/divine action, absence, uncertainty, or metacommentary.'))
+
+
+def dimension_verification(window,observations,*,presence_contract=False):
     """Qualify existing dimension values, never a complete binding or repaired prose."""
     full=verification(window,observations)
     if full is None:return None
@@ -393,12 +410,30 @@ def dimension_verification(window,observations):
             body['questions'][item['id']+':'+field]=dict(type='noul',instructions=prefix+description,
                 criteria=dict(true='This exact dimension judgment is supported and resolved under the stated meaning. Judge it independently of unrelated fields.',
                     false='This dimension judgment is wrong, unsupported, incomplete or unresolved.'))
-    spec=replace(full,body=body,version=DIMENSION_VERIFICATION_VERSION,namespace=DIMENSION_VERIFICATION_VERSION,
-        source_identity=dict(contract=DIMENSION_VERIFICATION_VERSION,window_digest=evidence.digest(asdict(window))))
+        if presence_contract:
+            body['questions'][item['id']+':requested_response_present']=presence_question(i)
+    version=PRESENCE_CONTRACT if presence_contract else DIMENSION_VERIFICATION_VERSION
+    spec=replace(full,body=body,version=version,namespace=version,
+        source_identity=dict(contract=version,window_digest=evidence.digest(asdict(window))))
+    spec.preflight();return spec
+
+
+def presence_diagnostic_request(original):
+    """Keep the frozen state/model; buy no correctness or growth answers."""
+    if original.version!=DIMENSION_VERIFICATION_VERSION:
+        raise ValueError('Presence diagnostic requires the historical dimension contract')
+    body=deepcopy(original.body)
+    body['questions']={item['id']+':requested_response_present':presence_question(i)
+        for i,item in enumerate(body['state']['items'])}
+    spec=replace(original,body=body,version=PRESENCE_DIAGNOSTIC,namespace=PRESENCE_DIAGNOSTIC,
+        source_identity={**original.source_identity,'contract':PRESENCE_CONTRACT,
+            'original_dimension_request':original.fingerprint,'authority':'presence_only_no_release'})
     spec.preflight();return spec
 
 
 def dimension_findings(observations,response,spec):
+    if spec.version not in (DIMENSION_VERIFICATION_VERSION,PRESENCE_CONTRACT):
+        raise ValueError('Presence-only diagnostics cannot grant dimension eligibility')
     findings=contract.judgments(response,spec);rows=[]
     for o in observations:
         checks=findings.get(o['id'],{})
@@ -407,7 +442,7 @@ def dimension_findings(observations,response,spec):
             eligible=checks[field]['resolved'] and (field!='requested_response' or checks['requested_response_present']['resolved'])
             rows.append(dict(observation_id=o['id'],field=field,value=o['response_growth'][field],
                 eligible=eligible,checks={k:v for k,v in checks.items() if k==field or (field=='requested_response' and k=='requested_response_present')},
-                version=DIMENSION_VERIFICATION_VERSION,verification_request=spec.fingerprint,
+                version=spec.version,verification_request=spec.fingerprint,
                 authority='This exact dimension only; no complete-binding eligibility, legacy measurement or production admission.'))
     return rows
 
