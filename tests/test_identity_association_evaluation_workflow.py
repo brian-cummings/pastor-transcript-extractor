@@ -377,6 +377,28 @@ class IdentityAssociationEvaluationWorkflowTests(unittest.TestCase):
         self.assertEqual(2, accumulator.sermon_window_quality_flag_count)
         self.assertEqual([Path("written.json")], accumulator.written_reports)
 
+    def test_deferred_preparation_is_called_only_for_weak_results(self):
+        for result in ("proposed_match", "ambiguous", "conflicting_attribution", "analysis_failed",
+                       "no_match", "insufficient_evidence"):
+            with self.subTest(result=result):
+                evaluator = Mock()
+                evaluator.evaluate.return_value = AssociationEvaluationResult({"outcome": result}, None)
+                route = SimpleNamespace(routing=SimpleNamespace(profiles=()), routing_payload={})
+                expanded = SimpleNamespace(routing=SimpleNamespace(profiles=()), routing_payload={"expanded": True})
+                prepare = Mock(return_value=expanded)
+                with (patch.object(association_evaluation, "plan_cross_source_fallback", return_value=None) as fallback,
+                      patch.object(association_evaluation, "plan_exhaustive_validation", return_value=None),
+                      patch.object(association_evaluation, "persist_association_result", return_value=Mock())):
+                    evaluate_association_candidate(
+                        evaluator, SimpleNamespace(), output_root=Path("output"),
+                        candidate=SimpleNamespace(id=1), candidate_audio_path=Path("audio"),
+                        candidate_audio_sha256="sha", candidate_normalized_names=(), route_plan=route,
+                        pending_confirmation_profile_ids=frozenset(), maximum_global_profiles=1,
+                        expand_weak_route=prepare,
+                    )
+                self.assertEqual(result in {"no_match", "insufficient_evidence"}, prepare.called)
+                self.assertIs(expanded.routing if prepare.called else route.routing, fallback.call_args.args[1])
+
     def test_candidate_evaluation_returns_isolated_initial_failure(self) -> None:
         evaluator = Mock()
         evaluator.evaluate.side_effect = OSError("unavailable")

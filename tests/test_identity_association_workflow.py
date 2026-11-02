@@ -15,6 +15,7 @@ from pastor_transcript_extractor.workflows.identity.association import (
     assess_association_candidate,
     load_association_corpus_inventory,
     plan_association_profile_route,
+    plan_association_preparation_scope,
     plan_pending_confirmation_routing,
     prepare_association_centroids,
     prepare_association_candidate_spans,
@@ -25,6 +26,39 @@ from pastor_transcript_extractor.workflows.identity.association import (
 
 
 class IdentityAssociationWorkflowTests(unittest.TestCase):
+    def test_preparation_scope_uses_one_reducer_for_single_and_full_requests(self):
+        from pastor_transcript_extractor.speaker_shadow_association import ProfileAssociationReadiness
+        profiles = tuple(ProfileAssociationReadiness(
+            profile_id=i, member_observation_ids=(i,), member_fingerprints=(f"o{i}",),
+            recording_count=3, source_count=1, normalized_names=(name,),
+            shadow_ready=True, automatic_profile_ready=True, shadow_blockers=(),
+            automatic_blockers=(), review_ready=True,
+        ) for i, name in ((1, "ron clouzet"), (2, "jane smith"), (3, "alex example")))
+        videos = tuple(SimpleNamespace(id=i, source_id=i, title="Sermon") for i in range(1, 4))
+        observations = {i: SimpleNamespace(id=i, video_id=i) for i in range(1, 4)}
+
+        def scope(selected, names=None):
+            return plan_association_preparation_scope(
+                profiles, selected, observations_by_video_id=observations,
+                observations_by_id=observations, candidate_names_by_observation=names or {},
+                source_id_by_video_id={i: i for i in range(1, 4)},
+            )
+        single = scope(videos[:1])
+        self.assertEqual((profiles[0],), single.initial_profiles)
+        self.assertEqual(profiles[1:], single.deferred_profiles)
+        self.assertTrue(single.local_route_first)
+        full = scope(videos)
+        self.assertEqual(profiles, full.initial_profiles)
+        self.assertEqual((), full.deferred_profiles)
+        self.assertFalse(full.local_route_first)
+        outside = SimpleNamespace(id=9, source_id=9, title="Sermon")
+        global_scope = scope((outside,))
+        self.assertEqual(profiles, global_scope.initial_profiles)
+        self.assertEqual((), global_scope.deferred_profiles)
+        # A current named route can cross sources without preparing unrelated audio.
+        named = scope((SimpleNamespace(id=1, source_id=9, title="Sermon"),), {1: ("ron couzet",)})
+        self.assertEqual((profiles[0],), named.initial_profiles)
+
     def setUp(self) -> None:
         self.request = ShadowAssociationRequest(
             youtube_video_id="video-1",
@@ -129,6 +163,7 @@ class IdentityAssociationWorkflowTests(unittest.TestCase):
             list_effective_profile_observation_events=lambda: (),
             list_effective_observation_review_actions=lambda: {},
             list_speaker_name_claims=lambda: claims,
+            is_confirmed_speaker_name_claim=lambda c: c.explicit_speaker_attribution,
         )
 
         inventory = load_association_corpus_inventory(database)

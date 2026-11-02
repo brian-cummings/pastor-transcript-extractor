@@ -4457,7 +4457,7 @@ class Database:
             ).fetchone()
         return self._speaker_observation_from_row(row) if row is not None else None
 
-    def list_speaker_observations(self) -> list[SpeakerObservation]:
+    def list_speaker_observations(self, *, video_id: int | None = None) -> list[SpeakerObservation]:
         with self.connect() as connection:
             rows = connection.execute(
                 """
@@ -4465,8 +4465,10 @@ class Database:
                        start_seconds, end_seconds, artifact_path, content_sha256,
                        extractor_version, input_fingerprint, created_at
                 FROM speaker_observations
+                WHERE (? IS NULL OR video_id = ?)
                 ORDER BY id
-                """
+                """,
+                (video_id, video_id),
             ).fetchall()
         return [self._speaker_observation_from_row(row) for row in rows]
 

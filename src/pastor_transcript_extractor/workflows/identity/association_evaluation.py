@@ -19,6 +19,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     ShadowPolicySpec,
     ShadowExemplar,
     StagedAssociationRouting,
+    WEAK_LOCAL_ASSOCIATION_OUTCOMES,
     build_shadow_association_input_fingerprint,
     evaluate_shadow_association,
     load_reusable_shadow_association,
@@ -325,6 +326,7 @@ def evaluate_association_candidate(
     route_plan: AssociationProfileRoutePlan,
     pending_confirmation_profile_ids: frozenset[int],
     maximum_global_profiles: int,
+    expand_weak_route: Callable[[AssociationProfileRoutePlan], AssociationProfileRoutePlan] | None = None,
 ) -> AssociationCandidateEvaluationOutcome:
     """Run one candidate's staged evaluation and persist its final report."""
     profiles = route_plan.routing.profiles
@@ -350,6 +352,16 @@ def evaluate_association_candidate(
         )
     if evaluation.reusable_path is None:
         detailed_profile_comparisons += len(profiles)
+
+    if expand_weak_route is not None and evaluation.report.get("outcome") in WEAK_LOCAL_ASSOCIATION_OUTCOMES:
+        try:
+            route_plan = expand_weak_route(route_plan)
+        except (OSError, RuntimeError, ValueError) as error:
+            return AssociationCandidateEvaluationOutcome(
+                result=None, detailed_profile_comparisons=detailed_profile_comparisons,
+                failure=error, failure_stage="cross_source_fallback",
+                admission_reason_code=f"association_cross_source_fallback_failed:{type(error).__name__}",
+            )
 
     fallback_pass = plan_cross_source_fallback(
         evaluation.report,

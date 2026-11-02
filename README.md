@@ -1706,6 +1706,13 @@ reused when observation/audio identities, exemplars, spans, model, policy, and
 routing still match. Current different-speaker constraints still take priority.
 Historical association JSON files are preserved unchanged.
 
+Association preparation uses the same metadata scope reducer for single-video,
+neighborhood, and full-corpus runs. Full coverage makes the reduction a no-op.
+Scoped runs prepare source/name routes first, deferring unrelated profile audio
+and global retrieval centroids until a weak local result needs bounded fallback.
+Candidate eligibility is checked before preparing exemplar audio. Single-video
+cache priming inspects only that video's current and historical observation reports.
+
 Extracted names remain unconfirmed proposals until attached through name review.
 Neither capitalization nor a title separator establishes a speaker credit.
 Same-voice review does not approve a name. Rejected claims do not veto acoustic

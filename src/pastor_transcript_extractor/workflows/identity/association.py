@@ -30,6 +30,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     StagedAssociationRouting,
     leave_one_out_profile_readiness,
     plan_pending_discovery_confirmation_routes,
+    profile_name_route_match,
     select_profile_exemplars,
     select_routed_association_profiles,
     select_staged_association_profiles,
@@ -243,6 +244,54 @@ def load_association_corpus_inventory(
             observation_id: frozenset(values)
             for observation_id, values in names.items()
         },
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationPreparationScope:
+    initial_profiles: tuple[ProfileAssociationReadiness, ...]
+    deferred_profiles: tuple[ProfileAssociationReadiness, ...]
+    local_route_first: bool = False
+
+
+def plan_association_preparation_scope(
+    readiness, videos, *, observations_by_video_id,
+    observations_by_id, candidate_names_by_observation, source_id_by_video_id,
+) -> AssociationPreparationScope:
+    """Choose source/name routes using metadata before opening exemplar audio."""
+    profile_sources = {
+        p.profile_id: {source_id_by_video_id.get(observations_by_id[oid].video_id)
+                       for oid in p.member_observation_ids if oid in observations_by_id}
+        for p in readiness
+    }
+    requested_sources = {video.source_id for video in videos}
+    local_ids = {p.profile_id for p in readiness
+                 if profile_sources[p.profile_id] & requested_sources}
+    routing_name_sets = set()
+    for video in videos:
+        observation = observations_by_video_id.get(video.id)
+        names = set(candidate_names_by_observation.get(observation.id, ())) if observation else set()
+        hint = title_byline_selection_hint(video.title)
+        if hint:
+            names.add(hint)
+        if names:
+            routing_name_sets.add(frozenset(names))
+    for profile in readiness:
+        if profile.profile_id not in local_ids and profile.review_ready:
+            if any(profile_name_route_match(names, profile) for names in routing_name_sets):
+                local_ids.add(profile.profile_id)
+    globally_routable = tuple(p for p in readiness if p.review_ready and p.shadow_ready
+                              and "discovery_candidate_unconfirmed" not in p.automatic_blockers)
+    metadata_only_ids = {p.profile_id for p in readiness if not p.review_ready}
+    if not local_ids:
+        # Global centroid retrieval is needed immediately when no local route exists.
+        initial_ids = metadata_only_ids | {p.profile_id for p in globally_routable}
+        return AssociationPreparationScope(tuple(p for p in readiness if p.profile_id in initial_ids), ())
+    initial_ids = local_ids | metadata_only_ids
+    return AssociationPreparationScope(
+        tuple(p for p in readiness if p.profile_id in initial_ids),
+        tuple(p for p in globally_routable if p.profile_id not in initial_ids),
+        len(initial_ids) < len(readiness),
     )
 
 

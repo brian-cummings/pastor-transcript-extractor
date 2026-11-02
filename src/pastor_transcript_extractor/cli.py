@@ -376,6 +376,7 @@ from pastor_transcript_extractor.workflows.identity.association import (
     assess_association_candidate,
     load_association_corpus_inventory,
     plan_association_profile_route,
+    plan_association_preparation_scope,
     plan_pending_confirmation_routing,
     resolve_association_scope,
     scan_association_candidates,
@@ -4443,73 +4444,6 @@ def shadow_associate_speakers_service(
     candidate_names_by_observation = (
         corpus_inventory.candidate_names_by_observation
     )
-    exemplar_state_cache = identity_exemplar_preparation.ExemplarPreparationStateCache(cache_root)
-    review_ready_profiles = [
-        profile for profile in readiness if profile.review_ready
-    ]
-    console.print(
-        "Association preprocessing: "
-        f"preparing exemplars for {len(review_ready_profiles)} review-ready "
-        "profile(s)."
-    )
-
-    def report_exemplar_progress(index, total, profile):
-        console.print(
-            "Association preprocessing: "
-            f"profile {index}/{total} "
-            f"id={profile.profile_id} "
-            f"members={len(profile.member_observation_ids)} "
-            f"certified_exemplars="
-            f"{len(profile.certified_exemplar_observation_ids)}"
-        )
-
-    exemplar_preparation = prepare_association_exemplars(
-        database,
-        readiness,
-        verification_cache=verification_cache,
-        span_cache=span_cache,
-        state_cache=exemplar_state_cache,
-        videos_by_id=videos_by_id,
-        plan_only=plan_only,
-        model_fingerprint=(
-            backend.spec.fingerprint if backend is not None else None
-        ),
-        policy_artifact_sha256=policy_spec.artifact_sha256,
-        maximum_exemplars=maximum_exemplars,
-        minimum_same_exemplars=minimum_same_exemplars,
-        prepare_spans=transcript_grounded_spans,
-        profile_progress=report_exemplar_progress,
-    )
-    eligible_exemplars = exemplar_preparation.eligible_exemplars
-    span_specs_by_observation_id = dict(
-        exemplar_preparation.span_specs_by_observation_id
-    )
-    span_selection_by_observation_id = {}
-    span_selection_by_observation_id.update(
-        exemplar_preparation.span_selections_by_observation_id
-    )
-    if exemplar_preparation.counts:
-        console.print(
-            "Exemplar preparation: "
-            + ", ".join(
-                f"{reason}={count}"
-                for reason, count in sorted(
-                    exemplar_preparation.counts.items()
-                )
-            )
-        )
-        for profile_id, counts in sorted(
-            exemplar_preparation.counts_by_profile.items()
-        ):
-            console.print(
-                f"Profile {profile_id} exemplar funnel: "
-                + ", ".join(
-                    f"{reason}={count}"
-                    for reason, count in sorted(counts.items())
-                )
-            )
-
-    usable_profiles = exemplar_preparation.usable_profiles
     try:
         association_scope = resolve_association_scope(
             request,
@@ -4603,6 +4537,103 @@ def shadow_associate_speakers_service(
     )
     span_preparation_inputs = candidate_scan.span_inputs
     ineligible_reasons = dict(candidate_scan.exclusion_counts)
+    if not plan_only and not candidate_scan.span_inputs:
+        if all_eligible:
+            console.print("No candidate observation passed strict association admission; no exemplar audio was prepared.")
+            return ()
+        raise typer.BadParameter("No eligible unassigned candidate observation was selected.")
+    preparation_scope = plan_association_preparation_scope(
+        readiness, requested_videos,
+        observations_by_video_id=current_observation_by_video_id,
+        observations_by_id=observations_by_id,
+        candidate_names_by_observation=candidate_names_by_observation,
+        source_id_by_video_id=source_id_by_video_id,
+    )
+    exemplar_state_cache = identity_exemplar_preparation.ExemplarPreparationStateCache(cache_root)
+    def prepare_profile_inputs(selected_readiness, phase):
+        review_ready_profiles = [
+            profile for profile in selected_readiness if profile.review_ready
+        ]
+        console.print(
+            "Association preprocessing: "
+            f"{phase}: preparing exemplars for {len(review_ready_profiles)} review-ready "
+            "profile(s)."
+        )
+
+        def report_exemplar_progress(index, total, profile):
+            console.print(
+                "Association preprocessing: "
+                f"profile {index}/{total} "
+                f"id={profile.profile_id} "
+                f"members={len(profile.member_observation_ids)} "
+                f"certified_exemplars="
+                f"{len(profile.certified_exemplar_observation_ids)}"
+            )
+
+        exemplar_preparation = prepare_association_exemplars(
+            database,
+            selected_readiness,
+            verification_cache=verification_cache,
+            span_cache=span_cache,
+            state_cache=exemplar_state_cache,
+            videos_by_id=videos_by_id,
+            plan_only=plan_only,
+            model_fingerprint=(
+                backend.spec.fingerprint if backend is not None else None
+            ),
+            policy_artifact_sha256=policy_spec.artifact_sha256,
+            maximum_exemplars=maximum_exemplars,
+            minimum_same_exemplars=minimum_same_exemplars,
+            prepare_spans=transcript_grounded_spans,
+            profile_progress=report_exemplar_progress,
+        )
+        if exemplar_preparation.counts:
+            console.print(
+                "Exemplar preparation: "
+                + ", ".join(
+                    f"{reason}={count}"
+                    for reason, count in sorted(
+                        exemplar_preparation.counts.items()
+                    )
+                )
+            )
+            for profile_id, counts in sorted(
+                exemplar_preparation.counts_by_profile.items()
+            ):
+                console.print(
+                    f"Profile {profile_id} exemplar funnel: "
+                    + ", ".join(
+                        f"{reason}={count}"
+                        for reason, count in sorted(counts.items())
+                    )
+                )
+
+        return exemplar_preparation
+
+    exemplar_preparation = prepare_profile_inputs(preparation_scope.initial_profiles, "initial routes")
+    eligible_exemplars = exemplar_preparation.eligible_exemplars
+    usable_profiles = exemplar_preparation.usable_profiles
+    span_specs_by_observation_id = dict(exemplar_preparation.span_specs_by_observation_id)
+    span_selection_by_observation_id = dict(exemplar_preparation.span_selections_by_observation_id)
+    deferred_profiles = preparation_scope.deferred_profiles
+    prepared_profile_ids = {p.profile_id for p in preparation_scope.initial_profiles}
+    broader_preparation_used = False
+    if deferred_profiles:
+        console.print(f"Association preprocessing: deferred {len(deferred_profiles)} unrelated profile(s) until a weak local result.")
+
+    def prepare_deferred_profiles():
+        nonlocal deferred_profiles, eligible_exemplars, usable_profiles, broader_preparation_used
+        if not deferred_profiles:
+            return ()
+        extra = prepare_profile_inputs(deferred_profiles, "weak-result fallback")
+        prepared_profile_ids.update(p.profile_id for p in deferred_profiles)
+        broader_preparation_used = True
+        deferred_profiles = ()
+        eligible_exemplars = (*eligible_exemplars, *extra.eligible_exemplars)
+        usable_profiles = (*usable_profiles, *extra.usable_profiles)
+        span_specs_by_observation_id.update(extra.span_specs_by_observation_id)
+        span_selection_by_observation_id.update(extra.span_selections_by_observation_id)
+        return extra.eligible_exemplars
     console.print(
         "Association span preparation: "
         f"candidates={len(span_preparation_inputs)} jobs={jobs}; "
@@ -4745,6 +4776,9 @@ def shadow_associate_speakers_service(
             "Plan only; no acoustic comparisons or association artifacts were created."
         )
         return ()
+    if not usable_profiles and deferred_profiles:
+        # No usable local inputs remain: normal bounded global retrieval is needed.
+        prepare_deferred_profiles()
     if not usable_profiles:
         if all_eligible:
             console.print(
@@ -4771,6 +4805,13 @@ def shadow_associate_speakers_service(
     assert embedding_cache is not None
     assert pair_diagnostic_cache is not None
 
+    needs_initial_centroids = (
+        not preparation_scope.local_route_first
+        or not deferred_profiles
+        or any("discovery_candidate_unconfirmed" in p.automatic_blockers for p, _ in usable_profiles)
+    )
+    if not needs_initial_centroids:
+        console.print("Association preprocessing: source/name routes need no global retrieval centroids; deferring centroid work.")
     unique_exemplars = tuple(
         {
             exemplar.observation.id: exemplar
@@ -4779,7 +4820,7 @@ def shadow_associate_speakers_service(
     )
     console.print(
         "Association preprocessing: building retrieval centroids for "
-        f"{len(unique_exemplars)} eligible exemplar(s) with {jobs} job(s)."
+        f"{len(unique_exemplars) if needs_initial_centroids else 0} eligible exemplar(s) with {jobs} job(s)."
     )
 
     def build_exemplar_centroid(exemplar):
@@ -4798,7 +4839,7 @@ def shadow_associate_speakers_service(
     candidate_video_ids: dict[int, int] = {}
     console.print(
         "Association preprocessing: building retrieval centroids for "
-        f"{len(candidates)} candidate observation(s) with {jobs} job(s)."
+        f"{len(candidates) if needs_initial_centroids else 0} candidate observation(s) with {jobs} job(s)."
     )
 
     centroid_candidate_inputs = tuple(
@@ -4828,8 +4869,8 @@ def shadow_associate_speakers_service(
             )
 
     centroid_preparation = prepare_association_centroids(
-        eligible_exemplars,
-        centroid_candidate_inputs,
+        eligible_exemplars if needs_initial_centroids else (),
+        centroid_candidate_inputs if needs_initial_centroids else (),
         jobs=jobs,
         build_exemplar_centroid=build_exemplar_centroid,
         build_candidate_centroid=build_candidate_centroid,
@@ -4931,25 +4972,53 @@ def shadow_associate_speakers_service(
         confirmation_priority_profile_ids = frozenset(
             confirmation_routes.get(observation.id, ())
         )
-        route_plan = plan_association_profile_route(
-            database,
-            video=video,
-            observation=observation,
-            readiness=readiness,
-            usable_profiles=usable_profiles,
-            eligible_exemplars=eligible_exemplars,
-            videos_by_id=videos_by_id,
-            observations_by_id=observations_by_id,
-            source_id_by_video_id=source_id_by_video_id,
-            candidate_names_by_observation=candidate_names_by_observation,
-            minimum_profile_members=minimum_profile_members,
-            maximum_exemplars=maximum_exemplars,
-            minimum_same_exemplars=minimum_same_exemplars,
-            maximum_global_profiles=maximum_global_profiles,
-            candidate_centroid=candidate_centroids[observation.id],
-            exemplar_centroids=exemplar_centroids,
-            confirmation_profile_ids=confirmation_priority_profile_ids,
-        )
+        def plan_current_route():
+            if broader_preparation_used and observation.id not in candidate_centroids:
+                candidate_centroids[observation.id] = tuple(build_candidate_centroid(
+                    AssociationCentroidCandidateInput(video, eligibility)
+                ))
+            planned = plan_association_profile_route(
+                database,
+                video=video,
+                observation=observation,
+                readiness=tuple(p for p in readiness if p.profile_id in prepared_profile_ids),
+                usable_profiles=usable_profiles,
+                eligible_exemplars=eligible_exemplars,
+                videos_by_id=videos_by_id,
+                observations_by_id=observations_by_id,
+                source_id_by_video_id=source_id_by_video_id,
+                candidate_names_by_observation=candidate_names_by_observation,
+                minimum_profile_members=minimum_profile_members,
+                maximum_exemplars=maximum_exemplars,
+                minimum_same_exemplars=minimum_same_exemplars,
+                maximum_global_profiles=maximum_global_profiles,
+                candidate_centroid=candidate_centroids.get(observation.id, ()),
+                exemplar_centroids=exemplar_centroids,
+                confirmation_profile_ids=confirmation_priority_profile_ids,
+            )
+            planned.routing_payload["preparation_scope"] = {
+                "local_route_first": preparation_scope.local_route_first,
+                "prepared_profile_ids": sorted(prepared_profile_ids),
+                "deferred_profile_ids": [p.profile_id for p in deferred_profiles],
+            }
+            return planned
+
+        def expand_weak_route(current_plan):
+            if (not deferred_profiles or current_plan.routing.confirmation_priority_profile_ids
+                    or any(row.get("name_match") for row in
+                           (current_plan.routing.candidate_funnel or {}).get("retrieval_candidates", ()))):
+                return current_plan
+            prepare_deferred_profiles()
+            pending_centroids = tuple(e for e in eligible_exemplars if e.observation.id not in exemplar_centroids)
+            extra_centroids = prepare_association_centroids(
+                pending_centroids, (), jobs=jobs,
+                build_exemplar_centroid=build_exemplar_centroid,
+                build_candidate_centroid=build_candidate_centroid,
+            )
+            exemplar_centroids.update(extra_centroids.exemplar_centroids)
+            return plan_current_route()
+
+        route_plan = plan_current_route()
         explicit_candidate_names = route_plan.explicit_candidate_names
         exhaustive_profile_comparisons += (
             route_plan.exhaustive_profile_comparison_count
@@ -4963,6 +5032,7 @@ def shadow_associate_speakers_service(
             candidate_audio_sha256=media_artifact.content_sha256,
             candidate_normalized_names=explicit_candidate_names,
             route_plan=route_plan,
+            expand_weak_route=expand_weak_route if deferred_profiles else None,
             pending_confirmation_profile_ids=(
                 pending_confirmation_profile_ids
             ),

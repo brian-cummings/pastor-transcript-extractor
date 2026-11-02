@@ -51,6 +51,12 @@ def initialize_shadow_association(
 ) -> ShadowAssociationSetup:
     """Open association resources while preserving plan-only boundaries."""
     database = Database(database_path, readonly=True)
+    candidate_fingerprints = None
+    if getattr(request, "youtube_video_id", None) is not None:
+        video = database.get_video_by_youtube_id(request.youtube_video_id)
+        if video is None:
+            raise ValueError(f"Unknown YouTube video ID: {request.youtube_video_id}")
+        candidate_fingerprints = tuple(o.input_fingerprint for o in database.list_speaker_observations(video_id=video.id))
     cache_root = request.cache_dir.expanduser().resolve()
     verification_cache = MediaVerificationCache(
         cache_root / "media-verification"
@@ -78,12 +84,14 @@ def initialize_shadow_association(
         embedding_cache = EmbeddingCache(cache_root)
         pair_diagnostic_cache = PairDiagnosticCache(cache_root)
         pair_cache_root = cache_root / "pair-diagnostics"
-        if not pair_cache_root.is_dir() or not next(
+        if candidate_fingerprints is not None or not pair_cache_root.is_dir() or not next(
             pair_cache_root.glob("*.json"), None
         ):
-            reports = tuple(
-                request.output_root.expanduser().resolve().glob("*/*.json")
-            )
+            root = request.output_root.expanduser().resolve()
+            reports = (tuple(dict.fromkeys(p for fp in candidate_fingerprints
+                                           for p in (root / fp[:16]).glob("*.json")))
+                       if candidate_fingerprints is not None
+                       else tuple(root.glob("*/*.json")))
             if pair_cache_progress is not None:
                 pair_cache_progress("starting", len(reports))
             pair_diagnostic_cache.prime_from_shadow_associations(reports)

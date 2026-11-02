@@ -113,6 +113,37 @@ class IdentityAssociationSetupWorkflowTests(unittest.TestCase):
         self.assertEqual(1, len(reports))
         self.assertEqual([("starting", 1), ("complete", 4)], progress)
 
+    def test_single_video_primes_only_its_current_and_historical_reports(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for prefix in ("current", "historical", "unrelated"):
+                target = root / "output" / prefix / "report.json"
+                target.parent.mkdir(parents=True)
+                target.write_text("{}")
+            # Even an already-populated cache must reuse this video's saved leaves.
+            pair_dir = root / "cache" / "pair-diagnostics"
+            pair_dir.mkdir(parents=True)
+            (pair_dir / "existing.json").write_text("{}")
+            db = Mock()
+            db.get_video_by_youtube_id.return_value = SimpleNamespace(id=7)
+            db.list_speaker_observations.return_value = (
+                SimpleNamespace(input_fingerprint="current"),
+                SimpleNamespace(input_fingerprint="historical"),
+            )
+            request = self.request(root, plan_only=False)
+            request.youtube_video_id = "video"
+            pairs = Mock(primed=2)
+            with (patch.object(association_setup, "Database", return_value=db),
+                  patch.object(association_setup, "load_reviewed_speaker_evidence"),
+                  patch.object(association_setup, "load_shadow_policy"),
+                  patch.object(association_setup, "assess_profile_association_readiness", return_value=()),
+                  patch.object(association_setup, "SherpaOnnxEmbeddingBackend"),
+                  patch.object(association_setup, "PairDiagnosticCache", return_value=pairs)):
+                initialize_shadow_association(request, database_path=root / "app.db")
+            reports = pairs.prime_from_shadow_associations.call_args.args[0]
+            self.assertEqual({"current", "historical"}, {p.parent.name for p in reports})
+            db.list_speaker_observations.assert_called_once_with(video_id=7)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -70,7 +70,7 @@ class ProfileAssociationReadiness:
     reviewed_name_alias_groups: tuple[tuple[str, ...], ...] = ()
 
 
-def _name_route_match(names, readiness) -> bool:
+def profile_name_route_match(names, readiness) -> bool:
     profile_names = set(readiness.normalized_names)
     return bool(names and profile_names) and (
         profile_names_compatible(names, profile_names, readiness.reviewed_name_alias_groups)
@@ -242,7 +242,7 @@ def select_routed_association_profiles(
     return tuple(
         (readiness, exemplars)
         for readiness, exemplars in profiles
-        if _name_route_match(names, readiness)
+        if profile_name_route_match(names, readiness)
         or any(
             source_id_by_video_id.get(exemplar.observation.video_id)
             == candidate_source_id
@@ -300,7 +300,7 @@ def select_staged_association_profiles(
             == candidate_source_id
             for exemplar in exemplars
         )
-        name_match = _name_route_match(names, readiness)
+        name_match = profile_name_route_match(names, readiness)
         return confirmation_match, source_match, name_match
 
     priority = [item for item in locally_routable if any(priority_reason(item))]
