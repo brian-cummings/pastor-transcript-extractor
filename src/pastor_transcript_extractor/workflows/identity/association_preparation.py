@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field, replace
 import json
+import math
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from pastor_transcript_extractor.identity_exemplar_preparation import (
     ExemplarPreparationStateCache,
 )
+from pastor_transcript_extractor.identity_prepared_profiles import PreparedProfileCache
 from pastor_transcript_extractor.media_artifacts import MediaVerificationCache
 from pastor_transcript_extractor.models import SpeakerObservation, Video
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
@@ -27,6 +29,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     select_profile_exemplars,
 )
 from pastor_transcript_extractor.speaker_profile_discovery import (
+    ACTIVITY_QUALIFIED_SELECTION_CACHE_VERSION,
     ActivityQualifiedSelectionCache,
     TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
     select_transcript_grounded_span_candidates,
@@ -108,6 +111,7 @@ class AssociationExemplarPreparationResult:
     span_selections_by_observation_id: Mapping[int, Mapping[str, Any]]
     counts: Mapping[str, int]
     counts_by_profile: Mapping[int, Mapping[str, int]]
+    preparation_cache_counts: Mapping[str, int] = field(default_factory=dict)
 
 
 class TranscriptGroundedSpanProvider:
@@ -352,6 +356,9 @@ def _path_state(path_value: str | None) -> dict[str, Any]:
         "exists": True,
         "size": stat.st_size,
         "mtime_ns": stat.st_mtime_ns,
+        "ctime_ns": stat.st_ctime_ns,
+        "device": stat.st_dev,
+        "inode": stat.st_ino,
     }
 
 
@@ -437,7 +444,7 @@ def _exemplar_preparation_initial_blocker(
     return stage, assessment_reason_code
 
 
-def prepare_association_exemplars(
+def _prepare_association_exemplars_uncached(
     database: Database,
     readiness: Sequence[ProfileAssociationReadiness],
     *,
@@ -457,6 +464,7 @@ def prepare_association_exemplars(
     profile_progress: Callable[
         [int, int, ProfileAssociationReadiness], None
     ] | None = None,
+    profile_cache: PreparedProfileCache | None = None,
 ) -> AssociationExemplarPreparationResult:
     """Prepare and persist the per-profile acoustic exemplar funnel."""
     eligible_exemplars: list[ShadowExemplar] = []
@@ -464,6 +472,7 @@ def prepare_association_exemplars(
     span_selections_by_observation_id: dict[int, Mapping[str, Any]] = {}
     counts: dict[str, int] = {}
     counts_by_profile: dict[int, dict[str, int]] = {}
+    cache_counts = {"members_reused": 0, "members_prepared": 0}
 
     def count(profile_id: int, key: str) -> None:
         counts[key] = counts.get(key, 0) + 1
@@ -599,13 +608,35 @@ def prepare_association_exemplars(
             span_cache.remember_verified_source(
                 audio_path, eligibility.media_artifact.content_sha256
             )
-            try:
-                span_specs, span_selection = prepare_spans(
-                    observation.video_id,
-                    observation,
-                    audio_path,
-                    eligibility.media_artifact.content_sha256,
+            member_inputs = (
+                _prepared_member_inputs(
+                    database, observation, eligibility.media_artifact,
+                    model_fingerprint, policy_artifact_sha256,
                 )
+                if profile_cache is not None and not plan_only else None
+            )
+            saved_member = (
+                profile_cache.load("member", member_inputs)
+                if member_inputs is not None else None
+            )
+            reused = _decode_prepared_exemplar(saved_member, profile.profile_id, observation)
+            if reused is not None and (
+                reused[0].audio_path != audio_path
+                or reused[0].audio_sha256 != eligibility.media_artifact.content_sha256
+            ):
+                reused = None
+            try:
+                if reused is not None:
+                    span_specs, span_selection = reused[0].span_specs, reused[1]
+                    cache_counts["members_reused"] += 1
+                else:
+                    cache_counts["members_prepared"] += 1
+                    span_specs, span_selection = prepare_spans(
+                        observation.video_id,
+                        observation,
+                        audio_path,
+                        eligibility.media_artifact.content_sha256,
+                    )
             except (OSError, RuntimeError, ValueError) as error:
                 record(
                     profile_id=profile.profile_id,
@@ -640,6 +671,10 @@ def prepare_association_exemplars(
                     span_specs=span_specs,
                 )
             )
+            if member_inputs is not None and reused is None:
+                profile_cache.save("member", member_inputs, _encode_prepared_exemplar(
+                    eligible_exemplars[-1], span_selection,
+                ))
             record(
                 profile_id=profile.profile_id,
                 observation=observation,
@@ -668,4 +703,254 @@ def prepare_association_exemplars(
         span_selections_by_observation_id=span_selections_by_observation_id,
         counts=counts,
         counts_by_profile=counts_by_profile,
+        preparation_cache_counts=cache_counts,
+    )
+
+
+def _prepared_member_inputs(database, observation, media, model_fingerprint, policy_sha256):
+    """Acoustic dependencies independent of a profile's name or membership.
+
+    An exact historical member uses its own extraction, as the span provider
+    does. A newer extraction is not a replacement for that immutable member.
+    """
+    extraction = database.get_extraction_result(observation.extraction_result_id)
+    return {
+        "observation": {
+            key: getattr(observation, key) for key in (
+                "id", "video_id", "input_fingerprint", "extraction_result_id",
+                "start_seconds", "end_seconds", "role", "multiplicity_state",
+                "content_sha256", "extractor_version", "artifact_path",
+            )
+        },
+        "review_action": database.get_effective_observation_review_action(observation.id),
+        "extraction": None if extraction is None else {
+            "id": extraction.id, "video_id": extraction.video_id,
+            "version": extraction.version,
+            "json": _path_state(extraction.proposed_json_path),
+        },
+        "media": {
+            "id": media.id, "input_fingerprint": media.input_fingerprint,
+            "content_sha256": media.content_sha256,
+            "artifact": _path_state(media.artifact_path),
+        },
+        "model_fingerprint": model_fingerprint,
+        "policy_artifact_sha256": policy_sha256,
+        "span_selection_version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+        "activity_selection_version": ACTIVITY_QUALIFIED_SELECTION_CACHE_VERSION,
+    }
+
+
+def _encode_prepared_exemplar(exemplar, selection):
+    return {
+        "observation_id": exemplar.observation.id,
+        "observation_fingerprint": exemplar.observation.input_fingerprint,
+        "audio_path": str(exemplar.audio_path),
+        "audio_sha256": exemplar.audio_sha256,
+        "spans": [asdict(span) for span in exemplar.span_specs],
+        "selection": selection,
+    }
+
+
+def _decode_prepared_exemplar(payload, profile_id, observation):
+    if not isinstance(payload, dict) or (
+        payload.get("observation_id") != observation.id
+        or payload.get("observation_fingerprint") != observation.input_fingerprint
+        or not isinstance(payload.get("audio_path"), str)
+        or not payload["audio_path"]
+        or not isinstance(payload.get("audio_sha256"), str)
+        or not payload["audio_sha256"]
+        or not isinstance(payload.get("spans"), list)
+        or not payload["spans"]
+        or not (payload.get("selection") is None or isinstance(payload["selection"], dict))
+    ):
+        return None
+    try:
+        spans = tuple(SpanSpec(**span) for span in payload["spans"])
+        if any(
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            for span in spans for value in (span.start_seconds, span.end_seconds)
+        ) or any(span.end_seconds <= span.start_seconds for span in spans):
+            return None
+    except (TypeError, ValueError):
+        return None
+    return ShadowExemplar(
+        profile_id, observation, Path(payload["audio_path"]),
+        payload["audio_sha256"], spans,
+    ), payload.get("selection")
+
+
+def prepare_association_exemplars(
+    database: Database,
+    readiness: Sequence[ProfileAssociationReadiness],
+    *,
+    verification_cache: MediaVerificationCache,
+    span_cache: AudioSpanCache,
+    state_cache: ExemplarPreparationStateCache,
+    videos_by_id: Mapping[int, Video],
+    plan_only: bool,
+    model_fingerprint: str | None,
+    policy_artifact_sha256: str,
+    maximum_exemplars: int,
+    minimum_same_exemplars: int,
+    prepare_spans: Callable,
+    profile_progress: Callable | None = None,
+    profile_cache: PreparedProfileCache | None = None,
+) -> AssociationExemplarPreparationResult:
+    """Reuse prepared profile units after fresh metadata and media admission.
+
+    Partial profiles still reuse compatible individual successes. Failures keep
+    the existing retry and repair policy; a profile snapshot cannot hide them.
+    """
+    arguments = dict(
+        verification_cache=verification_cache, span_cache=span_cache,
+        state_cache=state_cache, videos_by_id=videos_by_id, plan_only=plan_only,
+        model_fingerprint=model_fingerprint, policy_artifact_sha256=policy_artifact_sha256,
+        maximum_exemplars=maximum_exemplars, minimum_same_exemplars=minimum_same_exemplars,
+        prepare_spans=prepare_spans, profile_cache=profile_cache,
+    )
+    if profile_cache is None or plan_only:
+        result = _prepare_association_exemplars_uncached(
+            database, readiness, profile_progress=profile_progress, **arguments,
+        )
+        if profile_cache is not None:
+            profiles = [p for p in readiness if p.review_ready]
+            result = replace(result, preparation_cache_counts={
+                "profiles_not_checked_plan_only": len(profiles),
+                "profile_snapshots_present": sum(profile_cache.has_profile(p.profile_id) for p in profiles),
+            })
+        return result
+
+    exemplars, usable, specs, selections, counts, by_profile = [], [], {}, {}, {}, {}
+    cache_counts = {"profiles_reused": 0, "profiles_rebuilt": 0,
+                    "members_reused": 0, "members_prepared": 0}
+    profiles = [p for p in readiness if p.review_ready]
+    for index, profile in enumerate(profiles, start=1):
+        if profile_progress is not None:
+            profile_progress(index, len(profiles), profile)
+        inputs, observations = _prepared_profile_inputs(
+            database, profile, videos_by_id, verification_cache, state_cache,
+            model_fingerprint, policy_artifact_sha256,
+            maximum_exemplars, minimum_same_exemplars,
+        )
+        saved = (profile_cache.load("profile", inputs, profile_id=profile.profile_id)
+                 if inputs is not None else None)
+        result = _replay_prepared_profile(
+            saved, database, profile, observations, verification_cache,
+            span_cache, videos_by_id, maximum_exemplars, minimum_same_exemplars,
+        )
+        if result is not None:
+            cache_counts["profiles_reused"] += 1
+        else:
+            cache_counts["profiles_rebuilt"] += 1
+            result = _prepare_association_exemplars_uncached(database, (profile,), **arguments)
+            # Whole-profile reuse is limited to fully successful preparation;
+            # blocked or transient members must retain the normal failure path.
+            if inputs is not None and observations and len(result.eligible_exemplars) == len(observations):
+                inputs["preparation_states"] = _preparation_states(state_cache, profile, observations)
+                profile_cache.save("profile", inputs, {
+                    "exemplars": [_encode_prepared_exemplar(
+                        e, result.span_selections_by_observation_id.get(e.observation.id),
+                    ) for e in result.eligible_exemplars],
+                    "selected_observation_ids": [
+                        e.observation.id for _p, selected in result.usable_profiles for e in selected
+                    ],
+                }, profile_id=profile.profile_id)
+        exemplars.extend(result.eligible_exemplars)
+        usable.extend(result.usable_profiles)
+        specs.update(result.span_specs_by_observation_id)
+        selections.update(result.span_selections_by_observation_id)
+        by_profile.update(result.counts_by_profile)
+        for key, value in result.counts.items():
+            counts[key] = counts.get(key, 0) + value
+        for key, value in result.preparation_cache_counts.items():
+            cache_counts[key] = cache_counts.get(key, 0) + value
+    return AssociationExemplarPreparationResult(
+        tuple(exemplars), tuple(usable), specs, selections, counts, by_profile, cache_counts,
+    )
+
+
+def _prepared_profile_inputs(database, profile, videos_by_id, verification_cache, state_cache,
+                             model_fingerprint, policy_sha256, maximum, minimum):
+    member_ids = (profile.certified_exemplar_observation_ids
+                  if profile.automatic_profile_ready and profile.certified_exemplar_observation_ids
+                  else profile.member_observation_ids)
+    observations, members, state_evidence = {}, [], []
+    for observation_id in member_ids:
+        observation = database.get_speaker_observation(observation_id)
+        if observation is None:
+            return None, {}
+        eligibility = assess_automatic_speaker_observation(
+            database, observation.video_id, observation_id=observation_id,
+            verification_cache=verification_cache, verify_media=False,
+        )
+        if (not eligibility.eligible or eligibility.observation is None
+                or eligibility.observation.id != observation_id or eligibility.media_artifact is None):
+            return None, {}
+        observations[observation_id] = observation
+        members.append(_prepared_member_inputs(
+            database, observation, eligibility.media_artifact, model_fingerprint, policy_sha256,
+        ))
+        state_evidence.append(_exemplar_preparation_evidence(
+            database, profile_id=profile.profile_id, observation=observation,
+            assessed_observation=eligibility.observation, media_artifact=eligibility.media_artifact,
+            model_fingerprint=model_fingerprint, policy_artifact_sha256=policy_sha256,
+        ))
+    return {
+        "readiness": asdict(profile), "members": members,
+        "state_evidence": state_evidence,
+        "preparation_states": _preparation_states(state_cache, profile, observations),
+        "source_ids": [getattr(videos_by_id.get(o.video_id), "source_id", -1)
+                       for o in observations.values()],
+        "maximum_exemplars": maximum, "minimum_same_exemplars": minimum,
+    }, observations
+
+
+def _preparation_states(state_cache, profile, observations):
+    # A previous success must not conceal a later blocked/repair state. Rebuild
+    # the profile (retaining member acoustics) so the normal ledger is restored.
+    return [
+        asdict(state) if (state := state_cache.latest_for_observation(
+            profile_id=profile.profile_id, observation_fingerprint=o.input_fingerprint,
+        )) is not None else None
+        for o in observations.values()
+    ]
+
+
+def _replay_prepared_profile(saved, database, profile, observations, verification_cache,
+                             span_cache, videos_by_id, maximum, minimum):
+    if not isinstance(saved, dict) or not isinstance(saved.get("exemplars"), list):
+        return None
+    if (len(saved["exemplars"]) != len(observations)
+            or [e.get("observation_id") for e in saved["exemplars"] if isinstance(e, dict)] != list(observations)):
+        return None
+    exemplars, selections = [], {}
+    for raw, observation in zip(saved["exemplars"], observations.values(), strict=True):
+        decoded = _decode_prepared_exemplar(raw, profile.profile_id, observation)
+        if decoded is None:
+            return None
+        exemplar, selection = decoded
+        eligibility = assess_automatic_speaker_observation(
+            database, observation.video_id, observation_id=observation.id,
+            verification_cache=verification_cache, verify_media=True,
+        )
+        if (not eligibility.eligible or eligibility.observation is None
+                or eligibility.observation.id != observation.id or eligibility.media_artifact is None
+                or Path(eligibility.media_artifact.artifact_path) != exemplar.audio_path
+                or eligibility.media_artifact.content_sha256 != exemplar.audio_sha256):
+            return None
+        span_cache.remember_verified_source(exemplar.audio_path, exemplar.audio_sha256)
+        exemplars.append(exemplar)
+        if selection is not None:
+            selections[observation.id] = selection
+    selected = select_profile_exemplars(profile, exemplars, videos_by_id=videos_by_id,
+                                       maximum_exemplars=maximum)
+    usable = ((profile, selected),) if len(selected) >= minimum else ()
+    selected_ids = [e.observation.id for _p, values in usable for e in values]
+    if selected_ids != saved.get("selected_observation_ids"):
+        return None
+    return AssociationExemplarPreparationResult(
+        tuple(exemplars), usable, {e.observation.id: e.span_specs for e in exemplars},
+        selections, {"eligible": len(exemplars)}, {profile.profile_id: {"eligible": len(exemplars)}},
+        {"members_reused": len(exemplars), "members_prepared": 0},
     )

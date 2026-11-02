@@ -186,6 +186,7 @@ from pastor_transcript_extractor.identity_leverage import (
 from pastor_transcript_extractor.identity_exemplar_preparation import (
     ExemplarPreparationStateCache,
 )
+from pastor_transcript_extractor.identity_prepared_profiles import PreparedProfileCache
 from pastor_transcript_extractor import (
     identity_coordination as identity_coordination_domain,
     identity_exemplar_preparation,
@@ -4550,6 +4551,7 @@ def shadow_associate_speakers_service(
         source_id_by_video_id=source_id_by_video_id,
     )
     exemplar_state_cache = identity_exemplar_preparation.ExemplarPreparationStateCache(cache_root)
+    prepared_profile_cache = PreparedProfileCache(cache_root)
     def prepare_profile_inputs(selected_readiness, phase):
         review_ready_profiles = [
             profile for profile in selected_readiness if profile.review_ready
@@ -4586,7 +4588,16 @@ def shadow_associate_speakers_service(
             minimum_same_exemplars=minimum_same_exemplars,
             prepare_spans=transcript_grounded_spans,
             profile_progress=report_exemplar_progress,
+            profile_cache=prepared_profile_cache,
         )
+        if exemplar_preparation.preparation_cache_counts:
+            console.print(
+                "Prepared profile cache: " + ", ".join(
+                    f"{key}={value}" for key, value in sorted(
+                        exemplar_preparation.preparation_cache_counts.items()
+                    )
+                )
+            )
         if exemplar_preparation.counts:
             console.print(
                 "Exemplar preparation: "

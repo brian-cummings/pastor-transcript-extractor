@@ -70,6 +70,21 @@ profile must receive at least two `same_speaker` decisions, no
 must meet that rule. An explicit candidate name that conflicts with the
 matched profile blocks the proposal.
 
+Successful profile preparation is persisted as an immutable snapshot under the
+application base's `evaluation/speaker-pairs/cache/prepared-profiles/` directory.
+The existing `shadow-associate-speakers` command reuses unchanged snapshots only
+after fresh eligibility and media verification. Individual successful members
+remain reusable across profile revisions; blocked members keep their normal
+retry and repair policy. Profile preparation does not confer identity authority
+and does not change exemplar selection, routing or match thresholds.
+
+The command prints profile/member preparation reuse and rebuild counts. In
+`--plan-only` mode it reports snapshot presence, explicitly unverified for runtime
+reuse, and neither reads qualified selections nor writes prepared snapshots.
+An initial run creates snapshots; repeating the same bounded command exercises
+warm reuse. Preparation counters measure avoided work, not match accuracy or a
+guaranteed wall-clock improvement.
+
 Every candidate produces one of:
 
 - `proposed_match`

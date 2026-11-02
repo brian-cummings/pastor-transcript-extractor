@@ -1589,6 +1589,22 @@ new or changed exemplars execute. The first run after this cache is introduced
 primes it from checksum-verified historical association artifacts. The routing
 summary reports pair-cache hits and misses so incremental work is visible.
 
+Association preparation also saves content-addressed snapshots of successfully
+prepared profiles below the configured base directory's
+`evaluation/speaker-pairs/cache/prepared-profiles/`. An unchanged profile reuses
+its exact spans and selections after current eligibility and media verification.
+Membership, source, attribution, readiness, review, transcript, audio, model and
+policy changes invalidate the relevant snapshot. Compatible member preparation
+remains independently reusable when profile membership or names change.
+Partially blocked profiles retain the existing failure and retry rules while
+reusing successful members; cached success cannot override a later blocker.
+`pte identity shadow-associate-speakers` reports `profiles_reused`,
+`profiles_rebuilt`, `members_reused` and `members_prepared`. Its `--plan-only`
+output reports snapshot presence separately from runtime-verified reuse and does
+not consume acoustically qualified snapshots. Selection, routing, thresholds and
+assignment authority are unchanged. A cold snapshot build adds metadata work;
+runtime speedup requires dataset validation.
+
 `pte identity profile-status` uses authoritative registered media metadata for
 its read-only inventory; it does not stat or hash every local or SMB audio
 artifact. Its qualification funnel counts only the latest observation for each
