@@ -10,6 +10,30 @@ app=typer.Typer(help='Prepare and run evidence-linked profile analysis support b
 analysis_app.add_typer(app,name='profile-support')
 
 
+@app.command('presence-a3-prepare')
+def presence_a3_prepare(parent:Path=typer.Option(...,'--parent')):
+    """Prepare a separate addendum for original unexecuted A3; no provider calls."""
+    from ... import response_presence_a3 as runner
+    try:typer.echo(json.dumps(runner.prepare(parent),indent=2))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('presence-a3-run')
+def presence_a3_run(packet:Path=typer.Option(...,'--packet'),approve_packet:str=typer.Option(...,'--approve-packet'),check_only:bool=typer.Option(False,'--check-only')):
+    """Execute separately approved original A3 once; $0.01 cap, zero retries or promotion."""
+    from ... import response_presence_a3 as runner
+    try:typer.echo(json.dumps(runner.run(packet,approve_packet,check_only=check_only),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('presence-a3-result')
+def presence_a3_result(packet:Path=typer.Option(...,'--packet')):
+    """Reconstruct the separate A3 result offline; never admit evidence."""
+    from ... import response_presence_a3 as runner
+    try:typer.echo(json.dumps(runner.report(packet),indent=2))
+    except (ValueError,OSError,KeyError,TypeError) as error:raise typer.BadParameter(str(error)) from error
+
+
 @app.command('presence-diagnostic-prepare')
 def presence_diagnostic_prepare(base_dir:Path=typer.Option(...,'--base-dir'),audit:Path=typer.Option(...,'--audit')):
     """Freeze Astra's three presence-only requests and no-call control; never call providers."""
