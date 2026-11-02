@@ -10,6 +10,22 @@ app=typer.Typer(help='Prepare and run evidence-linked profile analysis support b
 analysis_app.add_typer(app,name='profile-support')
 
 
+@app.command('presence-diagnostic-prepare')
+def presence_diagnostic_prepare(base_dir:Path=typer.Option(...,'--base-dir'),audit:Path=typer.Option(...,'--audit')):
+    """Freeze Astra's three presence-only requests and no-call control; never call providers."""
+    from ... import response_presence_diagnostic as diagnostic
+    try:typer.echo(json.dumps(diagnostic.prepare(base_dir,audit),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,StopIteration) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('presence-diagnostic-report')
+def presence_diagnostic_report(packet:Path=typer.Option(...,'--packet')):
+    """Validate and inspect the frozen diagnostic proposal offline; no execution or admission."""
+    from ... import response_presence_diagnostic as diagnostic
+    try:typer.echo(json.dumps(diagnostic.report(packet),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,StopIteration) as error:raise typer.BadParameter(str(error)) from error
+
+
 @app.command('response-conditions-freeze')
 def response_conditions_freeze(base_dir:Path=typer.Option(...,'--base-dir'),objective:Path=typer.Option(...,'--objective'),plan:Path=typer.Option(...,'--plan')):
     """Freeze at most four coordinate-selected existing confirmation windows, without inference."""
