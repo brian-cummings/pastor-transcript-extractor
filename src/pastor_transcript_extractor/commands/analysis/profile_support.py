@@ -26,6 +26,22 @@ def presence_diagnostic_report(packet:Path=typer.Option(...,'--packet')):
     except (ValueError,OSError,KeyError,TypeError,StopIteration) as error:raise typer.BadParameter(str(error)) from error
 
 
+@app.command('presence-diagnostic-run')
+def presence_diagnostic_run(packet:Path=typer.Option(...,'--packet'),approve_packet:str=typer.Option(...,'--approve-packet'),check_only:bool=typer.Option(False,'--check-only')):
+    """Execute only the approved frozen presence diagnostic; stop at first failure, zero retries."""
+    from ... import response_presence_execution as runner
+    try:typer.echo(json.dumps(runner.run(packet,approve_packet,check_only=check_only),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('presence-diagnostic-result')
+def presence_diagnostic_result(packet:Path=typer.Option(...,'--packet')):
+    """Reconstruct the approved diagnostic result from saved receipts offline."""
+    from ... import response_presence_execution as runner
+    try:typer.echo(json.dumps(runner.report(packet),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
 @app.command('response-conditions-freeze')
 def response_conditions_freeze(base_dir:Path=typer.Option(...,'--base-dir'),objective:Path=typer.Option(...,'--objective'),plan:Path=typer.Option(...,'--plan')):
     """Freeze at most four coordinate-selected existing confirmation windows, without inference."""
