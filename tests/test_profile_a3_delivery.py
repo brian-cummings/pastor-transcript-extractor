@@ -79,5 +79,63 @@ class A3CompositionTests(unittest.TestCase):
         self.assertIn(pilot.AUTHORITY,claim['limits'])
 
 
+class ApprovedSupportTests(unittest.TestCase):
+    def prepared(self, directory):
+        from test_deepinfra_streaming import spec
+        request=spec()
+        root=Path(directory)/'evaluation'/pilot.VERSION/'case'
+        root.mkdir(parents=True)
+        task=dict(fingerprint=request.fingerprint,request=asdict(request),token_account=request.preflight())
+        (root/'support-plan.json').write_text(json.dumps(dict(tasks=[task])))
+        return root,request
+
+    def test_one_assessment_replay_and_no_schema_correction(self):
+        from test_profile_analysis_support_execution import wire
+        with TemporaryDirectory() as directory:
+            root,request=self.prepared(directory)
+            with patch.object(pilot,'SUPPORT_REQUEST',request.fingerprint), \
+                 patch.object(pilot.support.correction,'request',side_effect=AssertionError('No correction')):
+                sent=[]
+                def send(spec):sent.append(spec);return wire(spec,output='{}')
+                result=pilot.approved_assessment(root,request,transport=send)
+                self.assertEqual(result,pilot.approved_assessment(root,request,transport=send))
+            self.assertEqual(1,len(sent))
+            self.assertEqual(1,result['usage']['paid_attempts'])
+            self.assertFalse(result['unresolved_usage'])
+
+    def test_lost_response_consumes_reservation_without_retry(self):
+        with TemporaryDirectory() as directory:
+            root,request=self.prepared(directory)
+            with patch.object(pilot,'SUPPORT_REQUEST',request.fingerprint):
+                sent=[]
+                def lost(spec):sent.append(spec);raise OSError('Lost response')
+                result=pilot.approved_assessment(root,request,transport=lost)
+                self.assertEqual(result,pilot.approved_assessment(root,request,transport=lost))
+            self.assertEqual(1,len(sent));self.assertTrue(result['unresolved_usage'])
+            self.assertEqual(str(pilot.support.requests.request_reservation(request)),result['usage']['reserved_usd'])
+
+    def test_shared_stream_recovery_is_bounded_to_two_physical_attempts(self):
+        from test_deepinfra_streaming import Harness,loop,normal
+        with TemporaryDirectory() as directory:
+            root,request=self.prepared(directory)
+            h=Harness(request,[loop(request),normal(request)])
+            with patch.object(pilot,'SUPPORT_REQUEST',request.fingerprint):
+                result=pilot.approved_assessment(root,request,transport=h.managed())
+            self.assertEqual(2,len(h.requests));self.assertEqual(2,result['usage']['paid_attempts'])
+            self.assertFalse(result['unresolved_usage'])
+            self.assertLessEqual(float(result['usage']['reserved_usd']),.03)
+
+    def test_changed_fingerprint_and_frozen_payload_rejected_before_dispatch(self):
+        with TemporaryDirectory() as directory:
+            root,request=self.prepared(directory)
+            with self.assertRaisesRegex(ValueError,'fingerprint'):
+                pilot.approved_assessment(root,request,transport=lambda s:self.fail('No call'))
+            frozen=json.loads((root/'support-plan.json').read_text())
+            frozen['tasks'][0]['request']['body']['temperature']=1
+            (root/'support-plan.json').write_text(json.dumps(frozen))
+            with patch.object(pilot,'SUPPORT_REQUEST',request.fingerprint),self.assertRaisesRegex(ValueError,'changed'):
+                pilot.approved_assessment(root,request,transport=lambda s:self.fail('No call'))
+
+
 if __name__=='__main__':
     unittest.main()

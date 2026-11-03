@@ -11,10 +11,10 @@ analysis_app.add_typer(app,name='profile-support')
 
 
 @app.command('section-reviewed-delivery')
-def section_reviewed_delivery(a3_packet:Path=typer.Option(...,'--a3-packet'),approve_case:str=typer.Option(...,'--approve-case')):
-    """Compose only reviewed A3 and deliver through cached support; never call providers."""
+def section_reviewed_delivery(a3_packet:Path=typer.Option(...,'--a3-packet'),approve_case:str=typer.Option(...,'--approve-case'),approve_support:str|None=typer.Option(None,'--approve-support')):
+    """Deliver reviewed A3; paid support requires its exact separate approval ($0.03, no corrections)."""
     from ... import profile_a3_delivery as pilot
-    try:typer.echo(json.dumps(pilot.deliver(a3_packet,approve_case),indent=2))
+    try:typer.echo(json.dumps(pilot.deliver(a3_packet,approve_case,approve_support=approve_support),indent=2))
     except (ValueError,OSError,KeyError,TypeError,StopIteration) as error:raise typer.BadParameter(str(error)) from error
 
 
