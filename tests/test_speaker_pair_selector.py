@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 import unittest
 
@@ -344,6 +345,43 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             provisional_assignment_active=provisional_assignment_active,
             machine_assignment_reviewable=machine_assignment_reviewable,
         )
+
+    def test_supported_historical_exemplar_remains_an_exact_nomination(self):
+        old = replace(
+            candidate("old", profile_ids=frozenset((81,))),
+            historical_exemplar=True,
+        )
+        incoming = candidate("incoming")
+        nomination = self._association_nomination("incoming", "old", profile_id=81)
+        selected = select_next_speaker_pair(
+            [old, incoming], PairSelectionHistory(),
+            selection_goal="profile-growth", target_profile_id=81,
+            association_confirmation_pairs=(nomination,),
+        )
+        self.assertEqual(
+            {"incoming", "old"},
+            {selected.observation_a.input_fingerprint,
+             selected.observation_b.input_fingerprint},
+        )
+        # Historical members cannot create generic name-only review work.
+        with self.assertRaises(ValueError):
+            select_next_speaker_pair(
+                [old, replace(incoming, explicit_attributions=frozenset(("name",)))],
+                PairSelectionHistory(), selection_goal="profile-growth",
+                target_profile_id=81,
+            )
+        for history, historical in (
+            (PairSelectionHistory(excluded_pairs=frozenset((nomination.pair_key,))), old),
+            (PairSelectionHistory(automatically_unreviewable_observations=frozenset(("old",))), old),
+            (PairSelectionHistory(), replace(old, explicitly_different_from=frozenset(("incoming",)))),
+        ):
+            with self.subTest(history=history, historical=historical):
+                with self.assertRaises(ValueError):
+                    select_next_speaker_pair(
+                        [historical, incoming], history,
+                        selection_goal="profile-growth", target_profile_id=81,
+                        association_confirmation_pairs=(nomination,),
+                    )
 
     def test_default_selection_goal_preserves_evaluation_selector(self) -> None:
         selected = select_next_speaker_pair(

@@ -92,9 +92,24 @@ def select_verified_automatic_speaker_pair(
             if video is None:
                 reason = "selected_video_unavailable"
             else:
+                exact_observation = (
+                    database.get_speaker_observation_by_fingerprint(
+                        candidate.input_fingerprint
+                    )
+                    if candidate.historical_exemplar
+                    else None
+                )
+                if candidate.historical_exemplar and exact_observation is None:
+                    failed_fingerprints.add(candidate.input_fingerprint)
+                    reason = "observation_unavailable"
+                    rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
+                    continue
                 eligibility = assess_automatic_speaker_observation(
                     database,
                     video.id,
+                    observation_id=(
+                        exact_observation.id if exact_observation is not None else None
+                    ),
                     verification_cache=verification_cache,
                     verify_media=True,
                 )

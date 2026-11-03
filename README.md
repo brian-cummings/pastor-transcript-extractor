@@ -1358,7 +1358,14 @@ because its membership belongs to an older immutable observation. Older
 observations already attached to a profile remain valid automatic exemplars:
 their immutable observation window and the source recording's media are
 verified unless a review explicitly invalidates the observation. Later
-extraction artifacts do not retroactively redefine it. Exemplar
+extraction artifacts do not retroactively redefine it. Pair nomination also
+retains exact historical profile exemplars referenced by compatible saved
+multi-exemplar association proposals, even if a metadata provenance refresh
+created a new observation fingerprint. These exemplars are byte-verified at
+selection and pinned through packet preparation; they cannot enter generic
+name-only nomination or transfer a judgment to the replacement observation.
+Invalidation, negative qualifications, different-speaker constraints, and prior
+pair reviews still apply to the exact historical evidence. Exemplar
 selection counts at most one observation version per recording, so
 re-extractions do not manufacture independent identity evidence. A provisional
 discovery component's own members still do not count as its independent

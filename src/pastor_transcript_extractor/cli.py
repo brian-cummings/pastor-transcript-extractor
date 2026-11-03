@@ -5954,6 +5954,29 @@ def review_next_speaker_pair(
                 observation_b_id, set()
             ).add(observation_a.input_fingerprint)
 
+        # Saved comparisons nominate exact persisted exemplars, including those
+        # replaced by a metadata refresh. Never substitute the new fingerprint.
+        historical_exemplars_by_video_id: dict[int, set[int]] = {}
+        for nomination in association_confirmation_pairs:
+            if (
+                target_profile_id is not None
+                and nomination.profile_id != target_profile_id
+            ):
+                continue
+            exemplar = database.get_speaker_observation_by_fingerprint(
+                nomination.exemplar_fingerprint
+            )
+            if exemplar is None or nomination.profile_id not in {
+                database.resolve_speaker_profile_id(value)
+                for value in database.list_effective_profile_ids_for_observation(
+                    exemplar.id
+                )
+            }:
+                continue
+            historical_exemplars_by_video_id.setdefault(
+                exemplar.video_id, set()
+            ).add(exemplar.id)
+
         candidates: list[PairCandidateObservation] = []
         unregistered_source_urls: set[str] = set()
         configured_bootstrap_by_source_id: dict[
@@ -5984,117 +6007,140 @@ def review_next_speaker_pair(
                 and family.partition.value != evaluation_scope
             ):
                 continue
-            eligibility = speaker_pair_eligibility.assess_automatic_speaker_observation(
+            current_eligibility = speaker_pair_eligibility.assess_automatic_speaker_observation(
                 database,
                 video.id,
                 verification_cache=verification_cache,
                 verify_media=False,
             )
-            if not eligibility.eligible:
-                continue
-            observation = eligibility.observation
-            media = eligibility.media_artifact
-            assert observation is not None
-            assert media is not None
-            claims = database.list_speaker_name_claims_for_video(video.id)
-            title_hint = title_byline_selection_hint(video.title)
-            if source.id not in configured_bootstrap_by_source_id:
-                bootstrap: tuple[int, str] | None = None
-                if source.pastor_id is not None:
-                    configured_profile_id = (
-                        database.get_pastor_speaker_profile_id(
-                            source.pastor_id
-                        )
+            eligibilities = [current_eligibility]
+            for exemplar_id in sorted(
+                historical_exemplars_by_video_id.get(video.id, ())
+            ):
+                if (
+                    current_eligibility.observation is not None
+                    and exemplar_id == current_eligibility.observation.id
+                ):
+                    continue
+                eligibilities.append(
+                    speaker_pair_eligibility.assess_automatic_speaker_observation(
+                        database,
+                        video.id,
+                        observation_id=exemplar_id,
+                        verification_cache=verification_cache,
+                        verify_media=False,
                     )
-                    pastor = database.get_pastor_by_id(source.pastor_id)
-                    if (
-                        configured_profile_id is not None
-                        and pastor is not None
-                    ):
-                        canonical_profile_id = (
-                            database.resolve_speaker_profile_id(
-                                configured_profile_id
+                )
+            for eligibility in eligibilities:
+                if not eligibility.eligible:
+                    continue
+                observation = eligibility.observation
+                media = eligibility.media_artifact
+                assert observation is not None
+                assert media is not None
+                claims = database.list_speaker_name_claims_for_video(video.id)
+                title_hint = title_byline_selection_hint(video.title)
+                if source.id not in configured_bootstrap_by_source_id:
+                    bootstrap: tuple[int, str] | None = None
+                    if source.pastor_id is not None:
+                        configured_profile_id = (
+                            database.get_pastor_speaker_profile_id(
+                                source.pastor_id
                             )
                         )
-                        if not database.list_effective_observation_ids_for_profile(
-                            canonical_profile_id
+                        pastor = database.get_pastor_by_id(source.pastor_id)
+                        if (
+                            configured_profile_id is not None
+                            and pastor is not None
                         ):
-                            bootstrap = (
-                                canonical_profile_id,
-                                pastor.display_name,
+                            canonical_profile_id = (
+                                database.resolve_speaker_profile_id(
+                                    configured_profile_id
+                                )
                             )
-                configured_bootstrap_by_source_id[source.id] = bootstrap
-            configured_bootstrap = configured_bootstrap_by_source_id[
-                source.id
-            ]
-            configured_title_hint = (
-                configured_target_title_selection_hint(
-                    video.title,
-                    configured_bootstrap[1],
-                )
-                if configured_bootstrap is not None
-                else None
-            )
-            names = frozenset(
-                claim.normalized_name
-                for claim in claims
-                if claim.observation_id == observation.id
-                and database.is_confirmed_speaker_name_claim(claim)
-                and claim.normalized_name.strip()
-            ) | (frozenset((title_hint,)) if title_hint else frozenset()) | (
-                frozenset((configured_title_hint,))
-                if configured_title_hint
-                else frozenset()
-            )
-            reviewed_profile_ids = frozenset(
-                database.resolve_speaker_profile_id(profile_id)
-                for profile_id in (
-                    database.list_effective_profile_ids_for_observation(
-                        observation.id
+                            if not database.list_effective_observation_ids_for_profile(
+                                canonical_profile_id
+                            ):
+                                bootstrap = (
+                                    canonical_profile_id,
+                                    pastor.display_name,
+                                )
+                    configured_bootstrap_by_source_id[source.id] = bootstrap
+                configured_bootstrap = configured_bootstrap_by_source_id[
+                    source.id
+                ]
+                configured_title_hint = (
+                    configured_target_title_selection_hint(
+                        video.title,
+                        configured_bootstrap[1],
                     )
-                )
-            )
-            superseded_profile_ids = frozenset(
-                database.resolve_speaker_profile_id(profile_id)
-                for profile_id in (
-                    database.list_effective_profile_ids_for_superseded_observations(
-                        video_id=video.id,
-                        current_observation_id=observation.id,
-                    )
-                )
-            ) - reviewed_profile_ids
-            candidate = PairCandidateObservation(
-                input_fingerprint=observation.input_fingerprint,
-                video_id=video.youtube_video_id,
-                recording_date=video.published_at,
-                explicit_attributions=names,
-                quality_signature=(
-                    media.format_name,
-                    media.sample_rate_hz,
-                    media.channel_count,
-                ),
-                source_family_id=family.source_family_id,
-                evaluation_partition=family.partition.value,
-                reviewed_profile_ids=reviewed_profile_ids,
-                superseded_profile_ids=superseded_profile_ids,
-                explicitly_different_from=frozenset(
-                    different_fingerprints_by_observation_id.get(
-                        observation.id, set()
-                    )
-                ),
-                observation_consistency_score=consistency_index.scores.get(
-                    observation.input_fingerprint
-                ),
-                configured_profile_bootstrap_id=(
-                    configured_bootstrap[0]
                     if configured_bootstrap is not None
                     else None
-                ),
-                configured_target_title_match=bool(
-                    configured_title_hint
-                ),
-            )
-            candidates.append(candidate)
+                )
+                names = frozenset(
+                    claim.normalized_name
+                    for claim in claims
+                    if claim.observation_id == observation.id
+                    and database.is_confirmed_speaker_name_claim(claim)
+                    and claim.normalized_name.strip()
+                ) | (frozenset((title_hint,)) if title_hint else frozenset()) | (
+                    frozenset((configured_title_hint,))
+                    if configured_title_hint
+                    else frozenset()
+                )
+                reviewed_profile_ids = frozenset(
+                    database.resolve_speaker_profile_id(profile_id)
+                    for profile_id in (
+                        database.list_effective_profile_ids_for_observation(
+                            observation.id
+                        )
+                    )
+                )
+                superseded_profile_ids = frozenset(
+                    database.resolve_speaker_profile_id(profile_id)
+                    for profile_id in (
+                        database.list_effective_profile_ids_for_superseded_observations(
+                            video_id=video.id,
+                            current_observation_id=observation.id,
+                        )
+                    )
+                ) - reviewed_profile_ids
+                candidate = PairCandidateObservation(
+                    input_fingerprint=observation.input_fingerprint,
+                    video_id=video.youtube_video_id,
+                    recording_date=video.published_at,
+                    explicit_attributions=names,
+                    quality_signature=(
+                        media.format_name,
+                        media.sample_rate_hz,
+                        media.channel_count,
+                    ),
+                    source_family_id=family.source_family_id,
+                    evaluation_partition=family.partition.value,
+                    reviewed_profile_ids=reviewed_profile_ids,
+                    superseded_profile_ids=superseded_profile_ids,
+                    explicitly_different_from=frozenset(
+                        different_fingerprints_by_observation_id.get(
+                            observation.id, set()
+                        )
+                    ),
+                    observation_consistency_score=consistency_index.scores.get(
+                        observation.input_fingerprint
+                    ),
+                    configured_profile_bootstrap_id=(
+                        configured_bootstrap[0]
+                        if configured_bootstrap is not None
+                        else None
+                    ),
+                    historical_exemplar=(
+                        current_eligibility.observation is None
+                        or observation.id != current_eligibility.observation.id
+                    ),
+                    configured_target_title_match=bool(
+                        configured_title_hint
+                    ),
+                )
+                candidates.append(candidate)
 
         lineage_selection: PairSelection | None = None
         if lineage_review_candidate is not None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import tempfile
 import unittest
@@ -474,6 +475,54 @@ class SpeakerPairEligibilityTests(unittest.TestCase):
                 self.observation.end_seconds,
             ),
         )
+
+    def test_verifier_keeps_exact_historical_exemplar_after_metadata_refresh(self):
+        old = self.observation
+        self._add_observation(
+            extraction_result_id=self.extraction.id,
+            start_seconds=old.start_seconds, end_seconds=old.end_seconds,
+            fingerprint="refreshed-metadata",
+        )
+        historical = PairCandidateObservation(
+            input_fingerprint=old.input_fingerprint,
+            video_id=self.video.youtube_video_id, recording_date=None,
+            reviewed_profile_ids=frozenset((81,)), historical_exemplar=True,
+        )
+        def select_pair(remaining):
+            if not remaining:
+                raise ValueError("no pair remains")
+            return PairSelection(remaining[0], remaining[0], {})
+        with patch(
+            "pastor_transcript_extractor.speaker_pair_eligibility."
+            "get_verified_normalized_media_artifact", return_value=self.media,
+        ):
+            result = select_verified_automatic_speaker_pair(
+                self.database, [historical], select_pair=select_pair,
+            )
+            self.assertEqual(old.input_fingerprint, result.selection.observation_a.input_fingerprint)
+            # Current nominations still detect changes; only explicitly pinned
+            # historical exemplars may retain the old immutable fingerprint.
+            with self.assertRaisesRegex(ValueError, "selected_observation_changed"):
+                select_verified_automatic_speaker_pair(
+                    self.database, [replace(historical, historical_exemplar=False)],
+                    select_pair=select_pair,
+                )
+            with patch(
+                "pastor_transcript_extractor.speaker_pair_eligibility."
+                "get_verified_normalized_media_artifact", return_value=None,
+            ):
+                with self.assertRaisesRegex(ValueError, "verified_normalized_media_unavailable"):
+                    select_verified_automatic_speaker_pair(
+                        self.database, [historical], select_pair=select_pair,
+                    )
+            self.database.add_speaker_observation_review_event(
+                observation_id=old.id, action="invalid", reviewer="brian",
+                reason="wrong speaker", event_fingerprint="historical-invalid",
+            )
+            with self.assertRaisesRegex(ValueError, "reviewed_invalid"):
+                select_verified_automatic_speaker_pair(
+                    self.database, [historical], select_pair=select_pair,
+                )
 
     def test_exact_older_profile_observation_respects_invalidation(self) -> None:
         self.database.add_extraction_result(

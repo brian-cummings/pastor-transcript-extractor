@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v30"
+SELECTOR_VERSION = "speaker_pair_selector_v31"
 SAME_SPEAKER_BALANCE_GAP = 2
 EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE = 0.15
 
@@ -61,6 +61,7 @@ class PairCandidateObservation:
     observation_consistency_score: float | None = None
     configured_profile_bootstrap_id: int | None = None
     configured_target_title_match: bool = False
+    historical_exemplar: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -516,11 +517,23 @@ def select_next_speaker_pair(
             SourceRelation,
         ]
     ] = []
+    supported_association_pairs = {
+        item.pair_key for item in association_confirmation_pairs
+    }
     for index, observation_a in enumerate(candidates):
         for observation_b in candidates[index + 1 :]:
             pair_key = frozenset((observation_a.input_fingerprint, observation_b.input_fingerprint))
             if (
                 pair_key in history.excluded_pairs
+                or observation_a.video_id == observation_b.video_id
+                or (
+                    (observation_a.historical_exemplar or observation_b.historical_exemplar)
+                    and (
+                        pair_key not in supported_association_pairs
+                        or observation_a.input_fingerprint in observation_b.explicitly_different_from
+                        or observation_b.input_fingerprint in observation_a.explicitly_different_from
+                    )
+                )
                 or _crosses_evaluation_partitions(observation_a, observation_b)
             ):
                 continue
@@ -1282,6 +1295,8 @@ def _select_association_confirmation_pair(
                     or nomination.machine_assignment_reviewable
                 )
             )
+            or exemplar.input_fingerprint in candidate.explicitly_different_from
+            or candidate.input_fingerprint in exemplar.explicitly_different_from
             or disfavored.get(candidate.input_fingerprint, 0)
             or disfavored.get(exemplar.input_fingerprint, 0)
         ):
