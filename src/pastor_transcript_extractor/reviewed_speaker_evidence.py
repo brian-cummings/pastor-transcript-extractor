@@ -10,6 +10,8 @@ from pastor_transcript_extractor.speaker_registry import (
     attach_reviewed_observation,
     create_anonymous_profile,
     normalize_person_name,
+    names_have_identity_conflict,
+    reviewed_profile_name_alias_groups,
     record_name_claim_review,
     record_observation_difference,
     record_observation_disposition,
@@ -272,6 +274,7 @@ def sync_reviewed_speaker_evidence(
     evidence: ReviewedSpeakerEvidence,
 ) -> ReviewedEvidenceSyncResult:
     before = _event_counts(database)
+    name_alias_groups = reviewed_profile_name_alias_groups(database)
     missing: set[str] = set()
     merge_candidates: list[str] = []
     conflicts = [
@@ -560,7 +563,9 @@ def sync_reviewed_speaker_evidence(
         normalized_names = {
             claim.normalized_name.strip() for claim in explicit_claims
         }
-        if len(normalized_names) > 1:
+        if names_have_identity_conflict(
+            normalized_names, name_alias_groups.get(profile_id, ())
+        ):
             conflicts.append(
                 f"profile {profile_id} has conflicting explicit attributions: "
                 + ", ".join(sorted(normalized_names))

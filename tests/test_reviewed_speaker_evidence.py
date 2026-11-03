@@ -547,6 +547,31 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             (self.evaluation_root / "fixtures" / "pair-ab.json").exists()
         )
 
+    def test_sync_reuses_approved_name_variants_but_keeps_unknown_names_blocked(self):
+        from pastor_transcript_extractor.speaker_name_variants import (
+            approve_name_variants, list_name_variant_candidates,
+        )
+        self._write_fixture("pair-ab", "a", "b", "same_speaker")
+        evidence = load_reviewed_speaker_evidence(self.evaluation_root)
+        sync_reviewed_speaker_evidence(self.database, evidence)
+        self._add_explicit_claim("a", "ron clouzet")
+        self._add_explicit_claim("b", "ron couzet")
+        self._confirm_current_names()
+        before = sync_reviewed_speaker_evidence(self.database, evidence)
+        self.assertTrue(any("conflicting explicit attributions" in c for c in before.conflicts))
+        profile_id = self.database.list_effective_profile_ids_for_observation(self.observations["a"].id)[0]
+        candidate = list_name_variant_candidates(self.database, profile_id)[0]
+        approve_name_variants(self.database, candidate, "Ron Clouzet", "Brian")
+        for _ in range(2):
+            result = sync_reviewed_speaker_evidence(self.database, evidence)
+            self.assertEqual((), result.conflicts)
+            self.assertEqual(0, result.membership_events_added)
+            self.assertEqual("Ron Clouzet", self.database.get_speaker_profile(profile_id).display_label)
+        self._add_explicit_claim("b", "a different person")
+        self._confirm_current_names()
+        after = sync_reviewed_speaker_evidence(self.database, evidence)
+        self.assertTrue(any("conflicting explicit attributions" in c for c in after.conflicts))
+
     def test_sync_does_not_approve_unreviewed_names_or_link_configured_identity(
         self,
     ) -> None:
