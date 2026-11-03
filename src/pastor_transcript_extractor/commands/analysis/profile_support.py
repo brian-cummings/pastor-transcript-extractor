@@ -11,10 +11,18 @@ analysis_app.add_typer(app,name='profile-support')
 
 
 @app.command('section-reviewed-delivery')
-def section_reviewed_delivery(a3_packet:Path=typer.Option(...,'--a3-packet'),approve_case:str=typer.Option(...,'--approve-case'),approve_support:str|None=typer.Option(None,'--approve-support')):
-    """Deliver reviewed A3; paid support requires its exact separate approval ($0.03, no corrections)."""
+def section_reviewed_delivery(approve_case:str=typer.Option(...,'--approve-case'),a3_packet:Path|None=typer.Option(None,'--a3-packet'),approve_support:str|None=typer.Option(None,'--approve-support'),case_packet:Path|None=typer.Option(None,'--case-packet'),approve_packet:str|None=typer.Option(None,'--approve-packet'),check_only:bool=typer.Option(False,'--check-only')):
+    """Deliver explicitly approved A3 or frozen B1; no general admission or corrections."""
     from ... import profile_a3_delivery as pilot
-    try:typer.echo(json.dumps(pilot.deliver(a3_packet,approve_case,approve_support=approve_support),indent=2))
+    try:
+        if case_packet is not None:
+            if a3_packet is not None or approve_support is not None:raise ValueError('Use one approved case route')
+            from ... import reviewed_b1_delivery
+            result=reviewed_b1_delivery.run(case_packet,approve_packet,approve_case,check_only=check_only)
+        else:
+            if a3_packet is None or approve_packet is not None or check_only:raise ValueError('A3 packet required; check-only belongs to frozen case route')
+            result=pilot.deliver(a3_packet,approve_case,approve_support=approve_support)
+        typer.echo(json.dumps(result,indent=2))
     except (ValueError,OSError,KeyError,TypeError,StopIteration) as error:raise typer.BadParameter(str(error)) from error
 
 

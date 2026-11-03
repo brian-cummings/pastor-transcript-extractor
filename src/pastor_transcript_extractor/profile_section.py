@@ -502,6 +502,9 @@ def read_dimension_result(p,root,batch):
 
 def dimension_proof(record,window,oid,field):
     """A dimension receipt grants no authority to the other proposed binding fields."""
+    if field=='requested_response' and oid in record.get('reviewed_case_compositions',{}):
+        from . import reviewed_b1_delivery
+        return reviewed_b1_delivery.proof(record,window,oid)
     if field=='requested_response' and record.get('reviewed_dimension_composition'):
         from . import profile_a3_delivery
         return profile_a3_delivery.proof(record,window,oid)
@@ -1031,6 +1034,8 @@ def write_document(p,root,record,document):
     if record.get('dimension_packets'):document['dimension_packets']=record['dimension_packets']
     if record.get('reviewed_dimension_composition'):
         document['reviewed_dimension_composition']=record['reviewed_dimension_composition']
+    if record.get('reviewed_case_sample'):
+        document['reviewed_case_sample']=record['reviewed_case_sample']
     if record.get('response_conditions_dimension'):
         document['response_conditions_dimension']=record['response_conditions_dimension']
         response_claims={c['id'] for c in record['claims'] if c.get('dimension_field')=='requested_response'}
