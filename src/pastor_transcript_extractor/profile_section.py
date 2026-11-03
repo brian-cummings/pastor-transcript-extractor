@@ -502,6 +502,9 @@ def read_dimension_result(p,root,batch):
 
 def dimension_proof(record,window,oid,field):
     """A dimension receipt grants no authority to the other proposed binding fields."""
+    if field=='requested_response' and record.get('reviewed_dimension_composition'):
+        from . import profile_a3_delivery
+        return profile_a3_delivery.proof(record,window,oid)
     refs=record['dimension_packets'][window.id];files={}
     for ref in refs.values():
         if file_hash(ref['path'])!=ref['sha256']:raise ValueError('Dimension proof changed')
@@ -543,15 +546,7 @@ def attach_dimensions(p,root,record):
         o=by_id[row['observation_id']];vid=o['source_refs'][0]['video_id'];key=(vid,row['field'])
         if key in seen:continue  # One source-ordered example per recording and dimension; all results remain available.
         seen.add(key)
-        wording=('At this selected point, spiritual growth is discussed as a process over time.' if row['value']=='gradual_growth' else
-            'At this selected point, spiritual growth is discussed as immediate perfection.') if row['field']=='growth' else (
-            'The response requested or described at this selected point is: '+row['value'])
-        c=dict(id='section-dimension-'+row['field']+'-'+o['id'],wording=wording,
-            machine_observation_ids=[o['id']],dimension_field=row['field'],evidence_ids=[],upstream_claim_ids=[],
-            scope=dict(video_ids=[vid],meaning='Only this individually qualified discussion dimension in the selected source point.'),
-            assertion_force='local_observation',analytical_basis=row,
-            assertion_contract=dict(version=measurements.force.VERSION,declared_force='local_observation',allowed_forces=['local_observation']),
-            limits=[row['authority'],'No actual listener response, unconditional progress, complete conditions or adopted theology is established.'])
+        c=dimension_claim(o,row)
         check_strength(c);record['claims'].append(c);added.append(c)
     if any(c['dimension_field']=='growth' for c in added):
         record['analysis_unknowns']=[u if u!='Gradual versus immediate change' else 'Growth timing outside the individually qualified source points' for u in record.get('analysis_unknowns',[])]
@@ -575,6 +570,19 @@ def attach_dimensions(p,root,record):
             assertion_contract=dict(version=measurements.force.VERSION,declared_force='sample_membership',allowed_forces=['local_observation','sample_membership']),
             analytical_basis=h,limits=h['defeaters'],alternative=h['alternatives']))
     record['reader']['claims']=record['claims'];record['reader']['portrait']['entries']=record['claims']
+
+
+def dimension_claim(o,row):
+    """Compile an unchanged qualified value; never author a replacement reading."""
+    wording=('At this selected point, spiritual growth is discussed as a process over time.' if row['value']=='gradual_growth' else
+        'At this selected point, spiritual growth is discussed as immediate perfection.') if row['field']=='growth' else (
+        'The response requested or described at this selected point is: '+row['value'])
+    return dict(id='section-dimension-'+row['field']+'-'+o['id'],wording=wording,
+        machine_observation_ids=[o['id']],dimension_field=row['field'],evidence_ids=[],upstream_claim_ids=[],
+        scope=dict(video_ids=[o['source_refs'][0]['video_id']],meaning='Only this individually qualified discussion dimension in the selected source point.'),
+        assertion_force='local_observation',analytical_basis=row,
+        assertion_contract=dict(version=measurements.force.VERSION,declared_force='local_observation',allowed_forces=['local_observation']),
+        limits=[row['authority'],'No actual listener response, unconditional progress, complete conditions or adopted theology is established.'])
 
 
 def prepare_analysis(path):
@@ -995,6 +1003,22 @@ def render(path):
         rows.extend(json.loads((Path(name).parent/'results.json').read_text())['results'])
     document=x.core.document_input(frozen['plan'],rows)
     record=x.core.read_record(root/'assembled-profile.json')
+    write_document(p,root,record,document)
+    obs={o['id']:o for o in record['machine_observations']}
+    spent=ledger(p,root);start=Decimal(p['budget']['starting_conservative_usd'])
+    report=dict(draft=str(root/'draft-section.md'),document_input=str(root/'document-input.json'),
+        model_supported=len(document['ready_claim_ids']),clauses=len(document['entries']),
+        eligible_upstream=sum(o['section_eligibility']['eligible'] for o in obs.values()),
+        upstream_total=len(obs),starting_conservative_usd=str(start),cumulative_conservative_usd=str(spent),
+        reused_materialized_observations=len(record['observations']),qualified_dimensions=sum(r['eligible'] for r in record.get('dimension_findings',[])),
+        new_conservative_usd=str(spent-start),remaining_credit_usd=str(allowance.ceiling(p)-spent),
+        semantic_acceptance='Pending separate source review of original outputs',production_admission='not_admitted')
+    Store(root).write_immutable('delivery.json',report)
+    return report
+
+
+def write_document(p,root,record,document):
+    """Shared final presentation: unchanged supported text and explicit holds."""
     document['section_trace']={c['id']:dict(evidence_ids=list(dict.fromkeys(c.get('machine_observation_ids',[])+c['evidence_ids'])),
         premise_ids=c['upstream_claim_ids'],scope=c['scope'],assertion_force=c['assertion_force'],
         interpretation=next((h for h in record['hypotheses'] if h['id']==c['id']),None),
@@ -1005,6 +1029,8 @@ def render(path):
     document['limitation']=p.get('limitation',LIMIT)
     if record.get('materialized_analysis'):document['materialized_analysis']=record['materialized_analysis']
     if record.get('dimension_packets'):document['dimension_packets']=record['dimension_packets']
+    if record.get('reviewed_dimension_composition'):
+        document['reviewed_dimension_composition']=record['reviewed_dimension_composition']
     if record.get('response_conditions_dimension'):
         document['response_conditions_dimension']=record['response_conditions_dimension']
         response_claims={c['id'] for c in record['claims'] if c.get('dimension_field')=='requested_response'}
@@ -1038,16 +1064,7 @@ def render(path):
     lines += [f"- {e['statement']} ({e['support_status']})" for e in document['entries'] if e['support_status']!='supported']
     (root/'draft-section.md').write_text('\n'.join(lines)+'\n')
     (root/'analysis-support.md').write_text(x.core.render_handoff(document))
-    spent=ledger(p,root);start=Decimal(p['budget']['starting_conservative_usd'])
-    report=dict(draft=str(root/'draft-section.md'),document_input=str(root/'document-input.json'),
-        model_supported=len(document['ready_claim_ids']),clauses=len(document['entries']),
-        eligible_upstream=sum(o['section_eligibility']['eligible'] for o in obs.values()),
-        upstream_total=len(obs),starting_conservative_usd=str(start),cumulative_conservative_usd=str(spent),
-        reused_materialized_observations=len(measured),qualified_dimensions=sum(r['eligible'] for r in record.get('dimension_findings',[])),
-        new_conservative_usd=str(spent-start),remaining_credit_usd=str(allowance.ceiling(p)-spent),
-        semantic_acceptance='Pending separate source review of original outputs',production_admission='not_admitted')
-    Store(root).write_immutable('delivery.json',report)
-    return report
+    return document
 
 
 def failure_handoff(path):

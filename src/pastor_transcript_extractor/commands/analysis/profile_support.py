@@ -10,6 +10,14 @@ app=typer.Typer(help='Prepare and run evidence-linked profile analysis support b
 analysis_app.add_typer(app,name='profile-support')
 
 
+@app.command('section-reviewed-delivery')
+def section_reviewed_delivery(a3_packet:Path=typer.Option(...,'--a3-packet'),approve_case:str=typer.Option(...,'--approve-case')):
+    """Compose only reviewed A3 and deliver through cached support; never call providers."""
+    from ... import profile_a3_delivery as pilot
+    try:typer.echo(json.dumps(pilot.deliver(a3_packet,approve_case),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,StopIteration) as error:raise typer.BadParameter(str(error)) from error
+
+
 @app.command('presence-a3-prepare')
 def presence_a3_prepare(parent:Path=typer.Option(...,'--parent')):
     """Prepare a separate addendum for original unexecuted A3; no provider calls."""
