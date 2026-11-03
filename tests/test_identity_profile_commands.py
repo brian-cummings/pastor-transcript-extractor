@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -25,16 +26,19 @@ class IdentityProfileCommandTests(unittest.TestCase):
             "pastor_transcript_extractor.commands.identity.profiles."
             "load_reviewed_speaker_evidence",
             return_value=evidence,
-        ), patch(
+        ) as load_evidence, patch(
             "pastor_transcript_extractor.commands.identity.profiles.get_database"
         ) as get_database:
             sync_reviewed_speaker_evidence_command(
                 evaluation_root=Path("evaluation/speaker-pairs"),
                 dry_run=True,
-                base_dir=None,
+                base_dir=Path(tempfile.gettempdir()) / "pte-review-data",
             )
 
         get_database.assert_not_called()
+        load_evidence.assert_called_once_with(
+            Path(tempfile.gettempdir()).resolve() / "pte-review-data/evaluation/speaker-pairs"
+        )
 
     def test_export_profile_renders_canonical_redirect(self) -> None:
         result = SimpleNamespace(

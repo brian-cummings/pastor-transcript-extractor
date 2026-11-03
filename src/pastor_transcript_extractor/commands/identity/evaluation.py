@@ -7,6 +7,7 @@ from typing import Sequence
 import typer
 from rich.console import Console
 
+from pastor_transcript_extractor.evaluation_storage import runtime_option
 from pastor_transcript_extractor.commands.apps import identity_app
 from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.media_artifacts import resolve_normalized_audio_path
@@ -187,6 +188,9 @@ def evaluate_observation_consistency(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    evaluation_root = runtime_option(
+        evaluation_root, paths=build_paths(base_dir), relative="speaker-pairs",
+    )
     paths = build_paths(base_dir)
     model_path = model_path or (
         paths.evaluation
@@ -294,6 +298,9 @@ def run_speaker_model_bakeoff(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    fixture_dir = runtime_option(
+        fixture_dir, paths=build_paths(base_dir), relative="speaker-pairs/fixtures",
+    )
     paths = build_paths(base_dir)
     result_root = result_root or paths.evaluation / "speaker-pairs/runs/by-model"
     cache_dir = cache_dir or paths.evaluation / "speaker-pairs/cache"
@@ -489,6 +496,9 @@ def evaluate_speaker_policy_candidate(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    fixture_dir = runtime_option(
+        fixture_dir, paths=build_paths(base_dir), relative="speaker-pairs/fixtures",
+    )
     paths = build_paths(base_dir)
     result_root = result_root or paths.evaluation / "speaker-pairs/runs/by-model"
     report_path = report_path or (
@@ -615,7 +625,11 @@ def _validate_bakeoff_preprocessing(
 )
 def validate_pair_fixtures(
     fixture_dir: Path = typer.Argument(Path("evaluation/speaker-pairs/fixtures")),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    fixture_dir = runtime_option(
+        fixture_dir, paths=build_paths(base_dir), relative="speaker-pairs/fixtures",
+    )
     root = fixture_dir.expanduser().resolve()
     paths = sorted(root.glob("*.json"))
     if not paths:
@@ -648,7 +662,11 @@ def audit_speaker_review_selection(
         Path("evaluation/speaker-pairs"),
         help="Speaker-pair drafts and review events root.",
     ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    evaluation_root = runtime_option(
+        evaluation_root, paths=build_paths(base_dir), relative="speaker-pairs",
+    )
     try:
         audit = audit_review_selection_artifacts(evaluation_root)
     except (OSError, ValueError, json.JSONDecodeError) as error:
@@ -679,6 +697,9 @@ def evaluate_pair_results(
     output_path: Path | None = typer.Option(None),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    fixture_dir = runtime_option(
+        fixture_dir, paths=build_paths(base_dir), relative="speaker-pairs/fixtures",
+    )
     paths = build_paths(base_dir)
     result_dir = result_dir or paths.evaluation / "speaker-pairs/runs"
     output_path = output_path or paths.evaluation / "speaker-pairs/reports/latest.json"

@@ -12,7 +12,7 @@ Repository-owned inputs remain in Git:
 
 - `fixtures/`, `baselines/`, `experiments/`, and `source-families.json`
 - reviewed scripture, alignment, and sermon-style evidence
-- speaker-pair policies, fixtures, reviews, observation reviews, and revocations
+- speaker-pair policies and the model bake-off manifest
 - speaker-association policies and source-family definitions
 - design/contract documentation and decisions outside the private evidence rules
 
@@ -32,6 +32,9 @@ resolution and migration planning, preventing a whole-tree move.
 
 In addition, `PRIVATE_EVIDENCE_PATTERNS` in `evaluation_storage.py` explicitly selects:
 
+- speaker-pair `reviews/`, approved corpus `fixtures/`, `observation-reviews/`, and
+  `revocations/`, including files created before the storage migration
+
 - sermon-topic generated JSON and Markdown (the authored `behavior-contract-v1.json` stays)
 - G1/G2/G3 feasibility results and versioned response caches
 - readiness execution artifacts, ledgers, receipts and source audits
@@ -47,7 +50,7 @@ in `.gitignore`; a focused test checks that the ignore list stays aligned. They
 include all nine unique files in the large-artifact review. This is an explicit
 storage policy, not a rule that every JSON file or reviewed artifact is disposable.
 Synthetic probes, schemas, authored question contracts, ordinary design documents
-and reviewed speaker regression inputs are retained.
+and synthetic speaker regression inputs under `tests/` are retained.
 
 Private `evaluation/...` files retain their relative path beneath `<base-dir>/evaluation/`.
 Private `docs/...` packets move beneath `<base-dir>/evaluation/review-packets/docs/...`,
@@ -92,6 +95,16 @@ Review CLI boundaries route recognized output defaults directly into the selecte
 base directory, even before migration. Recognized inputs prefer migrated evidence and
 can read unmigrated packets; explicit custom paths remain explicit overrides. Commands
 that previously lacked a base-directory option now expose `--base-dir` where needed.
+
+Speaker review commands, evidence synchronization, readiness, assignment
+reconciliation and fixture evaluation use `<base-dir>/evaluation/speaker-pairs/`
+by default. Explicit custom roots remain overrides. This reunites approvals left
+in the checkout with drafts already migrated into application data. Re-run the
+existing migration with `--apply --verify --untrack` to move and untrack these
+newly included categories. Reviews and revocations keep their original bytes,
+IDs and fingerprints; no listening or reapproval is required for that recovery.
+Conflicting destination bytes stop the migration rather than replacing either
+copy. Back up the application-data directory, including these review artifacts.
 
 Compatibility links preserve file access, not every historical execution assumption.
 Some frozen verifiers resolve paths and require them to remain physically inside the

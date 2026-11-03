@@ -7,6 +7,7 @@ from typing import Callable
 import typer
 from rich.console import Console
 
+from pastor_transcript_extractor.evaluation_storage import runtime_option
 from pastor_transcript_extractor.commands.apps import identity_app
 from pastor_transcript_extractor.commands.identity.review import review_speaker_pair
 from pastor_transcript_extractor.config import build_paths, evaluation_root_for
@@ -147,6 +148,9 @@ def review_next_superseded_profile_member_command(
     cache_dir: Path | None = typer.Option(None),
     base_dir: Path | None = typer.Option(None),
 ) -> None:
+    evaluation_root = runtime_option(
+        evaluation_root, paths=build_paths(base_dir), relative="speaker-pairs",
+    )
     paths = build_paths(base_dir)
     cache_dir = cache_dir or evaluation_root_for(paths, base_dir) / "speaker-pairs/cache"
     if not paths.database.exists():
@@ -430,6 +434,9 @@ def coordinate_identity_command(
             "corpus discovery remains a separately scheduled batch."
         )
     paths = build_paths(base_dir)
+    evaluation_root = runtime_option(
+        evaluation_root, paths=paths, relative="speaker-pairs",
+    )
     discovery_root = discovery_root or evaluation_root_for(paths, base_dir) / "speaker-profile-discovery/shadow-runs"
     model_path = model_path or (
         evaluation_root_for(paths, base_dir)

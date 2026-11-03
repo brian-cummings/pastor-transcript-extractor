@@ -50,6 +50,10 @@ REVIEW_ARTIFACTS = (
     "evaluation/observed-profile-consumer-v1/observed-profiles.md",
     "evaluation/sermon-topics/listener-directives-review-v3.md",
     "docs/analytical-review/persisted-inputs.json",
+    "evaluation/speaker-pairs/reviews/pair-example/event.json",
+    "evaluation/speaker-pairs/fixtures/pair-example.json",
+    "evaluation/speaker-pairs/observation-reviews/event.json",
+    "evaluation/speaker-pairs/revocations/event.json",
 )
 
 
@@ -138,7 +142,7 @@ class EvaluationPathTests(unittest.TestCase):
             )
             reviewed = repo / "evaluation/speaker-pairs/reviews/review.json"
             self.assertEqual(
-                reviewed.resolve(),
+                paths.evaluation / "speaker-pairs/reviews/review.json",
                 resolve_artifact_path(reviewed, paths=paths, repo_root=repo),
             )
             self.assertEqual(
@@ -245,6 +249,51 @@ class EvaluationMigrationTests(unittest.TestCase):
             self.assertIn("restore_compatibility_link", {entry.status for entry in recovery.entries})
             self.assertEqual((), apply_migration(recovery).failures)
             self.assertTrue(removed_link.is_symlink())
+
+    def test_migration_reunites_split_review_and_draft_without_new_judgment(self):
+        from pastor_transcript_extractor.reviewed_speaker_evidence import load_reviewed_speaker_evidence
+        with tempfile.TemporaryDirectory() as temporary:
+            _, repo, app = self._roots(temporary)
+            target = app / "evaluation/speaker-pairs"
+            draft = {
+                "review_status": "draft", "pair_id": "pair-example", "draft_id": "draft-id",
+                "observations": {"a": {"input_fingerprint": "old-a"},
+                                 "b": {"input_fingerprint": "old-b"}},
+                "presentation": {"A": {"source_key": "a"}, "B": {"source_key": "b"}},
+            }
+            review = {
+                "event_kind": "speaker_pair_human_review", "pair_id": "pair-example",
+                "draft_id": "draft-id", "review_event_id": "event-id", "reviewer": "Brian",
+                "approval_confirmed": True, "identity_evidence_eligible": True,
+                "pair_judgment": "same_speaker",
+                "qualification": {"A": "qualified_single_speaker", "B": "qualified_single_speaker"},
+            }
+            (target / "drafts").mkdir(parents=True)
+            (target / "drafts/pair-example.json").write_text(json.dumps(draft))
+            source = repo / "evaluation/speaker-pairs/reviews/pair-example/event.json"
+            source.parent.mkdir(parents=True)
+            original = json.dumps(review).encode()
+            source.write_bytes(original)
+            self.assertEqual(0, load_reviewed_speaker_evidence(target).review_event_count)
+            plan = plan_migration(repo_root=repo, evaluation_root=app / "evaluation")
+            self.assertEqual((), plan.conflicts)
+            result = apply_migration(plan, verify=True)
+            self.assertEqual((), result.failures)
+            evidence = load_reviewed_speaker_evidence(target)
+            self.assertEqual(1, evidence.review_event_count)
+            relation = evidence.pair_relations[frozenset(("old-a", "old-b"))]
+            self.assertEqual("same_speaker", relation.outcome)
+            self.assertEqual(original, source.read_bytes())
+            self.assertEqual(0, plan_migration(repo_root=repo, evaluation_root=app / "evaluation").planned_files)
+            # Moving revocations is essential: a revoked approval must stay revoked.
+            revocation = repo / "evaluation/speaker-pairs/revocations/revoke.json"
+            revocation.parent.mkdir(parents=True)
+            revocation.write_text(json.dumps({
+                "event_kind": "speaker_review_provenance_revocation",
+                "revoked_review_event_ids": ["event-id"],
+            }))
+            apply_migration(plan_migration(repo_root=repo, evaluation_root=app / "evaluation"))
+            self.assertEqual(0, load_reviewed_speaker_evidence(target).review_event_count)
 
     def test_changed_source_and_changed_identical_destination_are_not_removed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

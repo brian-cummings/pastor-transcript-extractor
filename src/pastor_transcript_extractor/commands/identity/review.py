@@ -13,6 +13,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from pastor_transcript_extractor.config import build_paths
+from pastor_transcript_extractor.evaluation_storage import runtime_option
 from pastor_transcript_extractor.commands.apps import identity_app
 from pastor_transcript_extractor.config import AppPaths, build_paths
 from pastor_transcript_extractor.ground_truth_review import format_timestamp
@@ -121,6 +123,9 @@ def review_observation(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    evaluation_root = runtime_option(
+        evaluation_root, paths=build_paths(base_dir), relative="speaker-pairs",
+    )
     selection_count = sum(
         (youtube_video_id is not None, observation_fingerprint is not None, all_affected)
     )
@@ -277,6 +282,9 @@ def review_speaker_pair(
         None, help="Pin observation B to this exact immutable fingerprint; requires A."
     ),
 ) -> ReviewSubmission | None:
+    evaluation_root = runtime_option(
+        evaluation_root, paths=build_paths(base_dir), relative="speaker-pairs",
+    )
     paths = build_paths(base_dir)
     cache_dir = cache_dir or paths.evaluation / "speaker-pairs/cache"
     if not paths.database.exists():
@@ -572,6 +580,9 @@ def audit_speaker_negative_windows_command(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    evaluation_root = runtime_option(
+        evaluation_root, paths=build_paths(base_dir), relative="speaker-pairs",
+    )
     paths = build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
@@ -643,6 +654,9 @@ def review_next_speaker_negative_window(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    evaluation_root = runtime_option(
+        evaluation_root, paths=build_paths(base_dir), relative="speaker-pairs",
+    )
     paths = build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")

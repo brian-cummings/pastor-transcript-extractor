@@ -75,3 +75,9 @@ evaluation/evidence-supply-readiness-v2/receipts/
 /docs/review-proposals/g2-g3-v1/CASES.md
 /docs/analytical-review/*.json
 !/evaluation/sermon-topics/behavior-contract-v1.json
+
+# Personal speaker judgments and their provenance are application data.
+/evaluation/speaker-pairs/reviews/**
+/evaluation/speaker-pairs/fixtures/**
+/evaluation/speaker-pairs/observation-reviews/**
+/evaluation/speaker-pairs/revocations/**

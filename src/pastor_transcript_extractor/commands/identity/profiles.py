@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
+from pastor_transcript_extractor.evaluation_storage import runtime_option
 from pastor_transcript_extractor.commands.apps import identity_app
 from pastor_transcript_extractor.commands.common import get_database
 from pastor_transcript_extractor.config import build_paths
@@ -369,6 +370,9 @@ def sync_reviewed_speaker_evidence_command(
         None, help="Override app data directory."
     ),
 ) -> None:
+    evaluation_root = runtime_option(
+        evaluation_root, paths=build_paths(base_dir), relative="speaker-pairs",
+    )
     try:
         evidence = load_reviewed_speaker_evidence(
             evaluation_root.expanduser().resolve()
@@ -437,6 +441,9 @@ def profile_status_command(
         None, help="Override app data directory."
     ),
 ) -> None:
+    evaluation_root = runtime_option(
+        evaluation_root, paths=build_paths(base_dir), relative="speaker-pairs",
+    )
     paths = build_paths(base_dir)
     discovery_root = discovery_root or (
         paths.evaluation / "speaker-profile-discovery/shadow-runs"

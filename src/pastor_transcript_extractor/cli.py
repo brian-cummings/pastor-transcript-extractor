@@ -1051,6 +1051,9 @@ def consolidate_source_profiles_command(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> Path | None:
+    evaluation_root = runtime_option(
+        evaluation_root, paths=config.build_paths(base_dir), relative="speaker-pairs",
+    )
     selection_count = (
         int(source_id is not None) + int(list_sources) + int(all_eligible)
     )
@@ -1865,6 +1868,9 @@ def shadow_discover_profiles_command(
         help="Override app data directory.",
     ),
 ) -> Path | None:
+    evaluation_root = runtime_option(
+        evaluation_root, paths=config.build_paths(base_dir), relative="speaker-pairs",
+    )
     if include_deferred:
         raise typer.BadParameter(
             "--include-deferred is no longer supported; use the guarded "
@@ -3094,7 +3100,7 @@ def _repair_exemplars_and_retry_association(
                 "evaluation/speaker-pairs/policies/"
                 "campplus-development-candidate-v1.json"
             ),
-            evaluation_root=Path("evaluation/speaker-pairs"),
+            evaluation_root=runtime_evaluation_root / "speaker-pairs",
             cache_dir=runtime_evaluation_root / "speaker-pairs/cache",
             output_root=(
                 runtime_evaluation_root / "speaker-associations/shadow-runs"
@@ -3339,7 +3345,7 @@ def run_identity_workflow_service(
         )
 
     identity_stage_cache_root = paths.logs / "identity-stage-cache"
-    speaker_evaluation_root = Path("evaluation/speaker-pairs").resolve()
+    speaker_evaluation_root = runtime_evaluation_root / "speaker-pairs"
     association_policy_path = Path(
         "evaluation/speaker-pairs/policies/"
         "campplus-development-candidate-v1.json"
@@ -3538,7 +3544,7 @@ def run_identity_workflow_service(
         verification_cache=machine_cache,
         excluded_observation_fingerprints=(
             _held_out_speaker_fixture_fingerprints(
-                Path("evaluation/speaker-pairs/fixtures").resolve()
+                runtime_evaluation_root / "speaker-pairs/fixtures"
             )
         ),
         database_video_id=database_video_id,
@@ -4331,6 +4337,9 @@ def _replay_profile_association_neighborhood(
     base_dir: Path | None,
 ) -> tuple[Path, ...]:
     """Run the existing bounded association workflow after identity review."""
+    evaluation_root = runtime_option(
+        evaluation_root, paths=config.build_paths(base_dir), relative="speaker-pairs",
+    )
     requested_profile_ids = sorted(set(profile_ids))
     if not requested_profile_ids:
         raise ValueError("profile neighborhood replay requires a profile id")
@@ -5537,7 +5546,7 @@ def prepare_actionable_review_audio_command(
             "Actionable review preprocessing: assessing profile readiness."
         )
         reviewed_evidence = load_reviewed_speaker_evidence(
-            Path("evaluation/speaker-pairs").resolve()
+            paths.evaluation / "speaker-pairs"
         )
         automatic_profile_ready_ids = frozenset(
             item.profile_id
@@ -5654,6 +5663,9 @@ def review_next_speaker_pair(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    evaluation_root = runtime_option(
+        evaluation_root, paths=config.build_paths(base_dir), relative="speaker-pairs",
+    )
     paths = config.build_paths(base_dir)
     cache_dir = runtime_option(
         cache_dir,

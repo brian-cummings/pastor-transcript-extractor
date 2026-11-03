@@ -36,6 +36,10 @@ GENERATED_EVALUATION_PREFIXES: tuple[PurePosixPath, ...] = tuple(
 # Keep contracts, policies and decisions separate from their full evidence.
 # Patterns are repository-relative and also generate the ignore-policy section.
 PRIVATE_EVIDENCE_PATTERNS: tuple[str, ...] = (
+    "evaluation/speaker-pairs/reviews/**",
+    "evaluation/speaker-pairs/fixtures/**",
+    "evaluation/speaker-pairs/observation-reviews/**",
+    "evaluation/speaker-pairs/revocations/**",
     "evaluation/sermon-topics/*.json",
     "evaluation/sermon-topics/*.md",
     "evaluation/sermon-topics/source-material-probe-cache/**",

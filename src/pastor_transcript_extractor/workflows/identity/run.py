@@ -5,7 +5,8 @@ import json
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from pastor_transcript_extractor.config import AppPaths, build_llm_config
+from pastor_transcript_extractor.config import AppPaths, build_llm_config, build_paths
+from pastor_transcript_extractor.evaluation_storage import runtime_option
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
     ReviewedEvidenceSyncResult,
     ReviewedSpeakerEvidence,
@@ -240,6 +241,10 @@ def synchronize_reviewed_evidence_stage(
 ) -> ReviewedEvidenceStageResult:
     """Load reviewed evidence and apply it only for an executing run."""
     try:
+        evaluation_root = runtime_option(
+            evaluation_root, paths=build_paths(database_path.parent),
+            relative="speaker-pairs",
+        )
         evidence = load_reviewed_speaker_evidence(evaluation_root.resolve())
         sync_result = None
         if not plan_only:

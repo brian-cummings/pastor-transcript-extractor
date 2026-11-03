@@ -10,7 +10,7 @@ from pastor_transcript_extractor.commands.apps import identity_app
 from pastor_transcript_extractor.commands.identity.common import (
     held_out_speaker_fixture_fingerprints,
 )
-from pastor_transcript_extractor.config import build_paths
+from pastor_transcript_extractor.config import build_paths, evaluation_root_for
 from pastor_transcript_extractor.media_artifacts import MediaVerificationCache
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
     load_reviewed_speaker_evidence,
@@ -51,7 +51,8 @@ def reconcile_current_proposals_command(
     base_dir: Path | None = typer.Option(None),
 ) -> None:
     paths = build_paths(base_dir)
-    association_root = association_root or paths.evaluation / "speaker-associations/shadow-runs"
+    evaluation = evaluation_root_for(paths, base_dir)
+    association_root = association_root or evaluation / "speaker-associations/shadow-runs"
     database = Database(paths.database, readonly=dry_run)
     reports = latest_association_reports(association_root)
     current_results: dict[int, str] = {}
@@ -66,10 +67,10 @@ def reconcile_current_proposals_command(
         except (OSError, UnicodeError, json.JSONDecodeError):
             continue
     verification_cache = MediaVerificationCache(
-        paths.evaluation / "speaker-pairs/cache/media-verification"
+        evaluation / "speaker-pairs/cache/media-verification"
     )
     evidence = load_reviewed_speaker_evidence(
-        Path("evaluation/speaker-pairs").resolve()
+        evaluation / "speaker-pairs"
     )
     readiness = assess_profile_association_readiness(database, evidence)
     policy = load_machine_assignment_policy(machine_assignment_policy)
@@ -80,7 +81,7 @@ def reconcile_current_proposals_command(
         policy=policy,
         verification_cache=verification_cache,
         excluded_observation_fingerprints=held_out_speaker_fixture_fingerprints(
-            Path("evaluation/speaker-pairs/fixtures").resolve()
+            evaluation / "speaker-pairs/fixtures"
         ),
     )
     stale_evidence_count = sum(
@@ -123,7 +124,7 @@ def reconcile_current_proposals_command(
         verification_cache=verification_cache,
         excluded_observation_fingerprints=(
             held_out_speaker_fixture_fingerprints(
-                Path("evaluation/speaker-pairs/fixtures").resolve()
+                evaluation / "speaker-pairs/fixtures"
             )
         ),
     )

@@ -69,7 +69,7 @@ def run_coordination_stage(
             "evaluation/speaker-pairs/policies/"
             "campplus-development-candidate-v1.json"
         ),
-        evaluation_root=Path("evaluation/speaker-pairs"),
+        evaluation_root=paths.evaluation / "speaker-pairs",
         cache_dir=paths.evaluation / "speaker-pairs/cache",
         association_root=paths.evaluation / "speaker-associations/shadow-runs",
         output_root=None,

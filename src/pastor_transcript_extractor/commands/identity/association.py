@@ -5,6 +5,7 @@ from typing import Callable
 
 import typer
 
+from pastor_transcript_extractor.evaluation_storage import runtime_option
 from pastor_transcript_extractor.commands.apps import identity_app
 from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.workflows.identity.association import (
@@ -134,6 +135,9 @@ def shadow_associate_speakers_command(
         None, help="Override app data directory."
     ),
 ) -> tuple[Path, ...]:
+    evaluation_root = runtime_option(
+        evaluation_root, paths=build_paths(base_dir), relative="speaker-pairs",
+    )
     if _shadow_association_invoker is None:
         raise RuntimeError("Shadow association workflow was not configured.")
     paths = build_paths(base_dir)
