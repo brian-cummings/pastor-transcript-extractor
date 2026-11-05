@@ -10,6 +10,30 @@ app=typer.Typer(help='Prepare and run evidence-linked profile analysis support b
 analysis_app.add_typer(app,name='profile-support')
 
 
+@app.command('section-admission-prepare')
+def section_admission_prepare(base_dir:Path=typer.Option(...,'--base-dir'),objective:Path=typer.Option(...,'--objective'),audit:Path=typer.Option(...,'--audit')):
+    """Freeze reader-claim admission, additional validation and one cumulative ledger offline."""
+    from ... import reader_claim_admission as admission
+    try:typer.echo(json.dumps(admission.prepare(base_dir,objective,audit),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,StopIteration) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('section-admission-run')
+def section_admission_run(plan:Path=typer.Option(...,'--plan'),batch:str=typer.Option(...,'--batch'),check_only:bool=typer.Option(False,'--check-only')):
+    """Run exactly one frozen reader-claim batch, preserving final reserves and hard stops."""
+    from ... import reader_claim_admission as admission
+    try:typer.echo(json.dumps(admission.run(plan,batch,check_only=check_only),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,StopIteration,HTTPError) as error:raise typer.BadParameter(str(error)) from error
+
+
+@app.command('section-admission-report')
+def section_admission_report(plan:Path=typer.Option(...,'--plan')):
+    """Replay saved admission judgments and cumulative accounting without provider calls."""
+    from ... import reader_claim_admission as admission
+    try:typer.echo(json.dumps(admission.report(plan),indent=2))
+    except (ValueError,OSError,KeyError,TypeError,StopIteration) as error:raise typer.BadParameter(str(error)) from error
+
+
 @app.command('section-reviewed-delivery')
 def section_reviewed_delivery(approve_case:str=typer.Option(...,'--approve-case'),a3_packet:Path|None=typer.Option(None,'--a3-packet'),approve_support:str|None=typer.Option(None,'--approve-support'),case_packet:Path|None=typer.Option(None,'--case-packet'),approve_packet:str|None=typer.Option(None,'--approve-packet'),check_only:bool=typer.Option(False,'--check-only')):
     """Deliver explicitly approved A3 or frozen B1; no general admission or corrections."""
