@@ -1,5 +1,52 @@
 # Current agent handoff
 
+**2026-11-04 — reader-claim admission v1 stopped; product goal remains unmet.**
+The new objective attachment authorized a versioned method replacement and fresh
+$3/30-attempt allowance. [Method and frozen acceptance](READER_CLAIM_ADMISSION.md)
+explain the protection supplied by each retained/replaced check. Initial revision
+reuses exact historical correctness and replaces generic presence with a
+source-grounded human action/actor/speech-role relation, both at .90.
+
+- A3 and B1 action grounding each returned .95, paired with reused correctness .91
+  and .90. No authored replacement descriptions or new correctness answers.
+- Worldly-yielding action grounding returned .82, failing its frozen positive
+  expectation; original .82 correctness remains withheld. Raw/normalized answers,
+  source/candidate state, item path and exact request reconstruct. No demonstrated
+  extraction, context, transport or decision defect explains the failure.
+- Paid execution stopped immediately. Background and three authored negative
+  controls, final validation, ordinary assembly/support and new document delivery
+  were not executed. Do not call the two upstream passes product success.
+- Additional v281b89–91 and v3973b63–65 coordinates/artifact hashes were frozen before
+  the first paid call, with historical exposure disclosed. No new validation
+  judgments were generated/opened and no implementation lock was issued.
+- A3's historical delivered result remains intact: 23 preserved JSON/Markdown
+  artifact hashes verified. Twenty focused tests passed; separate source review
+  and acceptance audit are saved. No helpers or semantic retries; one revision.
+- New usage: **3 physical paid attempts / $0.000703752 known list-price usage**;
+  $0.008257536 full conservative reservations retained, zero missing usage, invoice
+  unknown. Unused $2.991742464/27 attempts is not authority to continue after stop.
+- Canonical application-base packet:
+  `evaluation/reader-claim-admission-v1/plan.json`; one durable `ledger.json`.
+  `ACCEPTANCE.md` and `.json` contain failed criteria, source links, receipt traces,
+  source review and recommendation. `REPORT.md`/`.json` replay mechanical results.
+- Next proposal: one provider-free independent review of the prepared failed
+  worldly-yielding source/question/answer, solely to identify a demonstrated
+  contract defect with falsifiable repair or confirm method rejection. No new
+  provider variant, candidate selection, threshold/model change or release.
+
+Provider-free inspection:
+
+```bash
+pte analysis profile-support section-admission-report --plan /Users/briancummings/Documents/PastorSearchData/evaluation/reader-claim-admission-v1/plan.json
+```
+
+Implementation commits: `f14120b`, `b298b5a`. Aggregate assistant usage became
+unavailable at final verification; exact cross-goal accounting is not claimed.
+Verification and handoff followed the hard stop. The older run below remains
+historical evidence; its unused allowance is not combined with this one.
+
+---
+
 **2026-11-01 — response-and-conditions bounded run failed acceptance.** Read [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md), [implementation plan](PASTOR_PROFILE_IMPLEMENTATION_PLAN.md), [status](PROFILE_STATUS.json) and AGENTS.md.
 
 Brian wants useful automatic source-grounded analysis plus eventual dimensional comparisons. The current goal is **not achieved**. Preserve historical V8/P1 examples and the older six-clause discussion section; neither establishes general automatic analysis.
