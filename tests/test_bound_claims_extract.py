@@ -33,12 +33,12 @@ class ExtractionTests(unittest.TestCase):
         return json.dumps(dict(claims=[claim(anchor), claim('Vote for the levy.', area='public_life', polarity='prescribe',
                                                           anchor_offsets=dict(start=0, end=3))]))
 
-    def test_producers_differ_only_by_model_and_reasoning(self):
+    def test_producers_differ_only_by_model_and_both_run_without_reasoning(self):
         b = block(0)
         pro, flash = (extract.build_request(b, 'x', name) for name in ('pro', 'flash'))
         pro_body, flash_body = pro.body, flash.body
-        self.assertEqual({'model', 'reasoning_effort'}, {k for k in pro_body if pro_body[k] != flash_body[k]})
-        self.assertEqual(('deepseek-ai/DeepSeek-V4-Pro-0813', 'medium'), (pro_body['model'], pro_body['reasoning_effort']))
+        self.assertEqual({'model'}, {k for k in pro_body if pro_body[k] != flash_body[k]})
+        self.assertEqual(('deepseek-ai/DeepSeek-V4-Pro-0813', 'none'), (pro_body['model'], pro_body['reasoning_effort']))
         self.assertEqual(('deepseek-ai/DeepSeek-V4.1-Flash-1017', 'none'), (flash_body['model'], flash_body['reasoning_effort']))
         for spec in (pro, flash):
             account = spec.preflight()

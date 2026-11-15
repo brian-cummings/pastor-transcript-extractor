@@ -1,7 +1,7 @@
 """Step D: one bound-claim request per stratified block for one producer.
 
-Both producers share one prompt, schema and caps; only the model and reasoning
-setting differ (policies in `deepinfra_requests`). Each block has its own receipt
+Both producers share one prompt, schema and caps; only the model differs; reasoning
+is off for both (policies in `deepinfra_requests`). Each block has its own receipt
 store, so the shared one-request executor, streaming whitespace guard and receipts
 are reused unchanged. A failed block is recorded, never semantically retried.
 """
