@@ -103,3 +103,13 @@ def review_claims(pilot: Path = typer.Option(..., '--pilot', help='Pilot directo
         _echo(reviewing.replay(pilot.resolve(), decisions) if decisions else reviewing.interactive(pilot.resolve(), input, typer.echo))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@app.command('report')
+def report_pilot(pilot: Path = typer.Option(..., '--pilot', help='Pilot directory.')):
+    """Write REPORT.md/.json: producer precision, Jev threshold curves, controls and the acceptance table."""
+    from ...bound_claims import report as reporting
+    try:
+        _echo(reporting.run(pilot.resolve()))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
