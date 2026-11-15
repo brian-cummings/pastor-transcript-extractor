@@ -59,9 +59,9 @@ class SchemaTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 contract.validate_claims(bad)
 
-    def test_too_many_claims_are_rejected(self):
-        with self.assertRaises(ValueError):
-            contract.validate_claims({'claims': [claim()] * (contract.MAXIMUM_CLAIMS_PER_BLOCK + 1)})
+    def test_dense_blocks_are_not_rejected_for_claim_count(self):
+        # V4 Pro without reasoning wrote 9 to 18 claims on dense blocks; the spec sets no per-block limit.
+        self.assertEqual(18, len(contract.validate_claims({'claims': [claim()] * 18})))
 
     def test_fingerprint_ignores_offsets_but_not_meaning(self):
         base = contract.claim_fingerprint(1, 2, claim())

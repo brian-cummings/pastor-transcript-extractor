@@ -17,7 +17,6 @@ FIELDS = ('area', 'object', 'proposition', 'polarity', 'voiced_by', 'preacher_ad
           'speech_role', 'conditions', 'qualifications', 'reasons', 'anchor_text', 'anchor_offsets')
 # Review rejection categories, shared by the review queue and the report.
 REJECTION_FIELDS = ('proposition', 'polarity', 'voice', 'adoption', 'conditions', 'qualifications', 'anchor')
-MAXIMUM_CLAIMS_PER_BLOCK = 8
 
 SYSTEM_PROMPT = (
     'You extract bound claims from one block of a sermon transcript. A bound claim is a proposition, '
@@ -94,8 +93,6 @@ def validate_claims(payload: Any) -> list[dict[str, Any]]:
     """Strict schema check; any violation rejects the block's output (no repair)."""
     if not isinstance(payload, Mapping) or set(payload) != {'claims'} or not isinstance(payload['claims'], list):
         raise SchemaError('Output must be an object with exactly one `claims` list')
-    if len(payload['claims']) > MAXIMUM_CLAIMS_PER_BLOCK:
-        raise SchemaError(f'More than {MAXIMUM_CLAIMS_PER_BLOCK} claims in one block')
     return [_validate_claim(claim) for claim in payload['claims']]
 
 
