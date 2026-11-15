@@ -165,11 +165,11 @@
   },
   "documentation_policy": "Current plans and relevant operating contracts only; obsolete planning snapshots and archive registries belong in Git.",
   "active_document_hashes": {
-    "AGENTS.md": "24541e03fc0aff2cfb4e0961a81f180e9c4280c8fd819a249434f9fb9dd41a9c",
+    "AGENTS.md": "c349ef5a626bd7a73a009af016413916640c9b21320bf8e17ccbe8c4104e1a45",
     "README.md": "5ed360e97b5a72329d8e528f642f9de2c113a366fada73cba1c12526ae4219bb",
     "docs/PASTOR_PROFILE_PRODUCT_PLAN.md": "b98904e488c21edb3ae573c14d6db2ef0a07aff326ce2b7a8e1149e3ca9f3ea0",
     "docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md": "97eecac82ae91628e98142edde459d2e527b0939d819bf241e6e23e2d4152d12",
-    "docs/HANDOFF.md": "b56f4922d4642298a2c8e1649c059452a9cde16a44f11bb58650576fd324dbf5",
+    "docs/HANDOFF.md": "b4ba0d9d3521272cee28bbf7b6da6b822d2ef9e7c71c3ac8d47b8265073079c4",
     "docs/review-proposals/README.md": "b2b35308d45e17f2f22a6570ec6fed01b6efe6a4f3f2e3bda3ceb5de81eac6c2",
     "docs/PROFILE_SECTION_DELIVERY.md": "65f96baaa8d403eeace9af80bad54cf25dfd2f483307acbaba09419fe1da985b",
     "docs/PROFILE_ANALYSIS_SUPPORT.md": "3d5021a4f000bf55a87221d6557f1750d8f02a4a676a0195f87a3265382c3903",
@@ -236,5 +236,5 @@
     "next_step": "Prepared_offline_saved_verifier_contract_state_case_audit_no_new_inference",
     "further_automatic_provider_execution": false
   },
-  "content_fingerprint": "9fcbff94a531914e29f47ff22c6c27ad9c309d0fea29c563449478537663c072"
+  "content_fingerprint": "52126320679af6008778f07df597db563dcb5087abb155cf002aa4a9b10fe975"
 }
