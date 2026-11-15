@@ -81,3 +81,25 @@ def verify_claims(extraction: list[Path] = typer.Option(..., '--extraction', hel
         _echo(verification.run(paths, _ledger(paths[0].parents[2]), check_only=check_only))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@app.command('review-queue')
+def review_queue(pilot: Path = typer.Option(..., '--pilot', help='Pilot directory (<base>/evaluation/bound-claim-pilot-v1).'),
+                 output: Path | None = typer.Option(None, '--output', help='Defaults to <pilot>/review.json.')):
+    """Build the blind, shuffled review queue from both producers' claims; no provider call."""
+    from ...bound_claims import review as reviewing
+    try:
+        _echo(reviewing.write_queue(pilot.resolve(), output))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('review')
+def review_claims(pilot: Path = typer.Option(..., '--pilot', help='Pilot directory.'),
+                  decisions: Path | None = typer.Option(None, '--decisions', help='Replay saved decisions instead of the interactive loop.')):
+    """Accept or reject each queued claim; decisions append to decisions.jsonl and the command resumes."""
+    from ...bound_claims import review as reviewing
+    try:
+        _echo(reviewing.replay(pilot.resolve(), decisions) if decisions else reviewing.interactive(pilot.resolve(), input, typer.echo))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
