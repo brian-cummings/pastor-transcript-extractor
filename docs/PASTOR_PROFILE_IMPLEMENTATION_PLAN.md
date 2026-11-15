@@ -2,6 +2,10 @@
 
 **Current authority: 2026-11-01.** Engineering companion to the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md). Start with the [handoff](HANDOFF.md) and [status index](review-proposals/README.md). The active bounded goal is one faithful response-and-conditions dimension through the existing analysis workflow. The objective attachment of November 1 supersedes the earlier documentation-only execution boundary; broader benchmark comparison remains a later phase.
 
+## Active sequence (approved 2026-11-15)
+
+Brian approved the [bound-claim pilot](BOUND_CLAIM_PILOT.md) and its five decisions: calibrated per-field gates replace the fixed .90; one $5.00/600-attempt ceiling for the whole pilot instead of per-batch approval; DeepSeek V4 Pro (reasoning on) as producer with a Flash control; machine-proposed, human-accepted labels; Jev pinned at 1.13.0. The pilot is the only authorized paid work. It supersedes the prepared offline verifier-state audit below as the next action, without reopening or re-running any historical experiment. Its acceptance criteria, stop rules and artifact layout are fixed in that document; the response-and-conditions and reader-claim admission results remain historical evidence. Phases 1–4 below remain the roadmap after the pilot passes.
+
 ## Current baseline and acceptance correction
 
 The historical D1–D4 goal and P1 portability case are closed implementation milestones. The later automatic-section goal was also marked complete in the goal tool. **That closure overstated product acceptance:** the bounded handoff works, but useful automatic analysis is only partially met. Do not reopen a closed source experiment or infer general validation from its status string.
@@ -103,4 +107,4 @@ The exact saved plan is historical and can report compatibility limits after sou
 
 ## Operating boundaries
 
-Keep one current product plan, implementation plan, handoff and status file. Remove obsolete planning documents; Git retains their history. Keep relevant evidence/receipts needed to assess present claims. Only the frozen response-and-conditions checks above are authorized by the active objective. No automatic provider/model variant, new recordings, broad corpus jobs, production admission, quarantine change, quotation execution or calibrated overall score. Benchmark comparison is a product objective, not a validated capability.
+Keep one current product plan, implementation plan, handoff and status file. Remove obsolete planning documents; Git retains their history. Keep relevant evidence/receipts needed to assess present claims. The [bound-claim pilot](BOUND_CLAIM_PILOT.md) is the only authorized paid work; the frozen response-and-conditions checks are closed history. No automatic provider/model variant, new recordings, broad corpus jobs, production admission, quarantine change, quotation execution or calibrated overall score. Benchmark comparison is a product objective, not a validated capability.

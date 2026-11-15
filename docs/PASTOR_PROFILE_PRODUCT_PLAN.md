@@ -66,6 +66,8 @@ Lead with a readable assessment and at-a-glance dimensions, then eligible benchm
 
 ## Scope and authority
 
+**2026-11-15:** Brian approved the [bound-claim pilot](BOUND_CLAIM_PILOT.md) as the active sequence. It tests the extraction mechanism (DeepSeek V4 Pro producer, Jev verifier, calibrated gates) on ten sermons under a $5 ceiling with five fixed acceptance criteria. The November 1 objective below is closed history.
+
 The active November 1 objective is one faithful response-and-conditions dimension through the existing workflow: six exposed development windows and at most four independently coordinate-selected additional existing windows for profile 318. Confirmation coordinates are frozen before producer revision and retain exposure disclosure. Require useful specific findings, attached qualifications, unchanged confirmation evaluation and a traceable sample record. No broad benchmark comparison is claimed.
 
 This objective provides a fresh $5 external-provider ceiling, superseding unused earlier credit. Historical budgets and receipts remain unchanged. Reserve at most $0.50 per batch including bounded recovery; unresolved usage retains its full reservation. At most three documented semantic revisions may address demonstrated development failures. Freeze implementation before confirmation results; do not tune against confirmation.

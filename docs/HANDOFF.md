@@ -1,5 +1,14 @@
 # Current agent handoff
 
+**2026-11-15 — bound-claim pilot approved; implement it next.**
+Read [BOUND_CLAIM_PILOT.md](BOUND_CLAIM_PILOT.md) in full. Implement §9 in the
+order of §5 with the tests in §10, committing per step. Do not run any paid
+command; hand Brian the exact commands from §11. The product plan now states the
+full analytical scope, including public life and political views. The prior
+entries below are historical evidence, not next actions.
+
+---
+
 **2026-11-04 — reader-claim admission v1 stopped; product goal remains unmet.**
 The new objective attachment authorized a versioned method replacement and fresh
 $3/30-attempt allowance. [Method and frozen acceptance](READER_CLAIM_ADMISSION.md)
