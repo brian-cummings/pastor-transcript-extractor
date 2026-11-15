@@ -1,4 +1,3 @@
-from decimal import Decimal
 import json
 from pathlib import Path
 import tempfile
@@ -10,9 +9,9 @@ from pastor_transcript_extractor.bound_claims.common import read_json, write_jso
 from pastor_transcript_extractor.bound_claims.ledger import PilotLedger
 
 try:
-    from tests.bound_claims_support import CLEAN, DIRTY, block, claim, stream_transport
+    from tests.bound_claims_support import CLEAN, DIRTY, METADATA, block, claim, stream_transport
 except ImportError:
-    from bound_claims_support import CLEAN, DIRTY, block, claim, stream_transport
+    from bound_claims_support import CLEAN, DIRTY, METADATA, block, claim, stream_transport
 
 
 def jev(probability=0.9, tokens=2000, fail=None):
@@ -38,7 +37,7 @@ class VerificationTests(unittest.TestCase):
         write_json(path, dict(slice_sha256='s' * 64, blocks=[block(i) for i in range(len(outputs))]))
         paths = []
         for producer in producers:
-            result = extract.run(path, producer, self.ledger, transport=stream_transport({f'v1b{i}': o for i, o in enumerate(outputs)}), state=CLEAN)
+            result = extract.run(path, producer, self.ledger, transport=stream_transport({f'v1b{i}': o for i, o in enumerate(outputs)}), state=CLEAN, metadata=METADATA)
             paths.append(Path(result['output']))
         return paths
 
@@ -71,14 +70,14 @@ class VerificationTests(unittest.TestCase):
     def test_run_records_probabilities_costs_and_resumes_without_requests(self):
         paths = self.produce([self.anchor_output(0), self.anchor_output(1, speech_role='requested_of_listener')])
         send = jev(0.8)
-        result = verify.run(paths, self.ledger, transport=send, state=CLEAN)
+        result = verify.run(paths, self.ledger, transport=send, state=CLEAN, metadata=METADATA)
         self.assertEqual(dict(claims=2, attempted=2, ok=2, failed=0, lost_attempts=0), result['summary'])
         rows = read_json(Path(result['output']))['rows']
         self.assertEqual([4, 5], sorted(len(row['answers']) for row in rows))
         self.assertTrue(all(value == 0.8 for row in rows for value in row['answers'].values()))
         step = self.ledger.summary()['steps']['verify']
         self.assertEqual((2, 0, '0.000168000'), (step['attempts'], step['unresolved'], step['known_usd']))
-        again = verify.run(paths, self.ledger, transport=lambda spec: self.fail('resume re-sent'), state=CLEAN)
+        again = verify.run(paths, self.ledger, transport=lambda spec: self.fail('resume re-sent'), state=CLEAN, metadata=METADATA)
         self.assertEqual(2, again['summary']['ok'])
 
     def test_check_only_sends_nothing_and_writes_no_ledger_entry(self):
@@ -91,7 +90,7 @@ class VerificationTests(unittest.TestCase):
     def test_http_failure_keeps_the_reservation_and_is_never_retried(self):
         paths = self.produce([self.anchor_output(i) for i in range(2)])
         send = jev(fail={'v1b1'})
-        result = verify.run(paths, self.ledger, transport=send, state=CLEAN)
+        result = verify.run(paths, self.ledger, transport=send, state=CLEAN, metadata=METADATA)
         self.assertEqual(1, result['summary']['failed'])
         self.assertEqual(1, send.calls.count(next(f for f in send.calls if f)) if send.calls else 1)
         entries = self.ledger.summary()['steps']['verify']
@@ -100,7 +99,7 @@ class VerificationTests(unittest.TestCase):
 
     def test_invalid_probability_is_rejected(self):
         paths = self.produce([self.anchor_output(0)])
-        result = verify.run(paths, self.ledger, transport=jev(1.5), state=CLEAN)
+        result = verify.run(paths, self.ledger, transport=jev(1.5), state=CLEAN, metadata=METADATA)
         self.assertEqual(1, result['summary']['failed'])
 
     def test_dirty_implementation_refuses_before_dispatch(self):

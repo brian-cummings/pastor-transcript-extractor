@@ -6,7 +6,6 @@ never opens a client. Question text, versions and batching are not changed.
 """
 from __future__ import annotations
 
-from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Mapping
 

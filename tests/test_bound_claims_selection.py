@@ -228,6 +228,15 @@ class StrataTests(unittest.TestCase):
         self.assertEqual(('text 0', ''), (chosen['v1b1']['preceding_text'], chosen['v1b1']['following_text']))
         self.assertEqual('', chosen['v1b2']['preceding_text'])
 
+    def test_output_must_sit_beside_the_slice(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_json(root / 'slice.json', {'a': 1})
+            write_json(root / 'leaf.json', self.leaf([(0.9, 0.0)], slice_sha=file_sha256(root / 'slice.json')))
+            with self.assertRaises(ValueError):
+                strata.run(root / 'slice.json', root / 'leaf.json', root / 'elsewhere' / 'strata.json')
+            self.assertEqual(1, strata.run(root / 'slice.json', root / 'leaf.json', root / 'strata.json')['block_count'])
+
     def test_requires_topic_signals_and_matching_slice(self):
         leaf = self.leaf([(0.9, 0.0)])
         del leaf['sermons'][0]['blocks'][0]['signals']['T:society_public_life']

@@ -1,7 +1,7 @@
 import unittest
 
 from pastor_transcript_extractor.bound_claims import report, review
-from pastor_transcript_extractor.bound_claims.common import canonical, read_json, write_json
+from pastor_transcript_extractor.bound_claims.common import canonical, read_json
 
 try:
     from tests.bound_claims_support import PilotBuilder

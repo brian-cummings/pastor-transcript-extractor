@@ -1,4 +1,3 @@
-import json
 import unittest
 
 from pastor_transcript_extractor.bound_claims import render, report

@@ -8,9 +8,9 @@ from pastor_transcript_extractor.bound_claims.common import read_json, write_jso
 from pastor_transcript_extractor.bound_claims.ledger import PilotLedger
 
 try:
-    from tests.bound_claims_support import CLEAN, block, claim, stream_transport
+    from tests.bound_claims_support import CLEAN, METADATA, block, claim, stream_transport
 except ImportError:
-    from bound_claims_support import CLEAN, block, claim, stream_transport
+    from bound_claims_support import CLEAN, METADATA, block, claim, stream_transport
 
 
 class ReviewTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class ReviewTests(unittest.TestCase):
         ledger = PilotLedger(self.root / 'ledger.json')
         for producer, outputs in (('pro', pro), ('flash', flash)):
             extract.run(self.root / 'strata.json', producer, ledger,
-                        transport=stream_transport({f'v1b{i}': outputs.get(i, '{"claims":[]}') for i in range(count)}), state=CLEAN)
+                        transport=stream_transport({f'v1b{i}': outputs.get(i, '{"claims":[]}') for i in range(count)}), state=CLEAN, metadata=METADATA)
 
     def one(self, index, **changes):
         return json.dumps(dict(claims=[claim(f'We are saved by grace alone {index}.', **changes)]))

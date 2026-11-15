@@ -11,7 +11,7 @@ from typing import Any, Callable, Mapping
 from pastor_transcript_extractor.collector_retrieval_json_v1_1 import seal
 
 from . import contract
-from .common import file_sha256, read_json, watch_url, write_json
+from .common import file_sha256, read_json, write_json
 from .verify import collect_claims
 
 VERSION = 'bound-claim-review-queue-v1'

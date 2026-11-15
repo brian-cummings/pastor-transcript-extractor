@@ -1,4 +1,3 @@
-from copy import deepcopy
 from decimal import Decimal
 import tempfile
 from pathlib import Path

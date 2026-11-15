@@ -76,6 +76,9 @@ def select(leaf: Mapping[str, Any], seed: str) -> dict[str, Any]:
 
 
 def run(slice_path: Path, leaf_path: Path, output: Path) -> dict[str, Any]:
+    slice_path, output = Path(slice_path).resolve(), Path(output).resolve()
+    if output != slice_path.parent / 'strata.json':
+        raise ValueError('strata.json must be written beside slice.json; every later step reads it from the pilot directory')
     slice_sha = file_sha256(slice_path)
     leaf = read_json(leaf_path)
     if leaf.get('slice_sha256') != slice_sha:

@@ -8,6 +8,12 @@ from pastor_transcript_extractor.bound_claims import extract, review, verify
 from pastor_transcript_extractor.bound_claims.common import write_json
 from pastor_transcript_extractor.bound_claims.ledger import PilotLedger
 
+def METADATA(model):
+    flash = 'Flash' in model
+    return dict(model=model, deployment_version='v', input_cents_per_token='0.00002' if flash else '0.00013',
+                output_cents_per_token='0.00006' if flash else '0.00026')
+
+
 CLEAN = lambda: dict(commit='c', src_tree='t', dirty=False)
 DIRTY = lambda: dict(commit='c', src_tree='t', dirty=True)
 
@@ -79,7 +85,7 @@ class PilotBuilder:
                 result[f'v1b{i}'] = json.dumps(dict(claims=[claim(f'We are saved by grace alone {i}.', **kind)]))
             return result
         for producer, indexes, extra in (('pro', pro_blocks, control_claims), ('flash', flash_blocks, ())):
-            extract.run(self.root / 'strata.json', producer, self.ledger, transport=stream_transport(outputs(indexes, extra)), state=CLEAN)
+            extract.run(self.root / 'strata.json', producer, self.ledger, transport=stream_transport(outputs(indexes, extra)), state=CLEAN, metadata=METADATA)
         queue = review._queue(self.root) if (self.root / 'review.json').exists() else (review.write_queue(self.root), review._queue(self.root))[1]
         labels = {}
         for item in queue['items']:
@@ -94,7 +100,7 @@ class PilotBuilder:
             used = tokens(body) if tokens else 1000
             answers = {key: dict(type='noul', noul=probability) for key in body['questions']}
             return WireResponse(200, json.dumps(dict(model='jev-1.13.0', usage=dict(input_tokens=used, output_tokens=0), answers=answers)))
-        verify.run([self.root / 'extract' / p / 'extraction.json' for p in ('pro', 'flash')], self.ledger, transport=send, state=CLEAN)
+        verify.run([self.root / 'extract' / p / 'extraction.json' for p in ('pro', 'flash')], self.ledger, transport=send, state=CLEAN, metadata=METADATA)
         return labels
 
     def section(self, videos=(1, 2)):

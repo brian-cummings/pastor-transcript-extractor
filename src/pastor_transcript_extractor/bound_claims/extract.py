@@ -8,7 +8,6 @@ are reused unchanged. A failed block is recorded, never semantically retried.
 from __future__ import annotations
 
 from decimal import Decimal
-import json
 from pathlib import Path
 import subprocess
 from typing import Any, Callable, Mapping
@@ -58,8 +57,22 @@ def git_state() -> dict[str, Any]:
     return dict(commit=git('rev-parse', 'HEAD'), src_tree=git('rev-parse', 'HEAD:src'), dirty=bool(git('status', '--porcelain', '--', 'src', 'pyproject.toml')))
 
 
+def published_prices(metadata: Callable[[str], Mapping[str, Any]]) -> dict[str, Any]:
+    """Live public DeepInfra prices recorded at freeze; reservations assume the policy's full list prices."""
+    result = {}
+    for name, (version, _) in PRODUCERS.items():
+        policy = provider.policy_for(version)
+        published = dict(metadata(policy['model']))
+        for field, key in (('input_usd_per_million', 'input_cents_per_token'), ('output_usd_per_million', 'output_cents_per_token')):
+            if Decimal(published[key]) * 10000 != Decimal(policy[field]):
+                raise ValueError(f"Published {name} {field} {Decimal(published[key]) * 10000} differs from the reserved list price {policy[field]}")
+        result[name] = published
+    return result
+
+
 def freeze_plan(pilot: Path, slice_sha: str, strata_sha: str, ledger: PilotLedger,
-                state: Callable[[], dict[str, Any]] = git_state) -> dict[str, Any]:
+                state: Callable[[], dict[str, Any]] = git_state,
+                metadata: Callable[[str], Mapping[str, Any]] = provider.public_model_metadata) -> dict[str, Any]:
     """Freeze the implementation before the first paid extraction and re-verify it on every later paid step."""
     current = state()
     if current['dirty']:
@@ -72,11 +85,12 @@ def freeze_plan(pilot: Path, slice_sha: str, strata_sha: str, ledger: PilotLedge
         if (plan['slice_sha256'], plan['strata_sha256'], plan['implementation']['src_tree']) != (slice_sha, strata_sha, current['src_tree']):
             raise ValueError('Frozen plan differs from the slice, strata or implementation; the pilot allows no variant')
         return plan
+    prices = published_prices(metadata)
     plan = seal(dict(
         version='bound-claim-pilot-plan-v1', slice_sha256=slice_sha, strata_sha256=strata_sha, prompt_version=contract.VERSION,
         implementation=current, ceiling=dict(usd=str(ledger.ceiling_usd), attempts=ledger.ceiling_attempts),
         policies={name: provider.policy_for(version) for name, (version, _) in PRODUCERS.items()},
-        jev=dict(model='jev-1.13.0', input_usd_per_million='0.042'),
+        jev=dict(model='jev-1.13.0', input_usd_per_million='0.042'), published_deepinfra_metadata=prices,
         retries='none; one attempt per block, no semantic retry', stop_rules=dict(
             transport_failure_rate=str(TRANSPORT_FAILURE_RATE), pro_schema_failure_rate=str(SCHEMA_FAILURE_RATE))))
     write_json(path, plan)
@@ -112,7 +126,8 @@ def _classify(error: Exception) -> str:
 
 
 def run(strata_path: Path, producer: str, ledger: PilotLedger, *, check_only: bool = False,
-        transport: Callable | None = None, state: Callable[[], dict[str, Any]] = git_state) -> dict[str, Any]:
+        transport: Callable | None = None, state: Callable[[], dict[str, Any]] = git_state,
+        metadata: Callable[[str], Mapping[str, Any]] = provider.public_model_metadata) -> dict[str, Any]:
     if producer not in PRODUCERS:
         raise ValueError('Producer must be pro or flash')
     strata_path = Path(strata_path).resolve()
@@ -134,7 +149,7 @@ def run(strata_path: Path, producer: str, ledger: PilotLedger, *, check_only: bo
         return plan
     if pending:
         ledger.require_step(step, worst, len(pending))
-    frozen = freeze_plan(pilot, strata['slice_sha256'], file_sha256(strata_path), ledger, state)
+    frozen = freeze_plan(pilot, strata['slice_sha256'], file_sha256(strata_path), ledger, state, metadata)
     send = transport or provider.transport
     rows, counts = [], dict(transport_failure=0, schema_failure=0)
     stopped = None

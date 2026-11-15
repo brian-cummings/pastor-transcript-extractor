@@ -15,6 +15,7 @@ from pastor_transcript_extractor.collector_retrieval_json_v1_1 import seal
 from . import contract
 from .common import file_sha256, read_json, write_json
 from .extract import freeze_plan, git_state
+from pastor_transcript_extractor import deepinfra_requests as provider
 from .ledger import PilotLedger, list_price_usd
 
 VERSION = 'bound-claim-verification-v1'
@@ -110,7 +111,8 @@ def _answers(response: Mapping[str, Any], spec: requests.RequestSpec) -> dict[st
 
 
 def run(extractions: Sequence[Path], ledger: PilotLedger, *, check_only: bool = False,
-        transport: Callable | None = None, state: Callable[[], dict[str, Any]] = git_state) -> dict[str, Any]:
+        transport: Callable | None = None, state: Callable[[], dict[str, Any]] = git_state,
+        metadata: Callable[[str], Mapping[str, Any]] = provider.public_model_metadata) -> dict[str, Any]:
     extractions = [Path(path).resolve() for path in extractions]
     pilot = extractions[0].parents[2]
     if any(path.parents[2] != pilot for path in extractions):
@@ -128,7 +130,7 @@ def run(extractions: Sequence[Path], ledger: PilotLedger, *, check_only: bool = 
     if pending:
         ledger.require_step('verify', reservation * len(pending), len(pending))
     strata_sha = file_sha256(pilot / 'strata.json')
-    freeze_plan(pilot, read_json(pilot / 'strata.json')['slice_sha256'], strata_sha, ledger, state)
+    freeze_plan(pilot, read_json(pilot / 'strata.json')['slice_sha256'], strata_sha, ledger, state, metadata)
     send = transport or requests.typesafe_transport
     rows, failures, stopped = [], 0, None
     for item in items:
