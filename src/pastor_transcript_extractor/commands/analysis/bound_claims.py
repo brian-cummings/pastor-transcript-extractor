@@ -69,3 +69,15 @@ def extract_claims(strata_path: Path = typer.Option(..., '--strata', help='strat
         _echo(extraction.run(strata_path, producer, _ledger(strata_path.parent), check_only=check_only))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@app.command('verify')
+def verify_claims(extraction: list[Path] = typer.Option(..., '--extraction', help='extraction.json from extract; repeat for each producer.'),
+                  check_only: bool = typer.Option(False, '--check-only', help='Report requests and worst-case reservation; sends nothing.')):
+    """Verify every distinct extracted claim with independent Jev Noul questions; no threshold is applied."""
+    from ...bound_claims import verify as verification
+    try:
+        paths = [path.resolve() for path in extraction]
+        _echo(verification.run(paths, _ledger(paths[0].parents[2]), check_only=check_only))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error

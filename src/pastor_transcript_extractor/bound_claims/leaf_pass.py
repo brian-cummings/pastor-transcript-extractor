@@ -29,7 +29,7 @@ from .slice import verify_slice
 VERSION = 'bound-claim-leaf-pass-v1'
 JEV_INPUT_USD_PER_MILLION = '0.042'
 JEV_OUTPUT_USD_PER_MILLION = '0'
-JEV_REQUEST_TOKEN_LIMIT = 64000
+JEV_REQUEST_TOKEN_LIMIT = 65536  # same per-request input cap the shared verifier reservation uses
 JEV_REQUEST_RESERVATION = list_price_usd(JEV_REQUEST_TOKEN_LIMIT, 0, JEV_INPUT_USD_PER_MILLION, JEV_OUTPUT_USD_PER_MILLION)
 # Attempts the later paid steps need; the leaf pass must leave them within the 600-attempt pilot ceiling.
 HELD_EXTRACT_ATTEMPTS = 200
