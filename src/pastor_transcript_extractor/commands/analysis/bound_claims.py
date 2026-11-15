@@ -124,3 +124,25 @@ def render_section(pilot: Path = typer.Option(..., '--pilot', help='Pilot direct
         _echo(rendering.run(pilot.resolve(), profile))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@app.command('run')
+def run_paid_steps(pilot: Path = typer.Option(..., '--pilot', help='Pilot directory holding the approved slice.json.'),
+                   approve_slice: str = typer.Option(..., '--approve-slice', help='SHA-256 of the approved slice file.'),
+                   check_only: bool = typer.Option(False, '--check-only', help='Census only; sends nothing.')):
+    """Run leaf signals, strata, Pro and Flash extraction and verification in order; resumable, stops at the first hard stop."""
+    from ...bound_claims import pipeline
+    try:
+        _echo(pipeline.run(pilot.resolve(), approve_slice, check_only=check_only))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('finish')
+def finish(pilot: Path = typer.Option(..., '--pilot', help='Pilot directory.')):
+    """After review: render the section for the best-supported profile, then write the report."""
+    from ...bound_claims import render as rendering, report as reporting
+    try:
+        _echo(dict(render=rendering.run(pilot.resolve()), report=reporting.run(pilot.resolve())))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error

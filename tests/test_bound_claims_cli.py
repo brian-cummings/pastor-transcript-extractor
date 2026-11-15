@@ -16,7 +16,7 @@ except ImportError:
     from bound_claims_support import PilotBuilder
     from test_bound_claims_selection import write_sermon
 
-COMMANDS = ('slice-propose', 'leaf-run', 'strata', 'extract', 'verify', 'review-queue', 'review', 'report', 'render')
+COMMANDS = ('slice-propose', 'leaf-run', 'strata', 'extract', 'verify', 'review-queue', 'review', 'report', 'render', 'run', 'finish')
 
 
 class CliTests(PilotBuilder, unittest.TestCase):
