@@ -113,3 +113,14 @@ def report_pilot(pilot: Path = typer.Option(..., '--pilot', help='Pilot director
         _echo(reporting.run(pilot.resolve()))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@app.command('render')
+def render_section(pilot: Path = typer.Option(..., '--pilot', help='Pilot directory.'),
+                   profile: int | None = typer.Option(None, '--profile', help='Profile id; defaults to the profile with the most accepted V4 Pro claims.')):
+    """Present the accepted V4 Pro claims for one profile as Markdown with source links; no interpretation."""
+    from ...bound_claims import render as rendering
+    try:
+        _echo(rendering.run(pilot.resolve(), profile))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
