@@ -46,6 +46,7 @@ ROOT_COMMANDS = {
 
 GROUP_COMMANDS = {
     "analysis": {
+        "bound-claims",
         "learning-demo",
         "profile-binding-review",
         "profile-proposition-review",
