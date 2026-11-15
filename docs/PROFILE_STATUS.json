@@ -166,8 +166,8 @@
   "documentation_policy": "Current plans and relevant operating contracts only; obsolete planning snapshots and archive registries belong in Git.",
   "active_document_hashes": {
     "AGENTS.md": "24541e03fc0aff2cfb4e0961a81f180e9c4280c8fd819a249434f9fb9dd41a9c",
-    "README.md": "cf1fccc884e1834642c321fadb33fda1952f28ddb6214f93db5e0ba8543af52c",
-    "docs/PASTOR_PROFILE_PRODUCT_PLAN.md": "12b6c76f0faddab0d2d69223c4bc0bef3fb709b03550366e2a743f16f89b2a6a",
+    "README.md": "5ed360e97b5a72329d8e528f642f9de2c113a366fada73cba1c12526ae4219bb",
+    "docs/PASTOR_PROFILE_PRODUCT_PLAN.md": "b98904e488c21edb3ae573c14d6db2ef0a07aff326ce2b7a8e1149e3ca9f3ea0",
     "docs/PASTOR_PROFILE_IMPLEMENTATION_PLAN.md": "97eecac82ae91628e98142edde459d2e527b0939d819bf241e6e23e2d4152d12",
     "docs/HANDOFF.md": "b56f4922d4642298a2c8e1649c059452a9cde16a44f11bb58650576fd324dbf5",
     "docs/review-proposals/README.md": "b2b35308d45e17f2f22a6570ec6fed01b6efe6a4f3f2e3bda3ceb5de81eac6c2",
@@ -236,5 +236,5 @@
     "next_step": "Prepared_offline_saved_verifier_contract_state_case_audit_no_new_inference",
     "further_automatic_provider_execution": false
   },
-  "content_fingerprint": "62c872384166409886fdc2cc7240aa9ba6b7358f66dbaadc42338c837179580f"
+  "content_fingerprint": "9fcbff94a531914e29f47ff22c6c27ad9c309d0fea29c563449478537663c072"
 }

@@ -6,6 +6,24 @@
 
 Deliver useful, automatically assembled, source-grounded pastor analysis **and mathematical comparison across explicit dimensions with benchmark pastors**. The same qualified upstream evidence should support the readable explanation and the numerical comparison. Show what a pastor teaches, how the sample develops and addresses it, what remains unknown, and which supported dimensions account for similarities and differences.
 
+## Full analytical scope
+
+The finished profile covers **all** of the areas below, not only salvation. The current salvation/response work is the first bounded slice, chosen to prove the evidence path; it does not narrow the product. Characteristic IDs refer to the desired catalog in the [gap analysis](PASTOR_PROFILE_GAP_ANALYSIS.md), which owns each characteristic's target statement, measurement fit and gap types.
+
+| Area | What the reader should learn | Catalog IDs | Present state |
+|---|---|---|---|
+| Theological positions | What is affirmed, rejected, qualified or left open about God, Christ, Spirit, Scripture, human nature, sin, salvation, assurance, discipleship, church, mission, ethics, creation, suffering and final destiny. | C02–C04, C14, C18, C20 | Salvation thematic/relational evidence partial; active bounded slice. Complete adopted positions not yet qualified. Other doctrines not started as positions. |
+| **Public life and political views** | How the pastor treats public affairs (reported, illustrative, theological/moral framing, critical, supportive, policy prescription, civic mobilization) **and** which positions on specific public issues, policies, institutions or figures they support, oppose or prescribe, with reasons and qualifications. | C07 treatment, C08 positions, `L:civic_action` | C07 eight-question treatment pack: readiness PASS; eligibility-only routing awaits review ([contract](PUBLIC_LIFE_TREATMENT_BEHAVIOR_CONTRACT.md)). C08 needs issue-bound proposition/voice/polarity binding, the same producer gap as salvation positions. |
+| Topic attention and breadth | Which subjects organize the teaching, recur, or appear only occasionally. | C01, C15 | Cached topic projections implemented. Attention is not belief. |
+| Preaching style and application | How the pastor explains, reasons, narrates, applies and exhorts; what listeners are asked to do; how applications are developed. | C05, C06, C13 | Basic style and listener directives substantially covered in observable type; developed treatment/depth not yet measured. |
+| Scripture use and interpretation | Which texts are used, what role they play, and which interpretive operations are demonstrated. | C09–C11, C16 | Scripture-use measurements and benchmark implemented; engagement and interpretive tendencies partial. |
+| Pastoral address | How the pastor responds to suffering, doubt, disagreement and moral failure; reassurance and challenge. | C12 | Not yet qualified; no nonempty address inventory. |
+| Sources and authorities | Use of other material and authorities. | C19 | See gap analysis. |
+| Consistency and variation | Which patterns and positions recur, vary by circumstance or change over time. | C17, C18 | Requires a declared sample/opportunity contract; not established. |
+| Comparison and landscape | Agreement/difference, distinctiveness, natural groups, exemplars, outliers and noteworthy candidates relative to benchmark pastors. | D01–D06 | Only Scripture-use distances exist; all others depend on the characteristics above. |
+
+Political views are measured the same way as theological positions: as specific, source-bound positions with the pastor's own voice, polarity, reasons and qualifications, and treatment functions observed per block. Comparison may report agreement or difference on matched public-life positions and treatments. A reported or quoted claim is not endorsement, public-topic attention is not a stance, and no party, ideology or Christian-nationalism label is inferred from topics, Scripture-use distances or unrelated measurements. The existing Scripture-use benchmark deliberately excludes politics; public-life dimensions enter comparison only through the dimensional acceptance criteria below.
+
 **Status: early working prototype; original useful automatic-analysis goal partially met; broader dimensional benchmark goal not achieved.** No credible completion percentage or delivery estimate has been established.
 
 | Capability | Evidence of progress | Remaining acceptance gap |
@@ -32,7 +50,7 @@ The November 1 response-and-conditions check failed: final development qualified
 
 ## Acceptance for dimensional benchmark comparison
 
-1. **Shared contracts:** Candidate and benchmark pastors use the same versioned dimensions, meanings, eligibility rules and scoring/aggregation rules. Retain the four families: preaching style, theological emphasis, theological orientation and pastoral/rhetorical orientation. Reuse the narrower Scripture-use implementation where compatible.
+1. **Shared contracts:** Candidate and benchmark pastors use the same versioned dimensions, meanings, eligibility rules and scoring/aggregation rules. Retain the four families: preaching style, theological emphasis, theological orientation and pastoral/rhetorical orientation, and add **public-life treatment and positions (political views)** as a comparison family once qualified public-life dimensions exist. The current presentation code (`profile_description.py`) still renders only the four original families for the V8/P1 regression examples; extending it is part of delivering public-life dimensions, not a change to those examples. Reuse the narrower Scripture-use implementation where compatible.
 2. **Defensible measurements:** Distinguish mention, description, endorsement and condition where needed. Define each dimension's target statement, units/scale, denominator or opportunities, aggregation, exclusions and non-characterization rules before assigning values. Model probabilities are not pastor scores.
 3. **Traceable values:** Each value retains contributing observations, source links, qualifications, exact sample, producer/model versions and calculation. Authored portraits and presumed benchmark identities are not measurement ground truth.
 4. **Comparable samples:** Declare sermon selection, time/topic coverage, sample size and dependence. Account for overlapping blocks, repeated material and unequal opportunities. Do not infer ministry-wide traits from a selected development sample.
@@ -44,7 +62,7 @@ The November 1 response-and-conditions check failed: final development qualified
 
 ## Reader experience
 
-Lead with a readable assessment and at-a-glance dimensions, then eligible benchmark comparisons and the four analytical families, followed by warrants, observations, sermons and source navigation. Unsupported comparison stays visibly unavailable. A shorter faithful account is preferable to imitation of the Henry Johnson example; do not optimize toward an authored reference portrait.
+Lead with a readable assessment and at-a-glance dimensions, then eligible benchmark comparisons and the analytical families (including public life and political views, shown as unavailable until qualified), followed by warrants, observations, sermons and source navigation. Unsupported comparison stays visibly unavailable. A shorter faithful account is preferable to imitation of the Henry Johnson example; do not optimize toward an authored reference portrait.
 
 ## Scope and authority
 
