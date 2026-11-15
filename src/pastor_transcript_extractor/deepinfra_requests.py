@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 import math
 import os
 
-from .evidence_requests import DEEPINFRA_VERSION, DEEPINFRA_EXPANDED_VERSION, DEEPINFRA_DIRECT_VERSION, DEEPINFRA_CORRECTION_VERSION, DEEPINFRA_BINDING_VERSION, DEEPINFRA_BINDING_HEADROOM_VERSION, DEEPINFRA_BINDING_FEEDBACK_VERSION, DEEPINFRA_BINDING_REASONING_VERSION, DEEPINFRA_BINDING_REASONING_TEXT_VERSION, DEEPINFRA_ENUM_VERSION, DEEPINFRA_GUIDED_VERSION, DEEPINFRA_QWEN_VERIFY_VERSION, DEEPINFRA_HOLDOUT_VERSIONS, DEEPINFRA_PROFILE_SUPPORT_VERSION, DEEPINFRA_ANALYSIS_SUPPORT_VERSIONS, DEEPINFRA_QWEN_STREAM_VERSIONS, WireResponse, wire
+from .evidence_requests import DEEPINFRA_VERSION, DEEPINFRA_EXPANDED_VERSION, DEEPINFRA_DIRECT_VERSION, DEEPINFRA_CORRECTION_VERSION, DEEPINFRA_BINDING_VERSION, DEEPINFRA_BINDING_HEADROOM_VERSION, DEEPINFRA_BINDING_FEEDBACK_VERSION, DEEPINFRA_BINDING_REASONING_VERSION, DEEPINFRA_BINDING_REASONING_TEXT_VERSION, DEEPINFRA_ENUM_VERSION, DEEPINFRA_GUIDED_VERSION, DEEPINFRA_QWEN_VERIFY_VERSION, DEEPINFRA_BOUND_CLAIM_VERSIONS, DEEPINFRA_HOLDOUT_VERSIONS, DEEPINFRA_PROFILE_SUPPORT_VERSION, DEEPINFRA_ANALYSIS_SUPPORT_VERSIONS, DEEPINFRA_QWEN_STREAM_VERSIONS, WireResponse, wire
 
 NAMESPACE='learning-demo-deepinfra-fit-v1'
 MODEL='deepseek-ai/DeepSeek-V4-Pro-0813'
@@ -52,8 +52,17 @@ HOLDOUT_POLICIES={
     DEEPINFRA_HOLDOUT_VERSIONS[2]:{**QWEN_VERIFY_POLICY,'model':FLASH_MODEL,'input_cap':32768,'output_usd_per_million':'0.60'},
 }
 
+# Bound-claim pilot: identical model/reasoning/prices to POLICY and DIRECT_POLICY, with caps sized so one
+# request's full reservation fits a $5 pilot ceiling. Each request reserves exactly one attempt (no recovery).
+BOUND_CLAIM_CAPS=dict(input_cap=16384,output_cap=8192)
+BOUND_CLAIM_POLICIES={
+    DEEPINFRA_BOUND_CLAIM_VERSIONS[0]:{**POLICY,**BOUND_CLAIM_CAPS,'maximum_usd':'0.0425984'},
+    DEEPINFRA_BOUND_CLAIM_VERSIONS[1]:{**DIRECT_POLICY,**BOUND_CLAIM_CAPS,'maximum_usd':'0.008192'},
+}
+
 
 def policy_for(version):
+    if version in BOUND_CLAIM_POLICIES:return BOUND_CLAIM_POLICIES[version]
     if version in DEEPINFRA_QWEN_STREAM_VERSIONS:return policy_for(version.removesuffix('-stream-v1'))
     if version in ANALYSIS_SUPPORT_POLICIES:return ANALYSIS_SUPPORT_POLICIES[version]
     if version==DEEPINFRA_PROFILE_SUPPORT_VERSION:return PROFILE_SUPPORT_POLICY
@@ -99,7 +108,7 @@ def preflight(spec):
     corrective=(spec.version in (DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_GUIDED_VERSION) or binding
         or (spec.version in ANALYSIS_SUPPORT_POLICIES and spec.source_identity.get('contract_correction_policy')=='profile-support-contract-correction-v1'))
     expanded=spec.version in (DEEPINFRA_EXPANDED_VERSION,DEEPINFRA_DIRECT_VERSION,DEEPINFRA_CORRECTION_VERSION,DEEPINFRA_BINDING_VERSION,DEEPINFRA_BINDING_HEADROOM_VERSION,DEEPINFRA_BINDING_FEEDBACK_VERSION,DEEPINFRA_BINDING_REASONING_VERSION,DEEPINFRA_BINDING_REASONING_TEXT_VERSION)
-    namespace=(spec.version if spec.version in HOLDOUT_POLICIES or spec.version in ANALYSIS_SUPPORT_POLICIES or spec.version in (DEEPINFRA_PROFILE_SUPPORT_VERSION,DEEPINFRA_BINDING_HEADROOM_VERSION,DEEPINFRA_BINDING_FEEDBACK_VERSION,DEEPINFRA_BINDING_REASONING_VERSION,DEEPINFRA_BINDING_REASONING_TEXT_VERSION) else QWEN_VERIFY_NAMESPACE if spec.version==DEEPINFRA_QWEN_VERIFY_VERSION else GUIDED_NAMESPACE if spec.version==DEEPINFRA_GUIDED_VERSION else ENUM_NAMESPACE if spec.version==DEEPINFRA_ENUM_VERSION else BINDING_NAMESPACE if binding else CORRECTION_NAMESPACE if corrective else DIRECT_NAMESPACE if spec.version==DEEPINFRA_DIRECT_VERSION else EXPANDED_NAMESPACE if expanded else NAMESPACE)
+    namespace=(spec.version if spec.version in BOUND_CLAIM_POLICIES or spec.version in HOLDOUT_POLICIES or spec.version in ANALYSIS_SUPPORT_POLICIES or spec.version in (DEEPINFRA_PROFILE_SUPPORT_VERSION,DEEPINFRA_BINDING_HEADROOM_VERSION,DEEPINFRA_BINDING_FEEDBACK_VERSION,DEEPINFRA_BINDING_REASONING_VERSION,DEEPINFRA_BINDING_REASONING_TEXT_VERSION) else QWEN_VERIFY_NAMESPACE if spec.version==DEEPINFRA_QWEN_VERIFY_VERSION else GUIDED_NAMESPACE if spec.version==DEEPINFRA_GUIDED_VERSION else ENUM_NAMESPACE if spec.version==DEEPINFRA_ENUM_VERSION else BINDING_NAMESPACE if binding else CORRECTION_NAMESPACE if corrective else DIRECT_NAMESPACE if spec.version==DEEPINFRA_DIRECT_VERSION else EXPANDED_NAMESPACE if expanded else NAMESPACE)
     input_cap,output_cap=policy['input_cap'],policy['output_cap']
     if (spec.namespace!=namespace or spec.phase!='source_reading'
         or spec.runtime_identity!=policy or body.get('model')!=policy['model']
@@ -110,7 +119,7 @@ def preflight(spec):
         raise ValueError('Frozen DeepInfra model, endpoint, scope or generation policy differs')
     fmt=body['response_format']
     if (not isinstance(fmt,dict) or set(fmt)!={'type','json_schema'} or fmt['type']!='json_schema'
-        or set(fmt['json_schema'])!={'name','strict','schema'} or fmt['json_schema']['name']!=('profile_analysis_support' if spec.version in ANALYSIS_SUPPORT_POLICIES else 'final_profile_support' if spec.version==DEEPINFRA_PROFILE_SUPPORT_VERSION else 'qualification_judgments' if spec.version==DEEPINFRA_QWEN_VERIFY_VERSION or spec.version in HOLDOUT_POLICIES else 'qualified_source_reading')
+        or set(fmt['json_schema'])!={'name','strict','schema'} or fmt['json_schema']['name']!=('bound_claims' if spec.version in BOUND_CLAIM_POLICIES else 'profile_analysis_support' if spec.version in ANALYSIS_SUPPORT_POLICIES else 'final_profile_support' if spec.version==DEEPINFRA_PROFILE_SUPPORT_VERSION else 'qualification_judgments' if spec.version==DEEPINFRA_QWEN_VERIFY_VERSION or spec.version in HOLDOUT_POLICIES else 'qualified_source_reading')
         or fmt['json_schema']['strict'] is not True or not isinstance(fmt['json_schema']['schema'],dict)):
         raise ValueError('DeepInfra requires the explicit strict JSON schema')
     roles=[m.get('role') for m in body['messages']] if isinstance(body['messages'],list) and all(isinstance(m,dict) for m in body['messages']) else None

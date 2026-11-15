@@ -68,6 +68,13 @@ class PilotLedger:
     def attempt_count(self) -> int:
         return len(self._read()['entries'])
 
+    def entry_status(self, entry_id: str) -> str | None:
+        entry = self._read()['entries'].get(entry_id)
+        return None if entry is None else entry['status']
+
+    def entry_count(self, prefix: str) -> int:
+        return sum(key.startswith(prefix) for key in self._read()['entries'])
+
     def remaining(self) -> tuple[Decimal, int]:
         ledger = self._read()
         return self.ceiling_usd - self._committed(ledger), self.ceiling_attempts - len(ledger['entries'])

@@ -73,7 +73,7 @@ class LedgeredClient:
             self._adapter = self.factory(self.model)
         packs = sorted(kwargs.get('requested_packs') or ())
         prefix = f"leaf/{self.scope}/{'+'.join(packs)}/{blocks[0].block_id}-{blocks[-1].block_id}"
-        entry = f'{prefix}/{sum(key.startswith(prefix + "/") for key in self.ledger._read()["entries"])}'
+        entry = f'{prefix}/{self.ledger.entry_count(prefix + "/")}'
         self.ledger.reserve(entry, 'leaf', JEV_REQUEST_RESERVATION, packs=packs, blocks=len(blocks), model=self.model)
         self.requests += 1
         try:

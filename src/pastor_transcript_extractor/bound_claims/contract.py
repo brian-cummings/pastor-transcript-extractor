@@ -81,6 +81,10 @@ RESPONSE_SCHEMA: dict[str, Any] = {
 }
 
 
+class SchemaError(ValueError):
+    """Model output violates the frozen schema; counted separately from transport failures."""
+
+
 def user_message(target: str, preceding: str, following: str) -> str:
     from .common import canonical
     return canonical({'preceding_block': preceding, 'target_block': target, 'following_block': following})
@@ -89,29 +93,29 @@ def user_message(target: str, preceding: str, following: str) -> str:
 def validate_claims(payload: Any) -> list[dict[str, Any]]:
     """Strict schema check; any violation rejects the block's output (no repair)."""
     if not isinstance(payload, Mapping) or set(payload) != {'claims'} or not isinstance(payload['claims'], list):
-        raise ValueError('Output must be an object with exactly one `claims` list')
+        raise SchemaError('Output must be an object with exactly one `claims` list')
     if len(payload['claims']) > MAXIMUM_CLAIMS_PER_BLOCK:
-        raise ValueError(f'More than {MAXIMUM_CLAIMS_PER_BLOCK} claims in one block')
+        raise SchemaError(f'More than {MAXIMUM_CLAIMS_PER_BLOCK} claims in one block')
     return [_validate_claim(claim) for claim in payload['claims']]
 
 
 def _validate_claim(claim: Any) -> dict[str, Any]:
     if not isinstance(claim, Mapping) or set(claim) != set(FIELDS):
-        raise ValueError('Claim fields differ from the frozen contract')
+        raise SchemaError('Claim fields differ from the frozen contract')
     for name, allowed in (('area', AREAS), ('polarity', POLARITIES), ('voiced_by', VOICES),
                           ('preacher_adoption', ADOPTIONS), ('speech_role', SPEECH_ROLES)):
         if claim[name] not in allowed:
-            raise ValueError(f'Invalid {name}')
+            raise SchemaError(f'Invalid {name}')
     for name in ('object', 'proposition', 'anchor_text'):
         if not isinstance(claim[name], str):
-            raise ValueError(f'{name} must be a string')
+            raise SchemaError(f'{name} must be a string')
     for name in STRING_LISTS:
         if not isinstance(claim[name], list) or any(not isinstance(item, str) for item in claim[name]):
-            raise ValueError(f'{name} must be a list of strings')
+            raise SchemaError(f'{name} must be a list of strings')
     offsets = claim['anchor_offsets']
     if (not isinstance(offsets, Mapping) or set(offsets) != {'start', 'end'}
             or any(type(offsets[key]) is not int for key in ('start', 'end'))):
-        raise ValueError('anchor_offsets must hold integer start and end')
+        raise SchemaError('anchor_offsets must hold integer start and end')
     return {key: claim[key] for key in FIELDS}
 
 

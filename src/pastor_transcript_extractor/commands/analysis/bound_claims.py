@@ -56,3 +56,16 @@ def strata(slice_path: Path = typer.Option(..., '--slice', help='Approved slice.
         _echo(selection.run(slice_path, leaf, output))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@app.command('extract')
+def extract_claims(strata_path: Path = typer.Option(..., '--strata', help='strata.json from the strata command.'),
+                   producer: str = typer.Option(..., '--producer', help='pro (DeepSeek V4 Pro, reasoning medium) or flash (V4.1 Flash control, reasoning none).'),
+                   check_only: bool = typer.Option(False, '--check-only', help='Report requests and worst-case reservation; sends nothing.')):
+    """Extract bound claims for the stratified blocks, one reserved request per block and no semantic retry."""
+    from ...bound_claims import extract as extraction
+    try:
+        strata_path = strata_path.resolve()
+        _echo(extraction.run(strata_path, producer, _ledger(strata_path.parent), check_only=check_only))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
