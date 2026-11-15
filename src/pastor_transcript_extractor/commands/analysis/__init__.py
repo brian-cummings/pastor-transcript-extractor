@@ -7,3 +7,4 @@ from pastor_transcript_extractor.commands.analysis import content as _content
 from pastor_transcript_extractor.commands.analysis import context_design as _context_design
 from pastor_transcript_extractor.commands.analysis import learning as _learning
 from pastor_transcript_extractor.commands.analysis import profile_support as _profile_support
+from pastor_transcript_extractor.commands.analysis import bound_claims as _bound_claims
