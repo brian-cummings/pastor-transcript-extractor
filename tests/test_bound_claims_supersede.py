@@ -31,7 +31,7 @@ class SupersedeTests(unittest.TestCase):
             self.assertTrue((destination / 'plan.json').exists() and (destination / 'extract' / 'pro' / 'extraction.json').exists())
             note = read_json(destination / 'SUPERSEDED.json')
             self.assertEqual(['extract_pro/v1b1'], note['ledger_entries'])
-            self.assertEqual(dict(usd='10.00', attempts=1000), note['ceiling'])
+            self.assertEqual(dict(usd='10.00', attempts=1200), note['ceiling'])
             self.assertEqual(dict(usd='5.00', attempts=600), note['previous_ceiling'])
             self.assertEqual(before, ledger.committed_usd())
             self.assertEqual(2, ledger.attempt_count())

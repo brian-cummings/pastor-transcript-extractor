@@ -17,7 +17,7 @@ from .common import read_json, write_json
 
 VERSION = 'bound-claim-pilot-ledger-v1'
 CEILING_USD = Decimal('10.00')
-CEILING_ATTEMPTS = 1000
+CEILING_ATTEMPTS = 1200
 STEPS = ('leaf', 'extract_pro', 'extract_flash', 'verify')
 CENT = Decimal('0.000000001')
 
@@ -117,6 +117,17 @@ class PilotLedger:
                 entry.update(status='resolved', actual_usd=str(actual_usd.quantize(CENT)), input_tokens=input_tokens,
                              output_tokens=output_tokens, resolved_at=datetime.now(timezone.utc).isoformat(), **detail)
             write_json(self.path, ledger)
+
+    def adopt_ceiling(self) -> dict[str, Any]:
+        """Replace the stored ceiling with this instance's; entries are untouched and the previous ceiling is returned."""
+        with self._locked():
+            ledger = read_json(self.path)
+            if ledger.get('version') != VERSION:
+                raise ValueError('Ledger version differs from the frozen pilot')
+            previous = dict(usd=ledger['ceiling_usd'], attempts=ledger['ceiling_attempts'])
+            ledger.update(ceiling_usd=str(self.ceiling_usd), ceiling_attempts=self.ceiling_attempts)
+            write_json(self.path, ledger)
+        return previous
 
     def supersede(self, steps: tuple[str, ...], tag: str) -> tuple[list[str], dict[str, Any]]:
         """Move finished attempts of `steps` under a superseded key; their spend and attempts still count toward the ceiling.

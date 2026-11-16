@@ -381,4 +381,10 @@ registry; the primary agent updates and re-pins them on approval.
    attempt without usage is charged one full reservation), and the ceiling rises so worst-case reservations fit
    (Pro 99 x $0.085 = $8.43). Expected spend stays near $1 to $2. Approved by Brian 2026-11-15; the first
    stopped Pro run (51 ok, 5 whitespace failures, $0.37) is kept under `superseded/`.
+5. **Attempts ceiling raised to 1200; plan amended, not superseded.** Both extractions completed (Pro 97/99 ok,
+   Flash 99/99 ok; 757 claims), but verification sends one request per claim, and 384 attempts + 757 exceeded the
+   1000-attempt ceiling, so the step refused before sending anything. Dollars were never the constraint
+   ($2.08 worst case against $8.84 remaining). The ceiling is now $10.00 / 1200 attempts (approved by Brian
+   2026-11-15). The change touches no request, so receipts stay valid; `pte analysis bound-claims amend` archives the
+   old plan under `amended/<plan>/`, re-freezes at the new commit and records the amendment in `plan.json`.
 

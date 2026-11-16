@@ -138,6 +138,17 @@ def run_paid_steps(pilot: Path = typer.Option(..., '--pilot', help='Pilot direct
         raise typer.BadParameter(str(error)) from error
 
 
+@app.command('amend')
+def amend_plan(pilot: Path = typer.Option(..., '--pilot', help='Pilot directory.'),
+               reason: str = typer.Option(..., '--reason', help='Why the plan is re-frozen at the current commit.')):
+    """Re-freeze the plan at the committed implementation and adopt the current ceiling; paid output, receipts and spend are kept."""
+    from ...bound_claims import amend
+    try:
+        _echo(amend.run(pilot.resolve(), reason))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @app.command('supersede')
 def supersede_plan(pilot: Path = typer.Option(..., '--pilot', help='Pilot directory.'),
                    reason: str = typer.Option(..., '--reason', help='Why the frozen plan and its paid outputs are set aside.')):

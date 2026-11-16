@@ -72,7 +72,8 @@ def published_prices(metadata: Callable[[str], Mapping[str, Any]]) -> dict[str, 
 
 def freeze_plan(pilot: Path, slice_sha: str, strata_sha: str, ledger: PilotLedger,
                 state: Callable[[], dict[str, Any]] = git_state,
-                metadata: Callable[[str], Mapping[str, Any]] = provider.public_model_metadata) -> dict[str, Any]:
+                metadata: Callable[[str], Mapping[str, Any]] = provider.public_model_metadata,
+                amendment: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Freeze the implementation before the first paid extraction and re-verify it on every later paid step."""
     current = state()
     if current['dirty']:
@@ -92,7 +93,8 @@ def freeze_plan(pilot: Path, slice_sha: str, strata_sha: str, ledger: PilotLedge
         policies={name: provider.policy_for(version) for name, (version, _) in PRODUCERS.items()},
         jev=dict(model='jev-1.13.0', input_usd_per_million='0.042'), published_deepinfra_metadata=prices,
         retries='none; one attempt per block, no semantic retry', stop_rules=dict(
-            transport_failure_rate=str(TRANSPORT_FAILURE_RATE), pro_schema_failure_rate=str(SCHEMA_FAILURE_RATE))))
+            transport_failure_rate=str(TRANSPORT_FAILURE_RATE), pro_schema_failure_rate=str(SCHEMA_FAILURE_RATE)),
+        **(dict(amendment=dict(amendment)) if amendment else {})))
     write_json(path, plan)
     return plan
 
