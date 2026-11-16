@@ -1,6 +1,6 @@
 # Bound-claim pilot: proving the extraction mechanism cheaply
 
-**Status: proposed 2026-11-15, awaiting Brian's approval of the decisions in §2.**
+**Status: executing 2026-11-15. §2 decisions approved, with the deviations recorded in §13.**
 Implementation target: Claude Sonnet 5.5 at high effort (see §12). Read
 [AGENTS.md](../AGENTS.md), the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) and
 the [gap analysis](PASTOR_PROFILE_GAP_ANALYSIS.md) first. This document does not
@@ -57,7 +57,7 @@ plans, receipts, V8/P1 examples and the six-clause section are untouched.
 | Role | Model | Price | Pilot use |
 |---|---|---|---|
 | Leaf signals, routing, strata, verification, control screening | TypeSafe Jev `jev-1.13.0` | $0.042 / M input tokens, output free; 64k per request, 32k per question | ~400 blocks × 59 Noul questions; ~250 claims × 5 verification questions |
-| Bound-claim producer | DeepInfra `deepseek-ai/DeepSeek-V4-Pro-0813` | $1.30 / $2.60 per M | 100 blocks, reasoning `medium` |
+| Bound-claim producer | DeepInfra `deepseek-ai/DeepSeek-V4-Pro-0813` | $1.30 / $2.60 per M | 100 blocks, reasoning `none` (see §13) |
 | Control producer | DeepInfra `deepseek-ai/DeepSeek-V4.1-Flash-1017` | $0.20 / $0.60 per M (list) | same 100 blocks, reasoning `none` (`DIRECT_POLICY`) |
 
 Estimated spend: Jev leaf pass $0.05–1.00 (depends on whether shared state is
@@ -359,3 +359,17 @@ bridge. Escalate to Opus only for that bridge, not for the rest.
 Commit per step with focused tests passing. Do not run the corpus or any paid
 command; hand Brian the commands. Do not edit the pinned plans or the status
 registry; the primary agent updates and re-pins them on approval.
+
+## 13. Deviations from the proposal
+
+1. **Both producers run with reasoning off (2026-11-15).** At `medium`, V4 Pro hit
+   `finish_reason: length` in 5 of 6 calls (three reasoned to the 8192-token cap and wrote no
+   JSON), tripping the 5% transport stop rule. Effort fills any cap, so Pro now runs with
+   reasoning `none`; caps and reservations are unchanged. The producers therefore differ only
+   by model, and criterion 1 compares V4 Pro with Flash at the same reasoning setting.
+2. **No per-block claim limit.** The spec sets none; the check that discarded dense-block
+   responses was removed.
+3. **Re-freeze via `supersede`.** The first plan (commit `ac6f3962`, reasoning `medium`) and the
+   6 stopped Pro attempts are kept under `<pilot>/superseded/<plan>/`; their ledger entries are
+   renamed `superseded/...` and still count toward the $5.00 / 600-attempt ceiling.
+   Command: `pte analysis bound-claims supersede --pilot <pilot> --reason <text>`.

@@ -118,6 +118,18 @@ class PilotLedger:
                              output_tokens=output_tokens, resolved_at=datetime.now(timezone.utc).isoformat(), **detail)
             write_json(self.path, ledger)
 
+    def supersede(self, steps: tuple[str, ...], tag: str) -> list[str]:
+        """Move finished attempts of `steps` under a superseded key; their spend and attempts still count toward the ceiling."""
+        with self._locked():
+            ledger = self._read()
+            moved = [key for key, entry in ledger['entries'].items() if entry['step'] in steps]
+            for key in moved:
+                entry = ledger['entries'].pop(key)
+                entry.update(superseded_step=entry['step'], step='superseded_' + entry['step'])
+                ledger['entries'][f'superseded/{tag}/{key}'] = entry
+            write_json(self.path, ledger)
+        return moved
+
     def summary(self) -> dict[str, Any]:
         ledger = self._read()
         steps: dict[str, dict[str, Any]] = {}
