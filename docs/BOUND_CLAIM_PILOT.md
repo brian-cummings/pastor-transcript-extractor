@@ -387,4 +387,11 @@ registry; the primary agent updates and re-pins them on approval.
    ($2.08 worst case against $8.84 remaining). The ceiling is now $10.00 / 1200 attempts (approved by Brian
    2026-11-15). The change touches no request, so receipts stay valid; `pte analysis bound-claims amend` archives the
    old plan under `amended/<plan>/`, re-freezes at the new commit and records the amendment in `plan.json`.
+6. **`run` no longer regenerates leaf and strata once a plan is frozen.** The leaf table embeds a ledger summary, so
+   each `run` rewrote it and therefore `strata.json`, whose hash is part of every extraction request fingerprint. After
+   the amendment, the next `run` produced different strata bytes and the plan guard refused before any request was
+   sent (nothing was re-bought). `run` now verifies `strata.json` against the frozen plan and skips the leaf and
+   strata steps. The original `strata.json` (`e475c687...`) and leaf table were reconstructed from the ledger
+   entries that existed at the time and verified by hash; the regenerated copies are archived under
+   `regenerated/<hash>/`. The plan was then amended again at the new commit.
 

@@ -44,6 +44,32 @@ class PipelineTests(unittest.TestCase):
         _, result = self.run_with(verify_result=dict(stopped='stop rule: y'))
         self.assertEqual(('STOPPED', 'verify'), (result['status'], result['stopped_at']))
 
+    def frozen_run(self, plan_strata):
+        from pathlib import Path
+        import tempfile
+        from pastor_transcript_extractor.bound_claims.common import file_sha256, write_json
+        calls, patches = self.patched()
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        directory = Path(temporary.name)
+        (directory / 'strata.json').write_text('{}')
+        write_json(directory / 'plan.json', dict(strata_sha256=plan_strata or file_sha256(directory / 'strata.json')))
+        return calls, lambda: pipeline.run(directory, 'sha')
+
+    def test_a_frozen_plan_verifies_strata_and_never_regenerates_leaf_or_strata(self):
+        calls, run = self.frozen_run(None)
+        self.assertEqual('COMPLETE', run()['status'])
+        self.assertEqual(['extract_pro', 'extract_flash', 'verify'], calls)
+
+    def test_strata_that_differs_from_the_frozen_plan_stops_before_any_step(self):
+        calls, run = self.frozen_run('0' * 64)
+        with self.assertRaises(ValueError):
+            run()
+        self.assertEqual([], calls)
+
     def test_check_only_stops_after_the_leaf_census(self):
         calls, patches = self.patched()
         for p in patches:
