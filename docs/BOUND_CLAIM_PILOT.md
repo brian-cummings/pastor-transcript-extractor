@@ -395,3 +395,16 @@ registry; the primary agent updates and re-pins them on approval.
    entries that existed at the time and verified by hash; the regenerated copies are archived under
    `regenerated/<hash>/`. The plan was then amended again at the new commit.
 
+## 14. Status and review labeling (2026-11-15)
+
+Extraction (Pro 97/99 ok, Flash 99/99 ok) and Jev verification (757/757 ok) are complete: $1.22 of $10.00 and
+1141 of 1200 attempts. The slice analyzed 8 sermons from 4 profiles (318, 117, 130, 80), 2 each; the spec
+called for 10 sermons from 5 pastors. The blind queue holds 757 unique claims (`review.json`). Nothing is labeled
+yet (`decisions.jsonl` does not exist).
+
+Brian asked for an AI first pass with second opinions on uncertain items. The reviewers' proposals live under
+`<pilot>/ai_review/` (rubric, 12 shards with a shared 10-claim calibration set, per-shard outputs) and are only
+proposals: they enter `decisions.jsonl` solely after Brian approves, with a provenance field so the report can state
+how much of the labeling was AI-proposed. Reviewers are blind to producer identity and Jev probabilities. Resume notes,
+the shard/agent mapping and the ordered next steps are in `<pilot>/ai_review/STATUS.md`.
+
