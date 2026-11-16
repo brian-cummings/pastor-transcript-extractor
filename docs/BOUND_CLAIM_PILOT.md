@@ -408,3 +408,8 @@ proposals: they enter `decisions.jsonl` solely after Brian approves, with a prov
 how much of the labeling was AI-proposed. Reviewers are blind to producer identity and Jev probabilities. Resume notes,
 the shard/agent mapping and the ordered next steps are in `<pilot>/ai_review/STATUS.md`.
 
+Review tooling added for this: `pte analysis bound-claims review --only <ids.json>` reviews just a list of claim ids, and
+`pte analysis bound-claims review-import --proposals <file> --source <provenance>` writes proposed labels only for
+claims with no label yet (existing labels win), stamping every record with its provenance; the report's `labels.by_source`
+states how much of the labeling was the reviewer's own (`human`) versus imported.
+

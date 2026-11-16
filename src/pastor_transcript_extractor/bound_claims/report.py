@@ -184,7 +184,8 @@ def compute(pilot: Path) -> dict[str, Any]:
     return dict(
         version=VERSION, status=overall, strata_sha256=file_sha256(pilot / 'strata.json'),
         strata=[{k: row[k] for k in ('stratum', 'requested', 'eligible', 'selected', 'shortfall')} for row in strata['strata']],
-        labels=dict(decided=len(decisions), accepted=sum(d['decision'] == 'accept' for d in decisions.values())),
+        labels=dict(decided=len(decisions), accepted=sum(d['decision'] == 'accept' for d in decisions.values()),
+                    by_source=dict(sorted(Counter(d.get('source', 'human') for d in decisions.values()).items()))),
         producers=metrics, jev_thresholds=jev, agreement=agreement(extractions),
         costs=dict(ledger=ledger, jev_billing_finding=billing_finding(pilot, verification_doc),
                    note='Known list-price usage replaces reservations; unresolved usage keeps its reservation; invoice not checked.'),
@@ -197,7 +198,9 @@ def compute(pilot: Path) -> dict[str, Any]:
 
 
 def markdown(report: Mapping[str, Any]) -> str:
-    lines = ['# Bound-claim pilot report', '', report['status'], '', report['next_action'], '', '## Acceptance', '',
+    lines = ['# Bound-claim pilot report', '', report['status'], '', report['next_action'], '',
+             f"Labels: {report['labels']['decided']} decided, {report['labels']['accepted']} accepted; by provenance `{json.dumps(report['labels']['by_source'])}` (`human` = the reviewer's own labels).", '',
+             '## Acceptance', '',
              '| # | Criterion | Rule | Observed | Status | Failing component |', '| --- | --- | --- | --- | --- | --- |']
     for row in report['acceptance']:
         lines.append(f"| {row['criterion']} | {row['name']} | {row['rule']} | `{json.dumps(row['observed'], sort_keys=True)}` | **{row['status']}** | {row['failing_component'] or ''} |")

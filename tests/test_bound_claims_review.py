@@ -101,6 +101,35 @@ class ReviewTests(unittest.TestCase):
         finished = review.interactive(self.root, lambda prompt: next(resumed), lambda s: None)
         self.assertEqual(0, finished['remaining'])
 
+    def test_review_can_be_limited_to_a_list_of_claim_ids(self):
+        same = {i: self.one(i) for i in range(4)}
+        self.produce(same, same, count=4)
+        queue = review._queue(self.root)
+        chosen = [queue['items'][2]['id'], queue['items'][0]['id']]
+        write_json(self.root / 'only.json', chosen)
+        answers = iter(['a', 'r', 'a'])
+        done = review.interactive(self.root, lambda prompt: next(answers), lambda s: None, only=review.load_ids(self.root / 'only.json'))
+        self.assertEqual({'accept', 'reject'}, {r['decision'] for r in review.load_decisions(self.root).values()})
+        self.assertEqual((4, 2, 2), (done['items'], done['decided'], done['remaining']))
+        self.assertEqual(set(chosen), set(review.load_decisions(self.root)))
+
+    def test_import_writes_provenance_never_overrides_existing_labels_and_validates(self):
+        same = {i: self.one(i) for i in range(3)}
+        self.produce(same, same, count=3)
+        ids = [item['id'] for item in review._queue(self.root)['items']]
+        review.record_decision(self.root, ids[0], 'reject:voice')
+        write_json(self.root / 'proposals.json', {'1': dict(claim_id=ids[0], decision='accept'), '2': dict(claim_id=ids[1], decision='r:polarity'), ids[2]: 'accept'})
+        result = review.import_proposals(self.root, self.root / 'proposals.json', 'ai_proposed_human_approved')
+        self.assertEqual((2, 1, 0), (result['written'], result['skipped_already_labeled'], result['remaining']))
+        decisions = review.load_decisions(self.root)
+        self.assertEqual(('reject:voice', None), (decisions[ids[0]]['decision'], decisions[ids[0]].get('source')))
+        self.assertEqual(('reject:polarity', 'ai_proposed_human_approved'), (decisions[ids[1]]['decision'], decisions[ids[1]]['source']))
+        write_json(self.root / 'bad.json', {ids[0]: 'maybe'})
+        with self.assertRaises(ValueError):
+            review.import_proposals(self.root, self.root / 'bad.json', 'x')
+        with self.assertRaises(ValueError):
+            review.import_proposals(self.root, self.root / 'proposals.json', ' ')
+
     def test_decision_parser(self):
         self.assertEqual('accept', review.parse_decision('A'))
         self.assertEqual('reject', review.parse_decision('reject'))

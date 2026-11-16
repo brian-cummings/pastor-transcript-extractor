@@ -96,11 +96,27 @@ def review_queue(pilot: Path = typer.Option(..., '--pilot', help='Pilot director
 
 @app.command('review')
 def review_claims(pilot: Path = typer.Option(..., '--pilot', help='Pilot directory.'),
-                  decisions: Path | None = typer.Option(None, '--decisions', help='Replay saved decisions instead of the interactive loop.')):
+                  decisions: Path | None = typer.Option(None, '--decisions', help='Replay saved decisions instead of the interactive loop.'),
+                  only: Path | None = typer.Option(None, '--only', help='JSON list of claim ids; review just those.')):
     """Accept or reject each queued claim; decisions append to decisions.jsonl and the command resumes."""
     from ...bound_claims import review as reviewing
     try:
-        _echo(reviewing.replay(pilot.resolve(), decisions) if decisions else reviewing.interactive(pilot.resolve(), input, typer.echo))
+        if decisions:
+            _echo(reviewing.replay(pilot.resolve(), decisions))
+        else:
+            _echo(reviewing.interactive(pilot.resolve(), input, typer.echo, only=reviewing.load_ids(only) if only else None))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('review-import')
+def review_import(pilot: Path = typer.Option(..., '--pilot', help='Pilot directory.'),
+                  proposals: Path = typer.Option(..., '--proposals', help='JSON of proposed labels ({claim_id: decision}).'),
+                  source: str = typer.Option(..., '--source', help='Label provenance recorded on every imported decision, e.g. ai_proposed_human_approved.')):
+    """Import proposed labels for claims that have none; existing labels win and every record carries its provenance."""
+    from ...bound_claims import review as reviewing
+    try:
+        _echo(reviewing.import_proposals(pilot.resolve(), proposals, source))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 

@@ -99,10 +99,13 @@ def load_decisions(pilot: Path) -> dict[str, dict[str, Any]]:
     return latest
 
 
-def record_decision(pilot: Path, fingerprint: str, decision: str) -> dict[str, Any]:
+def record_decision(pilot: Path, fingerprint: str, decision: str, source: str | None = None) -> dict[str, Any]:
+    """`source` is label provenance; records without one are the reviewer's own (reported as `human`)."""
     if decision != 'void' and parse_decision(decision) != decision:
         raise ValueError(f'Unknown decision: {decision}')
     record = dict(claim_fingerprint=fingerprint, decision=decision, decided_at=datetime.now(timezone.utc).isoformat())
+    if source:
+        record['source'] = source
     with (pilot / DECISIONS).open('a') as stream:
         stream.write(json.dumps(record, sort_keys=True) + '\n')
         stream.flush()
@@ -134,6 +137,46 @@ def replay(pilot: Path, decisions: Path) -> dict[str, Any]:
     return progress(pilot) | dict(written=written)
 
 
+def load_ids(path: Path) -> set[str]:
+    """Claim ids from a JSON list, or the keys/`claim_id` values of a JSON object."""
+    data = json.loads(Path(path).read_text())
+    if isinstance(data, dict):
+        data = [value['claim_id'] if isinstance(value, dict) and 'claim_id' in value else key for key, value in data.items()]
+    if not isinstance(data, list) or not all(isinstance(item, str) for item in data):
+        raise ValueError('Expected a JSON list of claim ids')
+    return set(data)
+
+
+def import_proposals(pilot: Path, proposals: Path, source: str) -> dict[str, Any]:
+    """Write proposed labels (`{claim_id: decision}` or `{key: {claim_id, decision}}`) for claims with no label yet.
+
+    Existing labels always win, and every written record carries `source`, so the report can state how much of the
+    labeling was not the reviewer's own.
+    """
+    if not source.strip():
+        raise ValueError('A provenance source is required')
+    queue = _queue(pilot)
+    known = {item['id'] for item in queue['items']}
+    data = json.loads(Path(proposals).read_text())
+    if not isinstance(data, dict):
+        raise ValueError('Proposals must be a JSON object')
+    entries = {}
+    for key, value in data.items():
+        claim_id, decision = (value['claim_id'], value['decision']) if isinstance(value, dict) else (key, value)
+        if claim_id not in known:
+            raise ValueError('Proposal for a claim that is not in the queue: ' + claim_id)
+        if parse_decision(decision) is None:
+            raise ValueError(f'Unknown decision: {decision}')
+        entries[claim_id] = parse_decision(decision)
+    existing = load_decisions(pilot)
+    written = 0
+    for claim_id, decision in entries.items():
+        if claim_id not in existing:
+            record_decision(pilot, claim_id, decision, source.strip())
+            written += 1
+    return progress(pilot) | dict(written=written, skipped_already_labeled=len(entries) - written, source=source.strip())
+
+
 def progress(pilot: Path) -> dict[str, Any]:
     queue = _queue(pilot)
     decided = load_decisions(pilot)
@@ -160,18 +203,20 @@ PROMPT = ('accept (a) / reject (r) / reject:<field> where field is ' + ', '.join
           ' / undo last (u) / quit (q): ')
 
 
-def interactive(pilot: Path, input_fn: Callable[[str], str] = input, output_fn: Callable[[str], Any] = print) -> dict[str, Any]:
-    """Resumable loop over undecided items in queue order."""
+def interactive(pilot: Path, input_fn: Callable[[str], str] = input, output_fn: Callable[[str], Any] = print,
+                only: set[str] | None = None) -> dict[str, Any]:
+    """Resumable loop over undecided items in queue order; `only` limits it to those claim ids."""
     queue = _queue(pilot)
     items, last = queue['items'], None
     while True:
         decided = load_decisions(pilot)
-        todo = [(number, item) for number, item in enumerate(items, 1) if item['id'] not in decided]
+        todo = [(number, item) for number, item in enumerate(items, 1)
+                if item['id'] not in decided and (only is None or item['id'] in only)]
         if not todo:
-            output_fn('All claims are labeled.')
+            output_fn('All claims are labeled.' if only is None else 'Every claim in the list is labeled.')
             break
         number, item = todo[0]
-        output_fn(render(item, number, len(items)))
+        output_fn(render(item, number, len(items)) + ('' if only is None else f'\n({len(todo)} left in this list)'))
         answer = input_fn(PROMPT).strip().lower()
         if answer in ('q', 'quit'):
             break
