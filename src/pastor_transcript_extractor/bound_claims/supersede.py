@@ -1,7 +1,8 @@
 """Set aside a frozen plan and its downstream paid outputs so a corrected implementation can be frozen anew.
 
 Nothing is deleted: the plan, extraction and verification directories move under `superseded/<plan>/`, and their
-ledger entries are renamed but still count toward the ceiling. Human labels are never moved.
+ledger entries are renamed but still count toward the ceiling. The ledger adopts the current ceiling and the note
+records the previous one. Human labels are never moved.
 """
 from __future__ import annotations
 
@@ -35,7 +36,7 @@ def run(pilot: Path, reason: str) -> dict[str, Any]:
         raise ValueError(f'Already superseded: {destination}')
     destination.mkdir(parents=True)
     ledger = PilotLedger(pilot / 'ledger.json')
-    moved_entries = ledger.supersede(LEDGER_STEPS, tag)
+    moved_entries, previous_ceiling = ledger.supersede(LEDGER_STEPS, tag)
     moved = ['plan.json']
     shutil.move(str(plan_path), destination / 'plan.json')
     for name in DOWNSTREAM:
@@ -43,6 +44,7 @@ def run(pilot: Path, reason: str) -> dict[str, Any]:
             shutil.move(str(pilot / name), destination / name)
             moved.append(name)
     note = dict(reason=reason.strip(), superseded_at=datetime.now(timezone.utc).isoformat(), plan_fingerprint=plan['content_fingerprint'],
-                implementation=plan['implementation'], moved=moved, ledger_entries=moved_entries)
+                implementation=plan['implementation'], moved=moved, ledger_entries=moved_entries,
+                previous_ceiling=previous_ceiling, ceiling=dict(usd=str(ledger.ceiling_usd), attempts=ledger.ceiling_attempts))
     write_json(destination / 'SUPERSEDED.json', note)
     return dict(note, destination=str(destination), ledger=ledger.summary(), next='Commit the corrected implementation, then run the pilot again.')

@@ -52,14 +52,14 @@ HOLDOUT_POLICIES={
     DEEPINFRA_HOLDOUT_VERSIONS[2]:{**QWEN_VERIFY_POLICY,'model':FLASH_MODEL,'input_cap':32768,'output_usd_per_million':'0.60'},
 }
 
-# Bound-claim pilot: POLICY/DIRECT_POLICY models and prices, with caps sized so one request's full reservation
-# fits a $5 pilot ceiling. Reasoning is off for both producers: at `medium`, V4 Pro spent the whole 8192-token
-# output cap on reasoning in 5 of 6 calls (finish_reason length), so the cap cannot be sized around effort.
-# Each request reserves exactly one attempt (no recovery).
+# Bound-claim pilot: POLICY/DIRECT_POLICY models and prices. Reasoning is off for both producers: at `medium`,
+# V4 Pro spent the whole 8192-token output cap on reasoning in 5 of 6 calls (finish_reason length), so the cap
+# cannot be sized around effort. `maximum_usd` is twice one attempt's list cost so `streaming_request` reserves the
+# one bounded whitespace-loop recovery; sized to a single attempt it blocked recovery and 5 of 56 Pro blocks failed.
 BOUND_CLAIM_CAPS=dict(input_cap=16384,output_cap=8192)
 BOUND_CLAIM_POLICIES={
-    DEEPINFRA_BOUND_CLAIM_VERSIONS[0]:{**POLICY,**BOUND_CLAIM_CAPS,'reasoning_effort':'none','maximum_usd':'0.0425984'},
-    DEEPINFRA_BOUND_CLAIM_VERSIONS[1]:{**DIRECT_POLICY,**BOUND_CLAIM_CAPS,'maximum_usd':'0.008192'},
+    DEEPINFRA_BOUND_CLAIM_VERSIONS[0]:{**POLICY,**BOUND_CLAIM_CAPS,'reasoning_effort':'none','maximum_usd':'0.0851968'},
+    DEEPINFRA_BOUND_CLAIM_VERSIONS[1]:{**DIRECT_POLICY,**BOUND_CLAIM_CAPS,'maximum_usd':'0.016384'},
 }
 
 

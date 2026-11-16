@@ -110,15 +110,21 @@ def decode(response: Mapping[str, Any], block: Mapping[str, Any]) -> dict[str, A
 
 
 def _physical_usage(store: requests.ReceiptStore) -> dict[str, Any]:
+    """Tokens over every physical attempt; one without usage (a cancelled stream) is counted apart and charged in full."""
+    input_tokens = output_tokens = unmetered = 0
+    seen = False
     for attempt in store.attempts():
         path = store.root / 'receipts' / (attempt['request_fingerprint'] + '.json')
         receipt = read_json(path) if path.exists() else None
-        records = streaming.usage_records(store, attempt, receipt) or []
-        for record in records:
+        for record in streaming.usage_records(store, attempt, receipt) or []:
+            seen = True
             usage = record.get('usage') or {}
             if type(usage.get('prompt_tokens')) is int and type(usage.get('completion_tokens')) is int:
-                return dict(input_tokens=usage['prompt_tokens'], output_tokens=usage['completion_tokens'])
-    return {}
+                input_tokens += usage['prompt_tokens']
+                output_tokens += usage['completion_tokens']
+            else:
+                unmetered += 1
+    return dict(input_tokens=input_tokens, output_tokens=output_tokens, unmetered_attempts=unmetered) if seen else {}
 
 
 def _classify(error: Exception) -> str:
@@ -172,7 +178,8 @@ def run(strata_path: Path, producer: str, ledger: PilotLedger, *, check_only: bo
             if ledger.entry_status(entry) == 'reserved':
                 usage = _physical_usage(store)
                 ledger.resolve(entry, actual_usd=(list_price_usd(usage['input_tokens'], usage['output_tokens'],
-                    policy['input_usd_per_million'], policy['output_usd_per_million']) if usage else None), **usage)
+                    policy['input_usd_per_million'], policy['output_usd_per_million'])
+                    + usage['unmetered_attempts'] * provider.reserved_usd(version) if usage else None), **usage)
             if failure is None:
                 try:
                     row.update(status='ok', usage=response['usage'], **decode(response, block))

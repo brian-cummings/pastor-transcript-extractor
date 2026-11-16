@@ -16,8 +16,8 @@ from typing import Any
 from .common import read_json, write_json
 
 VERSION = 'bound-claim-pilot-ledger-v1'
-CEILING_USD = Decimal('5.00')
-CEILING_ATTEMPTS = 600
+CEILING_USD = Decimal('10.00')
+CEILING_ATTEMPTS = 1000
 STEPS = ('leaf', 'extract_pro', 'extract_flash', 'verify')
 CENT = Decimal('0.000000001')
 
@@ -118,17 +118,24 @@ class PilotLedger:
                              output_tokens=output_tokens, resolved_at=datetime.now(timezone.utc).isoformat(), **detail)
             write_json(self.path, ledger)
 
-    def supersede(self, steps: tuple[str, ...], tag: str) -> list[str]:
-        """Move finished attempts of `steps` under a superseded key; their spend and attempts still count toward the ceiling."""
+    def supersede(self, steps: tuple[str, ...], tag: str) -> tuple[list[str], dict[str, Any]]:
+        """Move finished attempts of `steps` under a superseded key; their spend and attempts still count toward the ceiling.
+
+        The ledger adopts this instance's ceiling; the previous one is returned so the change is recorded, never silent.
+        """
         with self._locked():
-            ledger = self._read()
+            ledger = read_json(self.path)
+            if ledger.get('version') != VERSION:
+                raise ValueError('Ledger version differs from the frozen pilot')
+            previous = dict(usd=ledger['ceiling_usd'], attempts=ledger['ceiling_attempts'])
+            ledger.update(ceiling_usd=str(self.ceiling_usd), ceiling_attempts=self.ceiling_attempts)
             moved = [key for key, entry in ledger['entries'].items() if entry['step'] in steps]
             for key in moved:
                 entry = ledger['entries'].pop(key)
                 entry.update(superseded_step=entry['step'], step='superseded_' + entry['step'])
                 ledger['entries'][f'superseded/{tag}/{key}'] = entry
             write_json(self.path, ledger)
-        return moved
+        return moved, previous
 
     def summary(self) -> dict[str, Any]:
         ledger = self._read()

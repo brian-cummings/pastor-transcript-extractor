@@ -54,7 +54,7 @@ class ExtractionTests(unittest.TestCase):
     def test_check_only_opens_no_transport_and_writes_nothing(self):
         path = self.strata()
         plan = extract.run(path, 'pro', self.ledger(), check_only=True, transport=lambda *a, **k: self.fail('check-only sent a request'))
-        self.assertEqual((3, 3, '0.1277952'), (plan['blocks'], plan['requests_to_send'], plan['worst_case_reserved_usd']))
+        self.assertEqual((3, 3, '0.2555904'), (plan['blocks'], plan['requests_to_send'], plan['worst_case_reserved_usd']))
         self.assertFalse((self.root / 'ledger.json').exists() or (self.root / 'plan.json').exists())
 
     def test_successful_run_decodes_claims_accounts_cost_and_is_resumable_without_requests(self):
@@ -176,6 +176,42 @@ class ExtractionTests(unittest.TestCase):
         self.assertEqual((1, 0, '0.005720000'), (step['attempts'], step['unresolved'], step['known_usd']))  # 3000x1.3 + 700x2.6 per million
         resumed = extract.run(path, 'pro', ledger, transport=lambda *a, **k: self.fail('re-sent'), state=CLEAN, metadata=METADATA)
         self.assertEqual(1, resumed['summary']['transport_failures'])
+
+    def test_both_producers_reserve_the_one_whitespace_recovery_attempt(self):
+        for name in ('pro', 'flash'):
+            spec = extract.build_request(block(0), 'x', name)
+            self.assertEqual(2, spec.preflight()['stream_recovery']['maximum_attempts'])
+
+    def test_whitespace_loop_is_recovered_once_and_both_attempts_are_accounted(self):
+        path = self.strata(1)
+        output = self.good(0)
+
+        def loop_then_recover(spec, *, before_attempt=None, after_attempt=None, maximum_attempts=1):
+            self.assertEqual(2, maximum_attempts)
+            records = []
+            for index in (1, 2):
+                before_attempt(index)
+                usage = {} if index == 1 else dict(prompt_tokens=3000, completion_tokens=1500)
+                content = '{"claims": [' + ' ' * 300 if index == 1 else output
+                raw = dict(model=spec.body['model'], service_tier='standard', usage=usage,
+                           choices=[dict(index=0, finish_reason='pte_whitespace_loop' if index == 1 else 'stop',
+                                         message=dict(role='assistant', content=content, reasoning_content='', refusal=None, tool_calls=[]))])
+                record = dict(cancelled=index == 1, outcome='cancelled_whitespace_loop' if index == 1 else 'complete',
+                              error='JSON whitespace loop detected' if index == 1 else None, usage=usage, usage_final=index == 2,
+                              usage_available=index == 2, attempt=index, connection_closed=True)
+                wire_response = WireResponse(200, json.dumps(raw, sort_keys=True, separators=(',', ':')))
+                after_attempt(index, wire_response, record)
+                records.append(record)
+            raw['_pte_transport'] = dict(version='deepinfra-qwen-stream-v1', attempts=records, total_elapsed_seconds=1.0, retry_outcome='recovered')
+            return WireResponse(200, json.dumps(raw, sort_keys=True, separators=(',', ':')))
+        loop_then_recover.supports_stream_callbacks = True
+        ledger = self.ledger()
+        result = extract.run(path, 'pro', ledger, transport=loop_then_recover, state=CLEAN, metadata=METADATA)
+        row = read_json(Path(result['output']))['rows'][0]
+        self.assertEqual('ok', row['status'])
+        step = ledger.summary()['steps']['extract_pro']
+        # attempt 2 at list price (3000x1.3 + 1500x2.6 per million) plus the cancelled attempt without usage charged at one full reservation
+        self.assertEqual((1, 0, '0.050398400'), (step['attempts'], step['unresolved'], step['known_usd']))
 
     def test_step_refuses_when_worst_case_exceeds_the_ceiling(self):
         path = self.strata(3)

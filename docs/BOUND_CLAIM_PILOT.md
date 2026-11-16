@@ -373,3 +373,12 @@ registry; the primary agent updates and re-pins them on approval.
    6 stopped Pro attempts are kept under `<pilot>/superseded/<plan>/`; their ledger entries are
    renamed `superseded/...` and still count toward the $5.00 / 600-attempt ceiling.
    Command: `pte analysis bound-claims supersede --pilot <pilot> --reason <text>`.
+4. **Whitespace-loop recovery reserved; ceiling raised to $10.00 / 1000 attempts.** With reasoning off, 5 of
+   the first 56 Pro blocks ended in the JSON whitespace loop and tripped the 5% transport stop rule. The existing
+   `deepinfra_streaming` recovery (one cancelled-stream retry) was already wired in but disabled: the pilot
+   `maximum_usd` equalled one attempt, so `streaming_request` reserved a single attempt. `maximum_usd` is now twice one
+   attempt (Pro `0.0851968`, Flash `0.016384`), a recovered block is accounted for both physical attempts (a cancelled
+   attempt without usage is charged one full reservation), and the ceiling rises so worst-case reservations fit
+   (Pro 99 x $0.085 = $8.43). Expected spend stays near $1 to $2. Approved by Brian 2026-11-15; the first
+   stopped Pro run (51 ok, 5 whitespace failures, $0.37) is kept under `superseded/`.
+
