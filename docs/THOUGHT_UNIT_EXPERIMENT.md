@@ -331,3 +331,51 @@ precision 0.59 and recall 0.77, graded at 0.4 gives 0.62 and 0.62, base at 0.4 g
 
 Acceptance criterion advanced: none (the bar was not met). New evidence: Jev ranks breaks usefully (AUC 0.77 to 0.87) but not sharply enough to cut reliably; neither
 widening nor decomposition nor a graded question fixed that at the pre-registered thresholds. Justified next action: none inside this probe.
+
+## 15. Snap test (specification, 2026-11-22; Brian's direction after sections 13 and 14)
+
+Brian's reframing: the standard is a less arbitrary line than a time block, not perfect thought boundaries, and the integrity of the original blocks does not matter.
+Measured baseline (sermon 590, code count plus Claude's blind labels): time-block edges cut mid-sentence in 34 of 58 cases (59%) and were a real break in 9 of 39 graded
+(23%), while a random sentence end was a break about 22% of the time (13 of 59).
+
+**One question.** Does placing each block edge by Jev's ranking give a better place to end a block than the original edge, and than simply moving it to the nearest sentence end;
+and does splitting at Jev-ranked interior peaks leave fewer multi-thought units?
+
+**Material (held out).** The lowest video id not already used for G1, the wording probe or the atomic selection (281, 350, 590 excluded), which is sermon 1200. Every candidate sentence end in it
+is scored once with the five atomic questions of section 14 (3-sentence windows, `jev-1.13.0`), about 416 candidates and 2,080 questions, about $0.03. The atomic score is
+(closure + max(transition, new element, change of speech) + (1 - development)) / 3, fixed in section 14 and not re-derived.
+
+**Arms (all are cut points; units are the text between consecutive cuts).**
+- `original`: the saved time-block edges.
+- `code`: each original edge moved to the nearest sentence end (deterministic).
+- `jev`: each original edge may land on any candidate strictly between the previous and the next original edge (no deeper than the two adjacent blocks). It stays at its nearest sentence
+  end unless a candidate scores at least 0.15 higher, in which case it takes the highest-scoring one (ties to the nearest). Edges are placed in order of decreasing gain; an edge takes
+  its first option that keeps edges in order and every unit at least 2 sentences and at most 2,304 characters; an edge with no valid option is dropped and reported.
+- `jev_split`: the `jev` units plus interior cuts at local score peaks (highest within 2 candidates on each side) that reach the sermon's 75th percentile of candidate scores,
+  accepted in descending score order at least 3 sentences from every other cut.
+Constants (0.15, 2 sentences, 2,304 characters, the 75th percentile, 3 sentences) are fixed here and are not tuned.
+
+**Integrity.** Cut points only partition the text: every unit is the text between consecutive cuts, so no sentence is dropped or duplicated. A check fails the run unless units are contiguous,
+non-overlapping and rejoin to exactly the sermon's non-whitespace text; the result records it.
+
+**Grading (blind; arm labels hidden and A/B order randomized by seed).** Claude grades all items; Brian grades the first 15 edge comparisons as a calibration of Claude's standard.
+- Edge comparisons: for up to 40 edges, `original` vs `jev` and `code` vs `jev` where the cut positions differ: which is the better place to end the block (A, B or tie)?
+- Splits: 15 `jev_split` interior cuts: is this a real break (y/n)?
+- Units: 15 `jev` units and 15 `jev_split` units (arm hidden): does the unit contain more than one complete thought (y/n)?
+
+**Pre-registered bars (descriptive power: about 40 comparisons from one sermon).**
+- H1: `jev` beats `original` in at least 70% of non-tie comparisons.
+- H2: `jev` beats `code` in more than half of non-tie comparisons, with at least 15 non-tie comparisons on edges that had 3 or more candidates (fewer is reported as inconclusive).
+- H3: no `jev` cut is mid-sentence and no unit breaks the size guards.
+- H4 (splitting, reported separately): at least 60% of the sampled splits are real breaks and the share of multi-thought units falls by at least 40% relative to `jev` alone.
+Also reported, not bars: Claude and Brian agreement on the calibration items, the distribution of edge move distances and how often the margin rule moved an edge, tie share, and unit size distributions.
+
+**Cost, stops.** About $0.03 on the shared ledger (ceiling $3.00); one run, no second round, no tuning on the result. Stop on a coverage failure, a schema or answer failure (nothing is guessed),
+or the ceiling.
+
+```bash
+pte analysis thought-units snap --base-dir /Users/briancummings/Documents/PastorSearchData --check-only
+pte analysis thought-units snap --base-dir /Users/briancummings/Documents/PastorSearchData              # Jev; clean tree and TYPESAFE_API_KEY
+pte analysis thought-units snap-review --base-dir /Users/briancummings/Documents/PastorSearchData       # Brian: the 15 calibration comparisons
+pte analysis thought-units snap-report --base-dir /Users/briancummings/Documents/PastorSearchData
+```
