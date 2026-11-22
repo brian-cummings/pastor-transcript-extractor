@@ -225,6 +225,8 @@ def validate_records(payload: Any, max_records: int = 1) -> list[dict[str, Any]]
             raise SchemaError('Record fields differ from the frozen contract')
         if any(not isinstance(record[name], str) or not record[name].strip() for name in EXTRA_FIELDS):
             raise SchemaError('summary and target must be non-empty strings')
+        if not isinstance(record['proposition'], str) or not record['proposition'].strip():      # found in section 23: version 3 returned two empty propositions that the shared check let through
+            raise SchemaError('proposition must be a non-empty string')
         records.append({**bound._validate_claim({key: record[key] for key in bound.FIELDS}), **{name: record[name] for name in EXTRA_FIELDS}})
     return records
 

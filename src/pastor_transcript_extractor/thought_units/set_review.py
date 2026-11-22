@@ -57,6 +57,9 @@ def by_key(base_dir: Path, half: str, variant: leaf_evidence.Variant) -> dict[st
     for pair, row in zip(pairs, result['rows']):
         if (row['unit'], row['leaf']) != (pair['unit'], pair['leaf']):
             raise ValueError(f"{path.name} rows do not line up with the pairs at {pair['key']}")
+        if row['status'] == 'schema_failure':        # the version broke its own output contract on this pair: no record, counted as a miss and reported, never graded as 'none'
+            found[pair['key']] = None
+            continue
         if row['status'] != 'ok':
             raise ValueError(f"Pair {pair['key']} is {row['status']} for {variant.key}; the test needs every pair answered")
         found[pair['key']] = list(row['claims'])
@@ -73,7 +76,7 @@ def build_queue(base_dir: Path, half: str, variants: tuple[str, ...] | None = No
     phase1, phase2, records, summaries, distinct = [], [], {}, {}, {}
     for variant in keys:
         for key, claims in sorted(found[variant].items()):
-            if key not in pairs:
+            if key not in pairs or claims is None:
                 continue
             pair, sermon = pairs[key], sermon_of(pairs[key]['video_id'])
             for index, record in enumerate(claims):
@@ -107,7 +110,7 @@ def build_queue(base_dir: Path, half: str, variants: tuple[str, ...] | None = No
                                                       records=[dict(summary=c['summary'], proposition=c['claim']['proposition']) for c in claims], uses=[dict(version=variant, pair=key)])
                     phase2.append(item)
     for key, pair in sorted(pairs.items()):
-        silent = [v for v in keys if not found[v][key]]
+        silent = [v for v in keys if found[v][key] == []]
         if silent:
             phase1.append(dict(id=digest(dict(none=key))[:16], kind='none', pair=key, leaf=pair['leaf'], leaf_meaning=main_point.leaf_meaning(pair['leaf']),
                                watch_url=sermon_of(pair['video_id']).link_at(pair['unit_start']), unit_text=pair['text'],
@@ -118,15 +121,17 @@ def build_queue(base_dir: Path, half: str, variants: tuple[str, ...] | None = No
     visible = [{k: v for k, v in item.items() if k not in ('uses', 'pair')} for item in items]
     queue = seal(dict(version=VERSION, half=half, source_sha256=seed, item_count=len(items), phase1=len(phase1), items=visible))
     versions = seal(dict(version=VERSION, half=half, queue_fingerprint=queue['content_fingerprint'], variants=list(keys), reviewed_pairs=sorted(pairs),
-                         answered={v: {k: len(r) for k, r in found[v].items() if k in pairs} for v in keys},
+                         answered={v: {k: len(r or []) for k, r in found[v].items() if k in pairs} for v in keys},
+                         failed={v: sorted(k for k, r in found[v].items() if k in pairs and r is None) for v in keys},
                          items={item['id']: {k: item[k] for k in ('kind', 'uses', 'pair') if k in item} for item in items}))
     paths = paths_for(base_dir, half)
     paths['out'].mkdir(parents=True, exist_ok=True)
     write_json(paths['queue'], queue)
     write_json(paths['versions'], versions)
     return dict(queue=str(paths['queue']), half=half, variants=list(keys), pairs=len(pairs), items=len(items), phase1=len(phase1), phase2=len(phase2),
-                records={v: sum(len(r) for k, r in found[v].items() if k in pairs) for v in keys},
-                pairs_with_several={v: sum(len(r) >= 2 for k, r in found[v].items() if k in pairs) for v in keys})
+                records={v: sum(len(r or []) for k, r in found[v].items() if k in pairs) for v in keys},
+                pairs_with_several={v: sum(len(r or []) >= 2 for k, r in found[v].items() if k in pairs) for v in keys},
+                failed_pairs={v: sum(r is None for k, r in found[v].items() if k in pairs) for v in keys})
 
 
 def judge(base_dir: Path, half: str, source: str = 'human', input_fn=input, output_fn=print) -> dict[str, Any]:
@@ -211,6 +216,8 @@ def report(base_dir: Path, half: str) -> dict[str, Any]:
     if primary not in keys:
         primary = keys[-1]
     rows = tally(queue, versions, decided, keys)
+    for version in keys:
+        rows[version]['failed_pairs'] = len(versions.get('failed', {}).get(version, []))
     pairs = len(versions['reviewed_pairs'])
     reference = next((k for k in keys if k != primary), None)
     outcomes = {}

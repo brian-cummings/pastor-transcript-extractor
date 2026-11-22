@@ -1098,3 +1098,27 @@ pte analysis thought-units set-leaf-review --base-dir <base> --half development 
 pte analysis thought-units set-leaf-report --base-dir <base> --half development --top 3
 ```
 
+### 23.5 Result on the development half (2026-11-22; labels by Claude, source recorded; Brian has not spot-checked; the held-out queue was built and not graded)
+
+Extraction on the three-leaf pairs: development 25 pairs, held-out 58. Version 4 returned two or three records for 7 of 25 development pairs (10 of 58 held-out). Version 3 on the same pairs had one schema failure (an empty summary) and one anchor failure on development, and 6 no-record pairs and 3 anchor failures on held-out; version 3's anchor failures hit pairs that returned good records in §21.4, so the provider is not deterministic at temperature 0 and one-to-five-item differences between versions are within run-to-run noise. A review gap was fixed: a schema failure is reported as a missed pair and not graded as "no record needed".
+Blind review of 120 items on the development half:
+
+| | Version 3 (one record) | Version 4 (up to three) |
+| --- | --- | --- |
+| Records | 23 | 33 (25 first records, 8 extra) |
+| Accepted | 18 | 31 |
+| Rejects | 2 proposition (empty), 1 qualification, 1 voice, 1 polarity | 2 polarity |
+| Pairs correct on leaf fit | 21 of 25 | 21 of 25 |
+| Faithful summaries | 21 of 23 | 31 of 33 |
+| Summaries state the leaf's act | 21 of 23 | 28 of 33 |
+| Pairs with an accepted record | 18 | 24 (6 only version 4, 0 only version 3) |
+
+The four readings fixed in 23.3:
+- **Padding: held.** Version 4's 8 extra records were all accepted (7 of 8 fit the leaf) and all 7 multi-record pairs were judged to state different points (7 of 7). The extras were real points: a theocracy rejection, a Church-of-England church-state rejection, and a "reject both but keep Christian moral principles" point from one passage; "Christian nationalism is antichrist and beastly" separately from "it forcefully merges church and state"; "nationalism is excessive devotion" separately from "Christian nationalism is a threat to the gospel".
+- **No loss on the first record: held.** Version 4's first records were accepted 23 of 25; on shared pairs version 3 had no accepted record that version 4 lacked.
+- **Recall: held.** Version 4 accepted records on 24 pairs against 18, and the extras account for the multi-point pairs.
+- **Single point: held.** Faithful summaries 31 of 33 against 21 of 23.
+Not fixed by multi-record: polarity `reject` on negative statements ("the United States was not established as a Christian nation") appears in version 4 (2 records), as the instruction's rule 5 and version 3's change did not remove it, and 4 of its 25 pairs still do not fit the leaf (leaf-gate precision).
+
+Reading and limits: on this half every pre-stated reading holds and there is no sign of padding, so permitting several records helps (or at least does not hurt) here. But it is 25 pairs, one rater who wrote the instruction, version 3 had a poor run (empty propositions, a schema failure), and the gain comes from a few rich passages (6 pairs in 2 passages); the held-out half and a fresh set of sermons are untested. A shared-check gap was found and fixed: the validator now rejects an empty proposition (version 3 returned two that the shared check accepted). Next action (Brian's decision): either grade the held-out sample (about 150 items) or go straight to fresh sermons for a confirmatory run of version 4 against version 3.
+

@@ -61,6 +61,8 @@ class ContractTests(unittest.TestCase):
                     dict(records=[dict(good, polarity='sideways')]), dict(claims=[good]), dict(records=[dict(good, extra='x')])):
             with self.assertRaises(leaf_evidence.SchemaError):
                 leaf_evidence.validate_records(bad)
+        with self.assertRaises(leaf_evidence.SchemaError):
+            leaf_evidence.validate_records(dict(records=[dict(good, proposition='  ')]))
 
 
 class RunTests(Setup):
