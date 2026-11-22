@@ -65,6 +65,24 @@ class ScopeTests(Setup):
             self.run_leaf({k: reply(record()) for k in self.keys})
 
 
+class VersionThreeTests(unittest.TestCase):
+    def test_version_three_is_version_two_with_exactly_four_additions_and_its_own_folder(self):
+        v2, v3 = leaf_evidence.SYSTEM_PROMPT_V2, leaf_evidence.SYSTEM_PROMPT_V3
+        for added in ('find the words in `target_unit` that do what the `leaf` definition describes', 'Include every ground, reason, concession and limit',
+                      '"X is antithetical to Y" is asserted, so affirm', 'a statement in `preceding_unit` or `following_unit` is never the anchor'):
+            self.assertIn(added, v3)
+            self.assertNotIn(added, v2)
+        self.assertEqual(11, len([line for line in v3.splitlines() if line[:2].strip('.').isdigit() or line[:3].strip('.').isdigit()]))
+        self.assertEqual(('v3', 'leaf-evidence-b3'), (leaf_evidence.V3.key, leaf_evidence.V3.directory))
+        self.assertNotEqual(leaf_evidence.V2.prompt, leaf_evidence.V3.prompt)
+
+    def test_a_revision_whose_old_text_is_missing_or_repeated_is_refused(self):
+        with self.assertRaises(ValueError):
+            leaf_evidence._revise('one two', (('three', 'x'),))
+        with self.assertRaises(ValueError):
+            leaf_evidence._revise('a a', (('a', 'x'),))
+
+
 class QueueTests(Setup):
     def test_development_review_labels_every_pair_blind_and_reports_defects(self):
         self.run_leaf({self.keys[0]: reply(record()), self.keys[1]: reply()})

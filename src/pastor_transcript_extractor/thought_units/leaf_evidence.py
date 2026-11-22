@@ -104,6 +104,30 @@ SYSTEM_PROMPT_V2 = (
 )
 
 
+def _revise(base: str, changes: tuple[tuple[str, str], ...]) -> str:
+    """Version 3 is version 2 with exactly these replacements (docs/THOUGHT_UNIT_EXPERIMENT.md section 21.3); each old text must occur once."""
+    for old, new in changes:
+        if base.count(old) != 1:
+            raise ValueError(f'Version 2 text to revise is not unique: {old[:40]}')
+        base = base.replace(old, new)
+    return base
+
+
+SYSTEM_PROMPT_V3 = _revise(SYSTEM_PROMPT_V2, (
+    ('Otherwise return an empty `records` list. Do not force a record. Return at most one record.',
+     'Before writing, find the words in `target_unit` that do what the `leaf` definition describes. If you cannot point to such words in `target_unit` itself, '
+     'return an empty `records` list. Do not force a record. Return at most one record.'),
+    ('and keep any concession or limit the preacher puts on it.',
+     'and keep any concession or limit the preacher puts on it. Include every ground, reason, concession and limit the preacher states in `target_unit` for this '
+     'thought, and for critical or supportive the explicit evaluation or approval itself, even if it follows the statement you will use as the anchor.'),
+    ('reject only when the preacher denies it;',
+     'reject only when the preacher denies it (a negative evaluation such as "X is evil", "X is a threat" or "X is antithetical to Y" is asserted, so affirm);'),
+    ('copied exactly, character for character.',
+     'copied exactly, character for character. It must lie inside `target_unit`: a statement in `preceding_unit` or `following_unit` is never the anchor, even if it '
+     'supports the leaf better; choose the best statement inside `target_unit`, or return an empty `records` list if none supports the summary.'),
+))
+
+
 @dataclass(frozen=True)
 class Variant:
     """One registered instruction, with its own folder and ledger. The instruction is read from the module at call time."""
@@ -119,7 +143,8 @@ class Variant:
 
 V1 = Variant('v1', INSTRUCTION_VERSION, 'SYSTEM_PROMPT', 'leaf-evidence-b')
 V2 = Variant('v2', 'leaf-evidence-v2', 'SYSTEM_PROMPT_V2', 'leaf-evidence-b2')
-VARIANTS = {variant.key: variant for variant in (V1, V2)}
+V3 = Variant('v3', 'leaf-evidence-v3', 'SYSTEM_PROMPT_V3', 'leaf-evidence-b3')
+VARIANTS = {variant.key: variant for variant in (V1, V2, V3)}
 
 @dataclass(frozen=True)
 class Scope:

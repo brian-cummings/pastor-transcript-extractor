@@ -122,7 +122,7 @@ def snap_report(base_dir: Path = BASE, grader: str = typer.Option('claude', '--g
 
 ARM = typer.Option(..., '--arm', help='Comparison arm.')
 CHECK = typer.Option(False, '--check-only', help='Report counts, requests and estimated cost; sends nothing.')
-VARIANT = typer.Option('v1', '--variant', help='Registered instruction: v1 (section 17) or v2 (section 18).')
+VARIANT = typer.Option('v1', '--variant', help='Registered instruction: v1 (section 17), v2 (section 18) or v3 (section 21).')
 
 
 @app.command('arms')

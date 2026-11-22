@@ -930,3 +930,51 @@ The frozen flag rule on the 196 fine blocks gives **71 pairs on 47 units, all ke
 
 The split rule is unchanged: **D = 1230, 548, 487 with 21 pairs; H = 1605, 627, 717 with 50 pairs.** Both halves clear the 15-pair floor, so the split needs no decision, but D is thin (12 theological, 4 moral, 3 critical, 2 supportive; one sermon contributes 1). H leaf mix: 27 theological, 15 critical, 6 moral, 2 supportive. The H grading sample of 19.5 stays (the first 30 of 50 by hash of the pair key); D is graded whole. Next: P1, `set-leaf-extract --half development --variant v2` (21 requests, about $0.01).
 
+### 20.5 P1 result: version 2, unchanged, on the development half (2026-11-22; labels by Claude, source recorded)
+
+Extraction: 21 pairs, 19 records, 2 pairs with no record (both were anchors that code located in a neighbor unit, not in the target unit), no schema or transport failures, $0.019. Blind review of 40 items (21 records or no-record pairs, 19 summaries), all labeled `claude`; Brian has not spot-checked. The section 18 bars are reported, not acceptance:
+
+| Bar | Rule | Observed on D | Section 18 on sermon 281 |
+| --- | --- | --- | --- |
+| L1 | 85% of records accepted, at most 1 qualification reject and 1 adoption or polarity reject | 16 of 19 (84%), 0 qualification, 2 polarity | 15 of 19 |
+| L2 | 85% of pairs correct on leaf fit | 16 of 21 (76%; the 2 no-record pairs counted wrong) | 18 of 19 |
+| L3 | 85% of summaries faithful and complete | 16 of 19 (84%) | 15 of 19 |
+| L4 | 85% of summaries state their own leaf's act | 17 of 19 (89%) | 16 of 19 |
+
+Qualification rejects stayed at zero and adoption errors at zero; L1 and L3 miss by one record, L2 by a larger margin. Defect table (21 pairs; every item below is a labeled failure):
+
+| Defect | Instances | Where |
+| --- | --- | --- |
+| D1. Polarity `reject` on an asserted negative evaluation ("antithetical to the gospel, antichrist and beastly") although rule 5 already says reject only when the preacher denies | 2 records (one passage, two leaves); the same pattern was seen in section 18 | v1230-b0056 (moral, critical) |
+| D2. A record anchored in the neighbor unit, so code drops it (the thought straddles units and the neighbor holds the stronger statement); rule 1 and rule 9 already say the anchor is in the target unit | 2 of 21 pairs, graded "should have a record" | v1230-b0047, v548-b0023 (theological) |
+| D3. A record written for a leaf the unit's own words do not show (moral for "a threat to the gospel"; theological for a denominational conviction that names no God, Scripture or principle); rule 2 already says to return an empty list, and the producer returned a record for every pair it did not lose to D2 | 3 records | v1230-b0055 and b0056 (moral), v1230-b0053 (theological) |
+| D4. A summary that leaves out a ground, limit or explicit evaluation stated in the unit | 3 summaries | v1230-b0055 critical (omits the patriotism-versus-nationalism contrast), v1230-b0053 supportive (omits "the genius and beauty of America..." approval), v548-b0026 theological ("the good and the bad" limit) |
+| Seen once, not acted on | 1 record | v548-b0026: a quoted passage's content attributed to the preacher as his own claim (voice) |
+
+Evidence that changed the diagnosis: two defects (D1 and D2) are failures to follow a rule the instruction already contains, and D3 is the producer never exercising rule 2; D4 is a summary-scope gap. Rater caveat: D3's leaf-fit calls are the most subjective; they are 3 of the 5 L2 misses, so the L2 result depends on one rater's reading of the leaf definitions.
+
+## 21. Version 3 of the leaf-evidence instruction (specification, 2026-11-22; authorized by section 19.3 P2: one revision from D's defects)
+
+### 21.1 Changes, each tied to a defect and a falsifiable check
+
+| Change | Defect | Falsifiable check on H (graded sample, version 3 against version 2) |
+| --- | --- | --- |
+| Rule 5 states that a negative evaluation ("X is evil", "X is a threat", "X is antithetical to Y") is asserted, so polarity is affirm | D1 | polarity rejects among version 3's records are at most 1 |
+| Rule 9 states that the anchor must lie inside the target unit, a neighbor statement is never the anchor even if stronger, and none inside means an empty list | D2 | pairs lost to an anchor outside the target unit are at most 1 of the 30 |
+| Rule 2 requires pointing to the words in the target unit that do what the leaf definition describes, else an empty list | D3 | leaf fit (L2) at least 85% and not below version 2's on the same pairs, with no more than 20% (6 of 30) of pairs returning no record |
+| Rule 3 requires every ground, reason, concession and limit stated in the target unit, and the explicit evaluation or approval itself for critical and supportive | D4 | summary faithfulness (L3) at least 85% |
+
+No change addresses the single voice instance; it is recorded, not acted on. The exact texts are in `leaf_evidence.SYSTEM_PROMPT_V3`, which is version 2 with four replacements (`_revise` refuses a replacement whose old text is missing or repeated) and fits the producer cap for all 71 pairs.
+
+### 21.2 Protocol and pass rule, fixed before any version 3 output exists
+
+1. **Freeze.** Version 3 is committed unchanged before any run. Its instruction, schema, pairs and code are sealed by hash at its first paid run; **no edit after seeing any version 3 output**.
+2. **Development check (reported, never a reason to edit).** Version 3 runs once on the 21 development pairs and is compared with version 2's labels by pair. This shows whether the instruction broke anything (for example an empty-list rate that guts the output); it is not tested and does not license a version 4.
+3. **Held-out test.** Versions 2 and 3 both run on all 50 held-out pairs (separate folders and ledgers; about $0.03 together). One blind queue mixes the two versions' records for the fixed sample (the first 30 pairs in sha256 order of the pair key); identical records are labeled once; summaries are graded after all records. **Pass:** version 3 meets L1 to L4 at 85% on that sample (L1 also with at most 1 qualification reject and at most 1 adoption or polarity reject; L2 also not below version 2's count) **and** its accepted records are not fewer than version 2's on paired pairs (`primary_only` at least `reference_only`). The four checks in 21.1 are reported next to the verdict.
+4. **A fail is reported as a fail.** No version 4 and no change to the sample or bars without Brian's decision.
+5. **Limits stated up front.** One rater, labeling blind to version but not blind to the purpose of the revision: the same agent wrote version 3 and grades it, so Brian's spot-check of a fixed 10-item sample from the held-out queue is the proposed control; two thin halves from six sermons; four of the six sermons are July 4 or America themed, as sermon 281 is.
+
+### 21.3 Commands (Brian runs; the tree must be clean)
+
+`set-leaf-extract --half development --variant v3`, then `--half held-out` for `--variant v2` and `--variant v3`, then `set-leaf-review --half held-out`, then `set-leaf-report --half held-out`. Held-out version 2 is not run before version 3 is committed and frozen, which it now is.
+
