@@ -28,7 +28,10 @@ from pastor_transcript_extractor.object_position import sermon as sermons
 
 from . import arms, stage
 
-VERSION = 'public-life-set-v1'
+DEFAULT_SET = 'v1'
+# Section 24: a second, confirmatory set of sermons that were not used while the instruction was chosen. Same code, own folder, ledger and candidates.
+SETS = {'v1': dict(version='public-life-set-v1', skip=0, take=6), 'v2': dict(version='public-life-set-v2', skip=6, take=8)}
+VERSION = SETS[DEFAULT_SET]['version']
 LEXICON = re.compile(
     r'\b(government|politic\w*|election\w*|vote[sd]?|voting|congress\w*|senat\w*|president\w*|legislat\w*|constitution\w*|democra\w*|republic\w*|taxes|'
     r'abortion|supreme court|immigra\w*|border|socialis\w*|communis\w*|secular\w*|america\w*|united states|founding fathers|founders)\b', re.IGNORECASE)
@@ -47,12 +50,12 @@ ORDER BY r.video_id
 """
 
 
-def set_dir(base_dir: Path) -> Path:
-    return stage.paths(base_dir)[2] / VERSION
+def set_dir(base_dir: Path, set_id: str = DEFAULT_SET) -> Path:
+    return stage.paths(base_dir)[2] / SETS[set_id]['version']
 
 
-def ledger_for(base_dir: Path) -> PilotLedger:
-    return PilotLedger(set_dir(base_dir) / 'ledger.json', ceiling_usd=CEILING_USD, ceiling_attempts=CEILING_ATTEMPTS)
+def ledger_for(base_dir: Path, set_id: str = DEFAULT_SET) -> PilotLedger:
+    return PilotLedger(set_dir(base_dir, set_id) / 'ledger.json', ceiling_usd=CEILING_USD, ceiling_attempts=CEILING_ATTEMPTS)
 
 
 # ---- step 1: find (offline) -----------------------------------------------------------------------------------------------
@@ -82,7 +85,7 @@ def rank(rows: Sequence[Mapping[str, Any]], read: Callable[[str], Mapping[str, A
     return sorted(scored, key=lambda item: (-item['per_thousand'], item['video_id']))
 
 
-def find(base_dir: Path) -> dict[str, Any]:
+def find(base_dir: Path, set_id: str = DEFAULT_SET) -> dict[str, Any]:
     connection = sqlite3.connect(f'file:{build_paths(base_dir).database}?mode=ro', uri=True)
     connection.row_factory = sqlite3.Row
     try:
@@ -90,22 +93,27 @@ def find(base_dir: Path) -> dict[str, Any]:
     finally:
         connection.close()
     ranked = rank(rows, read_json)
-    chosen = ranked[:TOP_SERMONS]
+    spec = SETS[set_id]
+    chosen = ranked[spec['skip']:spec['skip'] + spec['take']]
+    if set_id != DEFAULT_SET:        # a confirmatory set must be disjoint from the sermons already used
+        used = {item['video_id'] for item in load_candidates(base_dir)['chosen']}
+        if used & {item['video_id'] for item in chosen}:
+            raise ValueError('The confirmatory set overlaps the first set')
     for item in chosen:
         item['source_sha256'] = file_sha256(Path(item['source_path']))
-    result = seal(dict(version=VERSION, rule=f'sermon-basics sermons with at least {MIN_WORDS} words in the sermon window, excluding {list(EXCLUDED_VIDEOS)}, ranked by '
-                       f'frozen public-life vocabulary hits per 1,000 words; the top {TOP_SERMONS} are chosen. A proxy only: Jev topic scores decide what is used.',
+    result = seal(dict(version=spec['version'], rule=f'sermon-basics sermons with at least {MIN_WORDS} words in the sermon window, excluding {list(EXCLUDED_VIDEOS)}, ranked by '
+                       f'frozen public-life vocabulary hits per 1,000 words; ranks {spec["skip"] + 1} to {spec["skip"] + spec["take"]} are chosen. A proxy only: Jev topic scores decide what is used.',
                        lexicon=LEXICON.pattern, calibration='sermon 281 scores 12.73; the seven other pilot sermons score 0.14 to 1.70',
-                       analyzed_sermons=len(rows), eligible=len(ranked), chosen=chosen, next_ranked=ranked[TOP_SERMONS:TOP_SERMONS + 10]))
-    write_json(set_dir(base_dir) / 'candidates.json', result)
-    return dict(output=str(set_dir(base_dir) / 'candidates.json'), analyzed_sermons=len(rows), eligible=len(ranked),
+                       analyzed_sermons=len(rows), eligible=len(ranked), chosen=chosen, next_ranked=ranked[spec['skip'] + spec['take']:spec['skip'] + spec['take'] + 10]))
+    write_json(set_dir(base_dir, set_id) / 'candidates.json', result)
+    return dict(output=str(set_dir(base_dir, set_id) / 'candidates.json'), analyzed_sermons=len(rows), eligible=len(ranked),
                 chosen=[{k: item[k] for k in ('video_id', 'title', 'words', 'hits', 'per_thousand')} for item in chosen])
 
 
 # ---- blocks, sermon text and contexts ------------------------------------------------------------------------------------
 
-def load_candidates(base_dir: Path) -> dict[str, Any]:
-    path = set_dir(base_dir) / 'candidates.json'
+def load_candidates(base_dir: Path, set_id: str = DEFAULT_SET) -> dict[str, Any]:
+    path = set_dir(base_dir, set_id) / 'candidates.json'
     if not path.exists():
         raise ValueError('Run `pte analysis thought-units set-find` first')
     found = read_json(path)
@@ -161,9 +169,9 @@ def _sermon(base_dir: Path, item: Mapping[str, Any]) -> dict[str, Any]:
     return dict(item=item, proposed=proposed, units=units, blocks=arms.transcript_blocks(units, proposed['segments']))
 
 
-def load_sermon(base_dir: Path, video_id: int) -> sermons.Sermon:
+def load_sermon(base_dir: Path, video_id: int, set_id: str = DEFAULT_SET) -> sermons.Sermon:
     """A new-set sermon in the shape the review needs: its text (blocks joined by a blank line, the coordinates pairs use) and the watch link at a position."""
-    item = next((i for i in load_candidates(base_dir)['chosen'] if i['video_id'] == video_id), None)
+    item = next((i for i in load_candidates(base_dir, set_id)['chosen'] if i['video_id'] == video_id), None)
     if item is None:
         raise ValueError(f'Video {video_id} is not in the new set')
     units = _sermon(base_dir, item)['units']
@@ -179,20 +187,20 @@ def _missing(cache: TypeSafeBlockCache, blocks, contexts, letter: str) -> int:
     return sum(not cache._pack_path(pack, cache._pack_identity({}, b, pack=pack, role_context=None, topic_context=contexts[b.block_id])).exists() for b in blocks)
 
 
-def _cache(base_dir: Path, video_id: int) -> TypeSafeBlockCache:
-    return TypeSafeBlockCache(set_dir(base_dir) / 'cache' / f'v{video_id}', model=MODEL)
+def _cache(base_dir: Path, video_id: int, set_id: str = DEFAULT_SET) -> TypeSafeBlockCache:
+    return TypeSafeBlockCache(set_dir(base_dir, set_id) / 'cache' / f'v{video_id}', model=MODEL)
 
 
 def _score(base_dir: Path, letter: str, select: Callable[[dict[str, Any]], Sequence[int]], *, check_only: bool, client_factory,
-           state: Callable[[], dict[str, Any]], name: str) -> dict[str, Any]:
-    found, ledger = load_candidates(base_dir), ledger_for(base_dir)
+           state: Callable[[], dict[str, Any]], name: str, set_id: str = DEFAULT_SET) -> dict[str, Any]:
+    found, ledger = load_candidates(base_dir, set_id), ledger_for(base_dir, set_id)
     work = []
     for item in found['chosen']:
         sermon = _sermon(base_dir, item)
         wanted = select(sermon)
         blocks = [sermon['blocks'][0][i] for i in wanted]
         work.append((sermon, blocks, sermon['blocks'][1]))
-    misses = {item[0]['item']['video_id']: _missing(_cache(base_dir, item[0]['item']['video_id']), item[1], item[2], letter) for item in work}
+    misses = {item[0]['item']['video_id']: _missing(_cache(base_dir, item[0]['item']['video_id'], set_id), item[1], item[2], letter) for item in work}
     requests = worst_case_requests({letter: sum(misses.values())}, {letter: SIGNAL_COUNTS[letter]})
     plan = dict(step=name, sermons=len(work), blocks=sum(len(item[1]) for item in work), cache_misses=misses, worst_case_requests=requests,
                 worst_case_reserved_usd=str(JEV_REQUEST_RESERVATION * requests), ceiling_usd=str(CEILING_USD), check_only=check_only,
@@ -207,28 +215,28 @@ def _score(base_dir: Path, letter: str, select: Callable[[dict[str, Any]], Seque
     if factory is None and requests:
         from pastor_transcript_extractor.recording_verifier_typesafe import TypeSafeSdkAdapter
         factory = lambda model: TypeSafeSdkAdapter(model=model)
-    out = set_dir(base_dir)
+    out = set_dir(base_dir, set_id)
     physical = 0
     for sermon, blocks, contexts in work:
         video = sermon['item']['video_id']
-        cache = _cache(base_dir, video)
+        cache = _cache(base_dir, video, set_id)
         client = LedgeredClient(ledger, factory, MODEL, f'{name}-v{video}') if factory else CheckOnlyClient()
         answers = cache.assess_packs(client, {}, blocks, requested_packs=frozenset({PACKS[letter][0]}), topic_contexts=contexts) if blocks else {}
         physical += getattr(client, 'requests', 0)
         write_json(out / f'{name}_v{video}.json', seal(dict(
-            version=VERSION, step=name, video_id=video, source_sha256=sermon['item']['source_sha256'], model=MODEL,
+            version=SETS[set_id]['version'], step=name, video_id=video, source_sha256=sermon['item']['source_sha256'], model=MODEL,
             blocks=[dict(id=unit['id'], block_id=unit['block_id'], signals=signals_for(letter, answers[unit['ordinal']]))
                     for unit in sermon['units'] if any(b.block_id == unit['ordinal'] for b in blocks)])))
     return dict(plan, physical_requests=physical, ledger=ledger.summary())
 
 
-def score_topics(base_dir: Path, *, check_only: bool = False, client_factory=None, state: Callable[[], dict[str, Any]] = git_state) -> dict[str, Any]:
+def score_topics(base_dir: Path, *, check_only: bool = False, client_factory=None, state: Callable[[], dict[str, Any]] = git_state, set_id: str = DEFAULT_SET) -> dict[str, Any]:
     return _score(base_dir, TOPIC_LETTER, lambda sermon: [u['ordinal'] for u in sermon['units']], check_only=check_only, client_factory=client_factory,
-                  state=state, name='topics')
+                  state=state, name='topics', set_id=set_id)
 
 
-def topic_signals(base_dir: Path, video_id: int) -> dict[str, dict[str, float]]:
-    path = set_dir(base_dir) / f'topics_v{video_id}.json'
+def topic_signals(base_dir: Path, video_id: int, set_id: str = DEFAULT_SET) -> dict[str, dict[str, float]]:
+    path = set_dir(base_dir, set_id) / f'topics_v{video_id}.json'
     if not path.exists():
         raise ValueError('Run `pte analysis thought-units set-score-topics` first')
     scored = read_json(path)
@@ -241,10 +249,10 @@ def gated_ordinals(sermon: Mapping[str, Any], topics: Mapping[str, Mapping[str, 
     return [u['ordinal'] for u in sermon['units'] if topics.get(u['id'], {}).get(arms.FLAG_TOPIC, 0.0) >= arms.FLAG_TOPIC_MIN]
 
 
-def score_leaves(base_dir: Path, *, check_only: bool = False, client_factory=None, state: Callable[[], dict[str, Any]] = git_state) -> dict[str, Any]:
+def score_leaves(base_dir: Path, *, check_only: bool = False, client_factory=None, state: Callable[[], dict[str, Any]] = git_state, set_id: str = DEFAULT_SET) -> dict[str, Any]:
     def select(sermon):
-        return gated_ordinals(sermon, topic_signals(base_dir, sermon['item']['video_id']))
-    return _score(base_dir, LEAF_LETTER, select, check_only=check_only, client_factory=client_factory, state=state, name='leaves')
+        return gated_ordinals(sermon, topic_signals(base_dir, sermon['item']['video_id'], set_id))
+    return _score(base_dir, LEAF_LETTER, select, check_only=check_only, client_factory=client_factory, state=state, name='leaves', set_id=set_id)
 
 
 MIN_HALF_PAIRS = 15
@@ -264,25 +272,27 @@ def pairs_name(top: int) -> str:
     return 'pairs.json' if top == arms.FLAG_TOP else f'pairs-top{top}.json'
 
 
-def half_pairs(base_dir: Path, half: str, name: str = 'pairs.json') -> list[dict[str, Any]]:
-    """The sealed pairs of the development or held-out half (`name` selects the flag cap's file)."""
-    if half not in ('development', 'held_out'):
+def half_pairs(base_dir: Path, half: str, name: str = 'pairs.json', set_id: str = DEFAULT_SET) -> list[dict[str, Any]]:
+    """The sealed pairs of the development or held-out half (`name` selects the flag cap's file); `all` returns every pair, for a set used whole."""
+    if half not in ('development', 'held_out', 'all'):
         raise ValueError(f'unknown half {half!r}')
-    result = read_json(set_dir(base_dir) / name)
+    result = read_json(set_dir(base_dir, set_id) / name)
     if seal(result) != result:
         raise ValueError(f'{name} seal differs')
+    if half == 'all':
+        return list(result['pairs'])
     members = set(result['split'][half])
     return [p for p in result['pairs'] if p['video_id'] in members]
 
 
-def build_pairs(base_dir: Path, top: int = arms.FLAG_TOP) -> dict[str, Any]:
+def build_pairs(base_dir: Path, top: int = arms.FLAG_TOP, set_id: str = DEFAULT_SET) -> dict[str, Any]:
     """Apply the frozen flag rule to every scored sermon; the pairs carry the unit text and its neighbors, as section 16's did."""
-    found, out = load_candidates(base_dir), set_dir(base_dir)
+    found, out = load_candidates(base_dir, set_id), set_dir(base_dir, set_id)
     pairs, sermons = [], []
     for item in found['chosen']:
         video = item['video_id']
         sermon = _sermon(base_dir, item)
-        topics = topic_signals(base_dir, video)
+        topics = topic_signals(base_dir, video, set_id)
         leaf_path = out / f'leaves_v{video}.json'
         if not leaf_path.exists():
             raise ValueError('Run `pte analysis thought-units set-score-leaves` first')
@@ -300,7 +310,7 @@ def build_pairs(base_dir: Path, top: int = arms.FLAG_TOP) -> dict[str, Any]:
         sermons.append(dict(video_id=video, title=item['title'], url=item['url'], blocks=len(units), gated_blocks=len(gated),
                             pairs=sum(p['video_id'] == video for p in pairs)))
     split = split_sermons([item['video_id'] for item in found['chosen']], {s['video_id']: s['pairs'] for s in sermons})
-    result = seal(dict(version=VERSION, candidates_fingerprint=found['content_fingerprint'], split=split, flag_rule=dict(topic=arms.FLAG_TOPIC, topic_min=arms.FLAG_TOPIC_MIN,
+    result = seal(dict(version=SETS[set_id]['version'], candidates_fingerprint=found['content_fingerprint'], split=split, flag_rule=dict(topic=arms.FLAG_TOPIC, topic_min=arms.FLAG_TOPIC_MIN,
                        leaves=list(arms.FLAG_LEAVES), minimum=arms.FLAG_MIN, top=top), sermons=sermons, pairs=pairs, pairs_sha256=arms.pairs_digest(pairs)))
     write_json(out / pairs_name(top), result)
     return dict(output=str(out / pairs_name(top)), sermons=sermons, split=split, pairs=len(pairs), units_with_a_pair=len({(p['video_id'], p['unit']) for p in pairs}))

@@ -20,14 +20,16 @@ from . import leaf_evidence, leaf_review, main_point, public_set
 VERSION = 'set-review-v1'
 WINDOW = leaf_review.WINDOW
 HELD_OUT_SAMPLE = 30                    # section 19.5: the first 30 held-out pairs in sha256(pair key) order; development is graded whole
-VARIANTS_BY_HALF = dict(development=('v2',), held_out=('v2', 'v3'), development_top3=('v3', 'v4'), held_out_top3=('v3', 'v4'))
-PRIMARY = dict(development='v2', held_out='v3', development_top3='v4', held_out_top3='v4')      # the version whose bars are tested; the other is its reference
+VARIANTS_BY_HALF = dict(development=('v2',), held_out=('v2', 'v3'), development_top3=('v3', 'v4'), held_out_top3=('v3', 'v4'), confirm_top3=('v3', 'v4'))
+PRIMARY = dict(development='v2', held_out='v3', development_top3='v4', held_out_top3='v4', confirm_top3='v4')      # the version whose bars are tested; the other is its reference
 # Section 23 halves read the three-leaf pairs; they were seen while the design was chosen, so their reports are exploratory and carry no pass or fail.
 VERDICT_HALVES = ('held_out',)
+CONFIRM_HALVES = ('confirm_top3',)      # section 24: unused sermons, readings fixed in advance, a verdict
+CONFIRM_SAMPLE = 30                      # the first 30 pairs by hash of the pair key when the set has more
 
 
 def review_dir(base_dir: Path, half: str) -> Path:
-    return public_set.set_dir(base_dir) / f"leaf-review-{half.replace('_', '-')}"
+    return public_set.set_dir(base_dir, leaf_evidence.SCOPES[half].set_id) / f"leaf-review-{half.replace('_', '-')}"
 
 
 def paths_for(base_dir: Path, half: str) -> dict[str, Path]:
@@ -39,9 +41,11 @@ def paths_for(base_dir: Path, half: str) -> dict[str, Path]:
 def reviewed_pairs(base_dir: Path, half: str) -> list[dict[str, Any]]:
     """Development: every pair. Held-out: the fixed sample, chosen by the hash of the pair key alone."""
     scope = leaf_evidence.SCOPES[half]
-    pairs = public_set.half_pairs(base_dir, scope.half or scope.key, scope.pairs_file)
+    pairs = public_set.half_pairs(base_dir, scope.half or scope.key, scope.pairs_file, scope.set_id)
     if (scope.half or scope.key) == 'development':
         return pairs
+    if half in CONFIRM_HALVES:
+        return pairs if len(pairs) <= CONFIRM_SAMPLE else sorted(pairs, key=lambda p: digest(p['key']))[:CONFIRM_SAMPLE]
     return sorted(pairs, key=lambda p: digest(p['key']))[:HELD_OUT_SAMPLE]
 
 
@@ -71,7 +75,7 @@ def build_queue(base_dir: Path, half: str, variants: tuple[str, ...] | None = No
     pairs = {p['key']: p for p in reviewed_pairs(base_dir, half)}
     found = {key: by_key(base_dir, half, leaf_evidence.VARIANTS[key]) for key in keys}
     texts: dict[int, Any] = {}
-    sermon_of = lambda video: texts.setdefault(video, public_set.load_sermon(base_dir, video))
+    sermon_of = lambda video: texts.setdefault(video, public_set.load_sermon(base_dir, video, leaf_evidence.SCOPES[half].set_id))
     seed = digest(dict(half=half, pairs=sorted(pairs), variants=list(keys)))
     phase1, phase2, records, summaries, distinct = [], [], {}, {}, {}
     for variant in keys:
@@ -235,19 +239,36 @@ def report(base_dir: Path, half: str) -> dict[str, Any]:
     bars_met = outcomes[primary]['passed']
     not_below = None if paired is None else paired['primary_only'] >= paired['reference_only']
     passed = bars_met and (not_below is not False)
+    readings = None
+    if half in CONFIRM_HALVES and reference:           # section 24.3: the four readings of 23.3, fixed before any output, decide the verdict
+        extras = [(m, u) for m in versions['items'].values() if m['kind'] == 'record' for u in m['uses'] if u['version'] == primary and u.get('index', 0) >= 1]
+        extras_accepted = sum(decided[next(i for i, mm in versions['items'].items() if mm is m)]['decision'] == 'accept' for m, _u in extras)
+        distinct = rows[primary]['distinct_total']
+        pairs_accepted = lambda version: sum(any(decided[i]['decision'] == 'accept' for i, m in versions['items'].items() if m['kind'] == 'record'
+                                                 and any(u['version'] == version and u['pair'] == p for u in m['uses'])) for p in versions['reviewed_pairs'])
+        readings = dict(
+            padding=bool(extras) and extras_accepted / len(extras) + 1e-9 >= 0.85 and (not distinct or rows[primary]['distinct_ok'] / distinct + 1e-9 >= 0.85),
+            no_loss=bool(not_below),
+            recall=pairs_accepted(primary) >= pairs_accepted(reference) and rows[primary]['accepted'] > rows[reference]['accepted'],
+            single_point=rows[primary]['summaries_ok'] >= rows[reference]['summaries_ok'])
+        readings['detail'] = dict(extra_records=len(extras), extra_accepted=extras_accepted, distinct=f"{rows[primary]['distinct_ok']} of {distinct}",
+                                  pairs_with_accepted={primary: pairs_accepted(primary), reference: pairs_accepted(reference)})
+        passed = all(v for k, v in readings.items() if k != 'detail')
     sources: dict[str, int] = {}
     for item in queue['items']:
         sources[decided[item['id']]['source']] = sources.get(decided[item['id']]['source'], 0) + 1
     final = dict(version=VERSION, half=half, pairs_reviewed=pairs, primary=primary, reference=reference, bars_met=bars_met, not_below_reference=not_below,
-                 passed=passed if half in VERDICT_HALVES else None, criteria={k: o['criteria'] for k, o in outcomes.items()}, tally=rows, paired_accepted=paired,
+                 passed=passed if (half in VERDICT_HALVES or half in CONFIRM_HALVES) else None, readings=readings, criteria={k: o['criteria'] for k, o in outcomes.items()}, tally=rows, paired_accepted=paired,
                  labels_by=sources, cost_usd=_spend(base_dir, half, keys), defects=defects(queue, versions, decided))
     write_json(paths['report_json'], final)
-    verdict = ('PASS' if passed else 'FAIL') if half in VERDICT_HALVES else 'EXPLORATORY (bars reported, no pass or fail)'
+    verdict = ('PASS' if passed else 'FAIL') if (half in VERDICT_HALVES or half in CONFIRM_HALVES) else 'EXPLORATORY (bars reported, no pass or fail)'
     lines = [f'# New-set leaf-evidence report: {half.replace("_", " ")} half', '', f'**{verdict}**', '',
              f"{pairs} pairs reviewed; labels by: {sources} (`human` = Brian's own; any other source is a delegated first pass, not Brian's judgment).", '',
              '| Version | Criterion | Rule | Observed | Result |', '| --- | --- | --- | --- | --- |']
     for key, outcome in outcomes.items():
         lines += [f"| {key} | {name} | {row['rule']} | `{row['observed']}` | {'PASS' if row['passed'] else 'FAIL'} |" for name, row in outcome['criteria'].items()]
+    if readings is not None:
+        lines += ['', f'Confirmatory readings (section 24.3): `{readings}`']
     if paired is not None:
         lines += ['', f'Paired accepted counts ({primary} against {reference}): `{paired}`; {primary} not below {reference}: {not_below}.']
     lines += ['', f"Defects: {len(final['defects'])}. Cost (not a bar): {final['cost_usd']}. Exposed development material when run on the development half; theme overlaps with sermon 281.", '']

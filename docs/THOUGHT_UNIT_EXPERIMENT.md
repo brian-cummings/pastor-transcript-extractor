@@ -1122,3 +1122,37 @@ Not fixed by multi-record: polarity `reject` on negative statements ("the United
 
 Reading and limits: on this half every pre-stated reading holds and there is no sign of padding, so permitting several records helps (or at least does not hurt) here. But it is 25 pairs, one rater who wrote the instruction, version 3 had a poor run (empty propositions, a schema failure), and the gain comes from a few rich passages (6 pairs in 2 passages); the held-out half and a fresh set of sermons are untested. A shared-check gap was found and fixed: the validator now rejects an empty proposition (version 3 returned two that the shared check accepted). Next action (Brian's decision): either grade the held-out sample (about 150 items) or go straight to fresh sermons for a confirmatory run of version 4 against version 3.
 
+## 24. Confirmatory test of three-leaf, multi-record extraction on sermons not used before (specification and implementation, 2026-11-22; Brian: "proceed to option 2")
+
+### 24.1 The set, fixed before any scoring
+
+Section 23's development result is exploratory (25 pairs, exposed sermons, one rater who wrote the instruction). This section tests the same two instructions on sermons that played no part in choosing them. The rule is the one of 19.1 unchanged: sermon-basics sermons with at least 8,000 words ranked by public-life vocabulary per 1,000 words, excluding 281 and the six sermons already used. The first set took ranks 1 to 6; **this set takes ranks 7 to 14 (eight sermons)**, disjoint from it (checked in code). Eight and not six because their density is much lower (5.7 down to 2.4 hits per 1,000 words, against 14.9 to 5.8 before), so fewer gated blocks are expected and more sermons are needed to reach enough pairs. The eight: 1044 "When Blue Laws Turn Into Red Alerts" (5.7), 321 "The Least of These 2" (5.1), 766 "DWS- Now I Know" (3.8), 969 "Fellowship of Opposites" (3.5), 523 "Complete Your Joy" (3.4), 1057 "Living like Mary in a Martha World" (2.9), 1477 and 1480 Savannah First SDA services (2.7, 2.4). They are less July 4 and America themed than the first set, which reduces the theme overlap with sermon 281 but also changes the leaf mix and may thin the pairs.
+Jev scoring is the same (topic pack on the 259 sermon-labeled fine blocks, check-only worst case 87 requests and $0.24; leaf pack on blocks at or above the topic gate 0.9; leaf cap 3, floor 0.8). Own folder `public-life-set-v2/`, own ledger ($1.00 and 600 attempts), clean tree required.
+**Floor:** at least 30 pairs. If there are fewer, the result is reported as underpowered and any extension of the set is Brian's decision; nothing is added silently.
+
+### 24.2 Implementation
+
+`public_set` takes a set id (`--set v1|v2` on `set-find`, `set-score-topics`, `set-score-leaves`, `set-pairs`); every first-set artifact keeps its path and seal. The new set is used whole (scope `confirm_top3`, `--half confirm --top 3` on the extraction, review and report commands), with no development and held-out split.
+
+### 24.3 Test and verdict rule, fixed now
+
+Version 3 (one record) and version 4 (up to three) run once each on every pair. The blind queue mixes them, with all pairs if there are 30 or fewer and otherwise the first 30 by hash of the pair key, identical records labeled once, summaries after records, labels by Claude with the source recorded (Brian's spot-check of 10 items is the proposed control). **Version 4 is confirmed only if all four readings of 23.3 hold:**
+1. **Padding:** at least one extra record, at least 85% of the extra records accepted, and at least 85% of multi-record pairs judged to state different points.
+2. **No loss:** on the same pairs, accepted pairs only version 4 has are at least those only version 3 has.
+3. **Recall:** version 4 has an accepted record on at least as many pairs as version 3, and more accepted records in total.
+4. **Single point:** version 4's faithful-summary count is at least version 3's.
+Otherwise it is not confirmed: no extra records or a failed reading means multi-record is not shown to help on unused sermons. No further variant without Brian's decision. The section 18 bars (L1 to L4) are reported next to the verdict and do not decide it.
+Limits stated up front: one run of each version (the provider is not deterministic at temperature 0, so one run cannot separate differences of a few items from noise); one rater who wrote the instruction; the leaf-gate precision problem (§21.4) remains and affects both versions equally; the set is small and chosen by a vocabulary proxy.
+
+### 24.4 Commands (Brian runs; the tree must be clean)
+
+```bash
+pte analysis thought-units set-find --base-dir <base> --set v2                      # offline, done
+pte analysis thought-units set-score-topics --base-dir <base> --set v2              # Jev
+pte analysis thought-units set-score-leaves --base-dir <base> --set v2              # Jev
+pte analysis thought-units set-pairs --base-dir <base> --set v2 --top 3             # offline
+pte analysis thought-units set-leaf-extract --base-dir <base> --half confirm --top 3 --variant v3    # then v4
+pte analysis thought-units set-leaf-review --base-dir <base> --half confirm --top 3
+pte analysis thought-units set-leaf-report --base-dir <base> --half confirm --top 3
+```
+

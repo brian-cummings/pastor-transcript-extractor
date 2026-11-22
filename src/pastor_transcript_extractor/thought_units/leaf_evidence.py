@@ -173,6 +173,7 @@ class Scope:
     arm: str | None = None          # section 22: one arm's pairs for the same-passage comparison on sermon 281
     half: str | None = None         # section 23: a half of the new set read from the three-leaf pairs file
     pairs_file: str = 'pairs.json'
+    set_id: str = public_set.DEFAULT_SET     # section 24: the confirmatory set of unused sermons is `v2`
 
 
 ARMS = Scope('arms', CEILING_USD, CEILING_ATTEMPTS)
@@ -182,7 +183,8 @@ HELD_OUT = Scope('held_out', Decimal('1.50'), 100)
 COMPARE = {arm: Scope(f'compare_{arm}', Decimal('1.00'), 80, arm) for arm in unit_compare.ARMS}
 DEVELOPMENT3 = Scope('development_top3', Decimal('1.00'), 60, half='development', pairs_file='pairs-top3.json')
 HELD_OUT3 = Scope('held_out_top3', Decimal('1.50'), 100, half='held_out', pairs_file='pairs-top3.json')
-SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, DEVELOPMENT3, HELD_OUT3, *COMPARE.values())}
+CONFIRM3 = Scope('confirm_top3', Decimal('1.50'), 100, half='all', pairs_file='pairs-top3.json', set_id='v2')
+SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, DEVELOPMENT3, HELD_OUT3, CONFIRM3, *COMPARE.values())}
 
 RECORD_SCHEMA: dict[str, Any] = copy.deepcopy(bound.CLAIM_SCHEMA)
 RECORD_SCHEMA['required'] = [*bound.FIELDS, *EXTRA_FIELDS]
@@ -196,7 +198,7 @@ def leaf_dir(base_dir: Path, variant: Variant = V1, scope: Scope = ARMS) -> Path
         return stage.paths(base_dir)[2] / variant.directory
     if scope.arm:
         return unit_compare.compare_dir(base_dir) / f'{variant.directory}-{scope.arm}'
-    return public_set.set_dir(base_dir) / f'{variant.directory}-{scope.key.replace("_", "-")}'
+    return public_set.set_dir(base_dir, scope.set_id) / f'{variant.directory}-{scope.key.replace("_", "-")}'
 
 
 def ledger_for(base_dir: Path, variant: Variant = V1, scope: Scope = ARMS) -> PilotLedger:
@@ -237,7 +239,7 @@ def pair_inputs(base_dir: Path, scope: Scope = ARMS) -> list[dict[str, Any]]:
         return main_point.pair_inputs(base_dir, 'b')
     if scope.arm:
         return unit_compare.arm_pairs(base_dir, scope.arm)
-    return public_set.half_pairs(base_dir, scope.half or scope.key, scope.pairs_file)
+    return public_set.half_pairs(base_dir, scope.half or scope.key, scope.pairs_file, scope.set_id)
 
 
 def units_identity(base_dir: Path, scope: Scope = ARMS) -> str:
@@ -245,7 +247,7 @@ def units_identity(base_dir: Path, scope: Scope = ARMS) -> str:
     if scope.arm:
         unit_compare.load(base_dir)
         return file_sha256(unit_compare.clusters_path(base_dir))
-    return file_sha256(arms.arms_paths(base_dir)['units'] if scope is ARMS else public_set.set_dir(base_dir) / scope.pairs_file)
+    return file_sha256(arms.arms_paths(base_dir)['units'] if scope is ARMS else public_set.set_dir(base_dir, scope.set_id) / scope.pairs_file)
 
 
 def build_request(pair: Mapping[str, Any], variant: Variant = V1) -> requests.RequestSpec:

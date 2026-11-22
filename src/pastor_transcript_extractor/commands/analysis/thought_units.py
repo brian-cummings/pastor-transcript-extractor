@@ -11,6 +11,7 @@ app = typer.Typer(help='Run the thought-unit experiment: Jev-defined thought uni
 analysis_app.add_typer(app, name='thought-units')
 ERRORS = (ValueError, OSError, KeyError, TypeError, StopIteration, HTTPError, RuntimeError, IndexError)
 BASE = typer.Option(..., '--base-dir', help='Application base directory.')
+SET = typer.Option('v1', '--set', help='v1 is the first six sermons; v2 is the confirmatory set of eight unused sermons (section 24).')
 
 
 def _echo(value) -> None:
@@ -212,43 +213,43 @@ def leaf_report(base_dir: Path = BASE, variant: str = VARIANT):
 
 
 @app.command('set-find')
-def set_find(base_dir: Path = BASE):
+def set_find(base_dir: Path = BASE, set_id: str = SET):
     """Section 19 step 1 (offline): rank analyzed sermons by public-life vocabulary density and choose the new set; no provider call."""
     from ...thought_units import public_set
     try:
-        _echo(public_set.find(base_dir))
+        _echo(public_set.find(base_dir, set_id))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
 
 @app.command('set-score-topics')
-def set_score_topics(base_dir: Path = BASE, check_only: bool = CHECK):
+def set_score_topics(base_dir: Path = BASE, check_only: bool = CHECK, set_id: str = SET):
     """Section 19 step 2: the topic pack (Jev) on every sermon-labeled time block of the chosen sermons, in a new cache."""
     from ...thought_units import public_set
     try:
-        _echo(public_set.score_topics(base_dir, check_only=check_only))
+        _echo(public_set.score_topics(base_dir, check_only=check_only, set_id=set_id))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
 
 @app.command('set-score-leaves')
-def set_score_leaves(base_dir: Path = BASE, check_only: bool = CHECK):
+def set_score_leaves(base_dir: Path = BASE, check_only: bool = CHECK, set_id: str = SET):
     """Section 19 step 3: the public-life treatment pack (Jev) on the blocks at or above the frozen topic gate."""
     from ...thought_units import public_set
     try:
-        _echo(public_set.score_leaves(base_dir, check_only=check_only))
+        _echo(public_set.score_leaves(base_dir, check_only=check_only, set_id=set_id))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
 
 @app.command('set-pairs')
-def set_pairs(base_dir: Path = BASE, top: int = typer.Option(2, '--top', help='Leaves kept per unit: 2 is the frozen rule (pairs.json); 3 is section 23 (pairs-top3.json).')):
+def set_pairs(base_dir: Path = BASE, top: int = typer.Option(2, '--top', help='Leaves kept per unit: 2 is the frozen rule (pairs.json); 3 is section 23 (pairs-top3.json).'), set_id: str = SET):
     """Section 19 step 4 (offline): apply the frozen flag rule to the scored blocks and write the pairs; no provider call."""
     from ...thought_units import public_set
     try:
         if top not in (2, 3):
             raise ValueError('--top must be 2 or 3')
-        _echo(public_set.build_pairs(base_dir, top))
+        _echo(public_set.build_pairs(base_dir, top, set_id))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
@@ -259,10 +260,12 @@ TOP = typer.Option(2, '--top', help='Leaves kept per unit: 2 (frozen rule) or 3 
 
 def _half(value: str, top: int = 2) -> str:
     half = value.replace('-', '_')
-    if half not in ('development', 'held_out'):
-        raise typer.BadParameter('--half must be development or held-out')
+    if half not in ('development', 'held_out', 'confirm'):
+        raise typer.BadParameter('--half must be development, held-out or confirm')
     if top not in (2, 3):
         raise typer.BadParameter('--top must be 2 or 3')
+    if half == 'confirm' and top != 3:
+        raise typer.BadParameter('--half confirm uses the three-leaf pairs: pass --top 3')
     return half if top == 2 else f'{half}_top3'
 
 

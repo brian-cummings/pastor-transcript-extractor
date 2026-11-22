@@ -128,6 +128,16 @@ class BlockTests(Setup):
         with self.assertRaises(ValueError):
             public_set.half_pairs(self.root, 'other')
 
+    def test_the_confirmatory_set_has_its_own_folder_ledger_and_whole_set_pairs(self):
+        self.assertNotEqual(public_set.set_dir(self.root, 'v1'), public_set.set_dir(self.root, 'v2'))
+        self.assertEqual('public-life-set-v2', public_set.set_dir(self.root, 'v2').name)
+        self.assertNotEqual(public_set.ledger_for(self.root, 'v1').path if hasattr(public_set.ledger_for(self.root, 'v1'), 'path') else 1, 2)
+        write_json(public_set.set_dir(self.root, 'v2') / 'pairs-top3.json', seal(dict(split=dict(development=[1], held_out=[2]), pairs=[dict(video_id=1, key='a'), dict(video_id=2, key='b')])))
+        self.assertEqual(['a', 'b'], [p['key'] for p in public_set.half_pairs(self.root, 'all', 'pairs-top3.json', 'v2')])
+        with self.assertRaises(FileNotFoundError):
+            public_set.half_pairs(self.root, 'all', 'pairs-top3.json', 'v1')
+        self.assertEqual((6, 0, 8, 6), (public_set.SETS['v1']['take'], public_set.SETS['v1']['skip'], public_set.SETS['v2']['take'], public_set.SETS['v2']['skip']))
+
 
 if __name__ == '__main__':
     unittest.main()
