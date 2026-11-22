@@ -122,15 +122,16 @@ def build_queue(base_dir: Path, variant: leaf_evidence.Variant = V1) -> dict[str
                 baseline_records=sum(bool(r['record']) for r in baseline.values()), new_records=sum(bool(r['record']) for r in new.values()))
 
 
-def _queue(base_dir: Path, variant: leaf_evidence.Variant = V1) -> dict[str, Any]:
-    path = _paths(base_dir, variant)['queue']
+def _queue(base_dir: Path, variant: leaf_evidence.Variant = V1, paths: Mapping[str, Path] | None = None, build: Callable[..., Any] | None = None) -> dict[str, Any]:
+    """`paths` and `build` let the new-set review (set_review.py) reuse the labeling loop with its own queue and decisions files."""
+    path = (paths or _paths(base_dir, variant))['queue']
     if not path.exists():
-        build_queue(base_dir, variant)
+        (build or build_queue)(base_dir, variant)
     return _sealed(path)
 
 
-def load_decisions(base_dir: Path, variant: leaf_evidence.Variant = V1) -> dict[str, dict[str, Any]]:
-    path, latest = _paths(base_dir, variant)['decisions'], {}
+def load_decisions(base_dir: Path, variant: leaf_evidence.Variant = V1, paths: Mapping[str, Path] | None = None) -> dict[str, dict[str, Any]]:
+    path, latest = (paths or _paths(base_dir, variant))['decisions'], {}
     if path.exists():
         for line in path.read_text().splitlines():
             if line.strip():
@@ -142,11 +143,12 @@ def load_decisions(base_dir: Path, variant: leaf_evidence.Variant = V1) -> dict[
     return latest
 
 
-def record_decision(base_dir: Path, item: str, source: str, variant: leaf_evidence.Variant = V1, **judged: Any) -> dict[str, Any]:
+def record_decision(base_dir: Path, item: str, source: str, variant: leaf_evidence.Variant = V1, paths: Mapping[str, Path] | None = None,
+                    **judged: Any) -> dict[str, Any]:
     if 'decision' in judged and parse_decision(judged['decision']) != judged['decision']:
         raise ValueError(f"Unknown decision: {judged['decision']}")
     record = dict(item=item, source=source, decided_at=datetime.now(timezone.utc).isoformat(), **judged)
-    with _paths(base_dir, variant)['decisions'].open('a') as stream:
+    with (paths or _paths(base_dir, variant))['decisions'].open('a') as stream:
         stream.write(json.dumps(record, sort_keys=True) + '\n')
         stream.flush()
         os.fsync(stream.fileno())
@@ -184,11 +186,11 @@ RECORD_PROMPT = ('accept (a) / reject (r) / reject:<field> where field is ' + ',
 
 
 def judge(base_dir: Path, source: str = 'human', input_fn: Callable[[str], str] = input, output_fn: Callable[[str], Any] = print,
-          variant: leaf_evidence.Variant = V1) -> dict[str, Any]:
+          variant: leaf_evidence.Variant = V1, paths: Mapping[str, Path] | None = None, build: Callable[..., Any] | None = None) -> dict[str, Any]:
     """Resumable. Phase 2 items are not shown until every phase 1 item is labeled, so the blind pass stays blind."""
-    queue, last = _queue(base_dir, variant), None
+    queue, last = _queue(base_dir, variant, paths, build), None
     while True:
-        decided = load_decisions(base_dir, variant)
+        decided = load_decisions(base_dir, variant, paths)
         todo = [(n, item) for n, item in enumerate(queue['items'], 1) if item['id'] not in decided]
         phase1_left = [(n, item) for n, item in todo if n <= queue['phase1']]
         todo = phase1_left or todo
@@ -205,7 +207,7 @@ def judge(base_dir: Path, source: str = 'human', input_fn: Callable[[str], str] 
                 if last is None:
                     output_fn('Nothing to undo in this session.')
                 else:
-                    record_decision(base_dir, last, source, variant, void=True)
+                    record_decision(base_dir, last, source, variant, paths, void=True)
                     last = None
                 continue
             decision = parse_decision(answer)
@@ -213,26 +215,26 @@ def judge(base_dir: Path, source: str = 'human', input_fn: Callable[[str], str] 
                 output_fn('Not understood.')
                 continue
             fit = _yes_no('Does what the record states fit the leaf definition shown (y/n)? ', input_fn, output_fn)
-            record_decision(base_dir, item['id'], source, variant, decision=decision, fit=fit)
+            record_decision(base_dir, item['id'], source, variant, paths, decision=decision, fit=fit)
         else:
             answer = _yes_no(QUESTIONS[item['kind']], input_fn, output_fn)
             extra = dict(framed=_yes_no(QUESTIONS['framed'], input_fn, output_fn)) if item.get('asks_framing') else {}
-            record_decision(base_dir, item['id'], source, variant, answer=answer, **extra)
+            record_decision(base_dir, item['id'], source, variant, paths, answer=answer, **extra)
         last = item['id']
-    return progress(base_dir, variant)
+    return progress(base_dir, variant, paths, build)
 
 
-def progress(base_dir: Path, variant: leaf_evidence.Variant = V1) -> dict[str, Any]:
-    queue, decided = _queue(base_dir, variant), load_decisions(base_dir, variant)
+def progress(base_dir: Path, variant: leaf_evidence.Variant = V1, paths: Mapping[str, Path] | None = None, build: Callable[..., Any] | None = None) -> dict[str, Any]:
+    queue, decided = _queue(base_dir, variant, paths, build), load_decisions(base_dir, variant, paths)
     return dict(items=queue['item_count'], decided=sum(item['id'] in decided for item in queue['items']),
-                remaining=sum(item['id'] not in decided for item in queue['items']), decisions_file=str(_paths(base_dir, variant)['decisions']))
+                remaining=sum(item['id'] not in decided for item in queue['items']), decisions_file=str((paths or _paths(base_dir, variant))['decisions']))
 
 
 def _spend(ledger: Mapping[str, Any], prefix: str) -> Decimal:
     return sum((Decimal(e['actual_usd'] if e['status'] == 'resolved' else e['reserved_usd']) for k, e in ledger['entries'].items() if k.startswith(prefix)), Decimal(0))
 
 
-def evaluate(measures: Mapping[str, Any], variant: leaf_evidence.Variant = V1) -> dict[str, Any]:
+def evaluate(measures: Mapping[str, Any], variant: leaf_evidence.Variant = V1, reference_label: str = 'section 16 baseline') -> dict[str, Any]:
     """L1 to L4 from per-version measures. Pure, so it can be tested without any artifacts.
 
     Version 1 (spec 17.5) compares with section 16's records and asks that two-leaf units differ. Version 2 (spec 18.4) adds an adoption and polarity
@@ -261,7 +263,7 @@ def evaluate(measures: Mapping[str, Any], variant: leaf_evidence.Variant = V1) -
                   observed=dict(framed=new['framed_ok'], records=records), passed=records > 0 and share(new['framed_ok'], records) + 1e-9 >= SHARE_BAR)
     rows = dict(
         L1=l1,
-        L2=dict(rule=f'at least {SHARE_BAR:.0%} of pairs correct on leaf fit and no lower than the section 16 baseline' if variant == V2
+        L2=dict(rule=f'at least {SHARE_BAR:.0%} of pairs correct on leaf fit and no lower than the {reference_label}' if variant == V2
                 else f'at least {SHARE_BAR:.0%} of pairs correct on leaf fit and no lower than the baseline',
                 observed=dict(new=new['pairs_correct'], baseline=measures['reference_pairs_correct'] if variant == V2 else base['pairs_correct'], pairs=pairs),
                 passed=new_rate + 1e-9 >= SHARE_BAR and new_rate + 1e-9 >= base_rate),

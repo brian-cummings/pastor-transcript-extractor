@@ -23,7 +23,7 @@ from pastor_transcript_extractor.collector_retrieval_json_v1_1 import seal
 from pastor_transcript_extractor.context_extraction_validation import strict_json
 from pastor_transcript_extractor.sermon_topics import TOPIC_SPECS
 
-from . import arms, main_point, stage
+from . import arms, main_point, public_set, stage
 
 INSTRUCTION_VERSION = 'leaf-evidence-v1'
 VERSION = 'leaf-evidence-run-v1'
@@ -121,6 +121,20 @@ V1 = Variant('v1', INSTRUCTION_VERSION, 'SYSTEM_PROMPT', 'leaf-evidence-b')
 V2 = Variant('v2', 'leaf-evidence-v2', 'SYSTEM_PROMPT_V2', 'leaf-evidence-b2')
 VARIANTS = {variant.key: variant for variant in (V1, V2)}
 
+@dataclass(frozen=True)
+class Scope:
+    """Which pairs a run reads. `arms` is section 16's arm B (sermon 281); the others are halves of section 19's new set."""
+    key: str
+    ceiling_usd: Decimal
+    ceiling_attempts: int
+
+
+ARMS = Scope('arms', CEILING_USD, CEILING_ATTEMPTS)
+# A set half costs about $0.0005 a pair but reserves $0.0164 a request: 77 held-out pairs reserve $1.26. These are per-run ceilings, not cumulative.
+DEVELOPMENT = Scope('development', Decimal('1.00'), 60)
+HELD_OUT = Scope('held_out', Decimal('1.50'), 100)
+SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT)}
+
 RECORD_SCHEMA: dict[str, Any] = copy.deepcopy(bound.CLAIM_SCHEMA)
 RECORD_SCHEMA['required'] = [*bound.FIELDS, *EXTRA_FIELDS]
 RECORD_SCHEMA['properties'].update({name: {'type': 'string'} for name in EXTRA_FIELDS})
@@ -128,12 +142,14 @@ RESPONSE_SCHEMA: dict[str, Any] = {'type': 'object', 'additionalProperties': Fal
                                    'properties': {'records': {'type': 'array', 'items': RECORD_SCHEMA}}}
 
 
-def leaf_dir(base_dir: Path, variant: Variant = V1) -> Path:
-    return stage.paths(base_dir)[2] / variant.directory
+def leaf_dir(base_dir: Path, variant: Variant = V1, scope: Scope = ARMS) -> Path:
+    if scope is ARMS:
+        return stage.paths(base_dir)[2] / variant.directory
+    return public_set.set_dir(base_dir) / f'{variant.directory}-{scope.key.replace("_", "-")}'
 
 
-def ledger_for(base_dir: Path, variant: Variant = V1) -> PilotLedger:
-    return PilotLedger(leaf_dir(base_dir, variant) / 'ledger.json', ceiling_usd=CEILING_USD, ceiling_attempts=CEILING_ATTEMPTS)
+def ledger_for(base_dir: Path, variant: Variant = V1, scope: Scope = ARMS) -> PilotLedger:
+    return PilotLedger(leaf_dir(base_dir, variant, scope) / 'ledger.json', ceiling_usd=scope.ceiling_usd, ceiling_attempts=scope.ceiling_attempts)
 
 
 def category_meaning() -> str:
@@ -162,9 +178,37 @@ def validate_records(payload: Any) -> list[dict[str, Any]]:
     return records
 
 
-def pair_inputs(base_dir: Path) -> list[dict[str, Any]]:
-    """Arm B's flagged pairs, exactly as section 16 sent them (same units, leaves, neighbors)."""
-    return main_point.pair_inputs(base_dir, 'b')
+# The frozen producer refuses any request whose input exceeds 16,384 bytes and never truncates. Sermon 281's blocks were short enough that all three units always
+# fit; the new set's are not (51 of its 109 pairs overflow with both neighbors). So the producer is given whole neighbor units only while the three units together
+# stay within this budget, preceding neighbor first. The rule uses characters, not the instruction's length, so every version sees the same context; a longer
+# instruction that no longer fits fails loudly at the producer's own preflight, never by a silent cut.
+CONTEXT_CHARS = 5000
+
+
+def fit_context(pair: Mapping[str, Any]) -> dict[str, Any]:
+    """Whole neighbor units within the budget: both, else the preceding one, else the following one, else the target alone. The label is recorded."""
+    before, target, after = pair['preceding_text'], pair['text'], pair['following_text']
+    if len(before) + len(target) + len(after) <= CONTEXT_CHARS:
+        kept = 'full'
+    elif before and len(before) + len(target) <= CONTEXT_CHARS:
+        kept, after = 'preceding_only', ''
+    elif after and len(target) + len(after) <= CONTEXT_CHARS:
+        kept, before = 'following_only', ''
+    else:
+        kept, before, after = 'target_only', '', ''
+    return dict(pair, preceding_text=before, following_text=after, context=kept)
+
+
+def pair_inputs(base_dir: Path, scope: Scope = ARMS) -> list[dict[str, Any]]:
+    """The scope's pairs: arm B's as section 16 sent them (same units, leaves, neighbors), or a half of the new set's."""
+    if scope is ARMS:
+        return main_point.pair_inputs(base_dir, 'b')
+    return [fit_context(p) for p in public_set.half_pairs(base_dir, scope.key)]
+
+
+def units_identity(base_dir: Path, scope: Scope = ARMS) -> str:
+    """The file whose bytes fix the units: the sealed sermon-281 units, or the new set's sealed pairs (which carry each unit's text)."""
+    return file_sha256(arms.arms_paths(base_dir)['units'] if scope is ARMS else public_set.set_dir(base_dir) / 'pairs.json')
 
 
 def build_request(pair: Mapping[str, Any], variant: Variant = V1) -> requests.RequestSpec:
@@ -199,19 +243,20 @@ def decode(response: Mapping[str, Any], pair: Mapping[str, Any]) -> dict[str, An
     return dict(claims=accepted, anchor_failures=failures)
 
 
-def freeze_identity(base_dir: Path, pairs: list[Mapping[str, Any]], variant: Variant = V1) -> dict[str, Any]:
+def freeze_identity(base_dir: Path, pairs: list[Mapping[str, Any]], variant: Variant = V1, scope: Scope = ARMS) -> dict[str, Any]:
     here = Path(__file__).parent
     return dict(instruction_sha256=digest(variant.prompt), instruction_version=variant.version, schema_sha256=digest(RESPONSE_SCHEMA), category=dict(name=CATEGORY, meaning=category_meaning()),
-                pairs_sha256=arms.pairs_digest(pairs), units_sha256=file_sha256(arms.arms_paths(base_dir)['units']), producer=provider.policy_for(PRODUCER_VERSION),
-                code_sha256=digest([file_sha256(here / name) for name in ('leaf_evidence.py', 'main_point.py', 'arms.py')]))
+                scope=scope.key, pairs_sha256=arms.pairs_digest(pairs), units_sha256=units_identity(base_dir, scope), producer=provider.policy_for(PRODUCER_VERSION),
+                code_sha256=digest([file_sha256(here / name) for name in ('leaf_evidence.py', 'main_point.py', 'arms.py', 'public_set.py')]),
+                **({} if scope is ARMS else dict(inputs_sha256=digest(list(pairs)), context_chars=CONTEXT_CHARS)))
 
 
 def freeze_plan(base_dir: Path, pairs, state: Callable[[], dict[str, Any]], metadata: Callable[[str], Mapping[str, Any]],
-                variant: Variant = V1) -> dict[str, Any]:
+                variant: Variant = V1, scope: Scope = ARMS) -> dict[str, Any]:
     current = state()
     if current['dirty']:
         raise ValueError('Uncommitted source changes: the implementation must be committed and frozen before extraction')
-    identity, path = freeze_identity(base_dir, pairs, variant), leaf_dir(base_dir, variant) / 'plan.json'
+    identity, path = freeze_identity(base_dir, pairs, variant, scope), leaf_dir(base_dir, variant, scope) / 'plan.json'
     if path.exists():
         plan = read_json(path)
         if seal(plan) != plan:
@@ -219,7 +264,7 @@ def freeze_plan(base_dir: Path, pairs, state: Callable[[], dict[str, Any]], meta
         if {key: plan[key] for key in identity} != identity:
             raise ValueError('Frozen plan differs from the instruction, schema, category, pairs, units, producer or code; no variant is allowed')
         return plan
-    plan = seal(dict(version=VERSION, **identity, implementation=current, ceiling=dict(usd=str(CEILING_USD), attempts=CEILING_ATTEMPTS),
+    plan = seal(dict(version=VERSION, **identity, implementation=current, ceiling=dict(usd=str(scope.ceiling_usd), attempts=scope.ceiling_attempts),
                      published_deepinfra_metadata=main_point._prices(metadata), retries='none; one attempt per pair, no semantic retry',
                      stop_rules=dict(transport_failure_rate=str(TRANSPORT_FAILURE_RATE), schema_failure_rate=str(SCHEMA_FAILURE_RATE),
                                      minimum_failures=MINIMUM_STOP_FAILURES)))
@@ -228,9 +273,9 @@ def freeze_plan(base_dir: Path, pairs, state: Callable[[], dict[str, Any]], meta
 
 
 def run(base_dir: Path, *, check_only: bool = False, transport: Callable | None = None, state: Callable[[], dict[str, Any]] = git_state,
-        metadata: Callable[[str], Mapping[str, Any]] = provider.public_model_metadata, variant: Variant = V1) -> dict[str, Any]:
-    out, ledger = leaf_dir(base_dir, variant), ledger_for(base_dir, variant)
-    pairs = pair_inputs(base_dir)
+        metadata: Callable[[str], Mapping[str, Any]] = provider.public_model_metadata, variant: Variant = V1, scope: Scope = ARMS) -> dict[str, Any]:
+    out, ledger = leaf_dir(base_dir, variant, scope), ledger_for(base_dir, variant, scope)
+    pairs = pair_inputs(base_dir, scope)
     policy = provider.policy_for(PRODUCER_VERSION)
     specs = {pair['key']: build_request(pair, variant) for pair in pairs}
     reservation = provider.reserved_usd(next(iter(specs.values())).version) if specs else Decimal(0)
@@ -241,15 +286,15 @@ def run(base_dir: Path, *, check_only: bool = False, transport: Callable | None 
 
     pending = [p for p in pairs if not receipt(p).exists() and ledger.entry_status(f"{STEP}/leaf/{p['key']}") is None]
     worst = reservation * len(pending)
-    plan = dict(version=VERSION, instruction_version=variant.version, model=policy['model'], reasoning_effort=policy['reasoning_effort'], pairs=len(pairs), units_with_a_pair=len({p['unit'] for p in pairs}),
+    plan = dict(version=VERSION, scope=scope.key, instruction_version=variant.version, model=policy['model'], reasoning_effort=policy['reasoning_effort'], pairs=len(pairs), units_with_a_pair=len({p['unit'] for p in pairs}),
                 already_received=len(pairs) - len(pending), requests_to_send=len(pending), per_request_reserved_usd=str(reservation),
-                worst_case_reserved_usd=str(worst), ceiling_usd=str(CEILING_USD), ceiling_attempts=CEILING_ATTEMPTS, check_only=check_only,
+                worst_case_reserved_usd=str(worst), ceiling_usd=str(scope.ceiling_usd), ceiling_attempts=scope.ceiling_attempts, check_only=check_only,
                 remaining_ledger_usd=str(ledger.remaining()[0]))
     if check_only:
         return plan
     if pending:
         ledger.require_step(STEP, worst, len(pending))
-    frozen = freeze_plan(base_dir, pairs, state, metadata, variant)
+    frozen = freeze_plan(base_dir, pairs, state, metadata, variant, scope)
     send = transport or provider.transport
     rows, stopped = [], None
     for pair in pairs:
@@ -291,7 +336,7 @@ def run(base_dir: Path, *, check_only: bool = False, transport: Callable | None 
                    transport_failures=sum(r['status'] == 'transport_failure' for r in rows), schema_failures=sum(r['status'] == 'schema_failure' for r in rows),
                    lost_attempts=sum(r['status'] == 'lost_attempt' for r in rows), records=sum(len(r['claims']) for r in rows),
                    anchor_failures=sum(len(r['anchor_failures']) for r in rows), no_record=sum(r['status'] == 'ok' and not r['claims'] for r in rows))
-    result = seal(dict(version=VERSION, instruction_version=variant.version, model=policy['model'], plan_fingerprint=frozen['content_fingerprint'],
+    result = seal(dict(version=VERSION, scope=scope.key, instruction_version=variant.version, model=policy['model'], plan_fingerprint=frozen['content_fingerprint'],
                        stopped=stopped, summary=summary, rows=rows, ledger=ledger.summary()))
     output = out / 'extraction.json'
     write_json(output, result)

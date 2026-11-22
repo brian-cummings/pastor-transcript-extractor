@@ -24,6 +24,8 @@ from pastor_transcript_extractor.collector_retrieval_json_v1_1 import seal
 from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.sermon_classifier_typesafe import TypeSafeBlockCache
 
+from pastor_transcript_extractor.object_position import sermon as sermons
+
 from . import arms, stage
 
 VERSION = 'public-life-set-v1'
@@ -144,6 +146,17 @@ def _sermon(base_dir: Path, item: Mapping[str, Any]) -> dict[str, Any]:
     proposed = read_json(Path(item['source_path']))
     units = unit_records(sermon_blocks(proposed))
     return dict(item=item, proposed=proposed, units=units, blocks=arms.transcript_blocks(units, proposed['segments']))
+
+
+def load_sermon(base_dir: Path, video_id: int) -> sermons.Sermon:
+    """A new-set sermon in the shape the review needs: its text (blocks joined by a blank line, the coordinates pairs use) and the watch link at a position."""
+    item = next((i for i in load_candidates(base_dir)['chosen'] if i['video_id'] == video_id), None)
+    if item is None:
+        raise ValueError(f'Video {video_id} is not in the new set')
+    units = _sermon(base_dir, item)['units']
+    text = sermons.SEPARATOR.join(u['text'] for u in units)
+    return sermons.Sermon(video_id=video_id, title=item['title'], url=item['url'], source_sha256=digest(text), text=text,
+                          blocks=tuple((u['id'], u['start'], u['end'], u['start_seconds']) for u in units))
 
 
 # ---- steps 2 and 3: Jev ------------------------------------------------------------------------------------------------------

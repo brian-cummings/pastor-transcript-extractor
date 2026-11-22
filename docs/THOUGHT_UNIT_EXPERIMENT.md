@@ -895,3 +895,21 @@ Facts to carry forward: D is thin (32 pairs, one sermon contributes 1); sermon 1
 
 **Grading load for H (amendment, fixed before any extraction).** Extraction runs on all 77 H pairs for both versions (about $0.02), but blind grading of 154 records plus summaries is more than one rater should do in one sitting. Grading uses the first 30 H pairs in sha256(pair key) order, the same 30 for version 2 and version 3 (60 records in the mixed queue). The 47 others are extracted and saved, ungraded, and reported as such. D (32 pairs) is graded whole.
 
+## 20. Running leaf-evidence on the new set: context rule, review and P1 (specification and implementation, 2026-11-22)
+
+### 20.1 A producer limit found by the check-only, and the context rule
+
+The first real check-only for the development half failed before any request: `DeepInfra input exceeds reservation; no truncation`. The frozen producer rejects any request over 16,384 bytes. Sermon 281's blocks were short, so the preceding unit, target and following unit always fit; the new set's blocks are 1,000 to 5,300 characters, and **51 of the 109 pairs overflow** with both neighbors. No shared policy is changed.
+**Rule (fixed before any extraction):** the producer is given whole neighbor units only while the three units together are at most 5,000 characters, in this order: both neighbors, else the preceding unit only, else the following unit only, else the target alone. The target is never cut. The rule uses characters, not the instruction's length, so versions 2 and 3 see identical context; a longer instruction that no longer fits fails loudly at the producer's own preflight.
+Resulting contexts: D 13 full, 10 preceding only, 4 following only, 5 target only; H 35 full, 24 preceding only, 11 following only, 7 target only. Each pair records its `context`; the anchor check uses only the units the producer saw. Limits: this differs from sections 16 to 18 for 64 of the 109 pairs (fewer neighbors), and version 3's instruction must fit in about 700 bytes more than version 2's for the longest target (5,266 characters).
+
+### 20.2 Implementation (offline-tested; 50 thought-unit tests across the touched files pass)
+
+- `leaf_evidence`: a `Scope` (`arms`, `development`, `held_out`) selects the pairs, folder (`public-life-set-v1/leaf-evidence-b2-development/` and so on) and ledger. Set-scope ceilings are per run: development $1.00 and 60 attempts, held-out $1.50 and 100 attempts (the reservation is $0.0164 a request, so 77 pairs reserve $1.26; actual cost is about $0.0005 a pair). Plan identity adds the scope, the exact inputs and the context budget. Sermon 281's folders and behavior are unchanged.
+- `set_review`: one queue per half mixing every version run on it, blind to version (identical records labeled once); records and no-record pairs first, summaries after, using `leaf_review`'s labeling loop and decision log. Development is graded whole; held-out uses the 30-pair sample of 19.5. The report gives L1 to L4 per version (the section 18 bars), paired accepted counts when there are two versions, labels by source, cost, and a defect table (every rejected or unfaithful record, missing record, or unframed summary with its pair and text).
+- CLI: `set-leaf-extract`, `set-leaf-review`, `set-leaf-report`, each with `--half development|held-out`.
+
+### 20.3 P1 (development): version 2 unchanged on D's 32 pairs
+
+Run `set-leaf-extract --half development --variant v2` (about $0.02; check-only reserves $0.52 against a $1.00 ceiling), then the blind review, graded by Claude with source recorded (Brian may spot-check). The bars are reported, not acceptance. Output: the defect table, from which P2 may write one version 3 (each change tied to a demonstrated defect and a falsifiable check, bars stated before any held-out extraction). **Version 2 is not run on the held-out half until version 3 is frozen**, so nothing about H can inform the revision.
+

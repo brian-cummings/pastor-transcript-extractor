@@ -1,0 +1,221 @@
+"""Blind review and report for the new public-life set (docs/THOUGHT_UNIT_EXPERIMENT.md sections 19.3 and 20).
+
+One queue per half. It mixes every version run on that half so the grader cannot tell which version wrote a record (identical records are labeled once),
+shows record items and no-record items first and summary items only after those are done, and keeps the version map in a separate file. The labeling loop
+and the decision log are `leaf_review`'s; only the queue, the sample and the report differ. Labels are evaluation labels, never runtime evidence.
+"""
+from __future__ import annotations
+
+from decimal import Decimal
+from pathlib import Path
+import random
+from typing import Any, Mapping
+
+from pastor_transcript_extractor.bound_claims.common import digest, read_json, write_json
+from pastor_transcript_extractor.bound_claims.review import RECORD_FIELDS
+from pastor_transcript_extractor.collector_retrieval_json_v1_1 import seal
+
+from . import leaf_evidence, leaf_review, main_point, public_set
+
+VERSION = 'set-review-v1'
+WINDOW = leaf_review.WINDOW
+HELD_OUT_SAMPLE = 30                    # section 19.5: the first 30 held-out pairs in sha256(pair key) order; development is graded whole
+VARIANTS_BY_HALF = dict(development=('v2',), held_out=('v2', 'v3'))
+PRIMARY = dict(development='v2', held_out='v3')      # the version whose bars are tested; the other is its reference
+
+
+def review_dir(base_dir: Path, half: str) -> Path:
+    return public_set.set_dir(base_dir) / f"leaf-review-{half.replace('_', '-')}"
+
+
+def paths_for(base_dir: Path, half: str) -> dict[str, Path]:
+    out = review_dir(base_dir, half)
+    return dict(out=out, queue=out / 'review.json', versions=out / 'review_versions.json', decisions=out / leaf_review.DECISIONS,
+                report_md=out / 'SET_REPORT.md', report_json=out / 'SET_REPORT.json')
+
+
+def reviewed_pairs(base_dir: Path, half: str) -> list[dict[str, Any]]:
+    """Development: every pair. Held-out: the fixed sample, chosen by the hash of the pair key alone."""
+    pairs = public_set.half_pairs(base_dir, half)
+    if half == 'development':
+        return pairs
+    return sorted(pairs, key=lambda p: digest(p['key']))[:HELD_OUT_SAMPLE]
+
+
+def by_key(base_dir: Path, half: str, variant: leaf_evidence.Variant) -> dict[str, Any]:
+    """A version's one record (or none) for each pair of the half; every pair must be answered."""
+    scope = leaf_evidence.SCOPES[half]
+    path = leaf_evidence.leaf_dir(base_dir, variant, scope) / 'extraction.json'
+    result = leaf_review._sealed(path)
+    pairs = leaf_evidence.pair_inputs(base_dir, scope)
+    if len(result['rows']) != len(pairs):
+        raise ValueError(f'{variant.key} answered {len(result["rows"])} of {len(pairs)} pairs; the run stopped or is incomplete')
+    found = {}
+    for pair, row in zip(pairs, result['rows']):
+        if (row['unit'], row['leaf']) != (pair['unit'], pair['leaf']):
+            raise ValueError(f"{path.name} rows do not line up with the pairs at {pair['key']}")
+        if row['status'] != 'ok':
+            raise ValueError(f"Pair {pair['key']} is {row['status']} for {variant.key}; the test needs every pair answered")
+        found[pair['key']] = row['claims'][0] if row['claims'] else None
+    return found
+
+
+def build_queue(base_dir: Path, half: str, variants: tuple[str, ...] | None = None) -> dict[str, Any]:
+    keys = variants or VARIANTS_BY_HALF[half]
+    pairs = {p['key']: p for p in reviewed_pairs(base_dir, half)}
+    found = {key: by_key(base_dir, half, leaf_evidence.VARIANTS[key]) for key in keys}
+    texts: dict[int, Any] = {}
+    sermon_of = lambda video: texts.setdefault(video, public_set.load_sermon(base_dir, video))
+    seed = digest(dict(half=half, pairs=sorted(pairs), variants=list(keys)))
+    phase1, phase2, records, summaries = [], [], {}, {}
+    for variant in keys:
+        for key, record in sorted(found[variant].items()):
+            if key not in pairs or record is None:
+                continue
+            pair, sermon = pairs[key], sermon_of(pairs[key]['video_id'])
+            shared = {k: record['claim'][k] for k in RECORD_FIELDS}
+            fingerprint = digest(dict(at=record['sermon_start'], leaf=pair['leaf'], shared=shared, video=pair['video_id']))
+            if fingerprint in records:
+                records[fingerprint]['uses'].append(dict(version=variant, pair=key))
+            else:
+                records[fingerprint] = item = dict(
+                    id=fingerprint[:16], kind='record', leaf=pair['leaf'], leaf_meaning=main_point.leaf_meaning(pair['leaf']), watch_url=sermon.link_at(record['sermon_start']),
+                    before=sermon.text[max(0, record['sermon_start'] - WINDOW):record['sermon_start']], anchor=sermon.text[record['sermon_start']:record['sermon_end']],
+                    after=sermon.text[record['sermon_end']:record['sermon_end'] + WINDOW], record=shared, uses=[dict(version=variant, pair=key)])
+                phase1.append(item)
+            summary_print = digest(dict(pair=key, summary=record['summary'], target=record['target'], proposition=record['claim']['proposition']))
+            if summary_print in summaries:
+                summaries[summary_print]['uses'].append(dict(version=variant, pair=key))
+            else:
+                summaries[summary_print] = item = dict(
+                    id=summary_print[:16], kind='summary', pair=key, leaf=pair['leaf'], leaf_meaning=main_point.leaf_meaning(pair['leaf']),
+                    watch_url=sermon.link_at(record['sermon_start']), unit_text=pair['text'], summary=record['summary'], target=record['target'],
+                    proposition=record['claim']['proposition'], asks_framing=True, uses=[dict(version=variant, pair=key)])
+                phase2.append(item)
+    for key, pair in sorted(pairs.items()):
+        silent = [v for v in keys if found[v][key] is None]
+        if silent:
+            phase1.append(dict(id=digest(dict(none=key))[:16], kind='none', pair=key, leaf=pair['leaf'], leaf_meaning=main_point.leaf_meaning(pair['leaf']),
+                               watch_url=sermon_of(pair['video_id']).link_at(pair['unit_start']), unit_text=pair['text'],
+                               uses=[dict(version=v, pair=key) for v in silent]))
+    random.Random(f'{seed}:1').shuffle(phase1)
+    random.Random(f'{seed}:2').shuffle(phase2)
+    items = [*phase1, *phase2]
+    visible = [{k: v for k, v in item.items() if k not in ('uses', 'pair')} for item in items]
+    queue = seal(dict(version=VERSION, half=half, source_sha256=seed, item_count=len(items), phase1=len(phase1), items=visible))
+    versions = seal(dict(version=VERSION, half=half, queue_fingerprint=queue['content_fingerprint'], variants=list(keys), reviewed_pairs=sorted(pairs),
+                         answered={v: {k: bool(r) for k, r in found[v].items() if k in pairs} for v in keys},
+                         items={item['id']: {k: item[k] for k in ('kind', 'uses', 'pair') if k in item} for item in items}))
+    paths = paths_for(base_dir, half)
+    paths['out'].mkdir(parents=True, exist_ok=True)
+    write_json(paths['queue'], queue)
+    write_json(paths['versions'], versions)
+    return dict(queue=str(paths['queue']), half=half, variants=list(keys), pairs=len(pairs), items=len(items), phase1=len(phase1), phase2=len(phase2),
+                records={v: sum(bool(r) for k, r in found[v].items() if k in pairs) for v in keys})
+
+
+def judge(base_dir: Path, half: str, source: str = 'human', input_fn=input, output_fn=print) -> dict[str, Any]:
+    paths = paths_for(base_dir, half)
+    return leaf_review.judge(base_dir, source, input_fn, output_fn, leaf_evidence.V2, paths, lambda b, _v: build_queue(b, half))
+
+
+def progress(base_dir: Path, half: str) -> dict[str, Any]:
+    return leaf_review.progress(base_dir, leaf_evidence.V2, paths_for(base_dir, half), lambda b, _v: build_queue(b, half))
+
+
+def tally(queue: Mapping[str, Any], versions: Mapping[str, Any], decided: Mapping[str, Any], keys: tuple[str, ...]) -> dict[str, dict[str, Any]]:
+    rows = {v: dict(records=0, accepted=0, qualification_rejects=0, adoption_polarity_rejects=0, pairs_correct=0, summaries_ok=0, framed_ok=0, rejects={}) for v in keys}
+    for item_id, meta in versions['items'].items():
+        label = decided[item_id]
+        for use in meta['uses']:
+            row = rows[use['version']]
+            if meta['kind'] == 'record':
+                row['records'] += 1
+                row['accepted'] += label['decision'] == 'accept'
+                row['qualification_rejects'] += label['decision'] == 'reject:qualifications'
+                row['adoption_polarity_rejects'] += label['decision'] in ('reject:adoption', 'reject:polarity')
+                row['pairs_correct'] += bool(label['fit'])
+                if label['decision'] != 'accept':
+                    row['rejects'][label['decision']] = row['rejects'].get(label['decision'], 0) + 1
+            elif meta['kind'] == 'none':
+                row['pairs_correct'] += not label['answer']
+            else:
+                row['summaries_ok'] += bool(label['answer'])
+                row['framed_ok'] += bool(label['framed'])
+    return rows
+
+
+def defects(queue: Mapping[str, Any], versions: Mapping[str, Any], decided: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Every record or summary that failed a check, with the pair and the content that failed, for the defect table."""
+    shown = {item['id']: item for item in queue['items']}
+    out = []
+    for item_id, meta in sorted(versions['items'].items(), key=lambda kv: kv[1].get('pair', kv[0])):
+        label, item = decided[item_id], shown[item_id]
+        for use in meta['uses']:
+            if meta['kind'] == 'record' and (label['decision'] != 'accept' or not label['fit']):
+                out.append(dict(version=use['version'], pair=use['pair'], kind='record', decision=label['decision'], leaf_fit=bool(label['fit']),
+                                proposition=item['record']['proposition'], polarity=item['record']['polarity'], speech_role=item['record']['speech_role']))
+            elif meta['kind'] == 'none' and label['answer']:
+                out.append(dict(version=use['version'], pair=use['pair'], kind='missing_record', decision='should have a record'))
+            elif meta['kind'] == 'summary' and (not label['answer'] or not label['framed']):
+                out.append(dict(version=use['version'], pair=use['pair'], kind='summary', faithful=bool(label['answer']), leaf_framed=bool(label['framed']),
+                                summary=item['summary'], proposition=item['proposition']))
+    return out
+
+
+def _spend(base_dir: Path, half: str, keys: tuple[str, ...]) -> dict[str, str]:
+    cost = {}
+    for key in keys:
+        ledger = read_json(leaf_evidence.leaf_dir(base_dir, leaf_evidence.VARIANTS[key], leaf_evidence.SCOPES[half]) / 'ledger.json')
+        cost[key] = str(sum((Decimal(e['actual_usd'] if e['status'] == 'resolved' else e['reserved_usd']) for e in ledger['entries'].values()), Decimal(0)))
+    return cost
+
+
+def report(base_dir: Path, half: str) -> dict[str, Any]:
+    paths = paths_for(base_dir, half)
+    queue, versions = leaf_review._sealed(paths['queue']), leaf_review._sealed(paths['versions'])
+    if versions['queue_fingerprint'] != queue['content_fingerprint']:
+        raise ValueError('review_versions.json does not belong to this queue; rebuild the queue')
+    decided = leaf_review.load_decisions(base_dir, leaf_evidence.V2, paths)
+    missing = [item['id'] for item in queue['items'] if item['id'] not in decided]
+    if missing:
+        raise ValueError(f'{len(missing)} items are unlabeled; finish the review first')
+    keys, primary = tuple(versions['variants']), PRIMARY[half]
+    if primary not in keys:
+        primary = keys[-1]
+    rows = tally(queue, versions, decided, keys)
+    pairs = len(versions['reviewed_pairs'])
+    reference = next((k for k in keys if k != primary), None)
+    outcomes = {}
+    for key in keys:
+        base = rows[reference]['pairs_correct'] if reference and key == primary else 0
+        outcomes[key] = leaf_review.evaluate(dict(pairs=pairs, new=rows[key], baseline=rows[reference or key], reference_pairs_correct=base), leaf_evidence.V2,
+                                         f'{reference} version on the same pairs' if reference and key == primary else 'zero reference (none in this half)')
+    paired = None
+    if reference:
+        accepted = lambda version, pair: next((bool(decided[i]['decision'] == 'accept') for i, m in versions['items'].items()
+                                               if m['kind'] == 'record' and dict(version=version, pair=pair) in m['uses']), False)
+        status = {p: (accepted(primary, p), accepted(reference, p)) for p in versions['reviewed_pairs']}
+        paired = dict(both=sum(a and b for a, b in status.values()), primary_only=sum(a and not b for a, b in status.values()),
+                      reference_only=sum(b and not a for a, b in status.values()), neither=sum(not a and not b for a, b in status.values()))
+    bars_met = outcomes[primary]['passed']
+    not_below = None if paired is None else paired['primary_only'] >= paired['reference_only']
+    passed = bars_met and (not_below is not False)
+    sources: dict[str, int] = {}
+    for item in queue['items']:
+        sources[decided[item['id']]['source']] = sources.get(decided[item['id']]['source'], 0) + 1
+    final = dict(version=VERSION, half=half, pairs_reviewed=pairs, primary=primary, reference=reference, bars_met=bars_met, not_below_reference=not_below,
+                 passed=passed if half == 'held_out' else None, criteria={k: o['criteria'] for k, o in outcomes.items()}, tally=rows, paired_accepted=paired,
+                 labels_by=sources, cost_usd=_spend(base_dir, half, keys), defects=defects(queue, versions, decided))
+    write_json(paths['report_json'], final)
+    verdict = ('PASS' if passed else 'FAIL') if half == 'held_out' else 'DEVELOPMENT (bars reported, not acceptance)'
+    lines = [f'# New-set leaf-evidence report: {half.replace("_", " ")} half', '', f'**{verdict}**', '',
+             f"{pairs} pairs reviewed; labels by: {sources} (`human` = Brian's own; any other source is a delegated first pass, not Brian's judgment).", '',
+             '| Version | Criterion | Rule | Observed | Result |', '| --- | --- | --- | --- | --- |']
+    for key, outcome in outcomes.items():
+        lines += [f"| {key} | {name} | {row['rule']} | `{row['observed']}` | {'PASS' if row['passed'] else 'FAIL'} |" for name, row in outcome['criteria'].items()]
+    if paired is not None:
+        lines += ['', f'Paired accepted counts ({primary} against {reference}): `{paired}`; {primary} not below {reference}: {not_below}.']
+    lines += ['', f"Defects: {len(final['defects'])}. Cost (not a bar): {final['cost_usd']}. Exposed development material when run on the development half; theme overlaps with sermon 281.", '']
+    paths['report_md'].write_text('\n'.join(lines) + '\n')
+    return dict(final, report_md=str(paths['report_md']), report_json=str(paths['report_json']))
