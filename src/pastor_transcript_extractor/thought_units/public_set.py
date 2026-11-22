@@ -30,7 +30,7 @@ from . import arms, stage
 
 DEFAULT_SET = 'v1'
 # Section 24: a second, confirmatory set of sermons that were not used while the instruction was chosen. Same code, own folder, ledger and candidates.
-SETS = {'v1': dict(version='public-life-set-v1', skip=0, take=6), 'v2': dict(version='public-life-set-v2', skip=6, take=8)}
+SETS = {'v1': dict(version='public-life-set-v1', skip=0, take=6), 'v2': dict(version='public-life-set-v2', skip=6, take=24)}   # take was 8; extended to 24 after the first 8 gave 20 pairs (section 24.5)
 VERSION = SETS[DEFAULT_SET]['version']
 LEXICON = re.compile(
     r'\b(government|politic\w*|election\w*|vote[sd]?|voting|congress\w*|senat\w*|president\w*|legislat\w*|constitution\w*|democra\w*|republic\w*|taxes|'

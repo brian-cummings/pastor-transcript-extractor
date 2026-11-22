@@ -25,7 +25,7 @@ PRIMARY = dict(development='v2', held_out='v3', development_top3='v4', held_out_
 # Section 23 halves read the three-leaf pairs; they were seen while the design was chosen, so their reports are exploratory and carry no pass or fail.
 VERDICT_HALVES = ('held_out',)
 CONFIRM_HALVES = ('confirm_top3',)      # section 24: unused sermons, readings fixed in advance, a verdict
-CONFIRM_SAMPLE = 30                      # the first 30 pairs by hash of the pair key when the set has more
+CONFIRM_SAMPLE = 60                      # section 24.5: every pair is graded up to 60; the first 60 by hash of the pair key when the set has more
 
 
 def review_dir(base_dir: Path, half: str) -> Path:

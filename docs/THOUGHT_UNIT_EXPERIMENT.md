@@ -1144,6 +1144,14 @@ Version 3 (one record) and version 4 (up to three) run once each on every pair. 
 Otherwise it is not confirmed: no extra records or a failed reading means multi-record is not shown to help on unused sermons. No further variant without Brian's decision. The section 18 bars (L1 to L4) are reported next to the verdict and do not decide it.
 Limits stated up front: one run of each version (the provider is not deterministic at temperature 0, so one run cannot separate differences of a few items from noise); one rater who wrote the instruction; the leaf-gate precision problem (§21.4) remains and affects both versions equally; the set is small and chosen by a vocabulary proxy.
 
+### 24.5 Extension of the set (2026-11-22; Brian: "extend it a bit more - we've suffered from small tests being inconclusive")
+
+The first eight sermons (ranks 7 to 14) scored to **20 pairs, under the floor of 30**: 321 five, 1477 five, 1044 four, 766 four, 1480 two, and 969, 523 and 1057 none. No v3 or v4 extraction had been run on them; the decision rests on yield alone. Changes, all fixed before any further Jev spend or extraction:
+- The rule of 24.1 is unchanged but takes **ranks 7 to 30 (24 sermons)**: the original eight plus ranks 15 to 30 (video 1148 and fifteen more, 2.3 down to 1.5 hits per 1,000 words, `candidates.json` lists them). Still disjoint from the first set and 281 (checked in code). Density is now low, so the yield per sermon is expected to be small; the floor of 30 is the question, not a target.
+- Cached blocks of the first eight are reused; the check-only worst case for the whole set is 205 requests, $0.56, against $0.89 remaining on the set's own ledger ($1.00 ceiling).
+- `CONFIRM_SAMPLE` rises from 30 to **60**: every pair is graded up to 60 (the first 60 by hash of the pair key above that). The 24.3 queue rule otherwise stands.
+- The verdict rule, readings and limits of 24.3 are unchanged. If the extended set is still under 30 pairs it is reported as underpowered and nothing more is added without Brian's decision; this is the one extension.
+
 ### 24.4 Commands (Brian runs; the tree must be clean)
 
 ```bash
