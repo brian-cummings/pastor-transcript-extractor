@@ -513,3 +513,48 @@ pte analysis thought-units arms-report --base-dir /Users/briancummings/Documents
 3. Approve the labeling load: at most 30 records per arm (expected under 90, with duplicate records labeled once).
 4. Approve writing `thought-main-point-v1` for your review before it is sealed.
 5. Confirm this is a separately authorized experiment, since it reopens the unit question after sections 13 and 14 (as section 11 did, now with a measured basis in section 15).
+
+### 16.9 Implementation (committed 2026-11-22; nothing paid has run)
+
+Code: `thought_units/arms.py` (units, segment mapping, assessment, flagged pairs), `thought_units/main_point.py` (instruction `thought-main-point-v1` and the per-pair runner),
+`thought_units/arms_review.py` (blind queue, labeling, report) and `snap.run(video=...)`; commands in `commands/analysis/thought_units.py`; offline tests in
+`tests/test_thought_unit_arms.py`. Findings from checking the build against the real sermon 281 data (no provider call):
+
+- **Context rule verified.** The block and context builder reproduces all 76 saved blocks, their segment indexes, seconds and topic contexts exactly, and every one of the 152 saved topic and
+  public-life answers is found under an identical cache identity (the topic answers sit under the earlier transport identity, which the seeding step checks). A unit that is exactly a saved block therefore
+  reuses its answers; every other unit is recomputed, and the cache is new, so the pilot cache is read only.
+- **Segment mapping refined (deviation from section 4's snap-to-a-segment-boundary).** Sermon 281's 76 blocks hold only 147 normalized caption lines (about 390 characters each), so most snapped cuts fall inside a line.
+  Moving a cut to a line boundary would change the section 15 cuts, so each unit instead takes the segments of every line it overlaps, and two units sharing a cut line share that line's segments. Seconds are
+  the first and last of those segments, so a watch link can start up to one caption line early. 72 of 76 blocks align line for line; the other four are one line with all their segments, as section 4 said.
+  `arms --check-only` reports the shared-line counts.
+- **Flagged pairs, arm B, from the saved leaf table (the rule applied offline):** 19 pairs on 14 blocks (critical 7, theological 6, supportive 3, moral 3). Worst-case reservation is $0.0164 a request against about $0.001 actual,
+  so a step refuses to start only if its pending requests times $0.0164 would not fit the remaining $1.00; `extract --check-only` reports this per arm before anything is sent.
+- **Stage 3 uses the existing V4.1 Flash request version** (no new request version in the shared policy module, which section 8 had expected); the instruction and the pair identity differ, so receipts do not collide.
+- **Freeze.** The first paid extraction seals `plan.json` over the instruction hash, `units.json`, the snap result, the flag rule, the producer policy and the hash of `main_point.py` and `arms.py`. The review and report
+  code can still be corrected afterwards; nothing that affects a request can.
+- **Review changes (all within section 16.3).** The queue shows each record in a window of the sermon text around its anchor (900 characters each side), which is arm-neutral and carries the adjacent text, in place of
+  the arm's own unit and neighbors. Records that sit on a frozen component span in any arm are added to the 30 sampled per arm so the component judgments are complete; for each such record you answer y/n
+  that it states the component faithfully, and for component 1 y/n that it carries the religious-view qualification. Sampled records feed the accepted share only; `review --check-only` reports the queue size.
+- **Test status.** The new and existing thought-unit tests pass (44). `tests/test_cli_contract.py` already failed before this work (object-position and identity commands are not in its registry) and is unchanged.
+
+**Before the first paid extraction, review the instruction.** Its text is `SYSTEM_PROMPT` in `thought_units/main_point.py` (11 rules; the five defect rules of section 3, a leaf-fit rule that allows an empty answer, and at most
+one record). It is sealed by hash at the first `extract` without `--check-only`; edit it before then, never after.
+
+**Run order (Brian runs the paid steps; each has `--check-only` unless noted).**
+```bash
+pte analysis thought-units snap --base-dir /Users/briancummings/Documents/PastorSearchData --video 281 --check-only
+pte analysis thought-units snap --base-dir /Users/briancummings/Documents/PastorSearchData --video 281            # Jev, about $0.04
+pte analysis thought-units arms --base-dir /Users/briancummings/Documents/PastorSearchData --check-only           # offline: counts, mapping, A1
+pte analysis thought-units arms --base-dir /Users/briancummings/Documents/PastorSearchData                        # offline: writes units.json
+pte analysis thought-units assess --base-dir /Users/briancummings/Documents/PastorSearchData --arm s --check-only
+pte analysis thought-units assess --base-dir /Users/briancummings/Documents/PastorSearchData --arm s              # Jev
+pte analysis thought-units assess --base-dir /Users/briancummings/Documents/PastorSearchData --arm x --check-only
+pte analysis thought-units assess --base-dir /Users/briancummings/Documents/PastorSearchData --arm x              # Jev
+pte analysis thought-units extract --base-dir /Users/briancummings/Documents/PastorSearchData --arm b --check-only
+pte analysis thought-units extract --base-dir /Users/briancummings/Documents/PastorSearchData --arm b            # V4.1 Flash; repeat for s and x
+pte analysis thought-units review --base-dir /Users/briancummings/Documents/PastorSearchData --check-only         # offline: builds the blind queue
+pte analysis thought-units review --base-dir /Users/briancummings/Documents/PastorSearchData                      # Brian's labels, resumable
+pte analysis thought-units arms-report --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+Paid steps need a clean, committed `src` tree. `snap` and `assess` need `TYPESAFE_API_KEY`; `extract` needs the DeepInfra credential the pilot used. A failed acceptance, a stop rule or the ceiling ends the run with a report,
+not a retry; no second round starts without Brian's decision.
