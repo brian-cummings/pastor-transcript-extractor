@@ -95,7 +95,8 @@ def acceptance(result: dict[str, Any], saved: dict[str, Any]) -> dict[str, Any]:
                   passed=not result['anchor_failures'])}
     stopped = result['stopped']
     status = 'FAIL' if stopped or not all(row['passed'] for row in rows.values()) else 'PASS'
-    return dict(status=status, stopped=stopped, criteria=rows, judged_records=len(records), records=count)
+    return dict(status=status, stopped=stopped, criteria=rows, judged_records=len(records), records=count,
+                judged_by=saved.get('judged_by', 'human'))
 
 
 def report(output: Path) -> dict[str, Any]:
@@ -105,7 +106,8 @@ def report(output: Path) -> dict[str, Any]:
         raise ValueError('Judgments are incomplete; finish the review first')
     outcome = acceptance(result, saved)
     lines = ['# Object-position check report', '', outcome['status'] + (f" ({outcome['stopped']})" if outcome['stopped'] else ''), '',
-             'Exposed development material; one sermon, one object. A pass is not validation or production admission (spec section 6).', '',
+             'Exposed development material; one sermon, one object. A pass is not validation or production admission (spec section 6).',
+             f"Judgments by: {outcome['judged_by']} (`human` = Brian's own).", '',
              '| # | Rule | Observed | Status |', '| --- | --- | --- | --- |']
     lines += [f"| {key} | {row['rule']} | `{row['observed']}` | **{'PASS' if row['passed'] else 'FAIL'}** |" for key, row in outcome['criteria'].items()]
     write_json(output / 'REPORT.json', outcome)

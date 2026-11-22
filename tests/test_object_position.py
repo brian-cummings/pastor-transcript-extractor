@@ -110,6 +110,8 @@ class ObjectPositionTests(unittest.TestCase):
         self.assertEqual('FAIL', outcome['status'])
         self.assertEqual(['3', '7'], outcome['criteria']['1']['observed']['missing'])
         self.assertTrue((self.output / 'REPORT.md').exists())
+        self.assertEqual('human', outcome['judged_by'])
+        self.assertIn('Judgments by: human', (self.output / 'REPORT.md').read_text())
 
     def test_packet_lists_components_with_sources_and_records_without_model_identity(self):
         self.run_check(self.records(2))
