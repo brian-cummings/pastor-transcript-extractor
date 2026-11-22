@@ -80,9 +80,9 @@ def span(text: str, pieces: Sequence[Piece], first: int, last: int) -> str:
     return collapse(text[pieces[first].start:pieces[last].end]) if first <= last else ''
 
 
-def passages(text: str, pieces: Sequence[Piece], index: int, skip: int = 0) -> tuple[str, str, str]:
-    """Before (WINDOW pieces ending at `index`), the skipped pieces (an aside, when skip > 0) and the after window."""
-    before = span(text, pieces, index - WINDOW + 1, index)
+def passages(text: str, pieces: Sequence[Piece], index: int, skip: int = 0, window: int = WINDOW) -> tuple[str, str, str]:
+    """Before (`window` pieces ending at `index`), the skipped pieces (an aside, when skip > 0) and the after window."""
+    before = span(text, pieces, index - window + 1, index)
     between = span(text, pieces, index + 1, index + skip) if skip else ''
-    after = span(text, pieces, index + skip + 1, index + skip + WINDOW)
+    after = span(text, pieces, index + skip + 1, index + skip + window)
     return before, between, after

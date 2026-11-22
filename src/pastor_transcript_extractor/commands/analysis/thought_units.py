@@ -61,3 +61,24 @@ def review_boundaries(base_dir: Path = BASE):
         _echo(stage.g1_report(out))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@app.command('improve-pairs')
+def improve_pairs(base_dir: Path = BASE):
+    """Write the 60 fresh boundary-improvement positions from a sermon not yet used (fixed seed); no provider call."""
+    from ...thought_units import improve
+    try:
+        _echo(improve.choose_pairs(base_dir))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('improve')
+def improve_boundaries(base_dir: Path = BASE,
+                       check_only: bool = typer.Option(False, '--check-only', help='Report questions, requests and estimated cost; sends nothing.')):
+    """Run the baseline and three boundary approaches on the fresh set (Jev) and score them against the blind labels; one run only."""
+    from ...thought_units import improve
+    try:
+        _echo(improve.run(base_dir, check_only=check_only))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error

@@ -5,7 +5,7 @@ import unittest
 
 from pastor_transcript_extractor.bound_claims.common import read_json, write_json
 from pastor_transcript_extractor.bound_claims.ledger import PilotLedger
-from pastor_transcript_extractor.thought_units import candidates as cand, decide, jev, questions, stage
+from pastor_transcript_extractor.thought_units import candidates as cand, decide, improve, jev, questions, stage
 
 try:
     from tests.bound_claims_support import CLEAN, DIRTY
@@ -124,6 +124,56 @@ class DisplayTests(unittest.TestCase):
         self.assertTrue(after.lstrip().startswith('Excuse') and after.rstrip().endswith('.'))
         self.assertLessEqual(len(before), stage.DISPLAY)
         self.assertLessEqual(len(after), stage.DISPLAY)
+
+
+class ImproveTests(unittest.TestCase):
+    def test_atomic_rule_needs_closure_a_new_step_signal_and_no_development(self):
+        base = dict(b1_transition=0.9, b2_new_element=0.1, b3_kind_of_speech=0.1, b4_closure=0.9, b5_development=0.1)
+        self.assertEqual('cut', improve.atomic_outcome(base)[0])
+        self.assertEqual('no_cut', improve.atomic_outcome({**base, 'b5_development': 0.8})[0])
+        self.assertEqual('no_cut', improve.atomic_outcome({**base, 'b4_closure': 0.2})[0])
+        self.assertEqual('unsettled', improve.atomic_outcome({**base, 'b1_transition': 0.2})[0])
+
+    def test_graded_rule_uses_the_two_lowest_levels(self):
+        self.assertEqual('cut', improve.graded_outcome({'1': 0.4, '2': 0.4, '3': 0.2})[0])
+        self.assertEqual('no_cut', improve.graded_outcome({'4': 0.6, '5': 0.3, '2': 0.1})[0])
+        self.assertEqual('unsettled', improve.graded_outcome({'2': 0.5, '4': 0.5})[0])
+
+    def test_metrics_auc_and_the_adoption_rule(self):
+        labels = {'a': True, 'b': True, 'c': False, 'd': False, 'e': None}
+        decided = {'a': ('cut', 0.9), 'b': ('unsettled', 0.5), 'c': ('cut', 0.8), 'd': ('no_cut', 0.1), 'e': ('cut', 0.9)}
+        scored = improve.metrics(labels, decided)
+        self.assertEqual((4, 1, 1, 1), (scored['labeled'], scored['true_cuts'], scored['false_cuts'], scored['missed']))
+        self.assertEqual((0.5, 0.5, 0.5), (scored['precision'], scored['recall'], scored['f1']))
+        self.assertEqual(0.75, scored['auc'])
+        results = {'base': dict(f1=0.4, precision=0.9, auc=0.6), 'wide': dict(f1=0.6, precision=0.9, auc=0.7),
+                   'atomic': dict(f1=0.8, precision=0.7, auc=0.9), 'graded': dict(f1=0.5, precision=1.0, auc=0.8)}
+        verdict = improve.verdict(results)
+        self.assertEqual({'wide': True, 'atomic': False, 'graded': False}, verdict['improved'])
+        self.assertEqual('wide', verdict['best'])
+
+    def test_questions_cover_every_pair_and_approach_with_score_questions_marked(self):
+        text = TEXT
+        sermon = SimpleNamespace(text=text)
+        items = [dict(id='i1', index=7), dict(id='i2', index=8)]
+        built = improve.build_questions(sermon, items, 'q2a')
+        self.assertEqual(2 * (2 + len(questions.ATOMIC) + 1), len(built))
+        self.assertEqual('score', built['graded/i1']['kind'])
+        self.assertNotEqual(built['base/i1']['instructions']['first_passage'], built['wide/i1']['instructions']['first_passage'])
+
+    def test_score_answers_are_cached_as_level_probabilities(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+
+        class ScoreClient:
+            def system_one(self, state, questions_, *, model=None, timeout=None):
+                scores = {k: SimpleNamespace(probabilities={1: 0.1, 2: 0.7, 3: 0.2}) for k in questions_}
+                return SimpleNamespace(nouls={}, scores=scores, usage=SimpleNamespace(input_tokens=100))
+        asker = jev.Asker(root / 'a.json', PilotLedger(root / 'l.json'), questions.STATE,
+                          factory=lambda model: (ScoreClient(), dict(noul=lambda **kw: kw, score=lambda **kw: kw)))
+        answer_ = asker.ask({'g': questions.graded('before text here', 'after text here')})
+        self.assertEqual({'1': 0.1, '2': 0.7, '3': 0.2}, answer_['g'])
 
 
 class JevTests(unittest.TestCase):

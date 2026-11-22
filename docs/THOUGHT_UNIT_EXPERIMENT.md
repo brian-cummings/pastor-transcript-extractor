@@ -281,3 +281,32 @@ Diagnosis from the saved answers (descriptive; the 40 judgments are exposed and 
 
 Acceptance criterion advanced: A1 (G1) evaluated and failed. New evidence: Jev boundary questions of this form are precise but under-cut and the
 resumption question over-fires. Justified next action: none inside this experiment. See the closing proposal given to Brian.
+
+## 14. Boundary-improvement probe (development, 2026-11-22; Brian's direction after G1)
+
+After G1 failed, Brian directed a small probe of three approaches to improve boundary detection, graded by Claude. This does not reopen G1 or stages 2 and 3;
+if an approach clearly improves, a repeat of G1 (Brian's judgments) is a separate decision. Correction to the premise recorded in section 13: the measured
+error was mainly under-cutting (6 of 10 uncut candidates needed a break; 3 of 20 cuts were wrong), so widening alone is expected to help little; the probe
+tests it directly rather than assuming.
+
+- **Set.** 60 candidate positions from sermon 590 (the lowest id not already used, after 281 and 350), 30 following a transition cue and 30 not, by fixed seed.
+  Not used in G1, the wording probe or any selection.
+- **Grading.** Claude wrote the labels from the text alone before any Jev answer existed (`improve_labels.json`, `labeled_by` recorded, hashed into the result): 13
+  breaks, 46 non-breaks, 1 ambiguous (left out). A break means a reasonable reader would end a thought before the second passage and start a new point there.
+  Single rater, 13 positives: results are indicative only.
+- **Arms, all with asides dropped (they were 0 of 10) and the Q1 question not asked (it never fired).**
+  - `base`: the selected Q2 wording (q2a), 3-sentence windows. The control, rerun on this set.
+  - `wide`: the same wording with 6-sentence windows (Brian's "widen").
+  - `atomic`: five concrete judgments (transition signal, new element, change of speech kind, closure, development) combined in code: cut needs closure at least 0.7, a signal
+    at least 0.7 and development at most 0.3; no cut when development is at least 0.7 or closure at most 0.3 (the TypeSafe skill's decomposition).
+  - `graded`: a five-level Score of how the second passage relates to the first; cut when levels 1 and 2 together reach 0.7, no cut at 0.3 or below.
+  Thresholds are the fixed 0.7 and 0.3 for every arm and are never fitted.
+- **Measures.** Precision, recall and F1 of the decision rule (unsettled counts as no cut), unsettled share, and AUC of each arm's raw score (threshold-free).
+  An approach improves only if its F1 is at least the baseline F1 plus 0.15 and its precision is at least 0.8. One run, no second round, no tuning on the result.
+- **Cost.** 60 positions, 480 questions, about 7 requests, under $0.01 of the existing $3.00 ledger.
+
+```bash
+pte analysis thought-units improve-pairs --base-dir /Users/briancummings/Documents/PastorSearchData     # written
+pte analysis thought-units improve --base-dir /Users/briancummings/Documents/PastorSearchData --check-only
+pte analysis thought-units improve --base-dir /Users/briancummings/Documents/PastorSearchData           # Jev, needs TYPESAFE_API_KEY and a clean tree
+```
