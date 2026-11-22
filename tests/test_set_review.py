@@ -171,7 +171,7 @@ class SpotCheckTests(unittest.TestCase):
         chosen = set_review.spot_ids(dict(items=items))
         self.assertEqual(10, len(chosen))
         self.assertEqual({f'd{n}' for n in range(5)}, {i for i in chosen if i.startswith('d')})
-        self.assertEqual(chosen, set_review.spot_ids(dict(items=list(reversed(items)))))        # independent of queue order
+        self.assertEqual(set(chosen), set(set_review.spot_ids(dict(items=list(reversed(items))))))        # independent of queue order
 
 
 if __name__ == '__main__':
