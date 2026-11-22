@@ -167,6 +167,8 @@ def render(item: Mapping[str, Any], number: int, total: int) -> str:
         return head + 'UNIT: ' + item['unit_text']
     if item['kind'] == 'summary':
         return head + 'UNIT: ' + item['unit_text'] + f"\n\nSUMMARY: {item['summary']}\nTARGET: {item['target']}\nPROPOSITION: {item['proposition']}"
+    if item['kind'] == 'distinct_points':
+        return head + 'UNIT: ' + item['unit_text'] + '\n\n' + '\n'.join(f"RECORD {n}: {r['summary']}" for n, r in enumerate(item['records'], 1))
     return '\n[distinct]\nUNIT: ' + item['unit_text'] + '\n' + '\n'.join(f"{r['leaf']}: {r['summary']}" for r in item['records'])
 
 
@@ -181,6 +183,7 @@ def _yes_no(prompt: str, input_fn: Callable[[str], str], output_fn: Callable[[st
 QUESTIONS = dict(none='Should this unit have a record for the leaf (y/n)? ',
                  summary='Is the summary faithful to the thought (nothing added, no material qualification or reason omitted), in the leaf\'s terms, with an accurate target (y/n)? ',
                  distinct='Do the two summaries state different supports for their leaves (y/n)? ',
+                 distinct_points='Do these records state different points, each supported on its own and not one point said twice (y/n)? ',
                  framed='Does the summary state the act of its own leaf as the definition shown describes it (y/n)? ')
 RECORD_PROMPT = ('accept (a) / reject (r) / reject:<field> where field is ' + ', '.join(bound.REJECTION_FIELDS) + ' / undo last (u) / quit (q): ')
 

@@ -123,7 +123,7 @@ def snap_report(base_dir: Path = BASE, grader: str = typer.Option('claude', '--g
 COMPARE_VARIANT = typer.Option('v2', '--variant', help='Registered instruction used for the comparison (section 22 uses v2 unless a later decision says otherwise).')
 ARM = typer.Option(..., '--arm', help='Comparison arm.')
 CHECK = typer.Option(False, '--check-only', help='Report counts, requests and estimated cost; sends nothing.')
-VARIANT = typer.Option('v1', '--variant', help='Registered instruction: v1 (section 17), v2 (section 18) or v3 (section 21).')
+VARIANT = typer.Option('v1', '--variant', help='Registered instruction: v1 (section 17), v2 (section 18), v3 (section 21) or v4 (section 23, several records).')
 
 
 @app.command('arms')
@@ -242,51 +242,56 @@ def set_score_leaves(base_dir: Path = BASE, check_only: bool = CHECK):
 
 
 @app.command('set-pairs')
-def set_pairs(base_dir: Path = BASE):
+def set_pairs(base_dir: Path = BASE, top: int = typer.Option(2, '--top', help='Leaves kept per unit: 2 is the frozen rule (pairs.json); 3 is section 23 (pairs-top3.json).')):
     """Section 19 step 4 (offline): apply the frozen flag rule to the scored blocks and write the pairs; no provider call."""
     from ...thought_units import public_set
     try:
-        _echo(public_set.build_pairs(base_dir))
+        if top not in (2, 3):
+            raise ValueError('--top must be 2 or 3')
+        _echo(public_set.build_pairs(base_dir, top))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
 
 HALF = typer.Option(..., '--half', help='development or held-out (the split recorded in the new set\'s pairs.json).')
+TOP = typer.Option(2, '--top', help='Leaves kept per unit: 2 (frozen rule) or 3 (section 23, uses pairs-top3.json).')
 
 
-def _half(value: str) -> str:
+def _half(value: str, top: int = 2) -> str:
     half = value.replace('-', '_')
     if half not in ('development', 'held_out'):
         raise typer.BadParameter('--half must be development or held-out')
-    return half
+    if top not in (2, 3):
+        raise typer.BadParameter('--top must be 2 or 3')
+    return half if top == 2 else f'{half}_top3'
 
 
 @app.command('set-leaf-extract')
-def set_leaf_extract(base_dir: Path = BASE, half: str = HALF, check_only: bool = CHECK, variant: str = VARIANT):
+def set_leaf_extract(base_dir: Path = BASE, half: str = HALF, check_only: bool = CHECK, variant: str = VARIANT, top: int = TOP):
     """Section 20: write leaf-conditioned supporting summaries for one half of the new set's pairs (frozen instruction, own folder and ledger); one run, no retry."""
     from ...thought_units import leaf_evidence
     try:
-        _echo(leaf_evidence.run(base_dir, check_only=check_only, variant=leaf_evidence.VARIANTS[variant], scope=leaf_evidence.SCOPES[_half(half)]))
+        _echo(leaf_evidence.run(base_dir, check_only=check_only, variant=leaf_evidence.VARIANTS[variant], scope=leaf_evidence.SCOPES[_half(half, top)]))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
 
 @app.command('set-leaf-review')
-def set_leaf_review(base_dir: Path = BASE, half: str = HALF, check_only: bool = typer.Option(False, '--check-only', help='Build the blind queue and report its size; label nothing.')):
+def set_leaf_review(base_dir: Path = BASE, half: str = HALF, check_only: bool = typer.Option(False, '--check-only', help='Build the blind queue and report its size; label nothing.'), top: int = TOP):
     """Brian: label the blind queue for one half of the new set (records and no-record pairs first, then summaries); resumable."""
     from ...thought_units import set_review
     try:
-        _echo(set_review.build_queue(base_dir, _half(half)) if check_only else set_review.judge(base_dir, _half(half), 'human', input, typer.echo))
+        _echo(set_review.build_queue(base_dir, _half(half, top)) if check_only else set_review.judge(base_dir, _half(half, top), 'human', input, typer.echo))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
 
 @app.command('set-leaf-report')
-def set_leaf_report(base_dir: Path = BASE, half: str = HALF):
+def set_leaf_report(base_dir: Path = BASE, half: str = HALF, top: int = TOP):
     """Score L1 to L4 per version from the saved extractions and labels for one half and write SET_REPORT.md and .json with the defect table."""
     from ...thought_units import set_review
     try:
-        _echo(set_review.report(base_dir, _half(half)))
+        _echo(set_review.report(base_dir, _half(half, top)))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 

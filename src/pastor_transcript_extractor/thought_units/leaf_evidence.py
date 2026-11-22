@@ -128,6 +128,22 @@ SYSTEM_PROMPT_V3 = _revise(SYSTEM_PROMPT_V2, (
 ))
 
 
+SYSTEM_PROMPT_V4 = _revise(SYSTEM_PROMPT_V3, (
+    ('You write the supporting summary of one thought from a sermon transcript, for one named leaf.',
+     'You write the supporting summaries of the points in one unit of a sermon transcript, for one named leaf.'),
+    ('Judge only `target_unit`, which is one complete thought.', 'Judge only `target_unit`, which may hold one point or several.'),
+    ('Do not force a record. Return at most one record.',
+     'Do not force a record. Return one record for each separate point in `target_unit` that does what the `leaf` definition describes, at most three. Two records must '
+     'state different points with different anchors; one point stated twice is one record, and a supporting detail of a point belongs in that point\'s record, not in a record of its own.'),
+    ('stating the thought as it supports the leaf', 'stating that point as it supports the leaf'),
+    ('for this thought, and for critical or supportive', 'for that point, and for critical or supportive'),
+    ('State only what the preacher says in this thought:', 'State only what the preacher says in that point:'),
+    ('attaches to this thought, copied', 'attaches to that point, copied'),
+    ("are likewise this thought's own", "are likewise that point's own"),
+    ('that the thought does not itself state', 'that the point does not itself state'),
+))
+
+
 @dataclass(frozen=True)
 class Variant:
     """One registered instruction, with its own folder and ledger. The instruction is read from the module at call time."""
@@ -135,6 +151,7 @@ class Variant:
     version: str
     prompt_name: str
     directory: str
+    max_records: int = 1
 
     @property
     def prompt(self) -> str:
@@ -144,7 +161,8 @@ class Variant:
 V1 = Variant('v1', INSTRUCTION_VERSION, 'SYSTEM_PROMPT', 'leaf-evidence-b')
 V2 = Variant('v2', 'leaf-evidence-v2', 'SYSTEM_PROMPT_V2', 'leaf-evidence-b2')
 V3 = Variant('v3', 'leaf-evidence-v3', 'SYSTEM_PROMPT_V3', 'leaf-evidence-b3')
-VARIANTS = {variant.key: variant for variant in (V1, V2, V3)}
+V4 = Variant('v4', 'leaf-evidence-v4', 'SYSTEM_PROMPT_V4', 'leaf-evidence-b4', max_records=3)
+VARIANTS = {variant.key: variant for variant in (V1, V2, V3, V4)}
 
 @dataclass(frozen=True)
 class Scope:
@@ -153,6 +171,8 @@ class Scope:
     ceiling_usd: Decimal
     ceiling_attempts: int
     arm: str | None = None          # section 22: one arm's pairs for the same-passage comparison on sermon 281
+    half: str | None = None         # section 23: a half of the new set read from the three-leaf pairs file
+    pairs_file: str = 'pairs.json'
 
 
 ARMS = Scope('arms', CEILING_USD, CEILING_ATTEMPTS)
@@ -160,7 +180,9 @@ ARMS = Scope('arms', CEILING_USD, CEILING_ATTEMPTS)
 DEVELOPMENT = Scope('development', Decimal('1.00'), 60)
 HELD_OUT = Scope('held_out', Decimal('1.50'), 100)
 COMPARE = {arm: Scope(f'compare_{arm}', Decimal('1.00'), 80, arm) for arm in unit_compare.ARMS}
-SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, *COMPARE.values())}
+DEVELOPMENT3 = Scope('development_top3', Decimal('1.00'), 60, half='development', pairs_file='pairs-top3.json')
+HELD_OUT3 = Scope('held_out_top3', Decimal('1.50'), 100, half='held_out', pairs_file='pairs-top3.json')
+SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, DEVELOPMENT3, HELD_OUT3, *COMPARE.values())}
 
 RECORD_SCHEMA: dict[str, Any] = copy.deepcopy(bound.CLAIM_SCHEMA)
 RECORD_SCHEMA['required'] = [*bound.FIELDS, *EXTRA_FIELDS]
@@ -191,12 +213,12 @@ def user_message(leaf: str, preceding: str, target: str, following: str) -> str:
                       'preceding_unit': preceding, 'target_unit': target, 'following_unit': following})
 
 
-def validate_records(payload: Any) -> list[dict[str, Any]]:
-    """The bound-claim record check on the shared fields, plus the two added strings; at most one record."""
+def validate_records(payload: Any, max_records: int = 1) -> list[dict[str, Any]]:
+    """The bound-claim record check on the shared fields, plus the two added strings; at most `max_records` records (one until section 23)."""
     if not isinstance(payload, Mapping) or set(payload) != {'records'} or not isinstance(payload['records'], list):
         raise SchemaError('Output must be an object with exactly one `records` list')
-    if len(payload['records']) > 1:
-        raise SchemaError('The instruction allows at most one record per pair')
+    if len(payload['records']) > max_records:
+        raise SchemaError(f'The instruction allows at most {max_records} record{"s" if max_records > 1 else ""} per pair')
     records = []
     for record in payload['records']:
         if not isinstance(record, Mapping) or set(record) != {*bound.FIELDS, *EXTRA_FIELDS}:
@@ -213,7 +235,7 @@ def pair_inputs(base_dir: Path, scope: Scope = ARMS) -> list[dict[str, Any]]:
         return main_point.pair_inputs(base_dir, 'b')
     if scope.arm:
         return unit_compare.arm_pairs(base_dir, scope.arm)
-    return public_set.half_pairs(base_dir, scope.key)
+    return public_set.half_pairs(base_dir, scope.half or scope.key, scope.pairs_file)
 
 
 def units_identity(base_dir: Path, scope: Scope = ARMS) -> str:
@@ -221,7 +243,7 @@ def units_identity(base_dir: Path, scope: Scope = ARMS) -> str:
     if scope.arm:
         unit_compare.load(base_dir)
         return file_sha256(unit_compare.clusters_path(base_dir))
-    return file_sha256(arms.arms_paths(base_dir)['units'] if scope is ARMS else public_set.set_dir(base_dir) / 'pairs.json')
+    return file_sha256(arms.arms_paths(base_dir)['units'] if scope is ARMS else public_set.set_dir(base_dir) / scope.pairs_file)
 
 
 def build_request(pair: Mapping[str, Any], variant: Variant = V1) -> requests.RequestSpec:
@@ -242,9 +264,9 @@ def record_key(sermon_start: int, record: Mapping[str, Any]) -> str:
     return digest(dict(base=main_point.claim_key(sermon_start, record), summary=record['summary'], target=record['target']))
 
 
-def decode(response: Mapping[str, Any], pair: Mapping[str, Any]) -> dict[str, Any]:
+def decode(response: Mapping[str, Any], pair: Mapping[str, Any], variant: Variant = V1) -> dict[str, Any]:
     accepted, failures = [], []
-    for record in validate_records(strict_json(response['output'])):
+    for record in validate_records(strict_json(response['output']), variant.max_records):
         claim = {key: record[key] for key in bound.FIELDS}
         anchor = bound.check_anchor(claim, pair['text'], pair['preceding_text'], pair['following_text'])
         if anchor['status'] != 'ok':
@@ -332,7 +354,7 @@ def run(base_dir: Path, *, check_only: bool = False, transport: Callable | None 
                     + usage['unmetered_attempts'] * provider.reserved_usd(PRODUCER_VERSION) if usage else None), **usage)
             if failure is None:
                 try:
-                    row.update(status='ok', usage=response['usage'], **decode(response, pair))
+                    row.update(status='ok', usage=response['usage'], **decode(response, pair, variant))
                 except (ValueError, KeyError, TypeError) as error:
                     failure = SchemaError(str(error))
             if failure is not None:

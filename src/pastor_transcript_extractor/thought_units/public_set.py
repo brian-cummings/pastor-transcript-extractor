@@ -259,18 +259,23 @@ def split_sermons(videos: Sequence[int], counts: Mapping[int, int]) -> dict[str,
                 needs_decision=any(n < MIN_HALF_PAIRS for n in pairs.values()))
 
 
-def half_pairs(base_dir: Path, half: str) -> list[dict[str, Any]]:
-    """The sealed pairs of the development or held-out half."""
+def pairs_name(top: int) -> str:
+    """The frozen two-leaf pairs keep their file; a different cap writes its own file so earlier extractions still line up."""
+    return 'pairs.json' if top == arms.FLAG_TOP else f'pairs-top{top}.json'
+
+
+def half_pairs(base_dir: Path, half: str, name: str = 'pairs.json') -> list[dict[str, Any]]:
+    """The sealed pairs of the development or held-out half (`name` selects the flag cap's file)."""
     if half not in ('development', 'held_out'):
         raise ValueError(f'unknown half {half!r}')
-    result = read_json(set_dir(base_dir) / 'pairs.json')
+    result = read_json(set_dir(base_dir) / name)
     if seal(result) != result:
-        raise ValueError('pairs.json seal differs')
+        raise ValueError(f'{name} seal differs')
     members = set(result['split'][half])
     return [p for p in result['pairs'] if p['video_id'] in members]
 
 
-def build_pairs(base_dir: Path) -> dict[str, Any]:
+def build_pairs(base_dir: Path, top: int = arms.FLAG_TOP) -> dict[str, Any]:
     """Apply the frozen flag rule to every scored sermon; the pairs carry the unit text and its neighbors, as section 16's did."""
     found, out = load_candidates(base_dir), set_dir(base_dir)
     pairs, sermons = [], []
@@ -287,7 +292,7 @@ def build_pairs(base_dir: Path) -> dict[str, Any]:
         signals = {block['id']: {**topics[block['id']], **block['signals']} for block in leaves['blocks']}
         gated = [u for u in sermon['units'] if u['id'] in signals]
         units = sermon['units']
-        for pair in arms.flagged_pairs(gated, signals):
+        for pair in arms.flagged_pairs(gated, signals, top):
             unit = next(u for u in units if u['id'] == pair['unit'])
             pairs.append(dict(pair, video_id=video, key=f"v{video}-{pair['unit']}-{pair['leaf'].removeprefix('P:')}", unit_start=unit['start'], text=unit['text'],
                               preceding_text=units[unit['ordinal'] - 1]['text'] if unit['ordinal'] else '',
@@ -296,6 +301,6 @@ def build_pairs(base_dir: Path) -> dict[str, Any]:
                             pairs=sum(p['video_id'] == video for p in pairs)))
     split = split_sermons([item['video_id'] for item in found['chosen']], {s['video_id']: s['pairs'] for s in sermons})
     result = seal(dict(version=VERSION, candidates_fingerprint=found['content_fingerprint'], split=split, flag_rule=dict(topic=arms.FLAG_TOPIC, topic_min=arms.FLAG_TOPIC_MIN,
-                       leaves=list(arms.FLAG_LEAVES), minimum=arms.FLAG_MIN, top=arms.FLAG_TOP), sermons=sermons, pairs=pairs, pairs_sha256=arms.pairs_digest(pairs)))
-    write_json(out / 'pairs.json', result)
-    return dict(output=str(out / 'pairs.json'), sermons=sermons, split=split, pairs=len(pairs), units_with_a_pair=len({(p['video_id'], p['unit']) for p in pairs}))
+                       leaves=list(arms.FLAG_LEAVES), minimum=arms.FLAG_MIN, top=top), sermons=sermons, pairs=pairs, pairs_sha256=arms.pairs_digest(pairs)))
+    write_json(out / pairs_name(top), result)
+    return dict(output=str(out / pairs_name(top)), sermons=sermons, split=split, pairs=len(pairs), units_with_a_pair=len({(p['video_id'], p['unit']) for p in pairs}))

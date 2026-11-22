@@ -30,7 +30,8 @@ ASSESS_LETTERS = 'TP'
 # Section 3 flag rule, unchanged: public-life position leaves on units that are about society and public life.
 FLAG_TOPIC, FLAG_TOPIC_MIN = 'T:society_public_life', 0.9
 FLAG_LEAVES = tuple(f'P:{name}' for name in ('critical', 'supportive', 'prescriptive', 'advocative', 'theological', 'moral'))
-FLAG_MIN, FLAG_TOP = 0.8, 2
+FLAG_MIN, FLAG_TOP = 0.8, 2          # the frozen rule of sections 16 to 22
+FLAG_TOP_MULTI = 3                   # section 23: up to three leaves per unit (Brian: cap at 3, floor unchanged)
 
 
 def arms_paths(base_dir: Path, video: int = VIDEO) -> dict[str, Path]:
@@ -259,15 +260,15 @@ def signals_by_unit(base_dir: Path, arm: str, video: int = VIDEO) -> dict[str, d
     return {item['id']: item['signals'] for item in assessed['units']}
 
 
-def flagged_pairs(units: Sequence[Mapping[str, Any]], signals: Mapping[str, Mapping[str, float]]) -> list[dict[str, Any]]:
-    """The section 3 rule, identical for every arm: topic at least 0.9, leaves at least 0.8, at most the top two per unit."""
+def flagged_pairs(units: Sequence[Mapping[str, Any]], signals: Mapping[str, Mapping[str, float]], top: int = FLAG_TOP) -> list[dict[str, Any]]:
+    """The section 3 rule, identical for every arm: topic at least 0.9, leaves at least 0.8, at most the top `top` per unit (two unless section 23 asks for three)."""
     pairs = []
     for unit in units:
         row = signals[unit['id']]
         if row.get(FLAG_TOPIC, 0.0) < FLAG_TOPIC_MIN:
             continue
         eligible = sorted(((row[leaf], leaf) for leaf in FLAG_LEAVES if row.get(leaf, 0.0) >= FLAG_MIN), key=lambda item: (-item[0], item[1]))
-        pairs += [dict(unit=unit['id'], leaf=leaf, probability=probability, topic=row[FLAG_TOPIC]) for probability, leaf in eligible[:FLAG_TOP]]
+        pairs += [dict(unit=unit['id'], leaf=leaf, probability=probability, topic=row[FLAG_TOPIC]) for probability, leaf in eligible[:top]]
     return pairs
 
 
