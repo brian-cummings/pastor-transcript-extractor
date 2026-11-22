@@ -98,6 +98,22 @@ class BlockTests(Setup):
         text = public_set.sermon_layout(public_set.sermon_blocks(read_json(self.source)))['text']
         self.assertEqual(POLITICAL, text[pairs[0]['unit_start']:pairs[0]['unit_start'] + len(POLITICAL)])
 
+    def test_the_split_alternates_down_the_hash_order_and_flags_a_thin_half(self):
+        split = public_set.split_sermons([1230, 1605, 548, 627, 487, 717], {1230: 21, 1605: 37, 548: 10, 627: 14, 487: 1, 717: 26})
+        self.assertEqual([1230, 1605, 548, 627, 487, 717], split['order'])
+        self.assertEqual(([1230, 548, 487], [1605, 627, 717]), (split['development'], split['held_out']))
+        self.assertEqual(dict(development=32, held_out=77), split['pairs'])
+        self.assertFalse(split['needs_decision'])
+        self.assertTrue(public_set.split_sermons([1, 2], {1: 20, 2: 14})['needs_decision'])
+
+    def test_a_half_returns_only_its_sermons_pairs(self):
+        out = public_set.set_dir(self.root)
+        write_json(out / 'pairs.json', seal(dict(split=dict(development=[1], held_out=[2]), pairs=[dict(video_id=1, key='a'), dict(video_id=2, key='b')])))
+        self.assertEqual(['a'], [p['key'] for p in public_set.half_pairs(self.root, 'development')])
+        self.assertEqual(['b'], [p['key'] for p in public_set.half_pairs(self.root, 'held_out')])
+        with self.assertRaises(ValueError):
+            public_set.half_pairs(self.root, 'other')
+
 
 if __name__ == '__main__':
     unittest.main()

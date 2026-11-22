@@ -874,3 +874,24 @@ pte analysis thought-units set-score-leaves --base-dir /Users/briancummings/Docu
 pte analysis thought-units set-score-leaves --base-dir /Users/briancummings/Documents/PastorSearchData              # Jev
 pte analysis thought-units set-pairs --base-dir /Users/briancummings/Documents/PastorSearchData                     # offline
 ```
+
+### 19.5 Result of the scoring steps and the split (2026-11-22; Jev steps run by Brian, split applied by code)
+
+The frozen flag rule (topic at least 0.9, leaf at least 0.8, top two) gives **109 pairs on 61 units** across the six sermons (leaf ledger: 105 requests resolved, none failed, $0.121 of the $1.00 ceiling).
+
+| Video | Sermon-labeled blocks | Gated (topic 0.9+) | Pairs | Half |
+| --- | --- | --- | --- | --- |
+| 1230 | 44 | 18 | 21 | D |
+| 548 | 46 | 18 | 10 | D |
+| 487 | 23 | 3 | 1 | D |
+| 1605 | 60 | 22 | 37 | H |
+| 627 | 21 | 9 | 14 | H |
+| 717 | 65 | 24 | 26 | H |
+
+The split rule of 19.3 (alternating down the sha256 order of the video id: 1230, 1605, 548, 627, 487, 717) gives **D = 1230, 548, 487 with 32 pairs; H = 1605, 627, 717 with 77 pairs.** Both halves clear the 15-pair floor, so the split needs no decision. It is recorded in `pairs.json` (`split`; the pair digest is unchanged, `a52c4118...`), and `public_set.half_pairs(base_dir, 'development'|'held_out')` returns a half.
+Leaf mix: D theological 18, moral 5, critical 5, supportive 4; H theological 42, critical 20, moral 9, supportive 6. No prescriptive, advocative leaf cleared 0.8 in this set (sermon 281's pairs were mostly critical/supportive).
+
+Facts to carry forward: D is thin (32 pairs, one sermon contributes 1); sermon 1605 alone is 37 of H's 77 pairs, so H results will lean on one preacher. Both are stated limits, not reasons to change the split.
+
+**Grading load for H (amendment, fixed before any extraction).** Extraction runs on all 77 H pairs for both versions (about $0.02), but blind grading of 154 records plus summaries is more than one rater should do in one sitting. Grading uses the first 30 H pairs in sha256(pair key) order, the same 30 for version 2 and version 3 (60 records in the mixed queue). The 47 others are extracted and saved, ungraded, and reported as such. D (32 pairs) is graded whole.
+
