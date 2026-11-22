@@ -304,7 +304,9 @@ def build_spot_queue(base_dir: Path, half: str) -> dict[str, Any]:
     for item in items:        # section 24.8: Brian saw the pope missing; the full queue's 900-character window is too short, so the spot check shows much more
         if item['kind'] == 'record':
             pair = pairs[versions['items'][item['id']]['uses'][0]['pair']]
-            sermon = texts.setdefault(pair['video_id'], public_set.load_sermon(base_dir, pair['video_id'], leaf_evidence.SCOPES[half].set_id))
+            if pair['video_id'] not in texts:
+                texts[pair['video_id']] = public_set.load_sermon(base_dir, pair['video_id'], leaf_evidence.SCOPES[half].set_id)
+            sermon = texts[pair['video_id']]
             at = sermon.text.find(item['before'] + item['anchor'])
             if at < 0 or sermon.text.find(item['before'] + item['anchor'], at + 1) >= 0:
                 raise ValueError('Cannot place the record in the sermon text uniquely')
