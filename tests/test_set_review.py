@@ -3,7 +3,7 @@ import unittest
 
 from pastor_transcript_extractor.bound_claims.common import digest, read_json, write_json
 from pastor_transcript_extractor.collector_retrieval_json_v1_1 import seal
-from pastor_transcript_extractor.thought_units import leaf_evidence, public_set, set_review
+from pastor_transcript_extractor.thought_units import leaf_evidence, leaf_review, public_set, set_review
 
 try:
     from tests.bound_claims_support import CLEAN, DIRTY, METADATA, claim, stream_transport
