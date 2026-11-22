@@ -740,3 +740,56 @@ Diagnosis from the saved records (descriptive; nothing was refit):
 Acceptance criterion advanced: L2 evaluated and passed; L1, L3 and L4 evaluated and failed, so the test fails as a whole. New evidence: leaf conditioning and tighter qualification rules do what they were meant to, and the failure is mostly an
 instruction omission plus a badly specified L4. Justified next action: none inside this test. Nothing reruns, and no revised instruction is run, without Brian's decision; a corrected instruction would have to restore the omitted contract rules
 verbatim and pre-state the bars again (including a leaf-difference bar that does not penalise overlap).
+
+## 18. Leaf-evidence v2: restore the omitted contract rules and tighten the summary (specification, 2026-11-22; Brian: "worth iterating a bit, go ahead")
+
+One bounded iteration on the 17.10 failure, on the same 19 pairs. It is a new, separately registered run; it does not change section 17's result or any earlier artifact, and no iteration beyond it starts without Brian's decision.
+
+### 18.1 Demonstrated defects and the change for each
+
+| Defect (17.10) | Evidence | Change | Falsifiable check |
+| --- | --- | --- | --- |
+| The 17.3 instruction dropped the bound-claim voice, adoption and speech-role rules | 8 `preacher_adoption` and 4 `polarity` rejects in v1; none in the baseline, which had the rules | Restore the bound-claim contract's rule 4 (voice and adoption) and rule 5 (invitation role) verbatim, plus one sentence saying adoption is about whether the preacher takes the proposition up, not whether it describes something good, so asserting that something is failing is `adopts` and `affirm` | L1: at most one adoption or polarity reject |
+| Summaries that add a conclusion the unit does not state, or give a leaf's act that is only implied | 2 of 4 summary failures | Rule 3: state only what the thought itself says, with no added conclusion, evaluation or characterization; rule 2: a fact or a piece of history that only implies the leaf is not enough, and a correction of someone else's claim is not the leaf's act unless the preacher also does what the leaf describes | L3: at least 85% faithful |
+| A summary framed as something other than its leaf's act | 1 of 4 summary failures | Rule 2 (above) | L4: at least 85% state their own leaf's act |
+| L4 of section 17 penalised overlap where one passage supports two leaves | 3 of 5 two-leaf units | The difference bar is replaced by a leaf-framing bar (L4 below); it is not carried forward | - |
+
+Unchanged: the 19 pairs, units, producer, schema, the category in the message, no Jev probabilities, the anchor-last rule, the failure floor, the ledger machinery and the grader (Claude, blind, source recorded; Brian may spot-check 10 labels).
+
+### 18.2 Draft instruction `leaf-evidence-v2` (sealed at the first paid run)
+
+Identical to 17.3 except these rules, which replace or add to the same-numbered text; the rules after 5 move down by one.
+
+> 2. Return a record only when, in `target_unit`, the preacher in their own voice does what the `leaf` definition describes. A general statement that merely relates to the category does not show the leaf, and neither does a statement of fact or history that only implies it: the preacher's own act must be stated in the thought. A correction of someone else's claim is not the leaf's act unless the preacher also does what the leaf describes. Otherwise return an empty `records` list. Do not force a record. Return at most one record.
+>
+> 3. [as in 17.3, with this sentence added at the end] State only what the preacher says in this thought: do not add a conclusion, evaluation or characterization that the thought does not itself state.
+>
+> 6. (new) A quoted or reported view has `voiced_by` other than `preacher`, and `preacher_adoption` is `adopts` only when the preacher explicitly adopts it in the source. Otherwise use `reports_without_adoption`, `rejects` or `unclear`. `preacher_adoption` says whether the preacher takes the proposition up as their own point, not whether it describes something good or bad: a preacher who asserts that something is failing adopts that proposition, and `polarity` is then `affirm`. An invitation or appeal to listeners is a record with `speech_role` `requested_of_listener`; its proposition is the requested action or attitude.
+
+### 18.3 Grading (blind to version; Claude grades)
+
+Phase 1 mixes the 19 v1 records and the 19 v2 records for the same pairs, shuffled, with the same fields and questions as 17.4 (accept or reject with the first failing field; leaf fit; a should-there-be-a-record question for any empty pair).
+So v1 is regraded under the same rubric as v2, which tests rater consistency. Phase 2, for v2 records only, asks two questions: (a) is the summary faithful to the thought (nothing added, no material qualification or reason omitted, accurate target)?
+(b) does the summary state the act of its own leaf as the definition describes it?
+
+### 18.4 Acceptance, frozen before execution
+
+- **L1 (faithful).** At least 85% of v2 records accepted, with at most one qualification reject and at most one adoption or polarity reject.
+- **L2 (leaf fit).** At least 85% of the 19 pairs correct (the record fits the leaf, or no record was returned and the unit should not have one), and no lower than the section 16 baseline's 14 of 19 from section 17. v1's 18 of 19 is reported, not a bar.
+- **L3 (summary).** At least 85% of v2 summaries judged faithful, complete and with an accurate target (question a).
+- **L4 (leaf-framed).** At least 85% of v2 summaries state their own leaf's act (question b).
+- **Pass** only if all four hold. Reported: v2 against v1 accepted counts on the same pairs (an exact paired count), no-record pairs, cost, and v1's regraded counts.
+- A pass is engineering evidence on one exposed sermon, not validation or production admission. A fail is reported with the failing criterion; no further variant runs without Brian's decision.
+
+### 18.5 Cost, ceilings and stops
+
+Expected about $0.01 (19 requests). Ledger `leaf-evidence-b2/`, ceiling $0.50 and 60 attempts; stops as in 17.6 (failure floor, clean tree, ceiling); one run, no retry.
+
+### 18.6 Commands
+
+```bash
+pte analysis thought-units leaf-extract --base-dir /Users/briancummings/Documents/PastorSearchData --variant v2 --check-only
+pte analysis thought-units leaf-extract --base-dir /Users/briancummings/Documents/PastorSearchData --variant v2
+pte analysis thought-units leaf-review --base-dir /Users/briancummings/Documents/PastorSearchData --variant v2 --check-only
+pte analysis thought-units leaf-report --base-dir /Users/briancummings/Documents/PastorSearchData --variant v2
+```
