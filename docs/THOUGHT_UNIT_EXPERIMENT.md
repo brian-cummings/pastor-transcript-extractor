@@ -1046,3 +1046,23 @@ What the evidence shows and does not:
 
 Acceptance criterion advanced: held-out test of version 3 completed and failed on two bars by one and two items. New evidence: the remaining misses are leaf-flag precision (Jev's gate at 0.8) and not the instruction. Justified next action (Brian's decision): do not write version 4; measure Jev's precision on these leaves at the point of origin (see the open item in the status note), and use version 3 for the unit comparison of section 22 if a single instruction is wanted.
 
+### 22.7 Result (2026-11-22): no demonstrated difference by the frozen rule; descriptive differences favor snapped units modestly and show no gain from splitting (labels by Claude, source recorded; Brian has not spot-checked)
+
+Extraction: 31 pairs per arm with `leaf-evidence-v2`, all answered, no failures or stops (about $0.02 per arm). Blind review of 31 passages (30 with two or more distinct records; 0 with no record from any arm).
+
+| Arm | Records | Defensible | Single point | Both | Both over all 31 passages | Both on own flags / forced |
+| --- | --- | --- | --- | --- | --- | --- |
+| B time blocks | 29 | 19 | 22 | 17 | 0.548 | 11 / 6 |
+| S snapped units | 31 | 29 | 23 | 21 | 0.677 | 17 / 4 |
+| X snapped plus splits | 28 | 24 | 22 | 18 | 0.581 | 17 / 1 |
+
+Pairwise against B (best option, passages where both arms produced a record): S 6 wins, 7 losses, 16 ties; X 3 wins, 7 losses, 17 ties. **Verdict by the 22.4 rule: no demonstrated difference for S and for X** (10 and 13 decisive comparisons, p for "better" 0.71 and 0.95).
+
+Exploratory readings, not tested and not part of the verdict:
+- **Defensibility favors S.** 29 of 31 S records were defensible against 19 of 29 for B (Fisher p = 0.009, unadjusted, one rater); X 24 of 28 (p = 0.12). Of B's 10 non-defensible records, 6 came from forced passages (14 forced B passages): asked about a leaf its own flag did not select, a block often wrote a record about a different thought in the block. That is the behavior the thought-unit claim predicts, **but it overstates the cost in production**, where a block would not be asked about a leaf Jev did not flag.
+- **On each arm's own flags** (the production population): both-defensible-and-single was 11 of 17 for B (65%), 17 of 22 for S (77%) and 17 of 24 for X (71%). The ordering S above X above B repeats §16's direction reversed in favor of units, but the differences are small and not significant.
+- **Splitting showed no gain over snapping.** X is below S on defensibility (24 of 28 against 29 of 31) and on coverage, and X declined most forced passages (1 good of 7), so splits did not recover anything S missed here.
+- **Same-content options were common** (16 and 17 ties against B), so most passages did not separate the arms.
+
+Limits that matter: one sermon; passages defined by the arms' own flags, so an arm whose units define the passage is favored on "about this passage"; a rater who also wrote the instruction and was not blind to unit shape; 'defensible' penalized records about a different thought, which favors arms whose units fit the passage. Acceptance criterion advanced: the same-passage test ran and returned no demonstrated difference, with a modest descriptive edge for snapped units on defensibility and none for splitting. Justified next action (Brian's decision): not a verdict either way. If the unit question is to be settled, the evidence needed is more passages on more sermons, which means running the Jev boundary snap on the new set's 196 blocks (about $0.30) and repeating this comparison there with a rater other than the author for a sample.
+
