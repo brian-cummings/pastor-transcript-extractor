@@ -31,7 +31,8 @@ material, not independent validation.
 The control exists so a good result can be attributed: arm B uses the same new prompt, leaf rule and model on the old blocks. Without it,
 an improvement could come from the prompt or leaf conditioning and not from the units.
 
-- **Stage 1, boundaries (Jev, new question pack).** Split the whole sermon into units. Section 4.
+- **Stage 0, wording probe (Jev, development).** Settle the two boundary question wordings on a different sermon. Section 4a.
+- **Stage 1, boundaries (Jev, new questions).** Split the whole sermon into units. Section 4.
 - **Stage 2, assessment (Jev, existing questions).** Run the existing topic, salvation, public-life treatment and style packs on the
   units, in a separate cache so no pilot artifact is touched. Report routing (section 6).
 - **Stage 3, main point (LLM).** For each flagged (unit, leaf) pair, one request asks for the main point of that unit that supports
@@ -56,49 +57,79 @@ an improvement could come from the prompt or leaf conditioning and not from the 
 
 ## 4. Stage 1: Jev boundary design
 
-Source of this section: offline reading of the Jev code and arithmetic over the saved leaf table (no provider call); what was read in code is
-marked (V), what is inferred (I).
+Sources: offline reading of the Jev code and arithmetic over the saved leaf table (no provider call), and the public TypeSafe docs plus the
+installed TypeSafe skill (read 2026-11-22). (V) marks what was read in code or docs, (I) what is inferred.
 
-**Precedent.** (V) `validate_boundary_candidate` (`recording_verifier_typesafe.py`) already asks one Noul (probability) question over arbitrary
-`before_boundary` and `after_boundary` strings, cached under `boundaries/validations/<hash>.json` by `TypeSafeBlockCache.validate_boundary`.
-`NoulLeafPack` is a poor fit because its templates assume one block's `target_text` and block-keyed cache identity. (I) The cleanest route is
-a new adapter and cache method patterned on `validate_boundary`, with many candidate pairs batched per request.
+**Precedent.** (V) The TypeSafe "structure recovery" cookbook (docs.typesafe.ai/cookbooks/autoformat.md) is the same problem on a small
+scale. Code splits lines and tags them. Pass 1 asks one Noul per adjacent line pair in a single request. Code merges with thresholds
+(0.2 after a line without terminal punctuation, 0.5 after one with it). Pass 2 asks one Choice per merged block. The model never
+generates text. Its wording lesson applies directly: a "same paragraph" question over-merged (0.61 to 0.72 on list items, 13 blocks) while
+"picks up mid-sentence" gave 17. Quoting the lines in the question instructions is deliberate. In our code, (V)
+`validate_boundary_candidate` (`recording_verifier_typesafe.py`) already asks one Noul over arbitrary `before_boundary` and
+`after_boundary` strings, cached under `boundaries/validations/<hash>.json`; `NoulLeafPack` is a poor fit (single `target_text`, block-keyed
+cache identity). The new method is patterned on `validate_boundary`, batching candidate pairs per request.
 
-**Design (frozen, from three considered).**
-- **Chosen: (a) a pairwise continuation question at each candidate sentence end.** "Does the text after this point continue the same thought
-  as the text before it?" The answer is the probability of a new thought. The window is 3 sentences on each side, 75 pairs per request (the
-  project's constant). Estimated for sermon 281: about 830 to 1,008 candidates, about 14 requests, 250 to 300 thousand input tokens, about
-  $0.011 to $0.017 at $0.042 per million.
-- **Not chosen: (b) a window Choice ("which sentence starts a new thought, or none").** Cheapest (about $0.005 to $0.008) but a Choice forces
-  at most one break per window, overlapping windows can disagree, and a Choice distribution is not a per-boundary probability.
-- **Not chosen: (c) coarse-to-fine from the existing blocks.** A block holds about 12 sentences, so block-to-block checks cannot find breaks inside
-  blocks, and the free prefilters (saved topic scores, caption pauses) are topic-level or untested. Boundary finding is only about $0.01 to
-  $0.02, so tokens are better spent on accuracy here than on a prefilter of unmeasured recall.
+**Design.** The model gives judgments and code decides, per the TypeSafe skill. Two narrow Noul questions per candidate boundary replace the
+single, vague "continues the same thought" question (the docs warn that Jev "answers the question you wrote, not the one you meant" and
+that broad wording over-merges):
 
-**Candidate boundaries.** (V/I) Sentence splitting of this sermon's block texts gives 1,008 sentence ends, median 12 per block, but the ASR
-transcript is unreliable: 180 pieces are three words or fewer (rolling-caption duplicates), 24 of 76 blocks end without terminal punctuation
-and only 27 of 76 start with a capital. Another sermon in the corpus has about 4 sentence ends in 6,900 words, so sentence splitting fails
-outright there. For this experiment: a candidate is a sentence end with at least 4 words on each side. **No text is dropped or edited:** short
-fragments stay in the unit text, so every anchor stays literal and locatable by code. Sermons without usable punctuation are out of scope
-for this experiment and need a separate fixed-word-window fallback if the approach is ever extended.
+- **Q1, mid-sentence.** "Does the second passage pick up mid-sentence from where the first passage stops?" (a syntactic fact).
+- **Q2, new point.** "Does the second passage begin a new point, rather than continue, illustrate or answer the point of the first?"
 
-**Deterministic chunking rule, constants fixed now and never tuned.**
-- A cut at every candidate whose new-thought probability is at least 0.5 (the neutral midpoint).
-- Maximum unit size 2,304 characters (the largest existing block): an oversized unit is split at the highest-probability candidate inside it,
-  recursively.
-- Minimum unit size 2 sentences: a smaller unit merges into the neighbor across the weaker boundary.
-- If a cut cannot be mapped to a caption segment boundary, it snaps to the nearest segment boundary inside the same sentence (deterministic).
-  Units therefore carry segment indexes and start seconds, which the leaf cache identity and watch links need. Establishing this mapping is
-  the first `--check-only` task of the implementation and must succeed before the freeze.
+Both passages are quoted in the question instructions (3 sentences on each side), as the cookbook does; no whole-sermon state.
+Wording is finalized by stage 0 (section 4a) and then frozen.
 
-**What this does to stage 2's cost.** (V/I) The 59 leaf questions are replicated per unit and dominate the request: about 19.4 thousand input
-tokens per unit regardless of the unit's length, about $0.0008 per unit, matching the pilot's measured 2.48 million tokens over 124 requests.
-Unit count therefore drives cost, not boundary finding: about 126 units (8 sentences each) is $0.10, 202 (5 sentences) is $0.16, 336
-(3 sentences) is $0.27, against $0.06 for the 76 blocks the pilot already paid.
+**Truth table (every combination has an outcome; thresholds 0.7 and 0.3, the docs' starting values, fixed now and never fitted).**
 
-**Open (unknowable offline).** Jev's accuracy on continuation judgments and whether 0.5 is a meaningful threshold (the pilot never reached
-.90 precision on verification); the provider's real per-request question limit and fixed overhead; question-text token calibration; behavior on
-very short units. G1 (section 5) is the measurement that answers the first.
+| Q1 | Q2 | Outcome |
+| --- | --- | --- |
+| at most 0.3 | at least 0.7 | cut |
+| at least 0.7 | any | no cut |
+| any | at most 0.3 | no cut |
+| any other combination | | unsettled: no cut, counted and reported; the size cap below may still split here |
+
+**Candidate boundaries.** (V/I) Splitting this sermon's block texts on sentence ends gives 1,008 candidates, but the ASR text is
+unreliable: 180 pieces are three words or fewer (rolling-caption duplicates), 24 of 76 blocks end without terminal punctuation and only 27
+of 76 start with a capital. Another corpus sermon has about 4 sentence ends in 6,900 words. A candidate is a sentence end with at least
+4 words on each side. In a stretch with no terminal punctuation longer than 60 words, caption-segment ends become candidates (code tags
+them, as in the cookbook). **No text is dropped or edited:** short fragments and duplicates stay in the unit text, so anchors stay literal and
+locatable by code. Sermons without usable punctuation are out of scope for this experiment.
+
+**Chunking rule from the answers, constants fixed now.**
+- Cut at every "cut" outcome of the truth table.
+- Maximum unit size 2,304 characters (the largest existing block): an oversized unit splits at the candidate with the highest Q2 inside it,
+  recursively. Minimum unit size 2 sentences: a smaller unit merges into the neighbor across the boundary with the lower Q2.
+- If a cut cannot be mapped to a caption segment boundary, it snaps to the nearest segment boundary inside the same sentence
+  (deterministic). Units carry segment indexes and start seconds, which the leaf cache identity and watch links need. Establishing the mapping
+  is the first `--check-only` task of the implementation and must succeed before the freeze.
+
+**Cost and limits.** (V) Documented limits: 64k tokens per request (state plus all questions), 32k per question, no documented limit on the number of
+questions per request (our 75-per-request batch is a project constant set after 150 questions exceeded the budget). Price $0.042 per million
+input tokens, output free. About 1,700 to 2,000 questions (two per candidate), about 28 requests, 500 to 600 thousand input tokens: about
+$0.02 to $0.03. Stage 2 dominates: (V/I) the 59 leaf questions are replicated per unit, about 19.4 thousand input tokens or $0.0008 per unit regardless
+of length, matching the pilot's 2.48 million tokens over 124 requests. About 126 units (8 sentences each) is $0.10, 202 (5 sentences) is $0.16,
+336 (3 sentences) is $0.27, against $0.06 for the 76 blocks the pilot already paid.
+
+**Model version.** `jev-1.13.0` for every stage and both arms, as in the pilot, so the arms differ only in the unit. `jev-1.14.0` (October 14, 2026,
+the current `jev-latest`, same price) lists multilingual support and Box and no boundary changes; it is unexamined here, and the docs advise
+sending the version that thresholds were tuned on.
+
+**Open (unknowable offline).** Jev's accuracy on boundary questions in long ASR passages; the provider's real fixed overhead; question-text
+token calibration; behavior on very short units. G1 (section 5) is the measurement that answers the first.
+
+### 4a. Stage 0: wording probe (development, before the freeze, not part of the acceptance)
+
+The TypeSafe skill's workflow is to probe wordings on representative cases and compare variants in one request, and the cookbook shows wording
+moved the result by four blocks out of seventeen. So, before the plan is frozen:
+
+- Material: 40 candidate boundaries from a different sermon (the lowest video id in the pilot's leaf table other than 281), 20 where code
+  finds a sentence end followed by a topic change and 20 where it does not, chosen by a fixed seed from the source hash. Not sermon 281 and
+  not used in any acceptance measure.
+- Up to three wordings of each question are sent in one request. Development labels for the 40 pairs are Claude's reading, disclosed as such
+  (no Brian time). The wording with the highest agreement at the 0.7 and 0.3 thresholds wins, ties to the plainer wording. Thresholds are
+  not fitted, and no wording that names specific test items is allowed (the skill's "prompt gymnastics" flag).
+- Cost: well under $0.01. The exact payloads and answers are saved, and the winning wordings are frozen into the plan. A second probe round
+  is not run.
 
 ## 5. Gate G1 and the other pre-registered measures
 
@@ -136,7 +167,7 @@ shape is not the repair; if arm T beats arm B but misses 0.80, the contract rema
 ## 7. Cost, ceilings and stops
 
 - Ceiling for the whole experiment: $3.00 and 600 physical requests. Expected spend is under about $0.60 with Flash: stage 1 about $0.02, stage 2
-  about $0.10 to $0.27 (units are priced about $0.0008 each), stage 3 about $0.01 per 10 requests for each arm.
+  about $0.10 to $0.27 (units are priced about $0.0008 each), stage 0 under $0.01, stage 3 about $0.01 per 10 requests for each arm.
 - Worst-case reservations are checked before each stage against the remaining ceiling, as in the pilot.
 - No semantic retry, no second prompt, no re-run of any stage to overcome a result, no threshold, rule or leaf-set change after the freeze.
 - Stop and report on: G1 failure, stage 3 schema-failure rate over 10% (Flash), transport failures over 5%, ceiling, unresolved usage.
@@ -147,7 +178,7 @@ shape is not the repair; if arm T beats arm B but misses 0.80, the contract rema
 
 Reused: the saved pilot leaf table and cache (arm B), the existing T/S/P/H questions and `TypeSafeBlockCache` machinery for arm T in a new
 cache, the DeepInfra executor and streaming recovery, the ledger, the anchor check, the blind review queue pattern and the report format,
-and the seven components. New: the boundary question and cache method (patterned on `validate_boundary`), the unit builder and its segment-boundary mapping and context builder, the (unit, leaf) selector, the stage 3 instruction and runner, and
+and the seven components. New: the two boundary questions and the cache method (patterned on `validate_boundary`), the unit builder and its segment-boundary mapping and context builder, the (unit, leaf) selector, the stage 3 instruction and runner, and
 the arm-blind review queue and report. The shared request-policy module needs one new request version for stage 3.
 
 ## 9. What this will not show
@@ -159,6 +190,7 @@ a new unit (the cached leaf answers, topic projections and profiles are keyed to
 ## 10. Implementation sketch (after approval only)
 
 ```bash
+pte analysis thought-units probe --base-dir <base> --check-only
 pte analysis thought-units segment --base-dir <base> --video 281 --check-only
 pte analysis thought-units segment --base-dir <base> --video 281
 pte analysis thought-units review-boundaries --base-dir <base>
@@ -175,7 +207,7 @@ Every paid step has `--check-only`. Brian runs the paid commands; offline focuse
    output exists.
 2. Producer: Flash (recommended, ceiling $3.00) or Pro (ceiling about $8).
 3. Approve the ceiling, the labeling load (30 boundaries and 60 records) and the control arm.
-4. Approve writing the boundary question and the stage 3 instruction for your review before sealing.
+4. Approve writing the two boundary questions (and the stage 0 probe) and the stage 3 instruction for your review before sealing.
 5. Confirm this is a separately authorized experiment: `SEGMENT_EVIDENCE_PLAN.md` (line 50) cancelled "another finer target-boundary/source-unit
    redesign" as the next iteration, and this one reopens the unit question on purpose, because the pilot and the object-position check
    demonstrated the gaps in sections 1 and 9.
