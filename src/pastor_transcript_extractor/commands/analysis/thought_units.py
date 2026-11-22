@@ -120,6 +120,7 @@ def snap_report(base_dir: Path = BASE, grader: str = typer.Option('claude', '--g
         raise typer.BadParameter(str(error)) from error
 
 
+COMPARE_VARIANT = typer.Option('v2', '--variant', help='Registered instruction used for the comparison (section 22 uses v2 unless a later decision says otherwise).')
 ARM = typer.Option(..., '--arm', help='Comparison arm.')
 CHECK = typer.Option(False, '--check-only', help='Report counts, requests and estimated cost; sends nothing.')
 VARIANT = typer.Option('v1', '--variant', help='Registered instruction: v1 (section 17), v2 (section 18) or v3 (section 21).')
@@ -304,7 +305,7 @@ def compare_passages(base_dir: Path = BASE):
 
 
 @app.command('compare-extract')
-def compare_extract(base_dir: Path = BASE, arm: str = ARM, check_only: bool = CHECK, variant: str = VARIANT):
+def compare_extract(base_dir: Path = BASE, arm: str = ARM, check_only: bool = CHECK, variant: str = COMPARE_VARIANT):
     """Section 22 step 2: leaf-evidence extraction for one arm's unit on every passage (own folder and ledger); one run, no retry."""
     from ...thought_units import leaf_evidence
     try:
@@ -317,7 +318,7 @@ def compare_extract(base_dir: Path = BASE, arm: str = ARM, check_only: bool = CH
 
 @app.command('compare-review')
 def compare_review(base_dir: Path = BASE, check_only: bool = typer.Option(False, '--check-only', help='Build the blind queue and report its size; label nothing.'),
-                   variant: str = VARIANT):
+                   variant: str = COMPARE_VARIANT):
     """Brian: label the blind same-passage queue (defensible and single point per option, then the best option); resumable."""
     from ...thought_units import compare_review as module
     try:
@@ -328,7 +329,7 @@ def compare_review(base_dir: Path = BASE, check_only: bool = typer.Option(False,
 
 
 @app.command('compare-report')
-def compare_report(base_dir: Path = BASE, variant: str = VARIANT):
+def compare_report(base_dir: Path = BASE, variant: str = COMPARE_VARIANT):
     """Score the same-passage comparison from the saved extractions and labels and write COMPARE_REPORT.md and .json."""
     from ...thought_units import compare_review as module
     try:
