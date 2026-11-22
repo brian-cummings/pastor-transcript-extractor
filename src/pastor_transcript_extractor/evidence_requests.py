@@ -43,7 +43,7 @@ DEEPINFRA_GUIDED_VERSION = 'evidence-request-deepinfra-guided-source-v1'
 DEEPINFRA_QWEN_VERIFY_VERSION = 'evidence-request-qwen-instant-verifier-v1'
 DEEPINFRA_PROFILE_SUPPORT_VERSION = 'final-profile-support-v1'
 DEEPINFRA_ANALYSIS_SUPPORT_VERSIONS = tuple(f'profile-analysis-support-{cap}-v1' for cap in (16384,32768,65536,131072))
-DEEPINFRA_BOUND_CLAIM_VERSIONS = ('bound-claim-v1-pro','bound-claim-v1-flash')
+DEEPINFRA_BOUND_CLAIM_VERSIONS = ('bound-claim-v1-pro','bound-claim-v1-flash','object-position-v1-pro')
 DEEPINFRA_HOLDOUT_VERSIONS = ('qualifier-holdout-qwen35-v1','qualifier-holdout-qwen38-v1','qualifier-holdout-flash1017-v1')
 # Historical exported name retained; the same transport now also covers the
 # demonstrated Flash source-binding whitespace loop without changing its model.

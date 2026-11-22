@@ -1,7 +1,8 @@
 # Object-position check: does an object-centered, whole-sermon question fix what the block unit could not
 
-**Status: specification only (2026-11-22). Nothing is implemented, and no provider call is authorized until Brian approves
-sections 2 to 8.** Read [AGENTS.md](../AGENTS.md), the closed [bound-claim pilot](BOUND_CLAIM_PILOT.md) (§15 close-out) and the
+**Status: implemented and committed 2026-11-22; no provider call has been made.** Brian approved the spec and asked for it to be
+prepared. Before the paid run, Brian reviews the instruction text in `src/pastor_transcript_extractor/object_position/contract.py`
+(`SYSTEM_PROMPT`); it is sealed by hash in the frozen plan at the first paid run and cannot change after that. Read [AGENTS.md](../AGENTS.md), the closed [bound-claim pilot](BOUND_CLAIM_PILOT.md) (§15 close-out) and the
 evidence trace in the pilot directory (`GAP_ANALYSIS.md`) first. This check does not change the pilot's closed result.
 
 ## 1. The one question
@@ -95,18 +96,23 @@ object, never per corpus. Cost grows with sermons times objects; reducing it (se
 caching if available, or a cheaper first pass) would each need its own check and its own approval. The leaf filter in particular
 is not a free fix: b113 (components 5 to 7) scores `T:society_public_life` 0.86, below the .9 cut that selects 31 of 76 blocks.
 
-## 7. Implementation sketch (after approval only)
+## 7. Implementation (done) and commands
 
-Reuse the pilot's DeepInfra executor, ledger (new instance), anchor check and frozen-plan machinery. New: an `object-position`
-prompt version, a one-request runner and a review packet. CLI tie-in:
+Reuses the pilot's DeepInfra executor, streaming recovery, anchor check, frozen-plan pattern and a new ledger file. New request
+version `object-position-v1-pro` (V4 Pro, reasoning off, input cap 73,728 sized to this sermon's 62,669-byte request plus the 4,096
+allowance, output cap 8,192; reservation $0.1171456 per attempt, $0.2342912 with the one reserved recovery; ceiling $0.50 and 2
+attempts). The components' source spans each locate exactly once in the sermon text (checked by `--check-only`).
 
 ```bash
-pte analysis object-position check --base-dir <base> --object "the American experiment" --video 281 --check-only
-pte analysis object-position check --base-dir <base> --object "the American experiment" --video 281
-pte analysis object-position review --base-dir <base>
+pte analysis object-position check --base-dir /Users/briancummings/Documents/PastorSearchData --object "the American experiment" --video 281 --check-only
+pte analysis object-position check --base-dir /Users/briancummings/Documents/PastorSearchData --object "the American experiment" --video 281
+pte analysis object-position review --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-Focused offline tests only; no corpus or fixture runs. Commit in coherent steps. Brian runs the paid command.
+Output goes to `<base>/evaluation/object-position-check-v1/` (`plan.json`, `ledger.json`, `result.json`, `REVIEW.md`, `judgments.json`,
+`REPORT.md/.json`). `review` shows the packet, asks which records state each component, whether component 1 carries its qualification,
+and for each record whether it bears on the object and whether it has a problem, then writes the acceptance report. Offline tests:
+`tests/test_object_position.py`. Brian runs the paid command.
 
 ## 8. Decisions for Brian
 
@@ -114,3 +120,12 @@ Focused offline tests only; no corpus or fixture runs. Commit in coherent steps.
    an output exists.
 2. Approve the $0.50 / 2-attempt ceiling.
 3. Approve writing the instruction text (reviewed by Brian before sealing) and the implementation in §7.
+
+## 9. Considered alternative (not part of this check): thought-unit segmentation
+
+Brian proposed testing whether TypeSafe can find complete thoughts and split the object into thought units instead of time blocks.
+That tests a different hypothesis (the unit's shape, not the unit's reach) and is not folded into this check. In this sermon the
+time blocks cut only one of the seven components (component 1 spans b92 and b93; components 2 to 4 sit in b93 and 5 to 7 in b113),
+and whole-sermon information is not necessarily an accuracy ceiling because long context can dilute attention. If a later test is
+approved, its first step should be a segmentation-only probe (boundaries only, no extraction) judged against these same seven
+components and a spot check of boundaries by Brian, before any rearchitecture; its own spec and ceiling are required.

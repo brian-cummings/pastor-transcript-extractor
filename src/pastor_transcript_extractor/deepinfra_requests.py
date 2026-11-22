@@ -60,6 +60,9 @@ BOUND_CLAIM_CAPS=dict(input_cap=16384,output_cap=8192)
 BOUND_CLAIM_POLICIES={
     DEEPINFRA_BOUND_CLAIM_VERSIONS[0]:{**POLICY,**BOUND_CLAIM_CAPS,'reasoning_effort':'none','maximum_usd':'0.0851968'},
     DEEPINFRA_BOUND_CLAIM_VERSIONS[1]:{**DIRECT_POLICY,**BOUND_CLAIM_CAPS,'maximum_usd':'0.016384'},
+    # Object-position check: one whole-sermon request. The input cap is sized to the frozen sermon's request bytes plus the
+    # 4096 allowance (62547 + 4096 < 73728); `maximum_usd` is twice one attempt (73728 in, 8192 out at V4 Pro list prices).
+    DEEPINFRA_BOUND_CLAIM_VERSIONS[2]:{**POLICY,'input_cap':73728,'output_cap':8192,'reasoning_effort':'none','maximum_usd':'0.2342912'},
 }
 
 
