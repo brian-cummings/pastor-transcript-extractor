@@ -712,3 +712,31 @@ pte analysis thought-units leaf-review --base-dir /Users/briancummings/Documents
 pte analysis thought-units leaf-review --base-dir /Users/briancummings/Documents/PastorSearchData             # optional: Brian's own labels, resumable
 pte analysis thought-units leaf-report --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
+
+### 17.10 Result (2026-11-22): L2 passes; L1, L3 and L4 fail
+
+Run: 19 requests, 19 records, no failures, no anchor failures, no no-record pairs, $0.0086 (baseline $0.0069); ledger `leaf-evidence-b/`. Labels for all 62 queue items were written by Claude (blind to prompt version for the 38 record items; the
+24 summary and distinct questions came after), at Brian's direction, so they are a delegated single-rater pass; the report states `labels_by: claude`. Report: `leaf-evidence-b/LEAF_REPORT.md`.
+
+| Criterion | Bar | Observed | Result |
+| --- | --- | --- | --- |
+| L1 faithful | at least 85% of new records accepted, at most 1 qualification reject | 6 of 19 accepted (baseline 15 of 19); qualification rejects 0 (baseline 4) | FAIL |
+| L2 leaf fit | at least 85% of pairs correct and not below baseline | 18 of 19 (baseline 14 of 19) | PASS |
+| L3 summary | at least 85% faithful, leaf-framed, complete with accurate target | 15 of 19 (0.79) | FAIL |
+| L4 leaf-specific | at most 1 two-leaf unit with the same support | 3 of 5 units the same | FAIL |
+
+Paired accepted counts on the same 19 pairs: both 5, new only 1, baseline only 10, neither 3.
+
+Diagnosis from the saved records (descriptive; nothing was refit):
+- **L1 failed on fields the approved instruction does not govern.** New rejects were 8 for `preacher_adoption` (set to `rejects` for statements the preacher asserts, often one that describes a failure), 4 for `polarity` and 1 for the proposition.
+  The 17.3 instruction kept the polarity rule but dropped the bound-claim contract's voice, adoption and speech-role rules; the baseline instruction had them and had none of these errors. The qualification defect was removed (0 against 4), which is what the new
+  rules 3 and 6 were for. This is an omission in my draft, not evidence about summaries.
+- **Leaf fit improved** (18 against 14 pairs) and every pair returned a record, so the "return nothing" rule was never exercised.
+- **L3** missed by one record (15 of 19): two summaries added a conclusion the unit does not state ("answers that the nation is failing", "a moral failure rather than a private matter"), one was framed as rejecting a claim rather than the leaf's
+  act, and one misattributed what "this was radical" refers to.
+- **L4** is partly a flaw in the bar: where one passage supports two leaves (abortion under critical and moral, "over before it began" under critical and theological) the honest summaries overlap, so a requirement that the two
+  differ penalises accurate output. The bar stays as registered; it should not be reused.
+
+Acceptance criterion advanced: L2 evaluated and passed; L1, L3 and L4 evaluated and failed, so the test fails as a whole. New evidence: leaf conditioning and tighter qualification rules do what they were meant to, and the failure is mostly an
+instruction omission plus a badly specified L4. Justified next action: none inside this test. Nothing reruns, and no revised instruction is run, without Brian's decision; a corrected instruction would have to restore the omitted contract rules
+verbatim and pre-state the bars again (including a leaf-difference bar that does not penalise overlap).
