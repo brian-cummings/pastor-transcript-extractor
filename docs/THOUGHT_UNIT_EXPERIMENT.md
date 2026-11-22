@@ -1249,3 +1249,20 @@ pte analysis thought-units gate-check-review --base-dir <base> --second-rater   
 pte analysis thought-units gate-check-report --base-dir <base>
 ```
 
+### 26.3 Result (2026-11-22; census of 139 pairs graded by Claude, source `claude`; second rater not yet done; `GATE_CHECK.md`)
+
+**The gate is much better than the extraction-fit labels suggested: 110 pairs show the leaf, 27 are borderline, and only 2 clearly do not.** Strict precision 0.791 (95% interval 0.716 to 0.851), just under the 80% bar and inside its noise; lenient precision 0.986 (0.949 to 0.996).
+| Group | Pairs | Shows | Borderline | No | Strict |
+| --- | --- | --- | --- | --- | --- |
+| P:theological | 69 | 63 | 6 | 0 | 0.91 |
+| P:critical | 29 | 26 | 3 | 0 | 0.90 |
+| P:supportive | 10 | 10 | 0 | 0 | 1.00 |
+| P:prescriptive | 3 | 2 | 1 | 0 | 0.67 |
+| **P:moral** | 28 | 9 | 17 | 2 | **0.32** |
+| score at least 0.90 | 36 | 33 | 3 | 0 | 0.92 |
+| score under 0.90 | 103 | 77 | 24 | 2 | 0.75 |
+| first set / confirmatory set | 83 / 56 | 67 / 43 | 15 / 12 | 1 / 1 | 0.81 / 0.77 |
+Readings by the rule of 26.2: strict precision is below 80% and the Jev score is informative (92% against 75%, 17 points), so the rule names a threshold of 0.90 as a candidate. **The offline cost rules it out: a 0.90 threshold keeps 36 pairs and drops 103, of which 77 show the leaf (70% of all that do), to remove 2 clear misses and 24 borderline.** Not recommended. The two clear misses are both moral pairs (1634 unit 40 under the moral leaf, the pair excluded for size in 24.6, and a first-set pair).
+What it means: the "about a fifth do not show the leaf" of 24.7 and 21.4 was not mainly the gate flagging absent leaves. The units nearly always do the leaf at least weakly; the misses came from (a) the **moral leaf**, whose definition (explicit moral right or wrong, justice, dignity, ethical responsibility) the units meet in 9 of 28 cases and only partly in 17 (a preacher criticizing or warning is not always evaluating morally), 17 of the 27 borderline pairs and both clear misses, and (b) records and summaries that state the content without stating the leaf's act (the L4 problem), so a pair that shows the leaf at the unit level can still produce a record graded as not fitting. The extractor was not told that a borderline unit should return nothing, and it almost never does.
+Limits: one grader of record who remembers earlier extraction grading (the second rater will test this: about twelve pairs, `gate-check-review --second-rater`); the borderline class is where raters will differ most and my use of it for the moral leaf may be generous; precision only, no recall; the first set was exposed in design. No change to the gate, the rule or any earlier result follows; whether to treat the moral leaf differently (a stricter or separate gate, or no moral claims from borderline units) is Brian's decision.
+
