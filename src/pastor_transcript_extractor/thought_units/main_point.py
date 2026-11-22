@@ -12,7 +12,9 @@ from typing import Any, Callable, Mapping, Sequence
 from pastor_transcript_extractor import deepinfra_requests as provider
 from pastor_transcript_extractor import evidence_requests as requests
 from pastor_transcript_extractor.bound_claims import contract as bound
-from pastor_transcript_extractor.bound_claims.common import canonical, digest, file_sha256, read_json, write_json
+from pastor_transcript_extractor.bound_claims.common import (
+    MINIMUM_STOP_FAILURES, canonical, digest, exceeds_failure_rate, file_sha256, read_json, write_json,
+)
 from pastor_transcript_extractor.bound_claims.extract import SCHEMA_FAILURE_RATE, TRANSPORT_FAILURE_RATE, _physical_usage, git_state
 from pastor_transcript_extractor.bound_claims.ledger import list_price_usd
 from pastor_transcript_extractor.collector_retrieval_json_v1_1 import seal
@@ -157,7 +159,8 @@ def freeze_plan(base_dir: Path, state: Callable[[], dict[str, Any]], metadata: C
     ledger = arms.ledger_for(base_dir)
     plan = seal(dict(version=VERSION, **identity, implementation=current, ceiling=dict(usd=str(ledger.ceiling_usd), attempts=ledger.ceiling_attempts),
                      published_deepinfra_metadata=_prices(metadata), retries='none; one attempt per pair, no semantic retry',
-                     stop_rules=dict(transport_failure_rate=str(TRANSPORT_FAILURE_RATE), schema_failure_rate=str(SCHEMA_FAILURE_RATE))))
+                     stop_rules=dict(transport_failure_rate=str(TRANSPORT_FAILURE_RATE), schema_failure_rate=str(SCHEMA_FAILURE_RATE),
+                                     minimum_failures=MINIMUM_STOP_FAILURES)))
     write_json(path, plan)
     return plan
 
@@ -218,10 +221,10 @@ def run(base_dir: Path, arm: str, *, check_only: bool = False, transport: Callab
                 row.update(status='schema_failure' if isinstance(failure, SchemaError) else 'transport_failure', error=str(failure)[:500])
         rows.append(row)
         transport_failures, schema_failures = (sum(r['status'] == name for r in rows) for name in ('transport_failure', 'schema_failure'))
-        if transport_failures > TRANSPORT_FAILURE_RATE * len(pairs):
-            stopped = f'stop rule: transport failures {transport_failures} exceed 5% of {len(pairs)} requests'
-        elif schema_failures > SCHEMA_FAILURE_RATE * len(pairs):
-            stopped = f'stop rule: schema failures {schema_failures} exceed 10% of {len(pairs)} outputs'
+        if exceeds_failure_rate(transport_failures, len(pairs), TRANSPORT_FAILURE_RATE):
+            stopped = f'stop rule: transport failures {transport_failures} exceed 5% of {len(pairs)} requests (and are at least {MINIMUM_STOP_FAILURES})'
+        elif exceeds_failure_rate(schema_failures, len(pairs), SCHEMA_FAILURE_RATE):
+            stopped = f'stop rule: schema failures {schema_failures} exceed 10% of {len(pairs)} outputs (and are at least {MINIMUM_STOP_FAILURES})'
         if stopped:
             break
     summary = dict(pairs=len(pairs), attempted=len(rows), ok=sum(r['status'] == 'ok' for r in rows),

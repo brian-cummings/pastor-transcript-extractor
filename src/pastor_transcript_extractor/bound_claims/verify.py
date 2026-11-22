@@ -13,7 +13,7 @@ from pastor_transcript_extractor import evidence_requests as requests
 from pastor_transcript_extractor.collector_retrieval_json_v1_1 import seal
 
 from . import contract
-from .common import file_sha256, read_json, write_json
+from .common import MINIMUM_STOP_FAILURES, exceeds_failure_rate, file_sha256, read_json, write_json
 from .extract import freeze_plan, git_state
 from pastor_transcript_extractor import deepinfra_requests as provider
 from .ledger import PilotLedger, list_price_usd
@@ -159,8 +159,8 @@ def run(extractions: Sequence[Path], ledger: PilotLedger, *, check_only: bool = 
                                input_tokens=usage.get('input_tokens'), output_tokens=0)
         rows.append(row)
         failures = sum(r['status'] == 'failed' for r in rows)
-        if failures > TRANSPORT_FAILURE_RATE * len(items):
-            stopped = f'stop rule: {failures} failed verification requests exceed 5% of {len(items)}'
+        if exceeds_failure_rate(failures, len(items), TRANSPORT_FAILURE_RATE):
+            stopped = f'stop rule: {failures} failed verification requests exceed 5% of {len(items)} (and are at least {MINIMUM_STOP_FAILURES})'
             break
     summary = dict(claims=len(items), attempted=len(rows), ok=sum(r['status'] == 'ok' for r in rows), failed=failures,
                    lost_attempts=sum(r['status'] == 'lost_attempt' for r in rows))

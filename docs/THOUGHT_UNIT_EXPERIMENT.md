@@ -479,7 +479,7 @@ more than noise, not a significance test. A pass is engineering evidence about u
 - Worst-case reservations are checked before each stage against the remaining ceiling, with bounded streaming recovery as in the pilot and no automatic expansion.
 - No semantic retry, no second prompt, no re-run of any stage to overcome a result, no threshold, constant, rule, leaf-set or model change after the freeze, and no next experiment started from
   a result without Brian's decision.
-- Stop and report on: a coverage or segment-mapping failure, a stage 3 schema failure rate above 10%, transport failures above 5%, unresolved usage, or the ceiling.
+- Stop and report on: a coverage or segment-mapping failure, a stage 3 schema failure rate above 10%, transport failures above 5% (each rate rule also needs at least two failures; see section 16.9), unresolved usage, or the ceiling.
 - Usage accounting: there are no helper agents; assistant effort is limited to the build, the check-only reports and the final report, at least 10% of effort is reserved for verification and handoff,
   and provider spend comes from the ledger.
 
@@ -558,3 +558,8 @@ pte analysis thought-units arms-report --base-dir /Users/briancummings/Documents
 ```
 Paid steps need a clean, committed `src` tree. `snap` and `assess` need `TYPESAFE_API_KEY`; `extract` needs `DEEPINFRA_API_KEY`. A failed acceptance, a stop rule or the ceiling ends the run with a report,
 not a retry; no second round starts without Brian's decision.
+
+**Failure floor (Brian, 2026-11-22; applies to every rate-based stop rule, not only this experiment).** A transport or schema stop rule now needs the rate exceeded and at least two failures, so one transient failure in a small run
+(arm B has 19 pairs, where one failure is 5.3%) cannot stop it; the failed request still keeps its reservation and is never retried. One shared helper, `exceeds_failure_rate` in `bound_claims/common.py`, replaces the
+inline comparisons in the pilot's extract (transport and schema) and verify (transport) steps and in `thought_units/main_point.py`; the closed pilot's artifacts, receipts and budgets are unchanged. A frozen
+`plan.json` records `minimum_failures`. The pilot's verify test that expected one failure of two to stop now expects it to continue, and a test covers both sides of the floor.

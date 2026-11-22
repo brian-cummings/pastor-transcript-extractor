@@ -19,7 +19,7 @@ from pastor_transcript_extractor.collector_retrieval_json_v1_1 import seal
 from pastor_transcript_extractor.context_extraction_validation import strict_json
 
 from . import contract
-from .common import REPOSITORY, file_sha256, read_json, write_json
+from .common import MINIMUM_STOP_FAILURES, REPOSITORY, exceeds_failure_rate, file_sha256, read_json, write_json
 from .ledger import PilotLedger, list_price_usd
 
 VERSION = 'bound-claim-extraction-v1'
@@ -192,10 +192,10 @@ def run(strata_path: Path, producer: str, ledger: PilotLedger, *, check_only: bo
         rows.append(row)
         for status in ('transport_failure', 'schema_failure'):
             counts[status] = sum(r['status'] == status for r in rows)
-        if counts['transport_failure'] > TRANSPORT_FAILURE_RATE * len(blocks):
-            stopped = f"stop rule: transport failures {counts['transport_failure']} exceed 5% of {len(blocks)} requests"
-        elif producer == 'pro' and counts['schema_failure'] > SCHEMA_FAILURE_RATE * len(blocks):
-            stopped = f"stop rule: schema failures {counts['schema_failure']} exceed 10% of {len(blocks)} V4 Pro outputs"
+        if exceeds_failure_rate(counts['transport_failure'], len(blocks), TRANSPORT_FAILURE_RATE):
+            stopped = f"stop rule: transport failures {counts['transport_failure']} exceed 5% of {len(blocks)} requests (and are at least {MINIMUM_STOP_FAILURES})"
+        elif producer == 'pro' and exceeds_failure_rate(counts['schema_failure'], len(blocks), SCHEMA_FAILURE_RATE):
+            stopped = f"stop rule: schema failures {counts['schema_failure']} exceed 10% of {len(blocks)} V4 Pro outputs (and are at least {MINIMUM_STOP_FAILURES})"
         if stopped:
             break
     summary = dict(blocks=len(blocks), attempted=len(rows), ok=sum(r['status'] == 'ok' for r in rows),

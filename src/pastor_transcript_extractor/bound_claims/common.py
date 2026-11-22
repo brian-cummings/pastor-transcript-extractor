@@ -61,3 +61,11 @@ def coordinate(video_id: int, block_id: int) -> str:
 
 def watch_url(url: str, start_seconds: float) -> str:
     return url + ('&' if '?' in url else '?') + 't=' + str(int(start_seconds))
+
+
+MINIMUM_STOP_FAILURES = 2
+
+
+def exceeds_failure_rate(failures: int, total: int, rate: Any) -> bool:
+    """A rate-based stop rule needs the rate exceeded and at least two failures, so one transient failure in a small run never stops it."""
+    return failures >= MINIMUM_STOP_FAILURES and failures > rate * total

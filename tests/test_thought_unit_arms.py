@@ -210,6 +210,18 @@ class MainPointTests(Extracted):
         self.assertEqual(2, len(calls))                      # receipts stand; no retry
         self.assertEqual(pair['key'], f"b001-{pair['leaf'].removeprefix('P:')}")
 
+    def test_one_transport_failure_in_a_small_arm_is_recorded_but_does_not_stop_it(self):
+        pairs = main_point.pair_inputs(self.root, 'b')
+        outputs = {p['key']: self.reply('Second line sentence three goes here.') for p in pairs}
+        outputs[pairs[0]['key']] = ValueError('network')
+        done = main_point.run(self.root, 'b', transport=stream_transport(outputs), state=CLEAN, metadata=METADATA)
+        self.assertEqual((1, 1, None), (done['summary']['transport_failures'], done['summary']['ok'], done['stopped']))
+        outputs[pairs[1]['key']] = ValueError('network')
+        again = main_point.run(self.root, 's', transport=stream_transport({p['key']: ValueError('network') for p in main_point.pair_inputs(self.root, 's')}),
+                               state=CLEAN, metadata=METADATA)
+        self.assertIn('transport failures', again['stopped'])    # two or more, and over 5%
+        self.assertEqual(2, again['summary']['attempted'])       # it stopped as soon as the floor was reached
+
     def test_a_dirty_tree_and_a_changed_instruction_are_refused(self):
         with self.assertRaises(ValueError):
             main_point.run(self.root, 'b', state=DIRTY, metadata=METADATA)

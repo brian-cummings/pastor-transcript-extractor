@@ -88,14 +88,20 @@ class VerificationTests(unittest.TestCase):
         self.assertEqual(before, self.ledger.attempt_count())
 
     def test_http_failure_keeps_the_reservation_and_is_never_retried(self):
-        paths = self.produce([self.anchor_output(i) for i in range(2)])
-        send = jev(fail={'v1b1'})
+        paths = self.produce([self.anchor_output(i) for i in range(3)])
+        send = jev(fail={'v1b1', 'v1b2'})
         result = verify.run(paths, self.ledger, transport=send, state=CLEAN, metadata=METADATA)
-        self.assertEqual(1, result['summary']['failed'])
-        self.assertEqual(1, send.calls.count(next(f for f in send.calls if f)) if send.calls else 1)
+        self.assertEqual(2, result['summary']['failed'])
         entries = self.ledger.summary()['steps']['verify']
-        self.assertEqual(1, entries['unresolved'])
-        self.assertIn('stop rule', result['stopped'])  # 1 failure > 5% of 2 claims
+        self.assertEqual(2, entries['unresolved'])
+        self.assertIn('stop rule', result['stopped'])  # 2 failures exceed 5% of 3 claims and reach the floor of two
+
+    def test_one_failure_in_a_small_run_does_not_stop_it(self):
+        paths = self.produce([self.anchor_output(i) for i in range(2)])
+        result = verify.run(paths, self.ledger, transport=jev(fail={'v1b1'}), state=CLEAN, metadata=METADATA)
+        self.assertEqual(1, result['summary']['failed'])
+        self.assertEqual(1, self.ledger.summary()['steps']['verify']['unresolved'])   # the failed request keeps its reservation
+        self.assertIsNone(result['stopped'])
 
     def test_invalid_probability_is_rejected(self):
         paths = self.produce([self.anchor_output(0)])
