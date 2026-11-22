@@ -129,3 +129,18 @@ time blocks cut only one of the seven components (component 1 spans b92 and b93;
 and whole-sermon information is not necessarily an accuracy ceiling because long context can dilute attention. If a later test is
 approved, its first step should be a segmentation-only probe (boundaries only, no extraction) judged against these same seven
 components and a spot check of boundaries by Brian, before any rearchitecture; its own spec and ceiling are required.
+
+## 10. Result (2026-11-22): FAIL on criteria 1, 2 and 3
+
+One request ran (13,913 input and 150 output tokens, $0.0185 of the $0.50 ceiling; one attempt, no recovery needed). It returned one
+record, "The American experiment still continues after 250 years", from the opening prayer, which the instruction excludes (rule 3).
+None of the seven components was returned. Criteria 4 and 5 pass vacuously (one record, anchor valid). Judgments were made by Claude at
+Brian's request, not by Brian (recorded as `judged_by` in `judgments.json` and the report); the outcome does not depend on them, since
+criteria 1 and 2 fail with any reading of one record.
+
+Evidence and diagnosis. The producer had the whole sermon and the object, returned valid JSON in a single pass, and returned one
+excluded line. That is under-extraction plus a rule violation on a long input. Whether the cause is attention dilution over about
+14,000 tokens, this instruction, or this model's behavior at reasoning-off is not established by one request; the spec forbids a
+second prompt or run to find out. Acceptance criterion advanced: none (the pilot's baseline of 6 of 7 components in block-level claims stands
+as the better result). Next action justified: none inside this check, which stops here. A separate decision (the segmentation-only probe
+in section 9) remains available to Brian.
