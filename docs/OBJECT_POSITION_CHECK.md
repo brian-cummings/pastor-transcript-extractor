@@ -84,6 +84,17 @@ the object, 3 of the position claims duplicated across producers.
   prompt. A fail on criteria 3 or 4 alone points back to the contract, not the unit, and is reported that way.
 - Either way: no automatic expansion, no threshold change and no next experiment follows from the result.
 
+## 6a. What the whole-sermon call is for, and what a pass does not show
+
+The whole-sermon request is a ceiling test, not a proposed production design. It gives the producer everything the block unit
+withheld (the neighboring blocks, the whole argument) and fixes the object, so routing and windowing cannot explain a failure.
+If it fails, no cheaper windowed or routed version can be expected to succeed, and the line stops at about $0.50. If it passes,
+it shows only that this contract plus an object-centered question can produce the position correctly; it does not show that a
+cheaper design does. Estimated size: about 15,000 tokens for this sermon (76 blocks of about 800 characters), per sermon and per
+object, never per corpus. Cost grows with sermons times objects; reducing it (sending only leaf-eligible blocks, provider prompt
+caching if available, or a cheaper first pass) would each need its own check and its own approval. The leaf filter in particular
+is not a free fix: b113 (components 5 to 7) scores `T:society_public_life` 0.86, below the .9 cut that selects 31 of 76 blocks.
+
 ## 7. Implementation sketch (after approval only)
 
 Reuse the pilot's DeepInfra executor, ledger (new instance), anchor check and frozen-plan machinery. New: an `object-position`
