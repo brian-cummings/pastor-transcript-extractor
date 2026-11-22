@@ -178,32 +178,11 @@ def validate_records(payload: Any) -> list[dict[str, Any]]:
     return records
 
 
-# The frozen producer refuses any request whose input exceeds 16,384 bytes and never truncates. Sermon 281's blocks were short enough that all three units always
-# fit; the new set's are not (51 of its 109 pairs overflow with both neighbors). So the producer is given whole neighbor units only while the three units together
-# stay within this budget, preceding neighbor first. The rule uses characters, not the instruction's length, so every version sees the same context; a longer
-# instruction that no longer fits fails loudly at the producer's own preflight, never by a silent cut.
-CONTEXT_CHARS = 5000
-
-
-def fit_context(pair: Mapping[str, Any]) -> dict[str, Any]:
-    """Whole neighbor units within the budget: both, else the preceding one, else the following one, else the target alone. The label is recorded."""
-    before, target, after = pair['preceding_text'], pair['text'], pair['following_text']
-    if len(before) + len(target) + len(after) <= CONTEXT_CHARS:
-        kept = 'full'
-    elif before and len(before) + len(target) <= CONTEXT_CHARS:
-        kept, after = 'preceding_only', ''
-    elif after and len(target) + len(after) <= CONTEXT_CHARS:
-        kept, before = 'following_only', ''
-    else:
-        kept, before, after = 'target_only', '', ''
-    return dict(pair, preceding_text=before, following_text=after, context=kept)
-
-
 def pair_inputs(base_dir: Path, scope: Scope = ARMS) -> list[dict[str, Any]]:
     """The scope's pairs: arm B's as section 16 sent them (same units, leaves, neighbors), or a half of the new set's."""
     if scope is ARMS:
         return main_point.pair_inputs(base_dir, 'b')
-    return [fit_context(p) for p in public_set.half_pairs(base_dir, scope.key)]
+    return public_set.half_pairs(base_dir, scope.key)
 
 
 def units_identity(base_dir: Path, scope: Scope = ARMS) -> str:
@@ -248,7 +227,7 @@ def freeze_identity(base_dir: Path, pairs: list[Mapping[str, Any]], variant: Var
     return dict(instruction_sha256=digest(variant.prompt), instruction_version=variant.version, schema_sha256=digest(RESPONSE_SCHEMA), category=dict(name=CATEGORY, meaning=category_meaning()),
                 scope=scope.key, pairs_sha256=arms.pairs_digest(pairs), units_sha256=units_identity(base_dir, scope), producer=provider.policy_for(PRODUCER_VERSION),
                 code_sha256=digest([file_sha256(here / name) for name in ('leaf_evidence.py', 'main_point.py', 'arms.py', 'public_set.py')]),
-                **({} if scope is ARMS else dict(inputs_sha256=digest(list(pairs)), context_chars=CONTEXT_CHARS)))
+                **({} if scope is ARMS else dict(inputs_sha256=digest(list(pairs)))))
 
 
 def freeze_plan(base_dir: Path, pairs, state: Callable[[], dict[str, Any]], metadata: Callable[[str], Mapping[str, Any]],

@@ -65,25 +65,6 @@ class ScopeTests(Setup):
             self.run_leaf({k: reply(record()) for k in self.keys})
 
 
-class ContextTests(unittest.TestCase):
-    def pair(self, before, target, after):
-        return dict(key='k', preceding_text='b' * before, text='t' * target, following_text='a' * after)
-
-    def test_whole_neighbors_are_kept_only_while_the_three_units_fit_and_the_label_is_recorded(self):
-        fit = leaf_evidence.fit_context
-        self.assertEqual('full', fit(self.pair(1000, 2000, 1000))['context'])
-        self.assertEqual('full', fit(self.pair(2000, 1000, 2000))['context'])       # exactly the budget
-        kept = fit(self.pair(2500, 2000, 1000))
-        self.assertEqual(('preceding_only', 2500, 0), (kept['context'], len(kept['preceding_text']), len(kept['following_text'])))
-        kept = fit(self.pair(4000, 2000, 1000))
-        self.assertEqual(('following_only', 0, 1000), (kept['context'], len(kept['preceding_text']), len(kept['following_text'])))
-        kept = fit(self.pair(4000, 2000, 4000))
-        self.assertEqual(('target_only', 2000), (kept['context'], len(kept['text'])))
-        self.assertEqual(5266, len(fit(self.pair(9, 5266, 9))['text']))            # the target is never cut, even above the budget
-        self.assertEqual('target_only', fit(self.pair(9, 5266, 9))['context'])
-        self.assertEqual('full', fit(self.pair(0, 100, 0))['context'])
-
-
 class QueueTests(Setup):
     def test_development_review_labels_every_pair_blind_and_reports_defects(self):
         self.run_leaf({self.keys[0]: reply(record()), self.keys[1]: reply()})

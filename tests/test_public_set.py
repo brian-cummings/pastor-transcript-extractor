@@ -66,6 +66,20 @@ class BlockTests(Setup):
         self.assertTrue(all(text[u['start']:u['end']] == u['text'] for u in units))
         self.assertEqual(['b0005', 'b0006', 'b0008'], [u['id'] for u in units])
 
+    def test_only_the_final_block_set_is_used_when_a_coarse_pass_precedes_it(self):
+        def block(block_id, start, end, text, segment):
+            return dict(block_id=block_id, segment_indexes=[segment], start_seconds=start, end_seconds=end, text=text, normalization=dict(normalized_units=[]))
+        coarse = [block(0, 0.0, 300.0, 'coarse one ' * 30, 0), block(1, 300.0, 600.0, 'coarse two ' * 30, 1)]
+        fine = [block(2, 0.0, 90.0, 'fine one ' * 10, 0), block(3, 90.0, 180.0, 'fine two ' * 10, 1), block(4, 180.0, 270.0, 'fine three ' * 10, 2)]
+        for restart in (True, False):                 # numbering may restart or continue; time running backward also marks the new set
+            second = [dict(b, block_id=b['block_id'] - 2) for b in fine] if restart else fine
+            blocks = coarse + second
+            labels = ['sermon', 'sermon', 'sermon', 'music', 'sermon']
+            found = public_set.sermon_blocks(dict(classification=dict(blocks=blocks, classifications=[dict(block_id=b['block_id'], label=l) for b, l in zip(blocks, labels)])))
+            self.assertEqual(['fine one ' * 10, 'fine three ' * 10], [b['text'] for b in found])
+        with self.assertRaises(ValueError):
+            public_set.sermon_blocks(dict(classification=dict(blocks=coarse, classifications=[dict(block_id=9, label='sermon')] * 2)))
+
     def test_check_only_plans_the_topic_step_without_sending_anything(self):
         plan = public_set.score_topics(self.root, check_only=True)
         self.assertEqual((1, 3), (plan['sermons'], plan['blocks']))

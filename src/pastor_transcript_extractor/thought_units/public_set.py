@@ -117,12 +117,25 @@ def load_candidates(base_dir: Path) -> dict[str, Any]:
     return found
 
 
+def final_pass_start(blocks: Sequence[Mapping[str, Any]]) -> int:
+    """Where the last block set begins. A saved classification holds a coarse pass (about 5-minute blocks) and then the final finer pass (about 90-second blocks); a new
+    set starts where the numbering restarts or time runs backward. The established topic analysis is exactly the last set, on all 16 other saved sermons that have one
+    except video 419."""
+    return max((k for k in range(1, len(blocks)) if blocks[k]['block_id'] <= blocks[k - 1]['block_id'] or blocks[k]['start_seconds'] < blocks[k - 1]['start_seconds']), default=0)
+
+
 def sermon_blocks(proposed: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """The saved time blocks the classifier labeled `sermon`, in order, with the segments and seconds they were saved with."""
+    """The saved time blocks of the final pass that the classifier labeled `sermon`, in order, with the segments and seconds they were saved with."""
     classification = proposed['classification']
-    labels = {c['block_id']: c['label'] for c in classification['classifications']}
-    blocks = [b for b in classification['blocks'] if labels.get(b['block_id']) == SERMON_LABEL and b['text'].strip()]
-    return sorted(blocks, key=lambda b: (b['start_seconds'], b['block_id']))
+    blocks, labels = classification['blocks'], classification['classifications']
+    if len(blocks) != len(labels) or any(b['block_id'] != c['block_id'] for b, c in zip(blocks, labels)):
+        raise ValueError('Saved blocks and classifications do not line up by position')
+    start = final_pass_start(blocks)
+    kept = [b for b, c in zip(blocks[start:], labels[start:]) if c['label'] == SERMON_LABEL and b['text'].strip()]
+    ids = [b['block_id'] for b in kept]
+    if len(set(ids)) != len(ids) or any(later['start_seconds'] < earlier['start_seconds'] for earlier, later in zip(kept, kept[1:])):
+        raise ValueError('Final-pass blocks are not unique and in time order')
+    return sorted(kept, key=lambda b: (b['start_seconds'], b['block_id']))
 
 
 def sermon_layout(blocks: Sequence[Mapping[str, Any]], separator: str = '\n\n') -> dict[str, Any]:
