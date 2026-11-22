@@ -258,3 +258,26 @@ Stage 0 development labels were written by Claude (`probe_labels.json`, `labeled
 null; there are 7 true "new point" and 27 false labels, and no true mid-sentence positives (candidates are sentence ends), so the Q1 wording is chosen
 only on avoiding false positives. Q3 (resumption) has a single wording and is not probed. Both limits are disclosed; G1 is the real test.
 The paid steps need `TYPESAFE_API_KEY` and a clean, committed working tree. The wordings are in `questions.py`; Brian reviews them before the probe runs.
+
+## 13. Result (2026-11-22): G1 FAIL; the experiment stops after stage 1
+
+Brian judged all 40 sampled items. Boundaries Jev cut: 17 of 20 correct. Candidates Jev did not cut: 4 of 10 correct (6 of 10 needed a break).
+Boundary and non-boundary positions together: 21 of 30 (70%) against the 80% bar. Detected asides: 0 of 10 correct against the 80% bar. Both parts of
+G1 fail, so by section 5 stages 2 and 3, the control arm and the arm-blind review are not run, and nothing was spent on extraction.
+
+Cost: stage 0 $0.0024 and stage 1 about $0.066, $0.0685 of the $3.00 ceiling over 79 requests. Stage 1 cost more than the $0.05 estimate because 67% of
+boundaries were flagged for the resumption pass, not the 30% assumed.
+
+Diagnosis from the saved answers (descriptive; the 40 judgments are exposed and are not used to fit anything):
+- Precision of Jev's confident cuts is good (17 of 20). Recall is poor: Q2 left 437 of 751 candidates in the 0.3 to 0.7 band, and 435 boundaries were
+  "unsettled" and therefore not cut. The 6 missed breaks had Q2 of 0.27 to 0.62 and the 4 correct non-breaks 0.21 to 0.47, so the values overlap and a
+  different threshold would not separate them (n is 10).
+- The aside mechanism failed. Q3 reached 0.7 on 96 of 4,034 answers (2.4%), 48 of 51 detections came on unsettled boundaries, the median detection value
+  was 0.73 (barely over the threshold), 18 of 51 were one-sentence "asides" ("I'll tell you where.", "What shall we do?", "You want to listen to this."),
+  and Q3's wording was never probed. Asking 8 skips per boundary and taking the first hit also invites false matches.
+- The asides were not needed for the case that motivated them. Rebuilding the units from the saved answers without any asides gives 63 units with the seven
+  components still in two units (1 to 4 together, 5 to 7 together), because Q2 left the interjection boundary unsettled, so it was not cut.
+- Units are not finer than time blocks: 65 units (median 645 characters, mean 887) against 76 blocks (mean about 760), with a median of 11 pieces.
+
+Acceptance criterion advanced: A1 (G1) evaluated and failed. New evidence: Jev boundary questions of this form are precise but under-cut and the
+resumption question over-fires. Justified next action: none inside this experiment. See the closing proposal given to Brian.
