@@ -136,7 +136,7 @@ class BlockTests(Setup):
         self.assertEqual(['a', 'b'], [p['key'] for p in public_set.half_pairs(self.root, 'all', 'pairs-top3.json', 'v2')])
         with self.assertRaises(FileNotFoundError):
             public_set.half_pairs(self.root, 'all', 'pairs-top3.json', 'v1')
-        self.assertEqual((6, 0, 8, 6), (public_set.SETS['v1']['take'], public_set.SETS['v1']['skip'], public_set.SETS['v2']['take'], public_set.SETS['v2']['skip']))
+        self.assertEqual((6, 0, 24, 6), (public_set.SETS['v1']['take'], public_set.SETS['v1']['skip'], public_set.SETS['v2']['take'], public_set.SETS['v2']['skip']))
 
 
 if __name__ == '__main__':
