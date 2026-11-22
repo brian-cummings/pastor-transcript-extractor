@@ -331,6 +331,31 @@ def set_graded_report(base_dir: Path = BASE, half: str = HALF, top: int = TOP):
         raise typer.BadParameter(str(error)) from error
 
 
+@app.command('gate-check-review')
+def gate_check_review(base_dir: Path = BASE, check_only: bool = typer.Option(False, '--check-only', help='Build the queue and report its size; label nothing.'),
+                      second_rater: bool = typer.Option(False, '--second-rater', help='Label only the second-rater units (about twelve pairs) into a separate log.')):
+    """Section 26 (offline): for every flagged pair of both sets, does the unit show the leaf (yes, borderline, no)? Blind to the Jev score; resumable."""
+    from ...thought_units import gate_check
+    try:
+        rater = 'second' if second_rater else 'main'
+        if check_only:
+            _echo(gate_check.second_rater_queue(base_dir) if second_rater else gate_check.build(base_dir))
+        else:
+            _echo(gate_check.judge(base_dir, 'human', rater, input, typer.echo))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('gate-check-report')
+def gate_check_report(base_dir: Path = BASE):
+    """Section 26: precision of the leaf gate overall, by leaf, by Jev score band and by set, with intervals and the second-rater agreement when it exists."""
+    from ...thought_units import gate_check
+    try:
+        _echo(gate_check.report(base_dir))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 ARM = typer.Option(..., '--arm', help='b (time blocks), s (snapped units) or x (snapped units with splits).')
 
 
