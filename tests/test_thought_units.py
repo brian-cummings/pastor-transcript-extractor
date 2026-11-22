@@ -5,7 +5,7 @@ import unittest
 
 from pastor_transcript_extractor.bound_claims.common import read_json, write_json
 from pastor_transcript_extractor.bound_claims.ledger import PilotLedger
-from pastor_transcript_extractor.thought_units import candidates as cand, decide, improve, jev, questions, stage
+from pastor_transcript_extractor.thought_units import candidates as cand, decide, improve, jev, questions, snap, stage
 
 try:
     from tests.bound_claims_support import CLEAN, DIRTY
@@ -174,6 +174,105 @@ class ImproveTests(unittest.TestCase):
                           factory=lambda model: (ScoreClient(), dict(noul=lambda **kw: kw, score=lambda **kw: kw)))
         answer_ = asker.ask({'g': questions.graded('before text here', 'after text here')})
         self.assertEqual({'1': 0.1, '2': 0.7, '3': 0.2}, answer_['g'])
+
+
+SNAP_TEXT = ' '.join(f'This is sentence number {i} in the sermon text today.' for i in range(40))
+
+
+def snap_fixture():
+    pieces = cand.split_pieces(SNAP_TEXT)
+    found = cand.candidates(SNAP_TEXT, pieces)
+    return pieces, found
+
+
+class SnapTests(unittest.TestCase):
+    def setUp(self):
+        self.pieces, self.found = snap_fixture()
+        self.edges = [pieces_end for pieces_end in (self.pieces[9].end + 12, self.pieces[19].end + 12, self.pieces[29].end + 12)]  # mid-sentence edges
+
+    def test_units_partition_the_text_and_the_check_catches_a_loss(self):
+        ranges = snap.ranges_from_cuts(SNAP_TEXT, [self.pieces[9].end, self.pieces[19].end])
+        self.assertTrue(snap.coverage(SNAP_TEXT, ranges)['ok'])
+        self.assertEqual(3, len(ranges))
+        self.assertFalse(snap.coverage(SNAP_TEXT, [ranges[0], ranges[2]])['ok'])  # a dropped unit is detected
+        self.assertTrue(snap.is_mid_sentence(SNAP_TEXT, self.edges[0]))
+        self.assertFalse(snap.is_mid_sentence(SNAP_TEXT, self.pieces[9].end))
+
+    def test_code_snap_moves_each_edge_to_the_nearest_sentence_end(self):
+        cuts = snap.code_cuts(self.found, self.edges)
+        self.assertTrue(all(not snap.is_mid_sentence(SNAP_TEXT, c) for c in cuts))
+        self.assertEqual(self.pieces[9].end, cuts[0])
+
+    def test_jev_edge_stays_at_the_nearest_sentence_end_unless_a_candidate_beats_it_by_the_margin(self):
+        flat = {c.index: 0.4 for c in self.found}
+        placed = snap.place_edges(SNAP_TEXT, self.pieces, self.found, flat, self.edges)
+        self.assertEqual(snap.code_cuts(self.found, self.edges), placed['cuts'])
+        self.assertEqual(0, sum(m['moved_off_nearest'] for m in placed['moves']))
+        slight = {**flat, 7: 0.4 + snap.GAIN_MARGIN - 0.01}
+        self.assertEqual(snap.code_cuts(self.found, self.edges), snap.place_edges(SNAP_TEXT, self.pieces, self.found, slight, self.edges)['cuts'])
+        better = {**flat, 7: 0.4 + snap.GAIN_MARGIN + 0.01}
+        moved = snap.place_edges(SNAP_TEXT, self.pieces, self.found, better, self.edges)
+        self.assertIn(self.pieces[7].end, moved['cuts'])
+        self.assertEqual(1, sum(m['moved_off_nearest'] for m in moved['moves']))
+
+    def test_edges_stay_ordered_respect_the_guards_and_resolve_conflicts(self):
+        everything_wants_one_place = {c.index: (0.9 if c.index == 14 else 0.1) for c in self.found}
+        result = snap.place_edges(SNAP_TEXT, self.pieces, self.found, everything_wants_one_place, self.edges)
+        self.assertEqual(sorted(result['cuts']), result['cuts'])
+        self.assertEqual(len(set(result['cuts'])), len(result['cuts']))
+        self.assertEqual(0, result['guard_violations'])
+        ranges = snap.ranges_from_cuts(SNAP_TEXT, result['cuts'])
+        self.assertTrue(all(snap.piece_count(self.pieces, a, b) >= snap.MIN_PIECES for a, b in ranges))
+        self.assertTrue(snap.coverage(SNAP_TEXT, ranges)['ok'])
+
+    def test_joint_placement_keeps_every_edge_when_scores_are_arbitrary(self):
+        import hashlib
+        scores = {c.index: int(hashlib.sha256(str(c.index).encode()).hexdigest()[:6], 16) / 0xFFFFFF for c in self.found}
+        result = snap.place_edges(SNAP_TEXT, self.pieces, self.found, scores, self.edges)
+        self.assertEqual(([], 0), (result['dropped_edges'], result['guard_violations']))
+        self.assertEqual(len(self.edges), len(result['cuts']))
+        self.assertTrue(snap.coverage(SNAP_TEXT, snap.ranges_from_cuts(SNAP_TEXT, result['cuts']))['ok'])
+
+    def test_split_takes_ranked_local_peaks_at_least_three_sentences_apart(self):
+        scores = {c.index: 0.2 + 0.0001 * c.index for c in self.found}   # no plateaus
+        scores.update({5: 0.9, 6: 0.85, 20: 0.8, 33: 0.95})
+        cuts = [self.pieces[12].end]
+        result = snap.split_cuts(SNAP_TEXT, self.pieces, self.found, scores, cuts)
+        added = {SNAP_TEXT[:p].count('sentence number') - 1 for p in result['added']}
+        self.assertIn(5, added)
+        self.assertNotIn(6, added)  # a neighbour of the stronger peak
+        self.assertIn(33, added)
+        self.assertIn(20, added)
+        positions = sorted(result['cuts'])
+        units = snap.ranges_from_cuts(SNAP_TEXT, positions)
+        self.assertTrue(all(snap.piece_count(self.pieces, a, b) >= snap.MIN_PIECES for a, b in units))
+        self.assertTrue(all(snap.piece_count(self.pieces, a, b) >= snap.SPLIT_SEPARATION for a, b in units[1:-1]))
+
+    def test_judging_resumes_and_the_report_scores_the_bars(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        out = Path(directory.name)
+        items = [dict(id=f'e{i}', kind='edge_pair', edge=0, versus='original' if i <= 6 else 'code', arms=dict(A='jev', B='original' if i <= 6 else 'code'), excerpt='x')
+                 for i in range(1, 13)]
+        items += [dict(id='s1', kind='split', position=5, arm='jev_split', excerpt='x'), dict(id='s2', kind='split', position=9, arm='jev_split', excerpt='x'),
+                  dict(id='u1', kind='unit', arm='jev', start=0, end=5, excerpt='x'), dict(id='u2', kind='unit', arm='jev', start=5, end=9, excerpt='x'),
+                  dict(id='u3', kind='unit', arm='jev_split', start=0, end=2, excerpt='x'), dict(id='u4', kind='unit', arm='jev_split', start=2, end=5, excerpt='x')]
+        write_json(out / 'snap_sample.json', dict(items=items))
+        summary = dict(mid_sentence_cuts=0, cuts=3)
+        write_json(out / 'snap_result.json', dict(summaries=dict(jev=summary), placement=dict(guard_violations=0, moves=[dict(edge=0, candidates=5)])))
+        answers = iter(['x'] + ['a'] * 5)
+        snap.judge(out, 'brian', ('edge_pair',), 5, lambda prompt: next(answers), lambda text: None)
+        resumed = snap.judge(out, 'brian', ('edge_pair',), 5, lambda prompt: self.fail('must not ask again'), lambda text: None)
+        self.assertEqual(5, len(resumed))
+        snap.record(out, 'claude', {**{f'e{i}': 'a' for i in range(1, 11)}, 'e11': 'b', 'e12': 't', 's1': 'y', 's2': 'y', 'u1': 'y', 'u2': 'y', 'u3': 'n', 'u4': 'n'})
+        with self.assertRaises(ValueError):
+            snap.record(out, 'claude', {'s1': 'a'})
+        outcome = snap.report(out, 'claude')
+        self.assertEqual(dict(wins=6, losses=0, ties=0), {k: outcome['bars']['H1']['observed'][k] for k in ('wins', 'losses', 'ties')})
+        self.assertEqual((4, 1, 1), tuple(outcome['bars']['H2']['observed'][k] for k in ('wins', 'losses', 'ties')))
+        self.assertEqual('INCONCLUSIVE', outcome['verdict'])  # fewer than 15 non-ties on edges with 3+ candidates
+        self.assertTrue(outcome['bars']['H4']['passed'])
+        self.assertEqual(dict(items=5, same=5), outcome['brian_agreement'])
 
 
 class JevTests(unittest.TestCase):

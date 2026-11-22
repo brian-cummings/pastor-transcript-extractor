@@ -82,3 +82,38 @@ def improve_boundaries(base_dir: Path = BASE,
         _echo(improve.run(base_dir, check_only=check_only))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@app.command('snap')
+def snap(base_dir: Path = BASE,
+         check_only: bool = typer.Option(False, '--check-only', help='Report candidates, questions and estimated cost; sends nothing.')):
+    """Score every candidate boundary in the held-out sermon (Jev), build the original, code, jev and jev_split arms, and the blind grading packet."""
+    from ...thought_units import snap as snapping
+    try:
+        _echo(snapping.run(base_dir, check_only=check_only))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('snap-review')
+def snap_review(base_dir: Path = BASE, grader: str = typer.Option('brian', '--grader', help='Name recorded with the judgments.'),
+                limit: int = typer.Option(15, '--limit', help='Edge comparisons to judge (the calibration set).')):
+    """Judge the calibration edge comparisons (which cut is the better place to end a block); resumable."""
+    from ...thought_units import snap as snapping, stage
+    try:
+        _, _, out = stage.paths(base_dir)
+        done = snapping.judge(out, grader, ('edge_pair',), limit, input, typer.echo)
+        _echo(dict(grader=grader, judged=len(done)))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('snap-report')
+def snap_report(base_dir: Path = BASE, grader: str = typer.Option('claude', '--grader', help='Whose judgments score the bars.')):
+    """Score the snap test bars from the saved judgments and write SNAP_REPORT.md and .json."""
+    from ...thought_units import snap as snapping, stage
+    try:
+        _, _, out = stage.paths(base_dir)
+        _echo(snapping.report(out, grader))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error

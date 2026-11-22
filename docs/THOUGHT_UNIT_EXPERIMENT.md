@@ -342,15 +342,16 @@ Measured baseline (sermon 590, code count plus Claude's blind labels): time-bloc
 and does splitting at Jev-ranked interior peaks leave fewer multi-thought units?
 
 **Material (held out).** The lowest video id not already used for G1, the wording probe or the atomic selection (281, 350, 590 excluded), which is sermon 1200. Every candidate sentence end in it
-is scored once with the five atomic questions of section 14 (3-sentence windows, `jev-1.13.0`), about 416 candidates and 2,080 questions, about $0.03. The atomic score is
+(sentence ends with terminal punctuation only, so no cut can fall mid-sentence) is scored once with the five atomic questions of section 14 (3-sentence windows, `jev-1.13.0`), about 416 candidates and 2,080 questions, about $0.03. The atomic score is
 (closure + max(transition, new element, change of speech) + (1 - development)) / 3, fixed in section 14 and not re-derived.
 
 **Arms (all are cut points; units are the text between consecutive cuts).**
 - `original`: the saved time-block edges.
 - `code`: each original edge moved to the nearest sentence end (deterministic).
 - `jev`: each original edge may land on any candidate strictly between the previous and the next original edge (no deeper than the two adjacent blocks). It stays at its nearest sentence
-  end unless a candidate scores at least 0.15 higher, in which case it takes the highest-scoring one (ties to the nearest). Edges are placed in order of decreasing gain; an edge takes
-  its first option that keeps edges in order and every unit at least 2 sentences and at most 2,304 characters; an edge with no valid option is dropped and reported.
+  end unless a candidate scores at least 0.15 higher. The edges are placed jointly by dynamic programming (a greedy placement was tried first on arbitrary scores and dropped 31 of 45 edges
+  because neighbours kept invalidating each other): maximize the total gain over the margin, with positions increasing and every unit at least 2 sentences and at most 2,304
+  characters; ties go to the placement nearer the original edges; an edge is dropped only if no feasible placement exists, and drops are reported.
 - `jev_split`: the `jev` units plus interior cuts at local score peaks (highest within 2 candidates on each side) that reach the sermon's 75th percentile of candidate scores,
   accepted in descending score order at least 3 sentences from every other cut.
 Constants (0.15, 2 sentences, 2,304 characters, the 75th percentile, 3 sentences) are fixed here and are not tuned.
