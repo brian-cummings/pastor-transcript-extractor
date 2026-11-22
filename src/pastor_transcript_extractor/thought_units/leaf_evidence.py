@@ -174,6 +174,7 @@ class Scope:
     half: str | None = None         # section 23: a half of the new set read from the three-leaf pairs file
     pairs_file: str = 'pairs.json'
     set_id: str = public_set.DEFAULT_SET     # section 24: the confirmatory set of unused sermons is `v2`
+    fit_longest: bool = False       # section 24.6: drop pairs whose request cannot fit the input cap under the longest instruction (v4), for every version alike
 
 
 ARMS = Scope('arms', CEILING_USD, CEILING_ATTEMPTS)
@@ -183,7 +184,7 @@ HELD_OUT = Scope('held_out', Decimal('1.50'), 100)
 COMPARE = {arm: Scope(f'compare_{arm}', Decimal('1.00'), 80, arm) for arm in unit_compare.ARMS}
 DEVELOPMENT3 = Scope('development_top3', Decimal('1.00'), 60, half='development', pairs_file='pairs-top3.json')
 HELD_OUT3 = Scope('held_out_top3', Decimal('1.50'), 100, half='held_out', pairs_file='pairs-top3.json')
-CONFIRM3 = Scope('confirm_top3', Decimal('1.50'), 100, half='all', pairs_file='pairs-top3.json', set_id='v2')
+CONFIRM3 = Scope('confirm_top3', Decimal('1.50'), 100, half='all', pairs_file='pairs-top3.json', set_id='v2', fit_longest=True)
 SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, DEVELOPMENT3, HELD_OUT3, CONFIRM3, *COMPARE.values())}
 
 RECORD_SCHEMA: dict[str, Any] = copy.deepcopy(bound.CLAIM_SCHEMA)
@@ -239,7 +240,20 @@ def pair_inputs(base_dir: Path, scope: Scope = ARMS) -> list[dict[str, Any]]:
         return main_point.pair_inputs(base_dir, 'b')
     if scope.arm:
         return unit_compare.arm_pairs(base_dir, scope.arm)
-    return public_set.half_pairs(base_dir, scope.half or scope.key, scope.pairs_file, scope.set_id)
+    pairs = public_set.half_pairs(base_dir, scope.half or scope.key, scope.pairs_file, scope.set_id)
+    return [p for p in pairs if fits_cap(p)] if scope.fit_longest else pairs
+
+
+def fits_cap(pair: Mapping[str, Any]) -> bool:
+    """Whether the pair's request passes the provider's input cap under the longest instruction (v4). The cap allows no truncation, so a pair that does not fit cannot be
+    sent; it is excluded for every version, by input size alone and before any output exists (section 24.6)."""
+    try:
+        build_request(pair, V4)
+    except ValueError as error:
+        if 'input exceeds reservation' in str(error):
+            return False
+        raise
+    return True
 
 
 def units_identity(base_dir: Path, scope: Scope = ARMS) -> str:

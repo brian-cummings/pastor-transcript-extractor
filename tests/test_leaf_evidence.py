@@ -275,5 +275,16 @@ class VersionTwoAcceptanceTests(unittest.TestCase):
         self.assertFalse(evaluate(new=dict(framed_ok=16))['criteria']['L4']['passed'])
 
 
+class InputCapTests(unittest.TestCase):
+    def pair(self, size):
+        return dict(key='k', leaf='P:moral', preceding_text='', text='word ' * size, following_text='')
+
+    def test_a_pair_that_cannot_fit_the_cap_is_excluded_for_every_version_by_size_alone(self):
+        self.assertTrue(leaf_evidence.fits_cap(self.pair(100)))
+        self.assertFalse(leaf_evidence.fits_cap(self.pair(4000)))        # 20,000 bytes: no truncation is allowed, so it cannot be sent
+        self.assertTrue(leaf_evidence.CONFIRM3.fit_longest)
+        self.assertFalse(leaf_evidence.HELD_OUT3.fit_longest)            # earlier scopes keep every pair
+
+
 if __name__ == '__main__':
     unittest.main()

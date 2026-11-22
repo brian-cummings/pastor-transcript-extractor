@@ -1152,6 +1152,11 @@ The first eight sermons (ranks 7 to 14) scored to **20 pairs, under the floor of
 - `CONFIRM_SAMPLE` rises from 30 to **60**: every pair is graded up to 60 (the first 60 by hash of the pair key above that). The 24.3 queue rule otherwise stands.
 - The verdict rule, readings and limits of 24.3 are unchanged. If the extended set is still under 30 pairs it is reported as underpowered and nothing more is added without Brian's decision; this is the one extension.
 
+### 24.6 Two pairs excluded for input size (2026-11-22, found when Brian ran the extraction)
+
+The extended set scored to **56 pairs** (1502 has 19, 1634 eight, 321 and 1477 five each, 766 and 1044 four, 346, 347 and 1628 three, 1480 two; theological 27, moral 13, critical 8, supportive 6, prescriptive 2). The v3 and v4 extraction then stopped at preflight with "DeepInfra input exceeds reservation; no truncation": the provider's 16,384-byte input cap allows no truncation and version 4's instruction is about 300 bytes longer than version 3's. Two pairs, `v1634-b0040-moral` and `v1634-b0040-supportive` (the same 4,887-character unit; its theological pair fits), exceed the cap under v4 only by a few bytes. Nothing had been sent. A pair that cannot be sent cannot be tested, and testing it for v3 alone would compare different pairs, so **both are excluded for every version** (`Scope.fit_longest`, set only for this set; `fits_cap`). The rule uses input size alone and was applied before any output existed. The test is on **54 pairs**, still above the floor of 30; the cap, the instruction and every other rule stand. The exclusion shows that v4 can handle a unit of about 4,900 characters only by luck of leaf wording; the limit applies to any unit that long.
+At verdict time the report also gives the readings without sermon 1502 (19 of 56 pairs), as a disclosure that does not change the rule.
+
 ### 24.4 Commands (Brian runs; the tree must be clean)
 
 ```bash

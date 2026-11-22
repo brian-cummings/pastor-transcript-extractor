@@ -41,7 +41,7 @@ def paths_for(base_dir: Path, half: str) -> dict[str, Path]:
 def reviewed_pairs(base_dir: Path, half: str) -> list[dict[str, Any]]:
     """Development: every pair. Held-out: the fixed sample, chosen by the hash of the pair key alone."""
     scope = leaf_evidence.SCOPES[half]
-    pairs = public_set.half_pairs(base_dir, scope.half or scope.key, scope.pairs_file, scope.set_id)
+    pairs = leaf_evidence.pair_inputs(base_dir, scope)
     if (scope.half or scope.key) == 'development':
         return pairs
     if half in CONFIRM_HALVES:
