@@ -69,7 +69,7 @@ generates text. Its wording lesson applies directly: a "same paragraph" question
 `after_boundary` strings, cached under `boundaries/validations/<hash>.json`; `NoulLeafPack` is a poor fit (single `target_text`, block-keyed
 cache identity). The new method is patterned on `validate_boundary`, batching candidate pairs per request.
 
-**Design.** The model gives judgments and code decides, per the TypeSafe skill. Two narrow Noul questions per candidate boundary replace the
+**Design.** The model gives judgments and code decides, per the TypeSafe skill. Two narrow Noul questions per candidate boundary (and a third, across skipped text, for interjections; see below) replace the
 single, vague "continues the same thought" question (the docs warn that Jev "answers the question you wrote, not the one you meant" and
 that broad wording over-merges):
 
@@ -95,8 +95,31 @@ of 76 start with a capital. Another corpus sermon has about 4 sentence ends in 6
 them, as in the cookbook). **No text is dropped or edited:** short fragments and duplicates stay in the unit text, so anchors stay literal and
 locatable by code. Sermons without usable punctuation are out of scope for this experiment.
 
+**Text used.** (V) The pilot's block `text` (which the saved leaf table holds) is already deduplicated by the project's rolling-caption
+normalizer (`caption_normalization.py`, `rolling-caption-v1`): block 93 goes from 228 raw tokens to 82, and the mean deduplication ratio over
+the 76 blocks is 0.64. The leaf table text equals that normalized text, not the raw text. Short residual repeats remain at line joins
+("wildest dreams.", "religious experiment.") because the normalizer's overlap rule needs 3 or more words (or 2 and at least half of the
+shorter side). For candidate generation, code treats a piece that repeats the tail of the preceding piece as part of it. The text itself is
+not changed, because every anchor and arm B's saved leaf signals are keyed to it. Sentence splitting reuses the project's `_SENTENCE_END`
+(`sermon_topics.py`). For time mapping, each line of a block's text corresponds to one `normalization.normalized_units` entry carrying
+`source_segment_indexes` (72 of the 76 blocks align line for line; the other 4 snap to their first segment, deterministically), which
+resolves the segment-mapping question.
+
+**Interjections and resumption (look-ahead).** A thought can be interrupted and then resumed. In sermon 281, "And we have to conclude that
+the American experiment." is followed by five pieces of aside ("I mean there's no way around it." "Excuse me." "The facts are obvious."
+"[clears throat] Sorry." "I'm sorry.") and resumes six pieces later ("We have to conclude ... that the American experiment is working
+brilliantly."). Adjacent 3-sentence windows cannot see the resumption, so they would cut before and after the aside and strand the claim from
+its lead-in. So for every boundary the truth table marks "cut" or "unsettled", code also asks a third question across the skipped text:
+
+- **Q3, resumption.** "Does the second passage resume the point the first passage left unfinished?" The first passage is the 3 sentences
+  before the cut. The second is the 3 sentences that start after each skip of 1 to 8 sentences (a look-ahead limit of 8 sentences, fixed now).
+- If Q3 is at least 0.7 at the smallest such skip, the skipped sentences are an aside: the unit is one contiguous span through the resumption,
+  the aside's sentence range is recorded and flagged, and no cut is made at either end. Q3 between 0.3 and 0.7 is unsettled (no merge). Q3 at
+  most 0.3 at every skip means a real break. An aside longer than 8 sentences is treated as a digression and cut. The limit is stated, not tuned.
+- Cost: up to 8 extra questions per flagged cut. Assuming about 300 flagged cuts, about 2,400 questions.
+
 **Chunking rule from the answers, constants fixed now.**
-- Cut at every "cut" outcome of the truth table.
+- Cut at every "cut" outcome of the truth table, unless it falls inside an aside merged by Q3.
 - Maximum unit size 2,304 characters (the largest existing block): an oversized unit splits at the candidate with the highest Q2 inside it,
   recursively. Minimum unit size 2 sentences: a smaller unit merges into the neighbor across the boundary with the lower Q2.
 - If a cut cannot be mapped to a caption segment boundary, it snaps to the nearest segment boundary inside the same sentence
@@ -105,8 +128,8 @@ locatable by code. Sermons without usable punctuation are out of scope for this 
 
 **Cost and limits.** (V) Documented limits: 64k tokens per request (state plus all questions), 32k per question, no documented limit on the number of
 questions per request (our 75-per-request batch is a project constant set after 150 questions exceeded the budget). Price $0.042 per million
-input tokens, output free. About 1,700 to 2,000 questions (two per candidate), about 28 requests, 500 to 600 thousand input tokens: about
-$0.02 to $0.03. Stage 2 dominates: (V/I) the 59 leaf questions are replicated per unit, about 19.4 thousand input tokens or $0.0008 per unit regardless
+input tokens, output free. About 1,700 to 2,000 boundary questions (two per candidate) plus up to about 2,400 resumption questions: about 57 requests and 1.7 million
+input tokens, about $0.07. Stage 2 dominates: (V/I) the 59 leaf questions are replicated per unit, about 19.4 thousand input tokens or $0.0008 per unit regardless
 of length, matching the pilot's 2.48 million tokens over 124 requests. About 126 units (8 sentences each) is $0.10, 202 (5 sentences) is $0.16,
 336 (3 sentences) is $0.27, against $0.06 for the 76 blocks the pilot already paid.
 
@@ -133,10 +156,11 @@ moved the result by four blocks out of seventeen. So, before the plan is frozen:
 
 ## 5. Gate G1 and the other pre-registered measures
 
-**G1 (stops the experiment before stages 2 and 3).** Brian judges 30 positions in the proposed units: 20 chosen boundaries ("does the
-text before this point end a complete thought?") and 10 candidate non-boundaries ("should a break have been here?"), picked by a fixed seed
-from the source hash. G1 passes when at least 24 of the 30 are judged correct (80%). If it fails, the experiment stops after stage 1 and reports
-the failure; no extraction is paid for.
+**G1 (stops the experiment before stages 2 and 3).** Brian judges positions in the proposed units, picked by a fixed seed from the source
+hash: 20 chosen boundaries ("does the text before this point end a complete thought?"), 10 candidate non-boundaries ("should a break have
+been here?"), and up to 10 detected asides with their resumptions ("is the passage between the two spans an interruption, and does the speaker
+resume the same thought?"). G1 passes when at least 24 of the 30 boundary positions are judged correct (80%) and, if any asides were detected,
+at least 80% of the judged asides are correct. If it fails, the experiment stops after stage 1 and reports the failure; no extraction is paid for.
 
 **Measures, reported for both arms where they apply.**
 
@@ -166,7 +190,7 @@ shape is not the repair; if arm T beats arm B but misses 0.80, the contract rema
 
 ## 7. Cost, ceilings and stops
 
-- Ceiling for the whole experiment: $3.00 and 600 physical requests. Expected spend is under about $0.60 with Flash: stage 1 about $0.02, stage 2
+- Ceiling for the whole experiment: $3.00 and 600 physical requests. Expected spend is under about $0.60 with Flash: stage 1 about $0.07, stage 2
   about $0.10 to $0.27 (units are priced about $0.0008 each), stage 0 under $0.01, stage 3 about $0.01 per 10 requests for each arm.
 - Worst-case reservations are checked before each stage against the remaining ceiling, as in the pilot.
 - No semantic retry, no second prompt, no re-run of any stage to overcome a result, no threshold, rule or leaf-set change after the freeze.
