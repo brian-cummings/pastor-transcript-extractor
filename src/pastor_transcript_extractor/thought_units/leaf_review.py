@@ -155,6 +155,12 @@ def record_decision(base_dir: Path, item: str, source: str, variant: leaf_eviden
     return record
 
 
+def _unit_view(item: Mapping[str, Any]) -> str:
+    """The unit, with the neighboring units around it when the item carries them (the spot check does; the full queue's items do not)."""
+    before, after = item.get('preceding_text'), item.get('following_text')
+    return (f'[PRECEDING TEXT] {before}\n\n' if before else '') + 'UNIT: ' + item['unit_text'] + (f'\n\n[FOLLOWING TEXT] {after}' if after else '')
+
+
 def render(item: Mapping[str, Any], number: int, total: int) -> str:
     head = f"\n[{number}/{total}] {item.get('watch_url', '')}\nLEAF {item.get('leaf', '')}: {item.get('leaf_meaning', '')}\n"
     if item['kind'] == 'record':
@@ -164,11 +170,11 @@ def render(item: Mapping[str, Any], number: int, total: int) -> str:
         lines += [name.upper() + ': ' + ('; '.join(record[name]) or '(none)') for name in ('conditions', 'qualifications', 'reasons')]
         return '\n'.join(lines + ['ANCHOR: «' + record['anchor_text'] + '»'])
     if item['kind'] == 'none':
-        return head + 'UNIT: ' + item['unit_text']
+        return head + _unit_view(item)
     if item['kind'] == 'summary':
-        return head + 'UNIT: ' + item['unit_text'] + f"\n\nSUMMARY: {item['summary']}\nTARGET: {item['target']}\nPROPOSITION: {item['proposition']}"
+        return head + _unit_view(item) + f"\n\nSUMMARY: {item['summary']}\nTARGET: {item['target']}\nPROPOSITION: {item['proposition']}"
     if item['kind'] == 'distinct_points':
-        return head + 'UNIT: ' + item['unit_text'] + '\n\n' + '\n'.join(f"RECORD {n}: {r['summary']}" for n, r in enumerate(item['records'], 1))
+        return head + _unit_view(item) + '\n\n' + '\n'.join(f"RECORD {n}: {r['summary']}" for n, r in enumerate(item['records'], 1))
     return '\n[distinct]\nUNIT: ' + item['unit_text'] + '\n' + '\n'.join(f"{r['leaf']}: {r['summary']}" for r in item['records'])
 
 

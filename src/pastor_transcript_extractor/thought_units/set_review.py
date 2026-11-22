@@ -279,6 +279,7 @@ def report(base_dir: Path, half: str) -> dict[str, Any]:
 # ---- spot check of the delegated labels (docs/THOUGHT_UNIT_EXPERIMENT.md section 24.8) ---------------------------------------------------------------
 
 SPOT_SIZE = 10
+SPOT_WINDOW = 3000        # characters of sermon text shown each side of a record, and of the neighboring units shown with the other items
 
 
 def spot_paths(base_dir: Path, half: str) -> dict[str, Path]:
@@ -296,9 +297,23 @@ def spot_ids(queue: Mapping[str, Any]) -> list[str]:
 
 def build_spot_queue(base_dir: Path, half: str) -> dict[str, Any]:
     """The same items as the full queue, without any label, in the full queue's wording; record and no-record items first, as in the blind pass."""
-    full = leaf_review._sealed(paths_for(base_dir, half)['queue'])
+    full, versions = leaf_review._sealed(paths_for(base_dir, half)['queue']), leaf_review._sealed(paths_for(base_dir, half)['versions'])
     chosen = set(spot_ids(full))
-    items = [i for i in full['items'] if i['id'] in chosen]
+    items = [dict(i) for i in full['items'] if i['id'] in chosen]
+    pairs, texts = {p['key']: p for p in reviewed_pairs(base_dir, half)}, {}
+    for item in items:        # section 24.8: Brian saw the pope missing; the full queue's 900-character window is too short, so the spot check shows much more
+        if item['kind'] == 'record':
+            pair = pairs[versions['items'][item['id']]['uses'][0]['pair']]
+            sermon = texts.setdefault(pair['video_id'], public_set.load_sermon(base_dir, pair['video_id'], leaf_evidence.SCOPES[half].set_id))
+            at = sermon.text.find(item['before'] + item['anchor'])
+            if at < 0 or sermon.text.find(item['before'] + item['anchor'], at + 1) >= 0:
+                raise ValueError('Cannot place the record in the sermon text uniquely')
+            start = at + len(item['before'])
+            item['before'] = sermon.text[max(0, start - SPOT_WINDOW):start]
+            item['after'] = sermon.text[start + len(item['anchor']):start + len(item['anchor']) + SPOT_WINDOW]
+        else:
+            pair = pairs[versions['items'][item['id']].get('pair') or versions['items'][item['id']]['uses'][0]['pair']]
+            item['preceding_text'], item['following_text'] = pair['preceding_text'][-SPOT_WINDOW:], pair['following_text'][:SPOT_WINDOW]
     items = [i for i in items if i['kind'] in ('record', 'none')] + [i for i in items if i['kind'] not in ('record', 'none')]
     queue = seal(dict(version=VERSION, half=half, source_sha256=full['content_fingerprint'], item_count=len(items),
                       phase1=sum(i['kind'] in ('record', 'none') for i in items), items=items))
