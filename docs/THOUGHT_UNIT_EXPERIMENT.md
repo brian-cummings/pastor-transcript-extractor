@@ -1186,3 +1186,11 @@ Bars reported, not deciding: L1 and L3 pass for both versions. L2 (leaf fit, 85%
 Cost: $0.031 per version. Limits as in 24.3: one run, one rater who wrote the instruction, a leaf-heavy theological mix with no advocative pairs, and the labels are a first pass. The one reading that failed rests on five items and two of my judgments.
 What this says about the idea: multi-record extraction yields a real but small gain here (two more pairs with an accepted record, six more accepted records, on 54 pairs) and is not shown to be reliably padding-free. The development result of 23.5 (7 of 7 distinct) did not replicate (3 of 5). No further variant without Brian's decision. The larger lever remains the leaf gate: about a fifth of the flagged pairs do not show the leaf under either instruction.
 
+### 24.8 Spot check of the delegated labels (2026-11-22; Brian: "ok let's spot check 10")
+
+All 219 labels in 24.7 are mine. Brian labels ten of the same items blind (he sees no label of mine), by the same questions. The ten are chosen by rule, not by my uncertainty: **every distinct-points item (5, because they decide the padding reading) plus the first five other items in sha256(item id) order** (4 records and 1 summary came up). His labels go in their own log (`decisions-spot-check.jsonl`), mine are untouched. The report lists agreement item by item and recomputes the padding reading with his labels in place of mine where he gave them. Reading it: if his labels leave the padding reading failed (distinct under 85%), the verdict stands; if they flip it, I report that the verdict depends on the rater and say so; agreement on the five other items is a calibration of my labels in general, from a small sample. No other label is changed and no rerun follows from this check.
+```bash
+pte analysis thought-units set-leaf-review --base-dir <base> --half confirm --top 3 --spot-check
+pte analysis thought-units set-leaf-report --base-dir <base> --half confirm --top 3 --spot-check
+```
+

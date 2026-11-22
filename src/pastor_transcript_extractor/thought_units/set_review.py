@@ -274,3 +274,78 @@ def report(base_dir: Path, half: str) -> dict[str, Any]:
     lines += ['', f"Defects: {len(final['defects'])}. Cost (not a bar): {final['cost_usd']}. Exposed development material when run on the development half; theme overlaps with sermon 281.", '']
     paths['report_md'].write_text('\n'.join(lines) + '\n')
     return dict(final, report_md=str(paths['report_md']), report_json=str(paths['report_json']))
+
+
+# ---- spot check of the delegated labels (docs/THOUGHT_UNIT_EXPERIMENT.md section 24.8) ---------------------------------------------------------------
+
+SPOT_SIZE = 10
+
+
+def spot_paths(base_dir: Path, half: str) -> dict[str, Path]:
+    paths = paths_for(base_dir, half)
+    return dict(out=paths['out'], queue=paths['out'] / 'spot-check-queue.json', decisions=paths['out'] / 'decisions-spot-check.jsonl',
+                report_md=paths['out'] / 'SPOT_CHECK.md', report_json=paths['out'] / 'SPOT_CHECK.json')
+
+
+def spot_ids(queue: Mapping[str, Any]) -> list[str]:
+    """Every distinct-points item (they decide the padding reading) plus the first others in sha256(item id) order, up to ten. Chosen by rule, not by my uncertainty."""
+    distinct = [i['id'] for i in queue['items'] if i['kind'] == 'distinct_points']
+    others = sorted((i['id'] for i in queue['items'] if i['kind'] != 'distinct_points'), key=digest)
+    return (distinct + others)[:max(SPOT_SIZE, len(distinct))]
+
+
+def build_spot_queue(base_dir: Path, half: str) -> dict[str, Any]:
+    """The same items as the full queue, without any label, in the full queue's wording; record and no-record items first, as in the blind pass."""
+    full = leaf_review._sealed(paths_for(base_dir, half)['queue'])
+    chosen = set(spot_ids(full))
+    items = [i for i in full['items'] if i['id'] in chosen]
+    items = [i for i in items if i['kind'] in ('record', 'none')] + [i for i in items if i['kind'] not in ('record', 'none')]
+    queue = seal(dict(version=VERSION, half=half, source_sha256=full['content_fingerprint'], item_count=len(items),
+                      phase1=sum(i['kind'] in ('record', 'none') for i in items), items=items))
+    paths = spot_paths(base_dir, half)
+    write_json(paths['queue'], queue)
+    kinds: dict[str, int] = {}
+    for item in items:
+        kinds[item['kind']] = kinds.get(item['kind'], 0) + 1
+    return dict(queue=str(paths['queue']), items=len(items), kinds=kinds, decisions=str(paths['decisions']))
+
+
+def judge_spot(base_dir: Path, half: str, input_fn=input, output_fn=print) -> dict[str, Any]:
+    paths = spot_paths(base_dir, half)
+    paths['out'].mkdir(parents=True, exist_ok=True)
+    build = lambda b, _v: build_spot_queue(b, half)
+    return leaf_review.judge(base_dir, 'human', input_fn, output_fn, leaf_evidence.V2, paths, build)
+
+
+def spot_report(base_dir: Path, half: str) -> dict[str, Any]:
+    """Brian's labels against mine on the same items, and what the padding reading would be if his labels replaced mine on them."""
+    paths, full = spot_paths(base_dir, half), paths_for(base_dir, half)
+    queue, versions = leaf_review._sealed(paths['queue']), leaf_review._sealed(full['versions'])
+    mine, his = leaf_review.load_decisions(base_dir, leaf_evidence.V2, full), leaf_review.load_decisions(base_dir, leaf_evidence.V2, paths)
+    missing = [i['id'] for i in queue['items'] if i['id'] not in his]
+    if missing:
+        raise ValueError(f'{len(missing)} spot-check items are unlabeled')
+    fields = dict(record=('decision', 'fit'), none=('answer',), summary=('answer', 'framed'), distinct_points=('answer',))
+    rows, same = [], 0
+    for item in queue['items']:
+        a, b = mine[item['id']], his[item['id']]
+        agree = {f: a.get(f) == b.get(f) for f in fields[item['kind']]}
+        same += all(agree.values())
+        rows.append(dict(item=item['id'], kind=item['kind'], leaf=item['leaf'], mine={f: a.get(f) for f in agree}, his={f: b.get(f) for f in agree}, agree=all(agree.values())))
+    primary = PRIMARY[half]
+    def reading(label_of) -> dict[str, Any]:
+        distinct = [i for i, m in versions['items'].items() if m['kind'] == 'distinct_points' and any(u['version'] == primary for u in m['uses'])]
+        extras = [i for i, m in versions['items'].items() if m['kind'] == 'record' and any(u['version'] == primary and u.get('index', 0) >= 1 for u in m['uses'])]
+        ok = sum(bool(label_of(i)['answer']) for i in distinct)
+        accepted = sum(label_of(i)['decision'] == 'accept' for i in extras)
+        return dict(distinct=f'{ok} of {len(distinct)}', extras_accepted=f'{accepted} of {len(extras)}',
+                    padding_reading=bool(extras) and accepted / len(extras) + 1e-9 >= 0.85 and (not distinct or ok / len(distinct) + 1e-9 >= 0.85))
+    replaced = lambda i: his.get(i) or mine[i]
+    result = dict(items=len(rows), agree=same, rows=rows, padding_reading_with_my_labels=reading(lambda i: mine[i]), padding_reading_with_his_labels_where_given=reading(replaced))
+    write_json(paths['report_json'], result)
+    lines = ['# Spot check of the delegated labels (section 24.8)', '', f'{same} of {len(rows)} items agree on every field.', '',
+             '| Item | Kind | Leaf | Mine | Brian | Agree |', '| --- | --- | --- | --- | --- | --- |']
+    lines += [f"| {r['item']} | {r['kind']} | {r['leaf']} | `{r['mine']}` | `{r['his']}` | {'yes' if r['agree'] else '**no**'} |" for r in rows]
+    lines += ['', f"Padding reading with my labels: `{result['padding_reading_with_my_labels']}`", f"Padding reading with Brian's labels where given: `{result['padding_reading_with_his_labels_where_given']}`", '']
+    paths['report_md'].write_text('\n'.join(lines))
+    return dict(result, report_md=str(paths['report_md']), report_json=str(paths['report_json']))

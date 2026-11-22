@@ -165,5 +165,14 @@ class QueueTests(Setup):
         self.assertEqual(sorted((p['key'] for p in pairs), key=digest)[:30], sample)
 
 
+class SpotCheckTests(unittest.TestCase):
+    def test_the_spot_check_takes_every_distinct_item_and_fills_to_ten_by_hash(self):
+        items = [dict(id=f'r{n}', kind='record') for n in range(30)] + [dict(id=f'd{n}', kind='distinct_points') for n in range(5)]
+        chosen = set_review.spot_ids(dict(items=items))
+        self.assertEqual(10, len(chosen))
+        self.assertEqual({f'd{n}' for n in range(5)}, {i for i in chosen if i.startswith('d')})
+        self.assertEqual(chosen, set_review.spot_ids(dict(items=list(reversed(items)))))        # independent of queue order
+
+
 if __name__ == '__main__':
     unittest.main()

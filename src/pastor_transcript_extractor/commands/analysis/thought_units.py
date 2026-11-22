@@ -279,22 +279,28 @@ def set_leaf_extract(base_dir: Path = BASE, half: str = HALF, check_only: bool =
         raise typer.BadParameter(str(error)) from error
 
 
+SPOT = typer.Option(False, '--spot-check', help='Section 24.8: the ten-item spot check of the delegated labels instead of the full queue.')
+
+
 @app.command('set-leaf-review')
-def set_leaf_review(base_dir: Path = BASE, half: str = HALF, check_only: bool = typer.Option(False, '--check-only', help='Build the blind queue and report its size; label nothing.'), top: int = TOP):
-    """Brian: label the blind queue for one half of the new set (records and no-record pairs first, then summaries); resumable."""
+def set_leaf_review(base_dir: Path = BASE, half: str = HALF, check_only: bool = typer.Option(False, '--check-only', help='Build the blind queue and report its size; label nothing.'), top: int = TOP, spot_check: bool = SPOT):
+    """Brian: label the blind queue for one half of the new set (records and no-record pairs first, then summaries); resumable. With --spot-check, label only the ten spot-check items."""
     from ...thought_units import set_review
     try:
-        _echo(set_review.build_queue(base_dir, _half(half, top)) if check_only else set_review.judge(base_dir, _half(half, top), 'human', input, typer.echo))
+        if spot_check:
+            _echo(set_review.build_spot_queue(base_dir, _half(half, top)) if check_only else set_review.judge_spot(base_dir, _half(half, top), input, typer.echo))
+        else:
+            _echo(set_review.build_queue(base_dir, _half(half, top)) if check_only else set_review.judge(base_dir, _half(half, top), 'human', input, typer.echo))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
 
 @app.command('set-leaf-report')
-def set_leaf_report(base_dir: Path = BASE, half: str = HALF, top: int = TOP):
-    """Score L1 to L4 per version from the saved extractions and labels for one half and write SET_REPORT.md and .json with the defect table."""
+def set_leaf_report(base_dir: Path = BASE, half: str = HALF, top: int = TOP, spot_check: bool = SPOT):
+    """Score L1 to L4 per version from the saved extractions and labels for one half and write SET_REPORT.md and .json with the defect table. With --spot-check, compare Brian's ten labels with mine."""
     from ...thought_units import set_review
     try:
-        _echo(set_review.report(base_dir, _half(half, top)))
+        _echo(set_review.spot_report(base_dir, _half(half, top)) if spot_check else set_review.report(base_dir, _half(half, top)))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
