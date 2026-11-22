@@ -800,3 +800,27 @@ pte analysis thought-units leaf-report --base-dir /Users/briancummings/Documents
 Version 2 is run and compared in `leaf-evidence-b2/`: its queue mixes the 19 version 1 records with the 19 version 2 records, and its report reads the section 16 baseline's leaf-fit count (14 of 19) from the section 17 report for L2. Version 1's records, plan, ledger,
 labels and report are untouched; because the frozen code hash covers `leaf_evidence.py`, which changed, a rerun of version 1 would now be refused, and none is planned. Offline tests (72 in the thought-unit, object-position and leaf-evidence files, plus the bound-claim suite) pass,
 including a check that the version 2 instruction restores the bound-claim voice and adoption wording verbatim, differs from version 1 only in rules 2, 3 and 6, and contains the text registered in 18.2. The real-data check-only shows 19 requests, worst case $0.31 against the $0.50 ceiling.
+
+### 18.8 Result (2026-11-22): L2 passes; L1, L3 and L4 miss by two records or fewer
+
+Run: 19 requests, 19 records, no failures, no anchor failures, no no-record pairs, $0.0093 (`leaf-evidence-b2/`). Labels for all 57 queue items were written by Claude, blind to version for the 38 record items, at Brian's direction, so they are a
+delegated single-rater pass (`labels_by: claude`). Report: `leaf-evidence-b2/LEAF_REPORT.md`.
+
+| Criterion | Bar | Observed | Result |
+| --- | --- | --- | --- |
+| L1 faithful | at least 85% accepted, at most 1 qualification reject, at most 1 adoption or polarity reject | 15 of 19 (0.79); qualification rejects 0; adoption or polarity rejects 2 | FAIL |
+| L2 leaf fit | at least 85% of pairs correct, not below the section 16 baseline (14 of 19) | 18 of 19 | PASS |
+| L3 summary | at least 85% faithful, complete, accurate target | 15 of 19 (0.79) | FAIL |
+| L4 leaf-framed | at least 85% state their own leaf's act | 16 of 19 (0.84) | FAIL |
+
+Against version 1 on the same 19 pairs (both regraded blind in one queue): both accepted 6, version 2 only 9, version 1 only 0, neither 4. The regrade of version 1 reproduced its section 17 counts exactly (6 accepted; 8 adoption, 4 polarity,
+1 proposition rejects), which is the rater-consistency check. Against the section 16 baseline: accepted counts are equal (15 of 19 each), qualification rejects fall from 4 to 0, and leaf fit rises from 14 to 18 pairs.
+
+Diagnosis from the saved records (descriptive; nothing was refit): the restored contract rules removed the adoption errors (8 to 0) and four records remain rejected, all on three passages: two polarity rejects on a proposition stated negatively
+("not a Christian nation") or as a rebuttal ("the revisionist claim is wrong"), and two proposition rejects where the abortion statistic was given an added conclusion ("failing", "failing morally"). The same three passages account for most of the L3 and
+L4 misses (summaries that "frame this as a failure", a summary rebutting a claim instead of the leaf's act). The rule 2 instruction to return no record for a rebuttal or an implied leaf was not followed: no pair returned an empty list in either version.
+The 19 pairs are 14 blocks, so each bar is two records; these results do not separate small differences.
+
+Acceptance criterion advanced: L2 passed again; L1, L3 and L4 failed narrowly. New evidence: version 2 matches the section 16 baseline on faithfulness while adding leaf fit and a leaf-framed summary, and the residual defects are concentrated, not general.
+Justified next action: stop iterating on these 19 pairs (two rounds have already used them as the test, so a third risks fitting to them). Nothing else runs without Brian's decision. If more evidence is wanted, it should be version 2 unchanged on pairs from a
+different sermon with independent labels; the saved leaf table has flagged public-life pairs only for sermon 281 (19) and sermon 1200 (2), so that needs a new sermon and a Jev pass.
