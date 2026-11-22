@@ -1,7 +1,7 @@
 # Thought-unit experiment: do thought-sized units beat time blocks, with the prompt held constant
 
-**Status: stages 0 and 1 implemented and committed (2026-11-22); no provider call has been made.** The Jev boundary design in section 4 comes from
-offline research. Stage 2 (assessment), stage 3 (main-point extraction), the control arm and the arm-blind review are not built; each waits for the
+**Status (2026-11-22): G1 failed and the original experiment stopped after stage 1 (§13); the boundary probe (§14) and snap test (§15) followed; §16 specifies a downstream three-arm comparison, spec only,
+awaiting approval.** The Jev boundary design in section 4 comes from offline research. Stage 2 (assessment), stage 3 (main-point extraction), the control arm and the arm-blind review are not built; each waits for the
 previous gate and Brian's approval of sections 2 to 11. Brian runs every paid command. Read [AGENTS.md](../AGENTS.md), the closed
 [bound-claim pilot](BOUND_CLAIM_PILOT.md) (§15) and the closed [object-position check](OBJECT_POSITION_CHECK.md) (§10) first. This
 experiment does not change either result.
@@ -403,3 +403,113 @@ so it over-fragments; placing edges is the part that works.
 Acceptance criterion advanced: the snap edges pass H1 to H3 on a held-out sermon against the time-block baseline. New evidence: Jev's ranking places edges better than arbitrary edges and
 better than a mechanical nearest-sentence snap, even though its confident-cut recall was low. Justified next action: Brian's calibration of Claude's grading, then a decision about whether to carry the
 snapped blocks into the assessment and extraction stages.
+
+## 16. Downstream comparison: time blocks, snapped edges, and snapped edges with splitting (specification, 2026-11-22; Brian's direction after section 15)
+
+**Status: spec only; nothing below is built or run.** Brian waived the 15-item calibration of section 15: the snap result stays Claude-graded and single-rater, and the proof is now downstream. This section is a
+separately authorized experiment. It does not reopen G1 (section 13): arms S and X come from the snap method of section 15, not from the stage 1 thought units. The closed pilot,
+the object-position check and every saved artifact stay unchanged.
+
+### 16.1 The one question
+
+> On sermon 281, do the leaf flags and main-point records made over Jev-snapped blocks (S) match or beat those over the existing time blocks (B), and does adding Jev-ranked interior splits (X) give a
+> net gain over snapped edges alone (S)?
+
+Why. Section 15 measured positions only: splitting cut multi-thought units from 27% to 7% but 10 of its 15 added cuts were not real breaks. Whether fewer mixed units outweigh stranded
+qualifications, causes and positions (the pilot's failure) is a property of the determinations made on the units, so it is measured there. Splitting is the only question with a real
+trade, so X against S is the primary comparison and B is the control.
+
+### 16.2 Design
+
+Sermon 281, profile 318, with the seven components (`object_position/components.py`, unchanged), the saved block texts and saved leaf table as arm B. Exposure disclosure as in section 2:
+the components were written after reading this sermon, so this is exposed development material, not independent validation.
+
+| Arm | Units | Leaf signals | Stage 3 |
+| --- | --- | --- | --- |
+| B (control) | the 76 existing blocks | saved leaf table (already paid) | prompt, leaf rule, model below; identical in all arms |
+| S | the 76 block edges placed by the section 15 `jev` method, no interior splits | new Jev calls on S units, new cache | identical |
+| X | S plus the section 15 interior splits | new Jev calls on X units, new cache | identical |
+
+- **Snap on 281.** The section 15 method and constants (0.15 margin, 2 sentences, 2,304 characters, 75th percentile, 3 sentence separation) are reused unchanged. Candidate scoring on 281 needs a
+  new `--video` option on `snap`; the default stays 1200 so the closed test still reproduces. Estimated about 750 candidates, about 3,750 questions, about $0.04 (`--check-only` reports the
+  exact figures). The sermon-1200 grading packet is not built for 281.
+- **Units.** Cuts only partition text, so the section 15 coverage check applies to S and X and a failure stops the run. Each unit carries its segment indexes and start seconds (cache
+  identity and watch links); the segment mapping of section 4 is the first `--check-only` task and must succeed for every unit before any payment. Units are not renumbered into the block
+  cache. Expected counts, from the 1200 ratio: about 76 units for S and about 104 for X.
+- **Reuse before recomputation.** A S or X unit whose text is byte-identical to a B block, under the same `jev-1.13.0`, question set and context rules, may reuse that block's saved leaf
+  answers. `--check-only` reports how many qualify; an unmatched or ambiguous unit is recomputed, and no compatibility rule is relaxed.
+- **Stage 2, assessment (Jev, new cache).** Only the packs the flag rule reads: the topic pack (`T:society_public_life`) and the public-life treatment pack (the six `P:` leaves of section 3).
+  The salvation and style packs are not run. Upper bound at the section 4 rate ($0.0008 per unit for all 59 questions): $0.06 for S and $0.08 for X.
+- **Stage 3, main point (LLM).** Frozen choices of section 3 are kept unchanged: DeepSeek V4.1 Flash, reasoning off, the six `P:` leaves on units with `T:society_public_life` at least 0.9, a pair
+  flagged at leaf probability at least 0.8, at most the top two leaves per unit, instruction `thought-main-point-v1` sealed by hash and identical for all three arms, and context of adjacent
+  units for resolving references only. Brian reviews the instruction text before it is sealed. Anchors are located by code in the unit text.
+
+### 16.3 Measures (all three arms, same rules)
+
+1. **Components.** How many of the seven appear in the arm's records, located by code and judged by Brian, and whether component 1 carries its component 4 qualification (a record or its unit must
+   hold both). Pilot baseline on blocks with the old prompt: 6 of 7, unqualified.
+2. **Precision.** Brian labels a blind, shuffled queue of 30 records per arm (by fixed seed from the source hash; an arm with fewer than 30 records is labeled in full) with the existing accept and
+   reject:field vocabulary including `role`. Each record is shown with its unit and the adjacent units' text so a stranded qualification can be judged. Records with identical claim text across arms
+   are labeled once and the label is shared, so the load is at most 90 and expected lower.
+3. **Routing.** Percentile of the `T:society_public_life` score of the unit that holds each component, per arm, against the saved block baseline (b92 0.96, b93 1.0, b113 0.86).
+4. **Volume.** Records per arm against the pilot's 319 for the whole sermon set.
+5. **Efficiency.** Jev and LLM requests, tokens and dollars per stage and arm, and all-stage cost per accepted record (arm B counts its stage 3 plus the saved leaf pass for this sermon;
+   S and X count snap scoring, assessment and stage 3).
+
+### 16.4 Acceptance, frozen before execution
+
+- **A1 (integrity).** S and X pass the coverage check, have no mid-sentence cuts and no guard violations, and every unit maps to segment indexes. Fail stops the run.
+- **A2 (snapping is not worse than the control).** S's accepted share on its labeled records is not more than 0.10 below B's (about 3 labels of 30, the resolution of this sample), and S has at least
+  as many of the seven components as B with the component 1 qualification attached no less often. If A2 fails, snapped blocks are not carried forward and time blocks stay.
+- **A3 (splitting gives a net gain over snapping).** X's accepted share is at least 0.10 above S's, and X has at least as many of the seven components as S with the component 1 qualification
+  attached no less often. Without positive evidence on both, splitting is dropped; a tie or an inconclusive result is not a gain.
+- **A4 (splitting efficiency).** X's all-stage cost per accepted record is at most 1.5 times S's.
+- **Decision.** X is carried forward only if A1 to A4 all hold; S if A1 and A2 hold and A3 or A4 does not; time blocks stay if A2 fails.
+- **Reported, not bars.** Whether the best arm reaches an accepted share of 0.80 (the original A3 level); this experiment decides between unit shapes on one exposed sermon and confers no production
+  admission. Whether any arm attaches the component 1 qualification (A2 and A3 only compare arms), tie share, records stranded for qualification or scope by arm (counted from Brian's reject fields),
+  and the per-arm distributions of unit size and records per unit.
+
+Low power is stated up front: 30 labels per arm resolve differences of about 0.10 to 0.15 at best, from one sermon with one set of labels, so A3's 0.10 is a floor for treating the difference as
+more than noise, not a significance test. A pass is engineering evidence about unit shape on one exposed sermon, not validation.
+
+### 16.5 Cost, ceilings and stops
+
+- Expected total about $0.30 (snap $0.04, assessment up to $0.14, stage 3 about $0.04 to $0.05 per arm); run ceiling $1.00 and 600 physical requests. This is a per-run ceiling on a new ledger entry
+  set under `<base>/evaluation/thought-unit-experiment-v1/arms-281/`; historical budgets, receipts and the earlier $3.00 ledger are unchanged and their cumulative counts are reporting only.
+- Worst-case reservations are checked before each stage against the remaining ceiling, with bounded streaming recovery as in the pilot and no automatic expansion.
+- No semantic retry, no second prompt, no re-run of any stage to overcome a result, no threshold, constant, rule, leaf-set or model change after the freeze, and no next experiment started from
+  a result without Brian's decision.
+- Stop and report on: a coverage or segment-mapping failure, a stage 3 schema failure rate above 10%, transport failures above 5%, unresolved usage, or the ceiling.
+- Usage accounting: there are no helper agents; assistant effort is limited to the build, the check-only reports and the final report, at least 10% of effort is reserved for verification and handoff,
+  and provider spend comes from the ledger.
+
+### 16.6 Gaps and the smallest change
+
+| Statement blocked | Reuse inspected | Missing | Insertion point | Smallest change | Acceptance check |
+| --- | --- | --- | --- | --- | --- |
+| S and X units for 281 | section 15 snap (sermon 1200 only) | `--video` and unit files with segment indexes | `thought_units/stage.py` snap and a unit builder | add `--video` (default 1200) and write B, S, X unit files | A1 and the segment mapping pass `--check-only` |
+| Leaf flags on S and X | saved block leaf table fits B only; byte-identical units may reuse | new Jev answers on changed units | existing `TypeSafeBlockCache` in a new cache | topic and public-life treatment packs only | request and cost report from `--check-only` |
+| Main points on all arms | object-position and pilot instruction rules, anchor check, executor, ledger | `thought-main-point-v1` and the per-arm runner | new instruction plus the shared executor with one new request version | one instruction, identical across arms | schema failure at most 10%, anchors located by code |
+| Blind comparison | pilot review queue and report format | three-arm queue and report | review and report modules | queue of at most 30 labeled records per arm | the A1 to A4 table |
+
+### 16.7 Commands (names proposed; each paid step has `--check-only`; Brian runs paid commands)
+
+```bash
+pte analysis thought-units snap --base-dir /Users/briancummings/Documents/PastorSearchData --video 281 --check-only
+pte analysis thought-units snap --base-dir /Users/briancummings/Documents/PastorSearchData --video 281
+pte analysis thought-units arms --base-dir /Users/briancummings/Documents/PastorSearchData --video 281 --check-only
+pte analysis thought-units assess --base-dir /Users/briancummings/Documents/PastorSearchData --arm s --check-only
+pte analysis thought-units assess --base-dir /Users/briancummings/Documents/PastorSearchData --arm x --check-only
+pte analysis thought-units extract --base-dir /Users/briancummings/Documents/PastorSearchData --arm b --check-only
+pte analysis thought-units review --base-dir /Users/briancummings/Documents/PastorSearchData
+pte analysis thought-units arms-report --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+### 16.8 Decisions for Brian
+
+1. Approve the question, the three arms, the measures and A1 to A4, or edit them now. They cannot change after an output exists. The numbers I chose that you have not seen before are A3's
+   0.10 and A4's 1.5; A2's 0.10 allowance is the sample's resolution.
+2. Approve the per-run ceiling ($1.00, 600 requests), Flash as the producer and the control arm B.
+3. Approve the labeling load: at most 30 records per arm (expected under 90, with duplicate records labeled once).
+4. Approve writing `thought-main-point-v1` for your review before it is sealed.
+5. Confirm this is a separately authorized experiment, since it reopens the unit question after sections 13 and 14 (as section 11 did, now with a measured basis in section 15).
