@@ -563,3 +563,29 @@ not a retry; no second round starts without Brian's decision.
 (arm B has 19 pairs, where one failure is 5.3%) cannot stop it; the failed request still keeps its reservation and is never retried. One shared helper, `exceeds_failure_rate` in `bound_claims/common.py`, replaces the
 inline comparisons in the pilot's extract (transport and schema) and verify (transport) steps and in `thought_units/main_point.py`; the closed pilot's artifacts, receipts and budgets are unchanged. A frozen
 `plan.json` records `minimum_failures`. The pilot's verify test that expected one failure of two to stop now expects it to continue, and a test covers both sides of the floor.
+
+### 16.10 Result (2026-11-22): A1, A3 and A4 pass, A2 fails; time blocks stay
+
+Run: snap on 281 (50 requests, $0.036), assessment of S and X (80 requests, $0.085), extraction for all three arms (74 requests, $0.025, no failures, no stop rule); ledger $0.145 of $1.00 over 204 attempts.
+Labels for all 65 queue records were written by Claude, blind to arm (from `review.json` only, one rubric: faithful proposition, correct polarity, voice and role, real attached qualifications, nothing added), at
+Brian's direction ("you evaluate"), so they are a delegated single-rater first pass, not Brian's judgment; the report records `labels_by: claude`. Report: `arms-281/ARMS_REPORT.md`.
+
+| Arm | Units | Pairs | Records | Accepted | Share | Components | Cost | Cost per accepted |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| B time blocks | 76 | 19 | 19 | 15 | 0.789 | 0 of 7 | $0.028 | $0.0019 |
+| S snapped edges | 75 | 26 | 24 | 12 | 0.500 | 0 of 7 | $0.086 | $0.0071 |
+| X snapped plus splits | 125 | 29 | 24 | 17 | 0.708 | 0 of 7 | $0.088 | $0.0052 |
+
+- **A1 pass.** Every arm keeps all text once, no mid-sentence cut, no unmapped unit; one edge was dropped.
+- **A2 fail.** S's share is 0.29 below B's, against an allowance of 0.10. Decision: time blocks stay. The verdict does not depend on how strict the grading was: if every reject for attached qualifications were accepted instead,
+  shares would be B 1.00, S 0.79, X 0.88 and S would still be 0.21 below B.
+- **A3 and A4 pass on their face and are moot.** X beat S by 0.21 (but by only 0.08 under the lenient reading, which would fail the 0.10 bar) and cost less per accepted record (0.73 times S), and X is still below B.
+  S's rejects were mostly attached-qualification errors (7 of 24) and proposition errors (4 of 24, three on `P:supportive` pairs). The same text often drew the same attached-qualification defect in several arms, so the defect is at least
+  partly the extraction prompt's, not only the unit shape.
+- **Components: 0 of 7 in every arm.** The frozen flag rule (topic at least 0.9 and a public-life leaf at least 0.8) never selects the units holding the seven components (their topic scores are 0.79 to 0.96 and
+  none has a leaf at 0.8 in the same unit as a passing topic), so the component parts of A2 and A3 compared 0 with 0 and carry no information. This is a gap in the flag rule, independent of arm.
+- **Reference, not a bar:** the best arm (B) reached 0.79 against 0.80; no production admission.
+
+Acceptance criterion advanced: A2 evaluated and failed, so snapped blocks are not carried forward on this evidence. New evidence: Jev-snapped edges did not improve the extracted records over time blocks on sermon 281 (S was worse),
+and splitting recovered some of that loss without exceeding the control. Limits: one sermon, one exposed set, 19 to 24 records per arm, one rater who is not Brian, and a defect (attached qualifications) that the instruction, not the units, may own.
+Justified next action: close the snapping line and keep time blocks. Brian may spot-check a sample of the labels if the verdict matters to a later decision; nothing further runs without his decision.
