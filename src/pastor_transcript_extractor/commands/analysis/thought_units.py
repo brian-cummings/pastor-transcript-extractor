@@ -289,3 +289,50 @@ def set_leaf_report(base_dir: Path = BASE, half: str = HALF):
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
+
+ARM = typer.Option(..., '--arm', help='b (time blocks), s (snapped units) or x (snapped units with splits).')
+
+
+@app.command('compare-passages')
+def compare_passages(base_dir: Path = BASE):
+    """Section 22 step 1 (offline): list every passage any arm flagged on sermon 281 and the unit each arm holds it in; no provider call."""
+    from ...thought_units import unit_compare
+    try:
+        _echo(unit_compare.build(base_dir))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('compare-extract')
+def compare_extract(base_dir: Path = BASE, arm: str = ARM, check_only: bool = CHECK, variant: str = VARIANT):
+    """Section 22 step 2: leaf-evidence extraction for one arm's unit on every passage (own folder and ledger); one run, no retry."""
+    from ...thought_units import leaf_evidence
+    try:
+        if arm not in leaf_evidence.COMPARE:
+            raise ValueError('--arm must be b, s or x')
+        _echo(leaf_evidence.run(base_dir, check_only=check_only, variant=leaf_evidence.VARIANTS[variant], scope=leaf_evidence.COMPARE[arm]))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('compare-review')
+def compare_review(base_dir: Path = BASE, check_only: bool = typer.Option(False, '--check-only', help='Build the blind queue and report its size; label nothing.'),
+                   variant: str = VARIANT):
+    """Brian: label the blind same-passage queue (defensible and single point per option, then the best option); resumable."""
+    from ...thought_units import compare_review as module
+    try:
+        chosen = module.leaf_evidence.VARIANTS[variant]
+        _echo(module.build_queue(base_dir, chosen) if check_only else module.judge(base_dir, 'human', input, typer.echo, chosen))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('compare-report')
+def compare_report(base_dir: Path = BASE, variant: str = VARIANT):
+    """Score the same-passage comparison from the saved extractions and labels and write COMPARE_REPORT.md and .json."""
+    from ...thought_units import compare_review as module
+    try:
+        _echo(module.report(base_dir, module.leaf_evidence.VARIANTS[variant]))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+

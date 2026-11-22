@@ -1,7 +1,7 @@
 # Thought-unit experiment: do thought-sized units beat time blocks, with the prompt held constant
 
-**Status (2026-11-22): G1 failed and the original experiment stopped after stage 1 (§13); the boundary probe (§14) and snap test (§15) followed; §16 specifies a downstream three-arm comparison, spec only,
-awaiting approval.** The Jev boundary design in section 4 comes from offline research. Stage 2 (assessment), stage 3 (main-point extraction), the control arm and the arm-blind review are not built; each waits for the
+**Status (2026-11-22): G1 failed and the original experiment stopped after stage 1 (§13); the boundary probe (§14) and snap test (§15) followed; §16 compared three arms downstream, §17 to §21 improved the leaf-evidence
+extraction on time blocks only, and §22 reopens the unit comparison with that instruction on the same passages. Correction: §16's "time blocks stay" was a verdict of that one weak comparison, not a finding that blocks are better; the unit question is open (§22).** The Jev boundary design in section 4 comes from offline research. Stage 2 (assessment), stage 3 (main-point extraction), the control arm and the arm-blind review are not built; each waits for the
 previous gate and Brian's approval of sections 2 to 11. Brian runs every paid command. Read [AGENTS.md](../AGENTS.md), the closed
 [bound-claim pilot](BOUND_CLAIM_PILOT.md) (§15) and the closed [object-position check](OBJECT_POSITION_CHECK.md) (§10) first. This
 experiment does not change either result.
@@ -566,6 +566,8 @@ inline comparisons in the pilot's extract (transport and schema) and verify (tra
 
 ### 16.10 Result (2026-11-22): A1, A3 and A4 pass, A2 fails; time blocks stay
 
+> **Superseded as a conclusion (2026-11-22, §22).** "Time blocks stay" is this comparison's frozen decision rule firing, nothing more: the extraction instruction was the weak `thought-main-point-v1` (not leaf-conditioned), the differences were not significant, and the arms were judged on different passages (see the post-hoc check below). It is not evidence that time blocks give more defensible points than thought units.
+
 Run: snap on 281 (50 requests, $0.036), assessment of S and X (80 requests, $0.085), extraction for all three arms (74 requests, $0.025, no failures, no stop rule); ledger $0.145 of $1.00 over 204 attempts.
 Labels for all 65 queue records were written by Claude, blind to arm (from `review.json` only, one rubric: faithful proposition, correct polarity, voice and role, real attached qualifications, nothing added), at
 Brian's direction ("you evaluate"), so they are a delegated single-rater first pass, not Brian's judgment; the report records `labels_by: claude`. Report: `arms-281/ARMS_REPORT.md`.
@@ -601,7 +603,7 @@ a larger passage set and is a separate decision.
 
 Brian asked whether the stage 3 instruction uses Jev's category and leaf findings, and then corrected the first draft of this section: the prompt should look for the supporting summary of the thought, not the single clearest
 passage. A unit is a complete thought, and Jev has said what kind of thought it is (category) and how it treats public life (leaf); the extractor's job is to state that thought, in the leaf's terms, with the preacher's own
-qualifications and reasons, and only then to point to the quote that supports it. This section is a separately authorized single test; it does not reopen the unit question (time blocks stay) or change any section 16 result.
+qualifications and reasons, and only then to point to the quote that supports it. This section is a separately authorized single test; it does not change any section 16 result (the unit question stays open, see §22).
 
 ### 17.1 Demonstrated gap
 
@@ -828,7 +830,7 @@ different sermon with independent labels; the saved leaf table has flagged publi
 ## 19. A new set of public-life sermons, with a development and a held-out half (specification and first steps, 2026-11-22; Brian: "find a new set and iterate")
 
 Sections 17 and 18 used sermon 281's 19 pairs twice, and the saved leaf table has flagged public-life pairs only for sermon 281 (19) and sermon 1200 (2), so further tuning on them would fit them. This section finds new material and fixes the protocol
-for using it. It does not reopen the unit question (time blocks stay): the units here are the saved sermon-labeled time blocks.
+for using it. The units here are the saved sermon-labeled time blocks because Jev snapping has not been run on these sermons; the unit question is open and is tested separately (§22).
 
 ### 19.1 Selection (done offline; nothing paid)
 
@@ -977,4 +979,47 @@ No change addresses the single voice instance; it is recorded, not acted on. The
 ### 21.3 Commands (Brian runs; the tree must be clean)
 
 `set-leaf-extract --half development --variant v3`, then `--half held-out` for `--variant v2` and `--variant v3`, then `set-leaf-review --half held-out`, then `set-leaf-report --half held-out`. Held-out version 2 is not run before version 3 is committed and frozen, which it now is.
+
+## 22. Same-passage comparison of time blocks, snapped units and snapped units with splits (specification and implementation, 2026-11-22; Brian: "the point is that thought units should have a single defensible point")
+
+### 22.1 Why this reopens §16
+
+§16 asked a fair question with an unfair measure. Each arm's accepted share was taken over the passages that arm itself flagged, the arms flagged different passages, the extraction instruction was the weak `thought-main-point-v1`, no component was ever reached, and no difference was significant. Sections 17 to 21 then improved the instruction on time blocks only. Nothing has tested the claim that matters: **a thought unit states a single defensible point more often than a time block holding the same passage.**
+
+### 22.2 Design (all on sermon 281, where all three arms exist; $0.05)
+
+- **Passages first.** Every (leaf, character span) that any arm flagged under the frozen flag rule (topic at least 0.9, leaf at least 0.8, top two per unit) is a candidate; spans of the same leaf that overlap are merged into one passage. Today that is **31 passages**: flagged by all three arms 13, by S and X 5, by B and S 1, by B alone 3, by S alone 3, by X alone 6.
+- **Each arm answers every passage.** The arm's own flagged unit with the largest overlap holds the passage when it flagged one; otherwise (14 passages for B, 9 for S, 7 for X) its unit with the largest overlap holds it and is **forced**: the same instruction is asked about the same leaf. The producer may return an empty list; an empty list is that arm declining the passage.
+- **Same instruction, same context, same producer.** `leaf-evidence-v2` (frozen, graded on arm B in §18 and §20), preceding and following units as in §16. Version 3 is not used here because its held-out verdict is pending; if it is adopted, this comparison is rerun with it (about $0.05). Each arm has its own folder and ledger ($1.00 and 80 attempts per run, 31 requests each, no retry); no request overflows the producer cap (longest three-unit window 4,905 characters for S).
+- **Identical units give identical records.** Where an arm's unit is the same text as another arm's (a snapped edge that coincides with a block), the records are the same and collapse into one option, so those passages are ties by construction and are counted as such.
+
+### 22.3 Measure (blind to arm; labels by Claude unless Brian labels)
+
+One item per passage: the passage with a little context, and each distinct record in shuffled order with neutral letters (summary, proposition, polarity, voice, adoption, role, qualifications, anchor). For each option: **defensible** (supported by the passage, polarity and voice right, nothing added) and **single** (states one point, not a bundle of separable claims and not a fragment). With two or more options: which states the single most defensible point, or `tie`, or `none`. The arm map is kept in a separate file; the arms' names and unit shapes are never shown, but a unit's boundary can show in the passage text and anchor, so blindness is partial.
+
+### 22.4 Decision rule, frozen before any extraction
+
+For arm S and arm X separately against B, over passages where both produced a record and the records differ: wins, losses and ties by the best-option label, with a one-sided exact sign test on wins against losses.
+- **Better than time blocks:** at least 8 decisive comparisons, wins exceed losses, p at most 0.10, and the arm's records that are both defensible and single are not fewer than B's.
+- **Worse than time blocks:** the mirror image.
+- **Otherwise: no demonstrated difference.** That is a result, not a failure to be rerun.
+Also reported, not tested: per arm, records, defensible, single, both, and both over all 31 passages (coverage); both on own flags against forced; and the passages where all three arms produced a record.
+
+### 22.5 What each outcome justifies, and the limits
+
+- **Better:** the claim is supported on one sermon; the next action (Brian's decision) is to run snapping and this comparison on the new set (Jev boundaries on 196 blocks, about $0.30, plus extraction) so it is not one sermon.
+- **No difference:** the unit question stays open; the evidence is too thin to separate the arms, and the next action is a larger passage set, not a verdict.
+- **Worse:** snapping is closed on this evidence and time blocks are kept for now.
+- **Limits.** One sermon, 31 passages chosen by the arms' own flags, one rater who also wrote the instruction (Brian's spot-check of 10 passages is the proposed control), partial blindness, and the flag-rule gap: the seven components remain unreached by every arm and are outside this test (a component-targeted check is a separate decision).
+
+### 22.6 Implementation and commands (offline-tested: 59 thought-unit tests across the touched files pass; real-data check-only: 31 requests per arm, $0.51 reserved each)
+
+`unit_compare.py` (passage list and each arm's pairs, sealed), `leaf_evidence` scopes `compare_b`, `compare_s`, `compare_x`, `compare_review.py` (queue, labeling loop, report), CLI under `pte analysis thought-units`:
+
+```bash
+pte analysis thought-units compare-passages --base-dir <base>                     # offline, done
+pte analysis thought-units compare-extract --base-dir <base> --arm b --variant v2 # paid, Flash; then --arm s, --arm x
+pte analysis thought-units compare-review --base-dir <base> --check-only          # builds the blind queue; label with Claude or Brian
+pte analysis thought-units compare-report --base-dir <base>
+```
 

@@ -23,7 +23,7 @@ from pastor_transcript_extractor.collector_retrieval_json_v1_1 import seal
 from pastor_transcript_extractor.context_extraction_validation import strict_json
 from pastor_transcript_extractor.sermon_topics import TOPIC_SPECS
 
-from . import arms, main_point, public_set, stage
+from . import arms, main_point, public_set, stage, unit_compare
 
 INSTRUCTION_VERSION = 'leaf-evidence-v1'
 VERSION = 'leaf-evidence-run-v1'
@@ -152,13 +152,15 @@ class Scope:
     key: str
     ceiling_usd: Decimal
     ceiling_attempts: int
+    arm: str | None = None          # section 22: one arm's pairs for the same-passage comparison on sermon 281
 
 
 ARMS = Scope('arms', CEILING_USD, CEILING_ATTEMPTS)
 # A set half costs about $0.0005 a pair but reserves $0.0164 a request: 77 held-out pairs reserve $1.26. These are per-run ceilings, not cumulative.
 DEVELOPMENT = Scope('development', Decimal('1.00'), 60)
 HELD_OUT = Scope('held_out', Decimal('1.50'), 100)
-SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT)}
+COMPARE = {arm: Scope(f'compare_{arm}', Decimal('1.00'), 80, arm) for arm in unit_compare.ARMS}
+SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, *COMPARE.values())}
 
 RECORD_SCHEMA: dict[str, Any] = copy.deepcopy(bound.CLAIM_SCHEMA)
 RECORD_SCHEMA['required'] = [*bound.FIELDS, *EXTRA_FIELDS]
@@ -170,6 +172,8 @@ RESPONSE_SCHEMA: dict[str, Any] = {'type': 'object', 'additionalProperties': Fal
 def leaf_dir(base_dir: Path, variant: Variant = V1, scope: Scope = ARMS) -> Path:
     if scope is ARMS:
         return stage.paths(base_dir)[2] / variant.directory
+    if scope.arm:
+        return unit_compare.compare_dir(base_dir) / f'{variant.directory}-{scope.arm}'
     return public_set.set_dir(base_dir) / f'{variant.directory}-{scope.key.replace("_", "-")}'
 
 
@@ -207,11 +211,16 @@ def pair_inputs(base_dir: Path, scope: Scope = ARMS) -> list[dict[str, Any]]:
     """The scope's pairs: arm B's as section 16 sent them (same units, leaves, neighbors), or a half of the new set's."""
     if scope is ARMS:
         return main_point.pair_inputs(base_dir, 'b')
+    if scope.arm:
+        return unit_compare.arm_pairs(base_dir, scope.arm)
     return public_set.half_pairs(base_dir, scope.key)
 
 
 def units_identity(base_dir: Path, scope: Scope = ARMS) -> str:
     """The file whose bytes fix the units: the sealed sermon-281 units, or the new set's sealed pairs (which carry each unit's text)."""
+    if scope.arm:
+        unit_compare.load(base_dir)
+        return file_sha256(unit_compare.clusters_path(base_dir))
     return file_sha256(arms.arms_paths(base_dir)['units'] if scope is ARMS else public_set.set_dir(base_dir) / 'pairs.json')
 
 
@@ -251,7 +260,7 @@ def freeze_identity(base_dir: Path, pairs: list[Mapping[str, Any]], variant: Var
     here = Path(__file__).parent
     return dict(instruction_sha256=digest(variant.prompt), instruction_version=variant.version, schema_sha256=digest(RESPONSE_SCHEMA), category=dict(name=CATEGORY, meaning=category_meaning()),
                 scope=scope.key, pairs_sha256=arms.pairs_digest(pairs), units_sha256=units_identity(base_dir, scope), producer=provider.policy_for(PRODUCER_VERSION),
-                code_sha256=digest([file_sha256(here / name) for name in ('leaf_evidence.py', 'main_point.py', 'arms.py', 'public_set.py')]),
+                code_sha256=digest([file_sha256(here / name) for name in ('leaf_evidence.py', 'main_point.py', 'arms.py', 'public_set.py', 'unit_compare.py')]),
                 **({} if scope is ARMS else dict(inputs_sha256=digest(list(pairs)))))
 
 
