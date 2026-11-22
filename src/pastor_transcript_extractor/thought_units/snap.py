@@ -5,6 +5,7 @@ Constants are fixed in the spec and never tuned.
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 import statistics
 from typing import Any, Callable, Mapping, Sequence
@@ -151,9 +152,20 @@ def split_cuts(text: str, pieces: Sequence[cand.Piece], found: Sequence[cand.Can
 
 # ---- running ----------------------------------------------------------------------------------------------------------
 
-def _prepare(base_dir: Path):
+ARMS_CEILING_USD, ARMS_CEILING_ATTEMPTS = Decimal('1.00'), 600
+
+
+def arms_dir(base_dir: Path, video: int) -> Path:
+    """The downstream comparison's own folder and ledger (spec section 16); sermon 1200's artifacts are never touched."""
+    return stage.paths(base_dir)[2] / f'arms-{video}'
+
+
+def _prepare(base_dir: Path, video: int | None = None):
     leaf, _, out = stage.paths(base_dir)
-    video = min(item['video_id'] for item in read_json(leaf)['sermons'] if item['video_id'] not in EXCLUDED_VIDEOS)
+    if video is None:
+        video = min(item['video_id'] for item in read_json(leaf)['sermons'] if item['video_id'] not in EXCLUDED_VIDEOS)
+    else:
+        out = arms_dir(base_dir, video)
     sermon = sermons.load(leaf, video)
     pieces = cand.split_pieces(sermon.text)
     # Sentence ends only: a cut after a piece without terminal punctuation (an unpunctuated caption line) would be mid-sentence.
@@ -184,10 +196,13 @@ def arm_summary(text: str, pieces, cuts: Sequence[int]) -> dict[str, Any]:
 
 
 def run(base_dir: Path, *, check_only: bool = False, factory: Callable = jev.default_factory,
-        state: Callable[[], dict[str, Any]] = git_state) -> dict[str, Any]:
-    leaf, out, sermon, pieces, found, edges = _prepare(base_dir)
+        state: Callable[[], dict[str, Any]] = git_state, video: int | None = None) -> dict[str, Any]:
+    """Default: the held-out sermon of section 15. With `video`: the same method on that sermon, under its own folder and ledger."""
+    leaf, out, sermon, pieces, found, edges = _prepare(base_dir, video)
     built = candidate_questions(sermon, pieces, found)
-    asker = jev.Asker(out / 'snap_answers.json', stage._ledger(out), questions.STATE, factory=factory, label='snap')
+    ledger = (stage._ledger(out) if video is None
+              else stage._ledger(out, ceiling_usd=ARMS_CEILING_USD, ceiling_attempts=ARMS_CEILING_ATTEMPTS))
+    asker = jev.Asker(out / 'snap_answers.json', ledger, questions.STATE, factory=factory, label='snap')
     in_range = [sum(lo < c.position < hi for c in found) for lo, hi in
                 ((edges[j - 1] if j else 0, edges[j + 1] if j + 1 < len(edges) else len(sermon.text)) for j in range(len(edges)))]
     plan = dict(step='snap test', video_id=sermon.video_id, title=sermon.title, characters=len(sermon.text), pieces=len(pieces),
@@ -220,6 +235,9 @@ def run(base_dir: Path, *, check_only: bool = False, factory: Callable = jev.def
                        split=dict(added=split['added'], threshold=split['threshold'], peaks=split['peaks']),
                        scores={str(k): round(v, 4) for k, v in scores.items()}))
     write_json(out / 'snap_result.json', result)
+    if video is not None:  # the downstream comparison needs the arms only; the blind packet is the section 15 grading apparatus
+        return dict(plan, output=str(out / 'snap_result.json'), summaries=summaries,
+                    placement={k: v for k, v in result['placement'].items() if k != 'moves'}, split=result['split'])
     sample = build_sample(sermon, pieces, result)
     write_json(out / 'snap_sample.json', sample)
     return dict(plan, output=str(out / 'snap_result.json'), summaries=summaries, placement={k: v for k, v in result['placement'].items() if k != 'moves'},

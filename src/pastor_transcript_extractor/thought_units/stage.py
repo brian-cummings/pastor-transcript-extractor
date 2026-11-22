@@ -29,8 +29,8 @@ def paths(base_dir: Path) -> tuple[Path, Path, Path]:
             ensure_outside_repository(evaluation_root_for(build_paths(base_dir), base_dir) / NAME))
 
 
-def _ledger(out: Path) -> PilotLedger:
-    return PilotLedger(out / 'ledger.json', ceiling_usd=CEILING_USD, ceiling_attempts=CEILING_ATTEMPTS)
+def _ledger(out: Path, *, ceiling_usd: Decimal = CEILING_USD, ceiling_attempts: int = CEILING_ATTEMPTS) -> PilotLedger:
+    return PilotLedger(out / 'ledger.json', ceiling_usd=ceiling_usd, ceiling_attempts=ceiling_attempts)
 
 
 def _pieces(sermon: sermons.Sermon):
