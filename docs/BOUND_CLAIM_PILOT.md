@@ -413,3 +413,8 @@ Review tooling added for this: `pte analysis bound-claims review --only <ids.jso
 claims with no label yet (existing labels win), stamping every record with its provenance; the report's `labels.by_source`
 states how much of the labeling was the reviewer's own (`human`) versus imported.
 
+
+Review vocabulary (2026-11-22): `reject:role` was added during labeling, after the first 15 labels, because
+prayers and petitions were extracted with a wrong `speech_role` (`asserted` or `requested_of_listener`, not
+`performed`). Earlier plain `reject` labels stay valid; accept/reject scoring is unchanged. The sealed `review.json`
+was rebuilt with identical items and order.

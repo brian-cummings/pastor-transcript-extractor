@@ -16,7 +16,7 @@ STRING_LISTS = ('conditions', 'qualifications', 'reasons')
 FIELDS = ('area', 'object', 'proposition', 'polarity', 'voiced_by', 'preacher_adoption',
           'speech_role', 'conditions', 'qualifications', 'reasons', 'anchor_text', 'anchor_offsets')
 # Review rejection categories, shared by the review queue and the report.
-REJECTION_FIELDS = ('proposition', 'polarity', 'voice', 'adoption', 'conditions', 'qualifications', 'anchor')
+REJECTION_FIELDS = ('proposition', 'polarity', 'voice', 'adoption', 'conditions', 'qualifications', 'anchor', 'role')
 
 SYSTEM_PROMPT = (
     'You extract bound claims from one block of a sermon transcript. A bound claim is a proposition, '

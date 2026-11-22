@@ -135,6 +135,7 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual('reject', review.parse_decision('reject'))
         self.assertEqual('reject:adoption', review.parse_decision('r adoption'))
         self.assertEqual('reject:qualifications', review.parse_decision('reject:qualifications'))
+        self.assertEqual('reject:role', review.parse_decision('r role'))
         self.assertIsNone(review.parse_decision('reject:colour'))
         self.assertIsNone(review.parse_decision('accept:voice'))
 
