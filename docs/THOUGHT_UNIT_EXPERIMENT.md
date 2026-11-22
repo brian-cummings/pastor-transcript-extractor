@@ -589,3 +589,10 @@ Brian's direction ("you evaluate"), so they are a delegated single-rater first p
 Acceptance criterion advanced: A2 evaluated and failed, so snapped blocks are not carried forward on this evidence. New evidence: Jev-snapped edges did not improve the extracted records over time blocks on sermon 281 (S was worse),
 and splitting recovered some of that loss without exceeding the control. Limits: one sermon, one exposed set, 19 to 24 records per arm, one rater who is not Brian, and a defect (attached qualifications) that the instruction, not the units, may own.
 Justified next action: close the snapping line and keep time blocks. Brian may spot-check a sample of the labels if the verdict matters to a later decision; nothing further runs without his decision.
+
+**Post-hoc check of the result (2026-11-22, exploratory; does not change the frozen verdict).** Fisher exact tests on accepted counts: S against B p=0.064, X against B p=0.73, X against S p=0.24, so no difference
+is significant and A3's pass is not evidence for splitting. The arms were also judged on different passages: matching records by overlapping anchor span, S's records on passages B also covered were accepted 8 of 13
+(B's own records there 12 of 14) and 4 of 11 on passages only S covered; X's were 10 of 11 on shared passages (B's 11 of 12) and 7 of 13 on passages only X covered. The snapped arms flag passages B's flag rule did not
+select, and those were less accurate, so each arm's accepted share (precision on its own flagged set) penalises the arm that surfaces more. The reading that holds is: no benefit from snapped edges was shown on this measure,
+the measure was weak (small n, one rater, different populations); it does not show time blocks are better. A paired test (every passage any arm flagged, extracted from the unit holding it in each arm, same labels) would need
+a larger passage set and is a separate decision.
