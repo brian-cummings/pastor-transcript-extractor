@@ -1,7 +1,8 @@
 # Thought-unit experiment: do thought-sized units beat time blocks, with the prompt held constant
 
-**Status: specification only (2026-11-22); the Jev boundary design in section 4 comes from offline research. Nothing is implemented and no provider
-call is authorized until Brian approves sections 2 to 11.** Read [AGENTS.md](../AGENTS.md), the closed
+**Status: stages 0 and 1 implemented and committed (2026-11-22); no provider call has been made.** The Jev boundary design in section 4 comes from
+offline research. Stage 2 (assessment), stage 3 (main-point extraction), the control arm and the arm-blind review are not built; each waits for the
+previous gate and Brian's approval of sections 2 to 11. Brian runs every paid command. Read [AGENTS.md](../AGENTS.md), the closed
 [bound-claim pilot](BOUND_CLAIM_PILOT.md) (§15) and the closed [object-position check](OBJECT_POSITION_CHECK.md) (§10) first. This
 experiment does not change either result.
 
@@ -128,8 +129,10 @@ its lead-in. So for every boundary the truth table marks "cut" or "unsettled", c
 
 **Cost and limits.** (V) Documented limits: 64k tokens per request (state plus all questions), 32k per question, no documented limit on the number of
 questions per request (our 75-per-request batch is a project constant set after 150 questions exceeded the budget). Price $0.042 per million
-input tokens, output free. About 1,700 to 2,000 boundary questions (two per candidate) plus up to about 2,400 resumption questions: about 57 requests and 1.7 million
-input tokens, about $0.07. Stage 2 dominates: (V/I) the 59 leaf questions are replicated per unit, about 19.4 thousand input tokens or $0.0008 per unit regardless
+input tokens, output free. Measured on sermon 281 with the implemented candidate rules (937 pieces, 751 candidates): 1,502 first-pass questions (two per candidate), 21
+requests, about 416 thousand input tokens, about $0.017. The resumption pass adds up to 8 questions per flagged boundary; if 30% of the candidates
+are flagged that is 1,800 questions, 24 requests, about 727 thousand tokens, about $0.031. Stage 1 totals about $0.05, and stage 0 (240 questions, 4
+requests) about $0.003. Stage 2 dominates: (V/I) the 59 leaf questions are replicated per unit, about 19.4 thousand input tokens or $0.0008 per unit regardless
 of length, matching the pilot's 2.48 million tokens over 124 requests. About 126 units (8 sentences each) is $0.10, 202 (5 sentences) is $0.16,
 336 (3 sentences) is $0.27, against $0.06 for the 76 blocks the pilot already paid.
 
@@ -190,7 +193,7 @@ shape is not the repair; if arm T beats arm B but misses 0.80, the contract rema
 
 ## 7. Cost, ceilings and stops
 
-- Ceiling for the whole experiment: $3.00 and 600 physical requests. Expected spend is under about $0.60 with Flash: stage 1 about $0.07, stage 2
+- Ceiling for the whole experiment: $3.00 and 600 physical requests. Expected spend is under about $0.60 with Flash: stage 1 about $0.05, stage 2
   about $0.10 to $0.27 (units are priced about $0.0008 each), stage 0 under $0.01, stage 3 about $0.01 per 10 requests for each arm.
 - Worst-case reservations are checked before each stage against the remaining ceiling, as in the pilot.
 - No semantic retry, no second prompt, no re-run of any stage to overcome a result, no threshold, rule or leaf-set change after the freeze.
@@ -235,3 +238,23 @@ Every paid step has `--check-only`. Brian runs the paid commands; offline focuse
 5. Confirm this is a separately authorized experiment: `SEGMENT_EVIDENCE_PLAN.md` (line 50) cancelled "another finer target-boundary/source-unit
    redesign" as the next iteration, and this one reopens the unit question on purpose, because the pilot and the object-position check
    demonstrated the gaps in sections 1 and 9.
+
+## 12. Stage 0 and 1 implementation (committed)
+
+Code: `src/pastor_transcript_extractor/thought_units/` (`candidates.py`, `questions.py`, `decide.py`, `jev.py`, `stage.py`) and
+`commands/analysis/thought_units.py`; offline tests in `tests/test_thought_units.py`. Jev calls reuse the SDK pattern of
+`recording_verifier_typesafe.py` with an immutable answer cache (`answers.json`) and the shared ledger (ceiling $3.00 and 600 attempts, `leaf` step).
+
+```bash
+pte analysis thought-units probe-pairs --base-dir /Users/briancummings/Documents/PastorSearchData     # written; no provider call
+pte analysis thought-units probe --base-dir /Users/briancummings/Documents/PastorSearchData --check-only
+pte analysis thought-units probe --base-dir /Users/briancummings/Documents/PastorSearchData           # Jev, about $0.003
+pte analysis thought-units segment --base-dir /Users/briancummings/Documents/PastorSearchData --video 281 --check-only
+pte analysis thought-units segment --base-dir /Users/briancummings/Documents/PastorSearchData --video 281
+pte analysis thought-units review-boundaries --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Stage 0 development labels were written by Claude (`probe_labels.json`, `labeled_by` recorded), not by Brian. 6 of the 40 pairs are ambiguous and left
+null; there are 7 true "new point" and 27 false labels, and no true mid-sentence positives (candidates are sentence ends), so the Q1 wording is chosen
+only on avoiding false positives. Q3 (resumption) has a single wording and is not probed. Both limits are disclosed; G1 is the real test.
+The paid steps need `TYPESAFE_API_KEY` and a clean, committed working tree. The wordings are in `questions.py`; Brian reviews them before the probe runs.
