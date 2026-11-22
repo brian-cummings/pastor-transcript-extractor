@@ -310,3 +310,24 @@ pte analysis thought-units improve-pairs --base-dir /Users/briancummings/Documen
 pte analysis thought-units improve --base-dir /Users/briancummings/Documents/PastorSearchData --check-only
 pte analysis thought-units improve --base-dir /Users/briancummings/Documents/PastorSearchData           # Jev, needs TYPESAFE_API_KEY and a clean tree
 ```
+
+### 14.1 Result (2026-11-22): no approach met the bar
+
+One run (480 questions, 7 requests, $0.006; ledger now 86 requests, about $0.075 of $3.00), labels by Claude, 59 labeled positions, 13 breaks:
+
+| Approach | Cuts | True cuts | Precision | Recall | F1 | Unsettled | AUC |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| base (q2a, 3-sentence windows) | 4 | 2 | 0.50 | 0.15 | 0.235 | 41% | 0.81 |
+| wide (6-sentence windows) | 5 | 2 | 0.40 | 0.15 | 0.222 | 37% | 0.77 |
+| atomic (five judgments combined in code) | 3 | 3 | 1.00 | 0.23 | 0.375 | 19% | 0.87 |
+| graded (five-level Score) | 3 | 2 | 0.67 | 0.15 | 0.250 | 24% | 0.80 |
+
+Bar: F1 at least baseline plus 0.15 and precision at least 0.8. Atomic came closest (F1 gain 0.14, precision 1.0 on 3 cuts) and does not meet it; wide did not help, in
+line with the under-cutting diagnosis. Every approach leaves most true breaks "unsettled": the fixed 0.7 threshold sits above where breaks score (mean raw score of
+the 13 breaks: 0.50 base, 0.67 atomic, 0.42 graded). Atomic ranks best (AUC 0.87).
+
+Exploratory only (post hoc on this set, so optimistic and not a result): moving the cut point trades precision for recall without reaching both bars: atomic at 0.6 gives
+precision 0.59 and recall 0.77, graded at 0.4 gives 0.62 and 0.62, base at 0.4 gives 0.50 and 0.69. No cut point gives precision 0.8 with recall 0.6.
+
+Acceptance criterion advanced: none (the bar was not met). New evidence: Jev ranks breaks usefully (AUC 0.77 to 0.87) but not sharply enough to cut reliably; neither
+widening nor decomposition nor a graded question fixed that at the pre-registered thresholds. Justified next action: none inside this probe.
