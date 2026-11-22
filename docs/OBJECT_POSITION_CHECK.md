@@ -89,7 +89,7 @@ the object, 3 of the position claims duplicated across producers.
 
 The whole-sermon request is a ceiling test, not a proposed production design. It gives the producer everything the block unit
 withheld (the neighboring blocks, the whole argument) and fixes the object, so routing and windowing cannot explain a failure.
-If it fails, no cheaper windowed or routed version can be expected to succeed, and the line stops at about $0.50. If it passes,
+It is a ceiling on the information available, not strictly on accuracy (long context can dilute attention). If it fails on completeness or the qualification, a cheaper windowed or routed version should not be expected to do better, and the line stops at about $0.50. If it passes,
 it shows only that this contract plus an object-centered question can produce the position correctly; it does not show that a
 cheaper design does. Estimated size: about 15,000 tokens for this sermon (76 blocks of about 800 characters), per sermon and per
 object, never per corpus. Cost grows with sermons times objects; reducing it (sending only leaf-eligible blocks, provider prompt
