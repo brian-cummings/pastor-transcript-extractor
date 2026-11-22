@@ -1023,3 +1023,26 @@ pte analysis thought-units compare-review --base-dir <base> --check-only        
 pte analysis thought-units compare-report --base-dir <base>
 ```
 
+### 21.4 Result (2026-11-22): version 3 fails the pre-stated rule on the held-out half (labels by Claude, source recorded; Brian has not spot-checked)
+
+Extraction: version 3 on D returned 21 of 21 records, 0 anchor failures; version 2 on H returned 48 of 50 (2 no-record pairs), version 3 on H 50 of 50, 0 anchor failures in either; no transport or schema failures; $0.026 and $0.028 for the 50-pair runs. Blind review of the fixed 30-pair sample: 119 items (60 record or no-record items, 59 summaries), all labeled by Claude without version information.
+
+| Bar (section 18 definitions, 30-pair sample) | Version 2 | Version 3 | Rule for version 3 |
+| --- | --- | --- | --- |
+| L1 accepted records, at most 1 qualification reject and 1 adoption or polarity reject | 27 of 29 (93%), 0 and 0 | 29 of 30 (97%), 1 and 0 | PASS |
+| L2 leaf fit, not below version 2 | 23 of 30 (77%) | 25 of 30 (83%) | **FAIL** (needs 85%, i.e. 26) |
+| L3 summaries faithful and complete | 21 of 29 (72%) | 26 of 30 (87%) | PASS |
+| L4 summaries state their own leaf's act | 24 of 29 (83%) | 24 of 30 (80%) | **FAIL** (needs 85%) |
+| Paired accepted records | 1 version-2-only | 3 version-3-only (26 both, 0 neither) | not below: PASS |
+
+**Verdict: FAIL.** Version 3 meets L1 and L3 and is not below version 2, but misses L2 by one pair and L4 by two summaries. No version 4 and no change to the bars or sample without Brian's decision.
+The four checks of 21.1: polarity rejects 0 (at most 1: met); pairs lost to an anchor outside the target unit 0 of 30 (at most 1: met); no-record pairs 0 of 30 (at most 6: met, but see below); leaf fit 83% and not below version 2 (the 85% part not met); summary faithfulness 87% (met).
+
+What the evidence shows and does not:
+- **The summary-completeness change worked (D4):** faithful summaries went from 21 of 29 to 26 of 30. The anchor-in-target change (D2) worked on both halves. The polarity change (D1) cannot be assessed: version 2 produced no polarity rejects on the held-out half, so D1 may have been specific to the development sermon.
+- **The leaf-misfit defect (D3) was not fixed.** Version 3 still returned a record for every pair (the "empty list" rule never fired), and 5 of its 30 pairs do not show the leaf: critical for mixed or interrogative statements ("all parties are a mixed bag of good and evil"; "could the justices' Catholic backgrounds interfere"), moral or theological for a bare history or legal fact. These are the same pairs for both versions, which is why version 3 cannot reach 85% on L2: they come from Jev's flag, not from the instruction.
+- **Scale.** These are differences of 1 to 5 items out of 30 from one rater who also wrote version 3. None is statistically distinguishable (for example summaries 26 of 30 against 21 of 29 is a Fisher p near 0.1). Version 2 on the held-out half passes L1 and nearly passes L4, so version 3's gain is mainly summary completeness.
+- **L4 is the weaker check:** 6 of 30 version-3 summaries fail to state the leaf's act, in the same pairs where the leaf is not shown (D3), so L4 and L2 mostly measure one upstream problem.
+
+Acceptance criterion advanced: held-out test of version 3 completed and failed on two bars by one and two items. New evidence: the remaining misses are leaf-flag precision (Jev's gate at 0.8) and not the instruction. Justified next action (Brian's decision): do not write version 4; measure Jev's precision on these leaves at the point of origin (see the open item in the status note), and use version 3 for the unit comparison of section 22 if a single instruction is wanted.
+
