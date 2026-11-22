@@ -1066,3 +1066,35 @@ Exploratory readings, not tested and not part of the verdict:
 
 Limits that matter: one sermon; passages defined by the arms' own flags, so an arm whose units define the passage is favored on "about this passage"; a rater who also wrote the instruction and was not blind to unit shape; 'defensible' penalized records about a different thought, which favors arms whose units fit the passage. Acceptance criterion advanced: the same-passage test ran and returned no demonstrated difference, with a modest descriptive edge for snapped units on defensibility and none for splitting. Justified next action (Brian's decision): not a verdict either way. If the unit question is to be settled, the evidence needed is more passages on more sermons, which means running the Jev boundary snap on the new set's 196 blocks (about $0.30) and repeating this comparison there with a rater other than the author for a sample.
 
+## 23. Up to three leaves per unit and several records per pair (specification and implementation, 2026-11-22; Brian: "cap at 3, no need to raise the floor, and update the prompts to allow for multiple")
+
+### 23.1 Decisions and a correction
+
+Cap the flag rule at three leaves per unit (floor unchanged at 0.8, topic gate unchanged at 0.9), and let the instruction return more than one record for a pair. **Correction of my earlier answer:** I said a cap of three would add 2 pairs; that was the number of fourth-leaf flags it still drops. A cap of three **adds 12 pairs to the new set (71 to 83: development 21 to 25, held-out 50 to 58)**, the third leaf on 12 units; lifting the cap entirely would have added 14.
+Why: in §22 a block's single record often bundled several claims or wrote about a different thought in the block, and 14 leaf flags were being dropped by the cap. Multi-record output moves the splitting question into the instruction as well as into Jev; this section does not decide between them, it tests whether permitting several records helps, on the same units.
+
+### 23.2 What changed (committed; nothing paid has run)
+
+- **Flag rule.** `arms.FLAG_TOP = 2` stays as the frozen rule of §16 to §22; `arms.FLAG_TOP_MULTI = 3` and `flagged_pairs(..., top)` add the new cap. The new set's three-leaf pairs are written to `pairs-top3.json` (`set-pairs --top 3`); `pairs.json` and every earlier extraction, queue and report are untouched, and the held-out report reproduces its numbers exactly. The sermon-281 comparison of §22 keeps two leaves.
+- **Instruction.** `leaf-evidence-v4` is version 3 with nine replacements (`_revise` checks each): the intro and rule 1 say a unit may hold one point or several; rule 2 returns one record for each separate point that does the leaf's act, at most three, with different anchors, one point stated twice being one record and a supporting detail belonging to its point; the summary, ground, qualification and reason rules speak of "that point" instead of "this thought". Everything else, including version 3's four changes, is kept. The schema already took a list; the code limit is 3 for version 4 and 1 for versions 1 to 3 (`Variant.max_records`). Longest request fits the producer cap (checked on all 83 pairs).
+- **Review.** The set review handles several records per pair: each record is a blind item with its own accept and leaf-fit labels, each has a summary item, and a pair where a version returned two or more records gets one extra blind question, "do these records state different points, each supported on its own and not one point said twice", the padding check. Pair-level leaf fit is "every record the pair produced fits the leaf". New scopes `development_top3` and `held_out_top3` (own folders and ledgers, same per-run ceilings).
+
+### 23.3 Test, pre-stated; exploratory
+
+All six sermons were seen while this design was chosen (the held-out half was graded and its bundling motivated the change), so **this is a development comparison, not a held-out test, and carries no pass or fail.** A confirmatory test needs sermons not yet used (the next candidates in the `set-find` ranking, about $0.30 of Jev scoring first) and is Brian's decision.
+Version 3 (single record) and version 4 (up to three) run on the 83 three-leaf pairs; the queue mixes them blind, development graded whole (25 pairs) and held-out on the first 30 pairs by hash of the pair key. Reported, with these readings fixed now:
+- **Padding.** Version 4's extra records (the second and third of a pair) accepted at least 85%, and at least 85% of its multi-record pairs judged distinct. A lower share means the instruction invites filler.
+- **No loss on the first record.** On pairs both versions answered, version 4's accepted records are not fewer than version 3's.
+- **Recall.** Version 4 accepts more distinct points than version 3 on the same pairs. If it does not, multi-record adds nothing here.
+- **Single point.** Version 4's faithful-summary count (L3) is not below version 3's; a rise supports the bundling explanation.
+Reading: padding fails means no; padding holds, no loss, and more accepted points means multi-record helps on these units; no extra accepted points means it does nothing. Limits: one rater who wrote the instruction, exposed data, the same themes, and the leaf-gate precision problem of §21.4, which a third leaf can worsen (the extra pairs are the lowest-scoring leaves; their fit is reported separately).
+
+### 23.4 Commands (Brian runs; the tree must be clean)
+
+```bash
+pte analysis thought-units set-pairs --base-dir <base> --top 3                                  # offline, done
+pte analysis thought-units set-leaf-extract --base-dir <base> --half development --top 3 --variant v3   # then v4; then --half held-out for both
+pte analysis thought-units set-leaf-review --base-dir <base> --half development --top 3         # blind queue; then held-out
+pte analysis thought-units set-leaf-report --base-dir <base> --half development --top 3
+```
+

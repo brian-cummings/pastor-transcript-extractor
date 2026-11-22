@@ -83,6 +83,53 @@ class VersionThreeTests(unittest.TestCase):
             leaf_evidence._revise('a a', (('a', 'x'),))
 
 
+class MultiRecordTests(Setup):
+    def test_version_four_allows_up_to_three_records_and_the_older_versions_still_allow_one(self):
+        good = record()
+        self.assertEqual(3, len(leaf_evidence.validate_records(dict(records=[good, good, good]), leaf_evidence.V4.max_records)))
+        with self.assertRaises(leaf_evidence.SchemaError):
+            leaf_evidence.validate_records(dict(records=[good] * 4), leaf_evidence.V4.max_records)
+        with self.assertRaises(leaf_evidence.SchemaError):
+            leaf_evidence.validate_records(dict(records=[good, good]), leaf_evidence.V3.max_records)
+        self.assertEqual((1, 1, 3), (leaf_evidence.V2.max_records, leaf_evidence.V3.max_records, leaf_evidence.V4.max_records))
+        self.assertIn('at most three', leaf_evidence.SYSTEM_PROMPT_V4)
+        self.assertNotIn('at most one record', leaf_evidence.SYSTEM_PROMPT_V4)
+        self.assertIn('Two records must state different points with different anchors', leaf_evidence.SYSTEM_PROMPT_V4)
+
+    def test_a_three_leaf_cap_writes_its_own_pairs_file_and_leaves_the_two_leaf_pairs_alone(self):
+        out = public_set.set_dir(self.root)
+        write_json(out / 'leaves_v900.json', seal(dict(blocks=[dict(id='b0006', block_id=6, signals={'P:critical': 0.9, 'P:moral': 0.85, 'P:theological': 0.82, 'P:supportive': 0.81})])))
+        two = public_set.build_pairs(self.root)
+        three = public_set.build_pairs(self.root, 3)
+        self.assertEqual((2, 3), (two['pairs'], three['pairs']))
+        self.assertTrue((out / 'pairs.json').exists() and (out / 'pairs-top3.json').exists())
+        self.assertEqual(2, len(public_set.half_pairs(self.root, 'development')))
+        self.assertEqual(3, len(public_set.half_pairs(self.root, 'development', 'pairs-top3.json')))
+        self.assertEqual(3, len(leaf_evidence.pair_inputs(self.root, leaf_evidence.DEVELOPMENT3)))
+        self.assertEqual(2, len(leaf_evidence.pair_inputs(self.root, leaf_evidence.DEVELOPMENT)))
+
+    def test_several_records_for_one_pair_are_queued_and_graded_one_by_one_with_a_padding_check(self):
+        public_set.build_pairs(self.root, 3)
+        first, second = POLITICAL[:44], POLITICAL[45:90]
+        two = dict(records=[claim(first, area='public_life', object='the government', summary='The preacher says the government is talked about.', target='the government'),
+                            claim(second, area='public_life', object='the election', summary='The preacher says the election is talked about.', target='the election',
+                                  proposition='The election is discussed.', anchor_offsets=dict(start=45, end=90))])
+        outputs = {k: json.dumps(two) for k in ('v900-b0006-critical', 'v900-b0006-moral')}
+        leaf_evidence.run(self.root, transport=stream_transport(outputs), state=CLEAN, metadata=METADATA, variant=leaf_evidence.V4, scope=leaf_evidence.DEVELOPMENT3)
+        single = {k: json.dumps(dict(records=[two['records'][0]])) for k in outputs}
+        leaf_evidence.run(self.root, transport=stream_transport(single), state=CLEAN, metadata=METADATA, variant=leaf_evidence.V3, scope=leaf_evidence.DEVELOPMENT3)
+        built = set_review.build_queue(self.root, 'development_top3')
+        self.assertEqual(dict(v3=2, v4=4), built['records'])
+        self.assertEqual(dict(v3=0, v4=2), built['pairs_with_several'])
+
+        def answer(prompt):
+            return 'a' if 'accept (a)' in prompt else 'y'
+        set_review.judge(self.root, 'development_top3', 'claude', input_fn=answer, output_fn=lambda line: None)
+        report = set_review.report(self.root, 'development_top3')
+        self.assertEqual((None, 'v4', 'v3'), (report['passed'], report['primary'], report['reference']))
+        self.assertEqual((4, 4, 2, 2), (report['tally']['v4']['records'], report['tally']['v4']['accepted'], report['tally']['v4']['pairs_with_several'], report['tally']['v4']['distinct_ok']))
+
+
 class QueueTests(Setup):
     def test_development_review_labels_every_pair_blind_and_reports_defects(self):
         self.run_leaf({self.keys[0]: reply(record()), self.keys[1]: reply()})
