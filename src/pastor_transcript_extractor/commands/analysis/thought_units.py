@@ -122,6 +122,7 @@ def snap_report(base_dir: Path = BASE, grader: str = typer.Option('claude', '--g
 
 ARM = typer.Option(..., '--arm', help='Comparison arm.')
 CHECK = typer.Option(False, '--check-only', help='Report counts, requests and estimated cost; sends nothing.')
+VARIANT = typer.Option('v1', '--variant', help='Registered instruction: v1 (section 17) or v2 (section 18).')
 
 
 @app.command('arms')
@@ -178,30 +179,32 @@ def arms_report(base_dir: Path = BASE):
 
 
 @app.command('leaf-extract')
-def leaf_extract(base_dir: Path = BASE, check_only: bool = CHECK):
-    """Section 17: write the leaf-conditioned supporting summary for arm B's flagged pairs (V4.1 Flash, frozen instruction); one run, no semantic retry."""
+def leaf_extract(base_dir: Path = BASE, check_only: bool = CHECK, variant: str = VARIANT):
+    """Sections 17 and 18: write the leaf-conditioned supporting summary for arm B's flagged pairs (V4.1 Flash, frozen instruction); one run, no semantic retry."""
     from ...thought_units import leaf_evidence
     try:
-        _echo(leaf_evidence.run(base_dir, check_only=check_only))
+        _echo(leaf_evidence.run(base_dir, check_only=check_only, variant=leaf_evidence.VARIANTS[variant]))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
 
 @app.command('leaf-review')
-def leaf_review(base_dir: Path = BASE, check_only: bool = typer.Option(False, '--check-only', help='Build the blind queue and report its size; label nothing.')):
+def leaf_review(base_dir: Path = BASE, check_only: bool = typer.Option(False, '--check-only', help='Build the blind queue and report its size; label nothing.'),
+                variant: str = VARIANT):
     """Brian: label the blind queue of baseline and new records (accept or reject, leaf fit, then summary questions); resumable."""
     from ...thought_units import leaf_review as review_module
     try:
-        _echo(review_module.build_queue(base_dir) if check_only else review_module.judge(base_dir, 'human', input, typer.echo))
+        chosen = review_module.leaf_evidence.VARIANTS[variant]
+        _echo(review_module.build_queue(base_dir, chosen) if check_only else review_module.judge(base_dir, 'human', input, typer.echo, chosen))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
 
 @app.command('leaf-report')
-def leaf_report(base_dir: Path = BASE):
+def leaf_report(base_dir: Path = BASE, variant: str = VARIANT):
     """Score L1 to L4 from the saved extractions, labels and ledgers and write LEAF_REPORT.md and .json."""
     from ...thought_units import leaf_review as review_module
     try:
-        _echo(review_module.report(base_dir))
+        _echo(review_module.report(base_dir, review_module.leaf_evidence.VARIANTS[variant]))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error

@@ -793,3 +793,10 @@ pte analysis thought-units leaf-extract --base-dir /Users/briancummings/Document
 pte analysis thought-units leaf-review --base-dir /Users/briancummings/Documents/PastorSearchData --variant v2 --check-only
 pte analysis thought-units leaf-report --base-dir /Users/briancummings/Documents/PastorSearchData --variant v2
 ```
+
+### 18.7 Implementation (committed 2026-11-22; nothing paid has run for version 2)
+
+`leaf_evidence.py` now registers instructions as variants (`V1`, `V2`) with their own folder, ledger and frozen plan; `leaf_review.py` takes the same variant, and `--variant v1|v2` (default `v1`) is on `leaf-extract`, `leaf-review` and `leaf-report`.
+Version 2 is run and compared in `leaf-evidence-b2/`: its queue mixes the 19 version 1 records with the 19 version 2 records, and its report reads the section 16 baseline's leaf-fit count (14 of 19) from the section 17 report for L2. Version 1's records, plan, ledger,
+labels and report are untouched; because the frozen code hash covers `leaf_evidence.py`, which changed, a rerun of version 1 would now be refused, and none is planned. Offline tests (72 in the thought-unit, object-position and leaf-evidence files, plus the bound-claim suite) pass,
+including a check that the version 2 instruction restores the bound-claim voice and adoption wording verbatim, differs from version 1 only in rules 2, 3 and 6, and contains the text registered in 18.2. The real-data check-only shows 19 requests, worst case $0.31 against the $0.50 ceiling.

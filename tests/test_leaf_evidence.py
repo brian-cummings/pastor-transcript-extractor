@@ -182,5 +182,96 @@ class AcceptanceTests(unittest.TestCase):
         self.assertFalse(leaf_review.evaluate(self.measures(new=dict(records=0, accepted=0)))['passed'])
 
 
+def rules(text):
+    return {line.split('.', 1)[0]: line for line in text.splitlines() if line[:2].rstrip('.').isdigit() or line[:3].rstrip('.').isdigit()}
+
+
+class VersionTwoTests(Setup):
+    def run_v2(self, outputs, **kwargs):
+        return leaf_evidence.run(self.root, transport=stream_transport(outputs), state=kwargs.pop('state', CLEAN), metadata=METADATA, variant=leaf_evidence.V2, **kwargs)
+
+    def test_the_instruction_restores_the_omitted_contract_rules_verbatim_and_changes_nothing_else(self):
+        one, two = rules(leaf_evidence.SYSTEM_PROMPT), rules(leaf_evidence.SYSTEM_PROMPT_V2)
+        from pastor_transcript_extractor.bound_claims import contract as bound
+        self.assertIn('A quoted or reported view has `voiced_by` other than `preacher`, and `preacher_adoption` is `adopts` only when the preacher explicitly adopts '
+                      'it in the source. Otherwise use `reports_without_adoption`, `rejects` or `unclear`.', two['6'])
+        self.assertIn('A quoted or reported view has `voiced_by` other than `preacher`', bound.SYSTEM_PROMPT)
+        self.assertIn('An invitation or appeal to listeners is a', two['6'])
+        for old, new in (('1', '1'), ('4', '4'), ('5', '5'), ('6', '7'), ('7', '8'), ('8', '9'), ('9', '10'), ('10', '11')):
+            self.assertEqual(one[old].split('. ', 1)[1], two[new].split('. ', 1)[1], f'v1 rule {old} must equal v2 rule {new}')
+        self.assertEqual(one['3'].split('. ', 1)[1].rstrip(), two['3'].split('. ', 1)[1].split(' State only what the preacher says')[0].rstrip())
+        self.assertIn('State only what the preacher says in this thought', two['3'])
+        self.assertIn('and neither does a statement of fact or history that only implies it', two['2'])
+
+    def test_the_v2_instruction_matches_the_text_registered_in_the_spec(self):
+        from pathlib import Path
+        doc = (Path(__file__).resolve().parents[1] / 'docs' / 'THOUGHT_UNIT_EXPERIMENT.md').read_text()
+        section = doc[doc.index('### 18.2 Draft instruction'):doc.index('### 18.3 Grading')]
+        quoted = ' '.join(line[2:] for line in section.splitlines() if line.startswith('> ') and line[2:].strip())
+        norm = lambda value: ' '.join(value.split())
+        two = rules(leaf_evidence.SYSTEM_PROMPT_V2)
+        self.assertIn(norm(two['2'].split('. ', 1)[1]), norm(quoted))
+        self.assertIn(norm(two['6'].split('. ', 1)[1]), norm(quoted))
+        self.assertIn('State only what the preacher says in this thought: do not add a conclusion, evaluation or characterization that the thought does not itself state.', norm(quoted))
+
+    def test_v2_runs_in_its_own_folder_and_ledger_with_its_own_frozen_instruction(self):
+        self.run_leaf({key: reply(record()) for key in self.keys})
+        done = self.run_v2({key: reply(record(summary='A different summary.')) for key in self.keys})
+        self.assertEqual((2, 2, None, 'leaf-evidence-v2'), (done['summary']['records'], done['summary']['ok'], done['stopped'], done['instruction_version']))
+        v2_dir = self.arms_dir.parent / 'leaf-evidence-b2'
+        plans = (read_json(self.leaf_dir / 'plan.json'), read_json(v2_dir / 'plan.json'))
+        self.assertNotEqual(plans[0]['instruction_sha256'], plans[1]['instruction_sha256'])
+        self.assertEqual('leaf-evidence-v2', plans[1]['instruction_version'])
+        self.assertEqual(2, len(read_json(v2_dir / 'ledger.json')['entries']))
+        self.assertEqual(2, len(read_json(self.leaf_dir / 'ledger.json')['entries']))     # version 1's ledger is untouched
+        original = leaf_evidence.SYSTEM_PROMPT_V2
+        self.addCleanup(lambda: setattr(leaf_evidence, 'SYSTEM_PROMPT_V2', original))
+        leaf_evidence.SYSTEM_PROMPT_V2 = original + ' Be brief.'
+        with self.assertRaises(ValueError):
+            self.run_v2({})
+
+    def test_the_v2_queue_mixes_version_one_and_two_records_asks_two_summary_questions_and_scores_the_new_bars(self):
+        self.run_leaf({key: reply(record()) for key in self.keys})
+        leaf_review.judge(self.root, 'claude', lambda prompt: 'a' if prompt.startswith('accept') else 'y', lambda text: None)
+        leaf_review.report(self.root)                                                        # the section 17 report v2 compares leaf fit with
+        self.run_v2({key: reply(record(summary='A different summary.', proposition='Another proposition about the experiment.')) for key in self.keys})
+        built = leaf_review.build_queue(self.root, leaf_evidence.V2)
+        self.assertEqual((4, 2, 6), (built['phase1'], built['phase2'], built['items']))      # 2 v1 and 2 v2 records; two summary items; no distinct item
+        asked = []
+        def ask(prompt):
+            asked.append(prompt)
+            return 'a' if prompt.startswith('accept') else 'y'
+        leaf_review.judge(self.root, 'claude', ask, lambda text: None, leaf_evidence.V2)
+        self.assertEqual(2, sum(prompt.startswith('Does the summary state the act of its own leaf') for prompt in asked))
+        self.assertEqual(0, sum(prompt.startswith('Do the two summaries') for prompt in asked))
+        done = leaf_review.report(self.root, leaf_evidence.V2)
+        self.assertEqual('v2', done['variant'])
+        self.assertTrue(done['passed'])
+        self.assertEqual(['L1', 'L2', 'L3', 'L4'], list(done['criteria']))
+        self.assertEqual(2, done['tally']['new']['framed_ok'])
+        self.assertIn('claude', done['labels_by'])
+
+
+class VersionTwoAcceptanceTests(unittest.TestCase):
+    def measures(self, **over):
+        base = dict(pairs=19, reference_pairs_correct=14,
+                    new=dict(records=19, accepted=17, qualification_rejects=1, adoption_polarity_rejects=1, pairs_correct=17, summaries_ok=17, framed_ok=17), baseline=dict(pairs_correct=18))
+        for key, value in over.items():
+            base[key] = {**base[key], **value} if isinstance(value, dict) else value
+        return base
+
+    def test_all_four_hold_at_the_levels_registered_in_section_18(self):
+        evaluate = lambda **over: leaf_review.evaluate(self.measures(**over), leaf_evidence.V2)
+        self.assertTrue(evaluate()['passed'])
+        self.assertFalse(evaluate(new=dict(accepted=16))['criteria']['L1']['passed'])
+        self.assertFalse(evaluate(new=dict(adoption_polarity_rejects=2))['criteria']['L1']['passed'])
+        self.assertFalse(evaluate(new=dict(qualification_rejects=2))['criteria']['L1']['passed'])
+        self.assertFalse(evaluate(new=dict(pairs_correct=16))['criteria']['L2']['passed'])
+        self.assertTrue(evaluate(new=dict(pairs_correct=17), baseline=dict(pairs_correct=19))['criteria']['L2']['passed'])    # version 1 is reported, not a bar
+        self.assertFalse(evaluate(reference_pairs_correct=18, new=dict(pairs_correct=17))['criteria']['L2']['passed'])       # the section 16 baseline is
+        self.assertFalse(evaluate(new=dict(summaries_ok=16))['criteria']['L3']['passed'])
+        self.assertFalse(evaluate(new=dict(framed_ok=16))['criteria']['L4']['passed'])
+
+
 if __name__ == '__main__':
     unittest.main()
