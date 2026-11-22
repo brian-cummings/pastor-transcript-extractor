@@ -824,3 +824,53 @@ The 19 pairs are 14 blocks, so each bar is two records; these results do not sep
 Acceptance criterion advanced: L2 passed again; L1, L3 and L4 failed narrowly. New evidence: version 2 matches the section 16 baseline on faithfulness while adding leaf fit and a leaf-framed summary, and the residual defects are concentrated, not general.
 Justified next action: stop iterating on these 19 pairs (two rounds have already used them as the test, so a third risks fitting to them). Nothing else runs without Brian's decision. If more evidence is wanted, it should be version 2 unchanged on pairs from a
 different sermon with independent labels; the saved leaf table has flagged public-life pairs only for sermon 281 (19) and sermon 1200 (2), so that needs a new sermon and a Jev pass.
+
+## 19. A new set of public-life sermons, with a development and a held-out half (specification and first steps, 2026-11-22; Brian: "find a new set and iterate")
+
+Sections 17 and 18 used sermon 281's 19 pairs twice, and the saved leaf table has flagged public-life pairs only for sermon 281 (19) and sermon 1200 (2), so further tuning on them would fit them. This section finds new material and fixes the protocol
+for using it. It does not reopen the unit question (time blocks stay): the units here are the saved sermon-labeled time blocks.
+
+### 19.1 Selection (done offline; nothing paid)
+
+Only 12 of the corpus's sermons have cached topic scores, so the existing scores cannot find new public-life sermons. The rule, fixed before looking at results: among the 339 sermons with a `sermon-basics` analysis (271 with at least 8,000 words in the sermon window),
+rank by a frozen public-life vocabulary (government, politics, election, vote, congress, senate, president, legislation, constitution, democracy, republic, taxes, abortion, supreme court, immigration, border, socialism, communism, secular, America, United States, founders) per 1,000 words,
+excluding sermon 281, and take the top 6. Calibration on saved data: sermon 281 scores 12.7 and the other seven pilot sermons 0.1 to 1.7. This is a proxy; Jev's topic scores decide what is used. The six:
+
+| Video | Sermon | Words | Hits per 1,000 |
+| --- | --- | --- | --- |
+| 627 | Pastor Mike Pettengill, "Not All That Are of Israel Are Israel" | 9,113 | 14.9 |
+| 717 | Advent HOPE Atlanta Worship Service | 26,403 | 11.4 |
+| 548 | Church 2026-07-04 | 12,597 | 11.4 |
+| 487 | Ooltewah SDA Church Arise Service, July 4, 2026 | 10,435 | 7.2 |
+| 1605 | Hope For Humanity, "America in Bible Prophecy" | 27,047 | 6.2 |
+| 1230 | Knoxville First SDA Church Service, March 21, 2026 | 20,025 | 5.8 |
+
+Limit: four of these are July 4 or America themed, as sermon 281 is, so the set is new but not independent in theme. The 259 sermon-labeled blocks across the six are the candidates.
+
+### 19.2 Pipeline (reuses sections 16 to 18 unchanged)
+
+1. `set-score-topics` (Jev, new cache): the topic pack on the 259 blocks, rebuilt with the same block and context rule that reproduced all 76 of sermon 281's saved blocks. Worst-case 87 requests, $0.24; expected well under that.
+2. `set-score-leaves` (Jev): the public-life treatment pack on the blocks at or above the frozen topic gate (0.9), a small number.
+3. `set-pairs` (offline): the frozen flag rule (topic at least 0.9, leaf at least 0.8, top two) gives the pairs, each with its block and neighbors.
+Ledger `public-life-set-v1/`, ceiling $1.00 and 600 attempts, clean tree required, no retry.
+
+### 19.3 Protocol, fixed now
+
+- **Split.** Once the pairs exist and before any extraction, the sermons are split by sermon into development (D) and held-out (H) by alternating down the order of a fixed hash of the video id. The counts are reported first; if either half has fewer than 15 pairs the split is Brian's decision.
+- **P1, development.** Version 2 (`leaf-evidence-v2`, unchanged) runs on D's pairs and is graded (Claude, source recorded; Brian may spot-check). The section 18 bars are reported, not acceptance. The output is a defect table.
+- **P2, one revision.** A single version 3 may be written from D's defects (and the 17.10 and 18.8 notes), with each change tied to a demonstrated defect and a falsifiable check, and its bars pre-stated, before any H extraction. Nothing is tuned on H.
+- **P3, held-out.** Version 2 and version 3 both run on H's pairs; the queue mixes them blind to version and is graded only after version 3 is frozen. Pass: version 3 meets L1 to L4 at 85% on H and is not below version 2 on H's paired accepted counts. A fail is reported; no further variant without Brian's decision.
+- **Limits stated up front.** One rater who is not Brian unless he labels; two thin halves; a theme overlap with sermon 281.
+
+### 19.4 Implementation (committed; the paid steps have not run)
+
+`thought_units/public_set.py` and four commands; offline tests in `tests/test_public_set.py` (69 tests pass across the thought-unit files). The real-data check-only for step 2 shows 6 sermons, 259 blocks and 87 requests worst-case.
+
+```bash
+pte analysis thought-units set-find --base-dir /Users/briancummings/Documents/PastorSearchData                      # done
+pte analysis thought-units set-score-topics --base-dir /Users/briancummings/Documents/PastorSearchData --check-only
+pte analysis thought-units set-score-topics --base-dir /Users/briancummings/Documents/PastorSearchData              # Jev
+pte analysis thought-units set-score-leaves --base-dir /Users/briancummings/Documents/PastorSearchData --check-only
+pte analysis thought-units set-score-leaves --base-dir /Users/briancummings/Documents/PastorSearchData              # Jev
+pte analysis thought-units set-pairs --base-dir /Users/briancummings/Documents/PastorSearchData                     # offline
+```

@@ -208,3 +208,43 @@ def leaf_report(base_dir: Path = BASE, variant: str = VARIANT):
         _echo(review_module.report(base_dir, review_module.leaf_evidence.VARIANTS[variant]))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@app.command('set-find')
+def set_find(base_dir: Path = BASE):
+    """Section 19 step 1 (offline): rank analyzed sermons by public-life vocabulary density and choose the new set; no provider call."""
+    from ...thought_units import public_set
+    try:
+        _echo(public_set.find(base_dir))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('set-score-topics')
+def set_score_topics(base_dir: Path = BASE, check_only: bool = CHECK):
+    """Section 19 step 2: the topic pack (Jev) on every sermon-labeled time block of the chosen sermons, in a new cache."""
+    from ...thought_units import public_set
+    try:
+        _echo(public_set.score_topics(base_dir, check_only=check_only))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('set-score-leaves')
+def set_score_leaves(base_dir: Path = BASE, check_only: bool = CHECK):
+    """Section 19 step 3: the public-life treatment pack (Jev) on the blocks at or above the frozen topic gate."""
+    from ...thought_units import public_set
+    try:
+        _echo(public_set.score_leaves(base_dir, check_only=check_only))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('set-pairs')
+def set_pairs(base_dir: Path = BASE):
+    """Section 19 step 4 (offline): apply the frozen flag rule to the scored blocks and write the pairs; no provider call."""
+    from ...thought_units import public_set
+    try:
+        _echo(public_set.build_pairs(base_dir))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
