@@ -114,6 +114,18 @@ def answer(key, spec):
     return 0.9 if instructions['second_passage'].startswith('Now') else 0.1
 
 
+class DisplayTests(unittest.TestCase):
+    def test_review_windows_end_at_whole_sentences(self):
+        pieces = cand.split_pieces(TEXT)
+        position = next(p.end for p in pieces if words_of(TEXT, p).startswith('We have to conclude that'))
+        before = stage.snap_window(TEXT, pieces, position, before=True)
+        after = stage.snap_window(TEXT, pieces, position, before=False)
+        self.assertTrue(before.startswith(('We ', 'It ', 'Now ')) and before.rstrip().endswith('.'))
+        self.assertTrue(after.lstrip().startswith('Excuse') and after.rstrip().endswith('.'))
+        self.assertLessEqual(len(before), stage.DISPLAY)
+        self.assertLessEqual(len(after), stage.DISPLAY)
+
+
 class JevTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()

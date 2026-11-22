@@ -223,11 +223,23 @@ def segment(base_dir: Path, video_id: int, *, check_only: bool = False, factory:
 
 # ---- G1: Brian's boundary judgments ------------------------------------------------------------------------------------
 
+def snap_window(text: str, pieces, position: int, *, before: bool) -> str:
+    """Up to DISPLAY characters on one side of `position`, cut at whole-sentence edges so no sentence starts or ends mid-word."""
+    if before:
+        kept = [p for p in pieces if p.start >= position - DISPLAY and p.end <= position]
+        return text[kept[0].start:position] if kept else ''
+    kept = [p for p in pieces if p.start >= position and p.end <= position + DISPLAY]
+    return text[position:kept[-1].end] if kept else ''
+
+
 def g1_sample(base_dir: Path) -> dict[str, Any]:
     leaf, _, out = paths(base_dir)
     result = read_json(out / 'units.json')
     sermon = sermons.load(leaf, result['video_id'])
     text, seed = sermon.text, sermon.source_sha256
+    pieces = cand.split_pieces(text)
+    before = lambda position: snap_window(text, pieces, position, before=True)
+    after = lambda position: snap_window(text, pieces, position, before=False)
     cuts = [c for c in result['candidates'] if any(abs(u['start'] - c['position']) < 40 for u in result['units'][1:])
             and c['outcome'] == 'cut']
     non = [c for c in result['candidates'] if c['outcome'] != 'cut' and c['resumption'] != 'aside']
@@ -235,12 +247,12 @@ def g1_sample(base_dir: Path) -> dict[str, Any]:
     pick = lambda items, n, key: sorted(items, key=lambda x: _seeded(seed, key(x)))[:n]
     items = []
     for c in pick(cuts, G1_BOUNDARIES, lambda c: c['index']):
-        items.append(dict(kind='boundary', index=c['index'], before=text[max(0, c['position'] - DISPLAY):c['position']], after=text[c['position']:c['position'] + DISPLAY]))
+        items.append(dict(kind='boundary', index=c['index'], before=before(c['position']), after=after(c['position'])))
     for c in pick(non, G1_NON_BOUNDARIES, lambda c: c['index']):
-        items.append(dict(kind='non_boundary', index=c['index'], before=text[max(0, c['position'] - DISPLAY):c['position']], after=text[c['position']:c['position'] + DISPLAY]))
+        items.append(dict(kind='non_boundary', index=c['index'], before=before(c['position']), after=after(c['position'])))
     for unit, aside in pick(asides, G1_ASIDES, lambda pair: pair[1]['start']):
-        items.append(dict(kind='aside', index=aside['pieces'][0], before=text[max(0, aside['start'] - DISPLAY):aside['start']],
-                          between=text[aside['start']:aside['end']], after=text[aside['end']:aside['end'] + DISPLAY]))
+        items.append(dict(kind='aside', index=aside['pieces'][0], before=before(aside['start']),
+                          between=text[aside['start']:aside['end']], after=after(aside['end'])))
     for number, item in enumerate(items, 1):
         item['number'] = number
     sample = seal(dict(version=NAME, units_fingerprint=result['content_fingerprint'], items=items))
