@@ -695,3 +695,20 @@ pte analysis thought-units leaf-report --base-dir /Users/briancummings/Documents
 2. Approve not sending Jev's probabilities (recommended) and sending the category.
 3. Approve Claude grading with an optional 10-item spot-check by you, or tell me to leave all grading to you.
 4. Approve the $0.50 ceiling and one run on arm B's 19 pairs.
+
+### 17.9 Implementation (committed 2026-11-22; nothing paid has run)
+
+Code: `thought_units/leaf_evidence.py` (instruction `leaf-evidence-v1`, schema, runner and freeze), `thought_units/leaf_review.py` (blind queue, labeling, L1 to L4 report) and three commands in
+`commands/analysis/thought_units.py`; offline tests in `tests/test_leaf_evidence.py` (the thought-unit, object-position and bound-claim tests all pass). The instruction is byte for byte the text approved in 17.3 (checked
+against this document). Differences from the sketch above: the response key is `records` as the approved instruction says; the request keeps the label `bound_claims` for its JSON schema because the shared request policy requires
+that name for the bound-claim request version and checks the name only, so no change to the shared policy module was needed; the section 16 modules, plan and ledgers are not touched (the freeze covers the instruction, schema,
+category, the 19 pairs, the units file, the producer and the code of this stage and the two modules it imports). The `--check-only` plan on the real data shows 19 requests on 14 blocks, a worst-case reservation of $0.31 against the
+$0.50 ceiling, and every real request passes the shared preflight.
+
+```bash
+pte analysis thought-units leaf-extract --base-dir /Users/briancummings/Documents/PastorSearchData --check-only
+pte analysis thought-units leaf-extract --base-dir /Users/briancummings/Documents/PastorSearchData            # V4.1 Flash, 19 requests, about $0.01
+pte analysis thought-units leaf-review --base-dir /Users/briancummings/Documents/PastorSearchData --check-only # builds the blind queue (needs the extraction)
+pte analysis thought-units leaf-review --base-dir /Users/briancummings/Documents/PastorSearchData             # optional: Brian's own labels, resumable
+pte analysis thought-units leaf-report --base-dir /Users/briancummings/Documents/PastorSearchData
+```

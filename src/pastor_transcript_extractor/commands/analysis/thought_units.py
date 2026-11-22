@@ -175,3 +175,33 @@ def arms_report(base_dir: Path = BASE):
         _echo(arms_review.report(base_dir))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@app.command('leaf-extract')
+def leaf_extract(base_dir: Path = BASE, check_only: bool = CHECK):
+    """Section 17: write the leaf-conditioned supporting summary for arm B's flagged pairs (V4.1 Flash, frozen instruction); one run, no semantic retry."""
+    from ...thought_units import leaf_evidence
+    try:
+        _echo(leaf_evidence.run(base_dir, check_only=check_only))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('leaf-review')
+def leaf_review(base_dir: Path = BASE, check_only: bool = typer.Option(False, '--check-only', help='Build the blind queue and report its size; label nothing.')):
+    """Brian: label the blind queue of baseline and new records (accept or reject, leaf fit, then summary questions); resumable."""
+    from ...thought_units import leaf_review as review_module
+    try:
+        _echo(review_module.build_queue(base_dir) if check_only else review_module.judge(base_dir, 'human', input, typer.echo))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('leaf-report')
+def leaf_report(base_dir: Path = BASE):
+    """Score L1 to L4 from the saved extractions, labels and ledgers and write LEAF_REPORT.md and .json."""
+    from ...thought_units import leaf_review as review_module
+    try:
+        _echo(review_module.report(base_dir))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
