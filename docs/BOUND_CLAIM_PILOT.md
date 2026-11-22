@@ -1,6 +1,6 @@
 # Bound-claim pilot: proving the extraction mechanism cheaply
 
-**Status: executing 2026-11-15. §2 decisions approved, with the deviations recorded in §13.**
+**Status: closed 2026-11-22, criterion 1 not met (see the close-out at the end). §2 decisions were approved, with the deviations recorded in §13.**
 Implementation target: Claude Sonnet 5.5 at high effort (see §12). Read
 [AGENTS.md](../AGENTS.md), the [product plan](PASTOR_PROFILE_PRODUCT_PLAN.md) and
 the [gap analysis](PASTOR_PROFILE_GAP_ANALYSIS.md) first. This document does not
@@ -418,3 +418,21 @@ Review vocabulary (2026-11-22): `reject:role` was added during labeling, after t
 prayers and petitions were extracted with a wrong `speech_role` (`asserted` or `requested_of_listener`, not
 `performed`). Earlier plain `reject` labels stay valid; accept/reject scoring is unchanged. The sealed `review.json`
 was rebuilt with identical items and order.
+
+## 15. Close-out (2026-11-22)
+
+Result: criterion 1 not met. Brian labeled a 40-claim sample (all human labels): V4 Pro 11 of 18 accepted (61%), V4.1 Flash
+17 of 25 (68%), against the .80 and +.15 requirement. Criterion 2: no Jev `supported` threshold reaches .90 precision on the
+18 labeled Pro claims. Criteria 3 and 4 pass structurally; 1, 2 and 5 are PENDING_REVIEW in `REPORT.md` because 717 claims were
+deliberately left unlabeled. The labeled-sample rates are the evidence; the report's `precision` row mixes labeled claims with
+unlabeled anchor failures and understates both producers.
+
+Failing component: the bound-claim contract (`bound-claim-v1`), not the models. Observed failure classes: retold story events,
+prayers and recited documents extracted as assertions with a wrong `speech_role`, plural pronouns widened ("us" to "listeners"),
+unresolved references and ironic statements lifted out of context, qualifications that sit in the neighboring block (which the
+contract bars as support), an undefined polarity convention for negated propositions, stitched anchors from rambling speech, and
+near-duplicate claims across producers (507 of 757 in overlapping-anchor pairs). Not tested: salience or representativeness
+(§3 non-goal); the rendered section reads as scattered statements.
+
+AI labels: an Opus label set agreed with Brian on 24 of 40 (about chance) and was not imported. Spend: $1.22 of $10, 1141 of
+1200 attempts. No second variant is run inside this pilot.
