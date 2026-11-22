@@ -75,7 +75,7 @@ def build_queue(base_dir: Path, half: str, variants: tuple[str, ...] | None = No
     pairs = {p['key']: p for p in reviewed_pairs(base_dir, half)}
     found = {key: by_key(base_dir, half, leaf_evidence.VARIANTS[key]) for key in keys}
     texts: dict[int, Any] = {}
-    sermon_of = lambda video: texts.setdefault(video, public_set.load_sermon(base_dir, video, leaf_evidence.SCOPES[half].set_id))
+    sermon_of = lambda video: texts[video] if video in texts else texts.setdefault(video, public_set.load_sermon(base_dir, video, leaf_evidence.SCOPES[half].set_id))      # once per sermon: setdefault alone would load it on every call
     seed = digest(dict(half=half, pairs=sorted(pairs), variants=list(keys)))
     phase1, phase2, records, summaries, distinct = [], [], {}, {}, {}
     for variant in keys:

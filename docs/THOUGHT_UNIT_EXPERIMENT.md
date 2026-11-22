@@ -1170,3 +1170,19 @@ pte analysis thought-units set-leaf-review --base-dir <base> --half confirm --to
 pte analysis thought-units set-leaf-report --base-dir <base> --half confirm --top 3
 ```
 
+### 24.7 Result (2026-11-22; labels by Claude, source `claude`, 219 items; not spot-checked by Brian)
+
+Both versions ran once on the 54 pairs of the extended set (24 sermons, ranks 7 to 30; two pairs excluded for input size, 24.6). Each had one schema failure, counted as a miss, and four empty answers. **Version 4 is NOT confirmed by the rule of 24.3: reading 1 (padding) failed; the other three held.**
+
+| Reading | Rule | Observed | Held |
+| --- | --- | --- | --- |
+| 1 Padding | extras exist, at least 85% accepted, at least 85% of multi-record pairs distinct | 6 extra records, 6 accepted; distinct 3 of 5 pairs (60%) | **no** |
+| 2 No loss | v4-only accepted pairs at least v3-only | 4 against 2 | yes |
+| 3 Recall | accepted pairs at least v3's and more accepted records | 49 against 47 pairs; 55 against 47 records | yes |
+| 4 Single point | v4 faithful summaries at least v3's | 54 of 55 against 47 of 49 | yes |
+
+Reading it: the extras were good (6 of 6 accepted) but there were few (5 pairs, 9%) and two of the five multi-record pairs restated one point (1634 unit 41, "authority is conditional" and "obey unless it crosses the line"; unit 40's civil-government pair). Flipping one of my two "not distinct" labels leaves 4 of 5 (80%), still under 85%; the verdict changes only if both flip. Without sermon 1502 (19 of 54 pairs) the picture is the same: 35 pairs, 5 extras all accepted, distinct 2 of 4, accepted pairs 32 against 29. The 1502 sermon contributes one multi-record pair, so it does not drive the result.
+Bars reported, not deciding: L1 and L3 pass for both versions. L2 (leaf fit, 85% of pairs): v3 42 of 54 and v4 41 of 54, both fail; the misses are the Jev leaf-gate flagging passages that do not show the leaf (about a fifth of pairs), the same cause as 21.4 and it affects both versions equally. L4 (summary states its own leaf's act): v3 41 of 49 fails, v4 47 of 55 passes, with the moral leaf the weak one for both (a "problematic" or "changing character" statement is not a moral evaluation by the definition).
+Cost: $0.031 per version. Limits as in 24.3: one run, one rater who wrote the instruction, a leaf-heavy theological mix with no advocative pairs, and the labels are a first pass. The one reading that failed rests on five items and two of my judgments.
+What this says about the idea: multi-record extraction yields a real but small gain here (two more pairs with an accepted record, six more accepted records, on 54 pairs) and is not shown to be reliably padding-free. The development result of 23.5 (7 of 7 distinct) did not replicate (3 of 5). No further variant without Brian's decision. The larger lever remains the leaf gate: about a fifth of the flagged pairs do not show the leaf under either instruction.
+
