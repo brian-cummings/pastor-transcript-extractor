@@ -86,11 +86,12 @@ def improve_boundaries(base_dir: Path = BASE,
 
 @app.command('snap')
 def snap(base_dir: Path = BASE,
-         check_only: bool = typer.Option(False, '--check-only', help='Report candidates, questions and estimated cost; sends nothing.')):
-    """Score every candidate boundary in the held-out sermon (Jev), build the original, code, jev and jev_split arms, and the blind grading packet."""
+         check_only: bool = typer.Option(False, '--check-only', help='Report candidates, questions and estimated cost; sends nothing.'),
+         video: int = typer.Option(None, '--video', help='Run on this sermon for the downstream comparison (its own folder and ledger); default is the held-out sermon.')):
+    """Score every candidate boundary in a sermon (Jev) and build the original, code, jev and jev_split arms (with the blind grading packet for the held-out sermon)."""
     from ...thought_units import snap as snapping
     try:
-        _echo(snapping.run(base_dir, check_only=check_only))
+        _echo(snapping.run(base_dir, check_only=check_only, video=video))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
@@ -115,5 +116,62 @@ def snap_report(base_dir: Path = BASE, grader: str = typer.Option('claude', '--g
     try:
         _, _, out = stage.paths(base_dir)
         _echo(snapping.report(out, grader))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+ARM = typer.Option(..., '--arm', help='Comparison arm.')
+CHECK = typer.Option(False, '--check-only', help='Report counts, requests and estimated cost; sends nothing.')
+
+
+@app.command('arms')
+def arms_units(base_dir: Path = BASE, check_only: bool = typer.Option(False, '--check-only', help='Report unit counts, segment mapping and the A1 integrity checks without writing units.json.')):
+    """Build the time-block (b), snapped (s) and snapped-with-splits (x) units for sermon 281 from the snap result, and check integrity (A1); no provider call."""
+    from ...thought_units import arms as comparison
+    try:
+        _echo(comparison.build_units(base_dir, check_only=check_only))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('assess')
+def assess(base_dir: Path = BASE, arm: str = ARM, check_only: bool = CHECK):
+    """Run the topic and public-life treatment packs (Jev) on the units of arm s or x in a new cache, reusing identical saved answers."""
+    from ...thought_units import arms as comparison
+    try:
+        _echo(comparison.assess(base_dir, arm.lower(), check_only=check_only))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('extract')
+def extract(base_dir: Path = BASE, arm: str = ARM, check_only: bool = CHECK):
+    """One main-point request per flagged (unit, leaf) pair for arm b, s or x (V4.1 Flash, frozen instruction); no semantic retry."""
+    from ...thought_units import main_point
+    try:
+        _echo(main_point.run(base_dir, arm.lower(), check_only=check_only))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('review')
+def review(base_dir: Path = BASE, check_only: bool = typer.Option(False, '--check-only', help='Build the blind queue and report its size; label nothing.')):
+    """Brian: label the blind, shuffled queue (accept or reject, plus component judgments on component records); resumable."""
+    from ...thought_units import arms_review
+    try:
+        if check_only:
+            _echo(arms_review.build_queue(base_dir))
+        else:
+            _echo(arms_review.interactive(base_dir, input, typer.echo))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('arms-report')
+def arms_report(base_dir: Path = BASE):
+    """Score A1 to A4 from the saved extraction, labels and ledgers and write ARMS_REPORT.md and .json."""
+    from ...thought_units import arms_review
+    try:
+        _echo(arms_review.report(base_dir))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
