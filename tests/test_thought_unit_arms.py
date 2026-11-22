@@ -271,6 +271,9 @@ class ReviewTests(Extracted):
         arms_review.interactive(self.root, lambda prompt: next(answers), lambda text: None)
         self.assertEqual(0, arms_review.progress(self.root)['remaining'])
         self.assertEqual({'accept', 'reject:proposition'}, {d['decision'] for d in arms_review.load_decisions(self.root).values()})
+        key = queue['items'][0]['id']
+        arms_review.record_decision(self.root, key, 'accept', dict(components={}, qualified=None, source='claude'))
+        self.assertEqual('claude', arms_review.load_decisions(self.root)[key]['source'])
 
     def test_component_records_are_queued_and_judged_for_faithfulness_and_the_qualification(self):
         for arm in arms.ARMS:

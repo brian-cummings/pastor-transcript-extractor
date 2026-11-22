@@ -294,13 +294,18 @@ def report(base_dir: Path) -> dict[str, Any]:
     measures = dict(a1=units['summary']['a1'], arms=per_arm)
     outcome = evaluate(measures)
     best = max(per_arm, key=lambda n: per_arm[n]['accepted_share'] or 0.0)
-    final = dict(version=VERSION, decision=outcome['decision'], acceptance=outcome, arms=per_arm, units_summary=units['summary'],
+    sources: dict[str, int] = {}
+    for item in queue['items']:
+        label = decided[item['id']].get('source', 'human')
+        sources[label] = sources.get(label, 0) + 1
+    final = dict(version=VERSION, decision=outcome['decision'], acceptance=outcome, arms=per_arm, labels_by=sources, units_summary=units['summary'],
                  reference=dict(best_arm=best, best_accepted_share=per_arm[best]['accepted_share'], reaches_reference=(per_arm[best]['accepted_share'] or 0) >= REFERENCE_SHARE,
                                 reference_share=REFERENCE_SHARE, note='reported, not a bar; no production admission'),
                  pilot_records_all_sermons=PILOT_RECORDS, queue_items=queue['item_count'], ledger_attempts=len(ledger['entries']))
     write_json(paths['report_json'], final)
     lines = ['# Downstream comparison report (spec section 16)', '', f"**Decision: {outcome['decision']}**", '',
-             'Exposed development material; one sermon, labels by Brian. A pass is engineering evidence about unit shape, not validation or production admission.', '',
+             'Exposed development material; one sermon. A pass is engineering evidence about unit shape, not validation or production admission.',
+             f"Labels by: {sources} (`human` = Brian's own; any other source is a delegated first pass, not Brian's judgment).", '',
              '| Criterion | Rule | Observed | Result |', '| --- | --- | --- | --- |',
              f"| A1 | snapped arms keep all text once, no mid-sentence cuts, every unit mapped | `{units['summary']['a1']}` | {'PASS' if outcome['A1']['passed'] else 'FAIL'} |",
              f"| A2 | S accepted share not more than {A2_ALLOWANCE} below B; components and qualification no worse | `{outcome['A2']['parts']}` | {'PASS' if outcome['A2']['passed'] else 'FAIL'} |",
