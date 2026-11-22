@@ -290,7 +290,7 @@ def set_leaf_review(base_dir: Path = BASE, half: str = HALF, check_only: bool = 
         if spot_check:
             _echo(set_review.build_spot_queue(base_dir, _half(half, top)) if check_only else set_review.judge_spot(base_dir, _half(half, top), input, typer.echo))
         else:
-            _echo(set_review.build_queue(base_dir, _half(half, top)) if check_only else set_review.judge(base_dir, _half(half, top), 'human', input, typer.echo))
+            _echo(set_review.build_queue(base_dir, _half(half, top), wide=True) if check_only else set_review.judge(base_dir, _half(half, top), 'human', input, typer.echo, wide=True))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 
@@ -301,6 +301,32 @@ def set_leaf_report(base_dir: Path = BASE, half: str = HALF, top: int = TOP, spo
     from ...thought_units import set_review
     try:
         _echo(set_review.spot_report(base_dir, _half(half, top)) if spot_check else set_review.report(base_dir, _half(half, top)))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('set-graded-review')
+def set_graded_review(base_dir: Path = BASE, half: str = HALF, top: int = TOP, check_only: bool = typer.Option(False, '--check-only', help='Build the graded queue and report its size; label nothing.'),
+                      count: int = typer.Option(12, '--count', help='How many summary items to grade, first by sha256 of the item id.')):
+    """Section 25: grade summaries as complete, accurate but incomplete (with a flag) or wrong, and distinct-point pairs as distinct, overlapping or the same point twice; wide display; resumable."""
+    from ...thought_units import graded_review
+    try:
+        if check_only:
+            _echo(graded_review.build(base_dir, _half(half, top), count))
+        else:
+            _echo(graded_review.judge(base_dir, _half(half, top), 'human', input, typer.echo))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('set-graded-report')
+def set_graded_report(base_dir: Path = BASE, half: str = HALF, top: int = TOP):
+    """Section 25: counts and readings from the graded labels, with the cross-tab against the earlier yes/no fidelity labels on the same items."""
+    from ...thought_units import graded_review, leaf_evidence, leaf_review, set_review
+    try:
+        scope = _half(half, top)
+        old = leaf_review.load_decisions(base_dir, leaf_evidence.V2, set_review.paths_for(base_dir, scope))
+        _echo(graded_review.report(base_dir, scope, compare_with=old))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 

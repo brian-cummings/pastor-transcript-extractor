@@ -70,7 +70,7 @@ def by_key(base_dir: Path, half: str, variant: leaf_evidence.Variant) -> dict[st
     return found
 
 
-def build_queue(base_dir: Path, half: str, variants: tuple[str, ...] | None = None) -> dict[str, Any]:
+def build_queue(base_dir: Path, half: str, variants: tuple[str, ...] | None = None, wide: bool = False) -> dict[str, Any]:
     keys = variants or VARIANTS_BY_HALF[half]
     pairs = {p['key']: p for p in reviewed_pairs(base_dir, half)}
     found = {key: by_key(base_dir, half, leaf_evidence.VARIANTS[key]) for key in keys}
@@ -122,6 +122,8 @@ def build_queue(base_dir: Path, half: str, variants: tuple[str, ...] | None = No
     random.Random(f'{seed}:1').shuffle(phase1)
     random.Random(f'{seed}:2').shuffle(phase2)
     items = [*phase1, *phase2]
+    if wide:        # section 25.3: every new queue shows the wide context
+        items = widen_items(base_dir, half, items, dict(items={i['id']: {k: i[k] for k in ('kind', 'uses', 'pair') if k in i} for i in items}))
     visible = [{k: v for k, v in item.items() if k not in ('uses', 'pair')} for item in items]
     queue = seal(dict(version=VERSION, half=half, source_sha256=seed, item_count=len(items), phase1=len(phase1), items=visible))
     versions = seal(dict(version=VERSION, half=half, queue_fingerprint=queue['content_fingerprint'], variants=list(keys), reviewed_pairs=sorted(pairs),
@@ -138,9 +140,9 @@ def build_queue(base_dir: Path, half: str, variants: tuple[str, ...] | None = No
                 failed_pairs={v: sum(r is None for k, r in found[v].items() if k in pairs) for v in keys})
 
 
-def judge(base_dir: Path, half: str, source: str = 'human', input_fn=input, output_fn=print) -> dict[str, Any]:
+def judge(base_dir: Path, half: str, source: str = 'human', input_fn=input, output_fn=print, wide: bool = False) -> dict[str, Any]:
     paths = paths_for(base_dir, half)
-    return leaf_review.judge(base_dir, source, input_fn, output_fn, leaf_evidence.V2, paths, lambda b, _v: build_queue(b, half))
+    return leaf_review.judge(base_dir, source, input_fn, output_fn, leaf_evidence.V2, paths, lambda b, _v: build_queue(b, half, wide=wide))
 
 
 def progress(base_dir: Path, half: str) -> dict[str, Any]:
@@ -295,13 +297,11 @@ def spot_ids(queue: Mapping[str, Any]) -> list[str]:
     return (distinct + others)[:max(SPOT_SIZE, len(distinct))]
 
 
-def build_spot_queue(base_dir: Path, half: str) -> dict[str, Any]:
-    """The same items as the full queue, without any label, in the full queue's wording; record and no-record items first, as in the blind pass."""
-    full, versions = leaf_review._sealed(paths_for(base_dir, half)['queue']), leaf_review._sealed(paths_for(base_dir, half)['versions'])
-    chosen = set(spot_ids(full))
-    items = [dict(i) for i in full['items'] if i['id'] in chosen]
+def widen_items(base_dir: Path, half: str, items: list[dict[str, Any]], versions: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Section 24.8 and 25.3: show each record with SPOT_WINDOW characters of sermon text either side, and each unit-based item with its neighboring units, so a grader never
+    sees less text than the extractor had. Item ids do not depend on the display, so labels carry over."""
     pairs, texts = {p['key']: p for p in reviewed_pairs(base_dir, half)}, {}
-    for item in items:        # section 24.8: Brian saw the pope missing; the full queue's 900-character window is too short, so the spot check shows much more
+    for item in items:
         if item['kind'] == 'record':
             pair = pairs[versions['items'][item['id']]['uses'][0]['pair']]
             if pair['video_id'] not in texts:
@@ -316,6 +316,15 @@ def build_spot_queue(base_dir: Path, half: str) -> dict[str, Any]:
         else:
             pair = pairs[versions['items'][item['id']].get('pair') or versions['items'][item['id']]['uses'][0]['pair']]
             item['preceding_text'], item['following_text'] = pair['preceding_text'][-SPOT_WINDOW:], pair['following_text'][:SPOT_WINDOW]
+    return items
+
+
+def build_spot_queue(base_dir: Path, half: str) -> dict[str, Any]:
+    """The same items as the full queue, without any label, in the full queue's wording; record and no-record items first, as in the blind pass."""
+    full, versions = leaf_review._sealed(paths_for(base_dir, half)['queue']), leaf_review._sealed(paths_for(base_dir, half)['versions'])
+    chosen = set(spot_ids(full))
+    items = [dict(i) for i in full['items'] if i['id'] in chosen]
+    items = widen_items(base_dir, half, items, versions)
     items = [i for i in items if i['kind'] in ('record', 'none')] + [i for i in items if i['kind'] not in ('record', 'none')]
     queue = seal(dict(version=VERSION, half=half, source_sha256=full['content_fingerprint'], item_count=len(items),
                       phase1=sum(i['kind'] in ('record', 'none') for i in items), items=items))
