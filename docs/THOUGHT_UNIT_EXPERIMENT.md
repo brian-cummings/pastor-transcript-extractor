@@ -380,3 +380,26 @@ pte analysis thought-units snap --base-dir /Users/briancummings/Documents/Pastor
 pte analysis thought-units snap-review --base-dir /Users/briancummings/Documents/PastorSearchData       # Brian: the 15 calibration comparisons
 pte analysis thought-units snap-report --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
+
+### 15.1 Result (2026-11-22): H1 to H3 pass, H4 fails; calibration by Brian pending
+
+Sermon 1200 ("Matthew 13:44 Treasure"), 45 edges, 415 sentence-end candidates scored (2,075 questions, 28 requests, about $0.022; ledger 114 requests in all). Claude graded all 108 packet
+items blind (arm labels were not read until after grading), results in `SNAP_REPORT.md`:
+
+| Bar | Observed | Result |
+| --- | --- | --- |
+| H1 `jev` beats `original` (at least 70% of non-ties) | 23 wins, 7 losses, 10 ties (77% of 30) | pass |
+| H2 `jev` beats `code` (more than half of non-ties, at least 15 on edges with 3+ candidates) | 13 wins, 4 losses, 6 ties (76% of 17; all 17 on edges with 3+ candidates) | pass |
+| H3 no mid-sentence cut, guards held | `jev` 0 of 45 cuts mid-sentence (`original` 9 of 45); 0 guard violations; no dropped edges | pass |
+| H4 split precision at least 60% and multi-thought share down at least 40% | 5 of 15 splits real breaks (33%); multi-thought share 27% to 7% (a 75% drop) | fail (precision) |
+
+Placement: 27 of 45 edges moved off their nearest sentence end (median move 112 characters, largest 884); `jev` units median 598 characters, `jev_split` 452; every arm passed the coverage check
+(all non-whitespace text preserved exactly once).
+
+Limits. One sermon; one grader (Claude), with Brian's 15-comparison calibration not yet recorded; the 40 sampled edges appear in both comparisons, so the 30 and 17 are not independent; 16 of 63
+comparisons were ties; the unit-level judgment was lenient by design (Brian asked for a less strict line). Splitting removes multi-thought units but two thirds of its cuts are not real breaks,
+so it over-fragments; placing edges is the part that works.
+
+Acceptance criterion advanced: the snap edges pass H1 to H3 on a held-out sermon against the time-block baseline. New evidence: Jev's ranking places edges better than arbitrary edges and
+better than a mechanical nearest-sentence snap, even though its confident-cut recall was low. Justified next action: Brian's calibration of Claude's grading, then a decision about whether to carry the
+snapped blocks into the assessment and extraction stages.
