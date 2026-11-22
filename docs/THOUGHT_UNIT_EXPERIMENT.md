@@ -556,5 +556,5 @@ pte analysis thought-units review --base-dir /Users/briancummings/Documents/Past
 pte analysis thought-units review --base-dir /Users/briancummings/Documents/PastorSearchData                      # Brian's labels, resumable
 pte analysis thought-units arms-report --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
-Paid steps need a clean, committed `src` tree. `snap` and `assess` need `TYPESAFE_API_KEY`; `extract` needs the DeepInfra credential the pilot used. A failed acceptance, a stop rule or the ceiling ends the run with a report,
+Paid steps need a clean, committed `src` tree. `snap` and `assess` need `TYPESAFE_API_KEY`; `extract` needs `DEEPINFRA_API_KEY`. A failed acceptance, a stop rule or the ceiling ends the run with a report,
 not a retry; no second round starts without Brian's decision.
