@@ -192,7 +192,7 @@ STAGE3 = {arm: Scope(f'stage3_{arm}', Decimal(usd), attempts, half='all', pairs_
           for arm, usd, attempts in (('b2', '1.50', 60), ('u', '1.50', 60), ('x1', '1.00', 44), ('x2', '3.00', 113))}
 # Section 30: the full pipeline per unit arm (own gate, own flags) on the three sermons of the end-to-end test; pairs files are built by `pipeline_arms`.
 PIPELINE = {arm: Scope(f'pipeline_{arm}', Decimal(usd), attempts, half='all', pairs_file=f'pipeline/pairs-{arm}.json', set_id='v2', producer=PRODUCER_32K)
-            for arm, usd, attempts in (('u', '1.50', 60), ('s', '2.50', 100))}
+            for arm, usd, attempts in (('u', '1.00', 35), ('s', '1.00', 43))}      # request count plus 6, as in 28.12
 SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, DEVELOPMENT3, HELD_OUT3, CONFIRM3, *COMPARE.values(), *STAGE3.values(), *PIPELINE.values())}
 
 RECORD_SCHEMA: dict[str, Any] = copy.deepcopy(bound.CLAIM_SCHEMA)
