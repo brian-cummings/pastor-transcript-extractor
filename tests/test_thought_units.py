@@ -437,3 +437,26 @@ class PublicSetSnapTests(unittest.TestCase):
     def test_a_set_snap_without_a_sermon_is_refused(self):
         with self.assertRaises(ValueError):
             snap.run(self.base, check_only=True, set_id='v2')
+
+
+class Stage0Tests(unittest.TestCase):
+    """Section 28 Stage 0: the target point of a pair is the span of its anchored block-run records, fixed from saved data."""
+
+    def test_target_point_spans_anchored_records_and_is_none_without_one(self):
+        from pastor_transcript_extractor.bound_claims.common import write_json
+        from pastor_transcript_extractor.thought_units import public_set, stage0
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            folder = public_set.set_dir(base, 'v2')
+            pair = lambda key, unit, leaf: dict(key=key, unit=unit, leaf=leaf, video_id=5, unit_start=100)
+            claim = lambda a, b, status='ok': dict(sermon_start=a, sermon_end=b, anchor=dict(status=status))
+            write_json(folder / public_set.pairs_name(3), dict(pairs=[pair('v5-b1-critical', 'b1', 'P:critical'), pair('v5-b2-moral', 'b2', 'P:moral'),
+                                                                     pair('v5-b3-moral', 'b3', 'P:moral')]))
+            # the second pair was excluded from the run for input size, so it has no row
+            write_json(folder / stage0.EXTRACTION, dict(rows=[dict(unit='b1', leaf='P:critical', claims=[claim(110, 160), claim(300, 340)]),
+                                                              dict(unit='b3', leaf='P:moral', claims=[claim(500, 520, 'failed')])]))
+            table = stage0.target_points(base, 'v2')
+            self.assertEqual(['v5-b1-critical', 'v5-b3-moral'], [row['key'] for row in table])
+            self.assertEqual(dict(start=110, end=340), table[0]['point'])
+            self.assertEqual((2, 2), (table[0]['records'], table[0]['anchored']))
+            self.assertIsNone(table[1]['point'])

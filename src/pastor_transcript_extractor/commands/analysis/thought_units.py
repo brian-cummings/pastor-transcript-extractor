@@ -109,6 +109,16 @@ def snap_set(base_dir: Path = BASE, check_only: bool = typer.Option(False, '--ch
         raise typer.BadParameter(str(error)) from error
 
 
+@app.command('set-stage0-check')
+def set_stage0_check(base_dir: Path = BASE, set_id: str = SET, top: int = typer.Option(3, '--top', help='Which pairs file (3 is pairs-top3.json).')):
+    """Free Stage 0 checks of section 28: size check of every block of the sermons that hold pairs, and the frozen target-point table from the saved block-run anchors."""
+    from ...thought_units import stage0
+    try:
+        _echo(stage0.run(base_dir, set_id, top))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @app.command('snap-review')
 def snap_review(base_dir: Path = BASE, grader: str = typer.Option('brian', '--grader', help='Name recorded with the judgments.'),
                 limit: int = typer.Option(15, '--limit', help='Edge comparisons to judge (the calibration set).')):
