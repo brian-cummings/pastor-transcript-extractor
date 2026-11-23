@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+import json
 import tempfile
 import unittest
 
@@ -511,3 +512,40 @@ class PipelineArmsTests(unittest.TestCase):
         self.assertEqual([0, 1, 2], [r['block_id'] for r in records])
         with self.assertRaises(ValueError):
             pipeline_arms.unit_records(originals[:1], [(50, 60)], text, 'u')
+
+
+class WholeSermonTests(unittest.TestCase):
+    def test_routing_follows_the_table(self):
+        from pastor_transcript_extractor.thought_units import whole_sermon as w
+        signals = {w.SALVATION_TOPIC: 0.6, w.PUBLIC_TOPIC: 0.54, 'T:ethics_moral_conduct': 0.7, 'T:scripture_revelation': 0.56, 'T:god_character_action': 0.4,
+                   'S:atonement_as_basis': 0.7, 'S:forgiveness_pardon': 0.67, 'S:repentance_as_receiving_response': 0.99, 'P:moral': 0.95, 'L:serve': 0.8, 'L:give': 0.79}
+        found = {(branch, leaf) for branch, leaf, _ in w.flagged(signals)}
+        self.assertIn(('S', 'S:atonement_as_basis'), found)                       # at its own floor (.68)
+        self.assertNotIn(('S', 'S:forgiveness_pardon'), found)                    # .67 is below its floor (.68)
+        self.assertNotIn(('S', 'S:repentance_as_receiving_response'), found)      # unresolved leaves are scored, not extracted
+        self.assertNotIn(('P', 'P:moral'), found)                                 # topic .54 is below the product route
+        self.assertIn(('L', 'L:serve'), found)
+        self.assertNotIn(('L', 'L:give'), found)
+        self.assertEqual({leaf for branch, leaf, _ in w.flagged(signals) if branch == 'T'}, {'T:ethics_moral_conduct', 'T:scripture_revelation'})
+
+    def test_every_extracted_leaf_has_its_own_meaning_and_the_public_life_ones_match_v4(self):
+        from pastor_transcript_extractor.thought_units import main_point, whole_sermon as w
+        for name in w.SALVATION_LEAVES:
+            info = w.leaf_info(f'S:{name}')
+            self.assertTrue(info['leaf_meaning'] and info['counts_when'] and info['does_not_count_when'] and info['category'] == 'salvation_gospel')
+        for name in w.PUBLIC_LEAVES:
+            self.assertEqual(w.leaf_info(f'P:{name}')['leaf_meaning'], main_point.leaf_meaning(f'P:{name}'))
+        for name in w.DIRECTIVE_LEAVES:
+            self.assertTrue(w.leaf_info(f'L:{name}')['leaf_meaning'])
+        for name in w.OTHER_TOPICS:
+            self.assertTrue(w.leaf_info(f'T:{name}')['leaf_meaning'])
+
+    def test_the_v5_request_carries_what_jev_found_and_fits_the_cap(self):
+        from pastor_transcript_extractor.thought_units import leaf_evidence as e, whole_sermon as w
+        pair = dict(unit='u1', leaf='S:atonement_as_basis', branch='S', probability=0.9, video_id=1, unit_start=0, text='Christ died for our sins.', preceding_text='', following_text='',
+                    key='v1-u1-S-atonement_as_basis', **w.leaf_info('S:atonement_as_basis'))
+        message = json.loads(e.neutral_message(pair))
+        self.assertEqual(set(message), {'category', 'leaf', 'preceding_unit', 'target_unit', 'following_unit'})
+        self.assertIn('counts_when', message['leaf'])
+        self.assertNotIn('probability', json.dumps(message))
+        self.assertTrue(e.build_request(pair, e.V5, e.PRODUCER_32K).fingerprint)

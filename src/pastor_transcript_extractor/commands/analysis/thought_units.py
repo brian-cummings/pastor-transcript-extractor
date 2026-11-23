@@ -209,6 +209,46 @@ def pipeline_extract(base_dir: Path = BASE, arm: str = PIPE_ARM, check_only: boo
         raise typer.BadParameter(str(error)) from error
 
 
+WHOLE_ARM = typer.Option(..., '--arm', help='b (the saved blocks) or u (the snapped units).')
+
+
+@app.command('whole-score')
+def whole_score(base_dir: Path = BASE, arm: str = WHOLE_ARM, letter: str = typer.Option(..., '--pack', help='T (topics, every unit), S (salvation, units at the topic route), P (public life, units at the topic route), L (listener directives), M (source material) or H (style), each on every unit.'),
+                check_only: bool = typer.Option(False, '--check-only', help='Report units, cache misses and the worst-case reservation; sends nothing.')):
+    """Section 31: score one pack on the whole sermon's units for one arm, where the product routes it (own ledger; every saved answer reused)."""
+    from ...thought_units import whole_sermon
+    try:
+        if arm not in whole_sermon.ARMS:
+            raise ValueError('--arm must be b or u')
+        _echo(whole_sermon.score(base_dir, arm, letter, check_only=check_only))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('whole-pairs')
+def whole_pairs(base_dir: Path = BASE, arm: str = WHOLE_ARM):
+    """Section 31 (offline): apply the routing table to one arm's scored units and write its pairs (leaf pairs per branch plus topic pairs); no provider call."""
+    from ...thought_units import whole_sermon
+    try:
+        if arm not in whole_sermon.ARMS:
+            raise ValueError('--arm must be b or u')
+        _echo(whole_sermon.build_pairs(base_dir, arm))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('whole-extract')
+def whole_extract(base_dir: Path = BASE, arm: str = WHOLE_ARM, check_only: bool = typer.Option(False, '--check-only', help='Report counts, requests and estimated cost; sends nothing.')):
+    """Section 31: run the category-neutral v5 instruction on one arm's routed pairs (own folder and ledger, one run, no retry)."""
+    from ...thought_units import leaf_evidence
+    try:
+        if arm not in leaf_evidence.WHOLE:
+            raise ValueError('--arm must be b or u')
+        _echo(leaf_evidence.run(base_dir, check_only=check_only, variant=leaf_evidence.V5, scope=leaf_evidence.WHOLE[arm]))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @app.command('snap-review')
 def snap_review(base_dir: Path = BASE, grader: str = typer.Option('brian', '--grader', help='Name recorded with the judgments.'),
                 limit: int = typer.Option(15, '--limit', help='Edge comparisons to judge (the calibration set).')):

@@ -297,8 +297,9 @@ class StageThreeProducerTests(unittest.TestCase):
         from pastor_transcript_extractor import deepinfra_requests as provider
         self.assertEqual(16384, provider.policy_for(leaf_evidence.PRODUCER_VERSION)['input_cap'])
         self.assertEqual(32768, provider.policy_for(leaf_evidence.PRODUCER_32K)['input_cap'])
-        self.assertTrue(all(scope.producer == leaf_evidence.PRODUCER_32K for scope in leaf_evidence.STAGE3.values()))
-        self.assertTrue(all(scope.producer == leaf_evidence.PRODUCER_VERSION for key, scope in leaf_evidence.SCOPES.items() if key not in {s.key for s in leaf_evidence.STAGE3.values()}))
+        later = {*leaf_evidence.STAGE3.values(), *leaf_evidence.PIPELINE.values(), *leaf_evidence.WHOLE.values()}
+        self.assertTrue(all(scope.producer == leaf_evidence.PRODUCER_32K for scope in later))
+        self.assertTrue(all(scope.producer == leaf_evidence.PRODUCER_VERSION for key, scope in leaf_evidence.SCOPES.items() if key not in {s.key for s in later}))
 
     def test_only_the_cap_and_the_reservation_differ_between_the_two_producers(self):
         from pastor_transcript_extractor import deepinfra_requests as provider
