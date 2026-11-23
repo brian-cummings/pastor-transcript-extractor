@@ -144,6 +144,33 @@ def stage3_extract(base_dir: Path = BASE, arm: str = ARM3, check_only: bool = ty
         raise typer.BadParameter(str(error)) from error
 
 
+@app.command('stage3-review')
+def stage3_review(base_dir: Path = BASE, set_id: str = SET, check_only: bool = typer.Option(False, '--check-only', help='Build the blind queue and the sample and report their sizes; label nothing.'),
+                  sample: bool = typer.Option(False, '--sample', help="Brian's version-blind sample of 12 records (6 from the snapped-unit arm, 6 from the target sub-unit arm)."),
+                  grader: str = typer.Option('claude', '--grader', help='Whose labels these are: claude (the full queue) or brian (--sample).')):
+    """Section 28.8: the version-blind queue of matched records and of multi-record pairs, grouped by pair under one shared reference span; label the records."""
+    from ...thought_units import stage3_review as review
+    try:
+        built = review.build(base_dir, set_id)
+        built_sample = review.build_sample(base_dir, set_id)
+        if check_only:
+            _echo(dict(queue=built, sample=built_sample))
+            return
+        _echo(review.judge(base_dir, human=sample, set_id=set_id, input_fn=input, output_fn=typer.echo))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('stage3-report')
+def stage3_report(base_dir: Path = BASE, set_id: str = SET):
+    """Section 28.8: the pre-stated readings, guards, noise floor and Brian's sample agreement from the saved extractions and labels; writes STAGE3_REPORT.md and .json."""
+    from ...thought_units import stage3_review as review
+    try:
+        _echo(review.report(base_dir, set_id))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @app.command('snap-review')
 def snap_review(base_dir: Path = BASE, grader: str = typer.Option('brian', '--grader', help='Name recorded with the judgments.'),
                 limit: int = typer.Option(15, '--limit', help='Edge comparisons to judge (the calibration set).')):
