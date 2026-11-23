@@ -96,42 +96,49 @@ def build(base_dir: Path, set_id: str = 'v2') -> dict[str, Any]:
     points, table = point_table(base_dir, set_id), matched(base_dir, set_id)
     block_pairs = {p['key']: p for p in read_json(folder / stage3.pairs_file('b2'))['pairs']}
     unit_pairs = {p['key']: p for p in read_json(folder / stage3.pairs_file('u'))['pairs']}
-    sermons: dict[int, Any] = {}
-    groups, items, versions = [], [], {}
-    for key in sorted(points, key=digest):
+    versions: dict[str, list[str]] = {}
+    by_pair: dict[str, list[dict[str, Any]]] = {}
+    for key in points:
         if points[key]['point'] is None:
             continue
-        found = {arm: table[arm][key]['claim'] for arm in ARMS if table[arm].get(key) and table[arm][key]['claim']}
-        if not found:
-            continue
-        video = int(block_pairs[key]['video_id'])
-        if video not in sermons:
-            sermons[video] = public_set.load_sermon(base_dir, video, set_id)
-        text = sermons[video].text
-        block, unit, point = block_pairs[key], unit_pairs[key], points[key]['point']
-        start = min(block['unit_start'], unit['unit_start'], point['start'])
-        end = max(block['unit_start'] + len(block['text']), unit['unit_start'] + len(unit['text']), point['end'])
-        lo, hi = max(0, start - WINDOW), min(len(text), end + WINDOW)
-        passage = text[lo:point['start']] + '⟦POINT⟧' + text[point['start']:point['end']] + '⟦/POINT⟧' + text[point['end']:hi]
-        mine = []
-        for arm, claim in found.items():
+        for arm in ARMS:
+            claim = table[arm].get(key, {}).get('claim')
+            if not claim:
+                continue
             iid = item_id(key, claim)
             if iid not in versions:
                 record = claim['claim']
                 versions[iid] = []
-                mine.append(dict(id=iid, kind='record', group=key, summary=claim['summary'], proposition=record['proposition'], target=claim['target'],
-                                 conditions=record['conditions'], qualifications=record['qualifications'], reasons=record['reasons'], anchor_text=record['anchor_text']))
+                by_pair.setdefault(key, []).append(dict(id=iid, kind='record', group=key, summary=claim['summary'], proposition=record['proposition'], target=claim['target'],
+                                                        conditions=record['conditions'], qualifications=record['qualifications'], reasons=record['reasons'], anchor_text=record['anchor_text']))
             versions[iid].append(arm)
-        groups.append(dict(key=key, leaf=block_pairs[key]['leaf'], leaf_meaning=main_point.leaf_meaning(block_pairs[key]['leaf']), passage=passage,
-                           watch_url=sermons[video].link_at(point['start']), record_ids=[i['id'] for i in sorted(mine, key=lambda i: digest(i['id']))]))
-        items.extend(sorted(mine, key=lambda i: digest(i['id'])))
-    items += distinct_items(base_dir, set_id, versions)
+    multi = distinct_items(base_dir, set_id, versions)
+    for item in multi:
+        by_pair.setdefault(item['group'], [])
+    sermons: dict[int, Any] = {}
+    groups, items = [], []
+    for key in sorted(by_pair, key=digest):
+        block, unit, point = block_pairs[key], unit_pairs[key], points[key]['point']
+        video = int(block['video_id'])
+        if video not in sermons:
+            sermons[video] = public_set.load_sermon(base_dir, video, set_id)
+        text = sermons[video].text
+        start, end = min(block['unit_start'], unit['unit_start']), max(block['unit_start'] + len(block['text']), unit['unit_start'] + len(unit['text']))
+        if point:
+            start, end = min(start, point['start']), max(end, point['end'])
+        lo, hi = max(0, start - WINDOW), min(len(text), end + WINDOW)
+        passage = (text[lo:point['start']] + '⟦POINT⟧' + text[point['start']:point['end']] + '⟦/POINT⟧' + text[point['end']:hi]) if point else text[lo:hi]
+        mine = sorted(by_pair[key], key=lambda i: digest(i['id']))
+        groups.append(dict(key=key, leaf=block['leaf'], leaf_meaning=main_point.leaf_meaning(block['leaf']), passage=passage, has_point=bool(point),
+                           watch_url=sermons[video].link_at(point['start'] if point else block['unit_start']), record_ids=[i['id'] for i in mine]))
+        items.extend(mine)
+        items.extend(i for i in multi if i['group'] == key)
     queue = seal(dict(version=VERSION, set_id=set_id, window=WINDOW, item_count=len(items), groups=groups, items=items))
     out = paths(base_dir, set_id)
     write_json(out['queue'], queue)
     write_json(out['versions'], seal(dict(version=VERSION, arms={k: sorted(v) for k, v in versions.items()})))
     return dict(queue=str(out['queue']), groups=len(groups), items=len(items), record_items=sum(i['kind'] == 'record' for i in items),
-                distinct_items=sum(i['kind'] == 'distinct' for i in items), arms_sharing_a_record=sum(len(v) > 1 for v in versions.values()))
+                distinct_items=sum(i['kind'] == 'distinct' for i in items), arms_sharing_a_record=sum(len(v) > 1 for v in versions.values() if v and v[0] in ARMS))
 
 
 def distinct_items(base_dir: Path, set_id: str, versions: dict[str, list[str]]) -> list[dict[str, Any]]:
