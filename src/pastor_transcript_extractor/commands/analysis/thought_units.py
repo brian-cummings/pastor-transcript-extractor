@@ -88,11 +88,23 @@ def improve_boundaries(base_dir: Path = BASE,
 @app.command('snap')
 def snap(base_dir: Path = BASE,
          check_only: bool = typer.Option(False, '--check-only', help='Report candidates, questions and estimated cost; sends nothing.'),
-         video: int = typer.Option(None, '--video', help='Run on this sermon for the downstream comparison (its own folder and ledger); default is the held-out sermon.')):
+         video: int = typer.Option(None, '--video', help='Run on this sermon for the downstream comparison (its own folder and ledger); default is the held-out sermon.'),
+         set_id: str = typer.Option(None, '--set', help='With --video: a sermon of this public set (v1 or v2) instead of the pilot table.')):
     """Score every candidate boundary in a sermon (Jev) and build the original, code, jev and jev_split arms (with the blind grading packet for the held-out sermon)."""
     from ...thought_units import snap as snapping
     try:
-        _echo(snapping.run(base_dir, check_only=check_only, video=video))
+        _echo(snapping.run(base_dir, check_only=check_only, video=video, set_id=set_id))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('snap-set')
+def snap_set(base_dir: Path = BASE, check_only: bool = typer.Option(False, '--check-only', help='Report candidates, questions and estimated cost for every sermon; sends nothing.'),
+             set_id: str = SET, top: int = typer.Option(3, '--top', help='Which pairs file names the sermons to snap (3 is pairs-top3.json).')):
+    """Snap (Jev) every public-set sermon that holds flagged pairs (section 28, Stage 1): the jev and jev_split arms, one folder and ledger per sermon."""
+    from ...thought_units import snap as snapping
+    try:
+        _echo(snapping.run_pair_sermons(base_dir, set_id, check_only=check_only, top=top))
     except ERRORS as error:
         raise typer.BadParameter(str(error)) from error
 

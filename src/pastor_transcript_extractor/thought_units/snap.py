@@ -160,13 +160,26 @@ def arms_dir(base_dir: Path, video: int) -> Path:
     return stage.paths(base_dir)[2] / f'arms-{video}'
 
 
-def _prepare(base_dir: Path, video: int | None = None):
-    leaf, _, out = stage.paths(base_dir)
-    if video is None:
-        video = min(item['video_id'] for item in read_json(leaf)['sermons'] if item['video_id'] not in EXCLUDED_VIDEOS)
+def set_snap_dir(base_dir: Path, set_id: str, video: int) -> Path:
+    """A public-set sermon's snap folder and ledger (section 28): beside the set, one per sermon, as `arms_dir` does for sermon 281."""
+    from . import public_set
+    return public_set.set_dir(base_dir, set_id) / 'snap' / f'snap-{video}'
+
+
+def _prepare(base_dir: Path, video: int | None = None, set_id: str | None = None):
+    if set_id is not None:
+        # Public-set sermons are not in the pilot leaf table; the sermon is rebuilt from its saved final-pass blocks in the coordinates pairs use.
+        from . import public_set
+        if video is None:
+            raise ValueError('A public-set snap needs a sermon (--video)')
+        leaf, out, sermon = None, set_snap_dir(base_dir, set_id, video), public_set.load_sermon(base_dir, video, set_id)
     else:
-        out = arms_dir(base_dir, video)
-    sermon = sermons.load(leaf, video)
+        leaf, _, out = stage.paths(base_dir)
+        if video is None:
+            video = min(item['video_id'] for item in read_json(leaf)['sermons'] if item['video_id'] not in EXCLUDED_VIDEOS)
+        else:
+            out = arms_dir(base_dir, video)
+        sermon = sermons.load(leaf, video)
     pieces = cand.split_pieces(sermon.text)
     # Sentence ends only: a cut after a piece without terminal punctuation (an unpunctuated caption line) would be mid-sentence.
     found = [c for c in cand.candidates(sermon.text, pieces) if not is_mid_sentence(sermon.text, c.position)]
@@ -196,9 +209,9 @@ def arm_summary(text: str, pieces, cuts: Sequence[int]) -> dict[str, Any]:
 
 
 def run(base_dir: Path, *, check_only: bool = False, factory: Callable = jev.default_factory,
-        state: Callable[[], dict[str, Any]] = git_state, video: int | None = None) -> dict[str, Any]:
-    """Default: the held-out sermon of section 15. With `video`: the same method on that sermon, under its own folder and ledger."""
-    leaf, out, sermon, pieces, found, edges = _prepare(base_dir, video)
+        state: Callable[[], dict[str, Any]] = git_state, video: int | None = None, set_id: str | None = None) -> dict[str, Any]:
+    """Default: the held-out sermon of section 15. With `video`: the same method on that sermon, under its own folder and ledger. With `set_id` and `video`: a public-set sermon (section 28)."""
+    leaf, out, sermon, pieces, found, edges = _prepare(base_dir, video, set_id)
     built = candidate_questions(sermon, pieces, found)
     ledger = (stage._ledger(out) if video is None
               else stage._ledger(out, ceiling_usd=ARMS_CEILING_USD, ceiling_attempts=ARMS_CEILING_ATTEMPTS))
@@ -223,7 +236,7 @@ def run(base_dir: Path, *, check_only: bool = False, factory: Callable = jev.def
     if not all(s['coverage']['ok'] for s in summaries.values()):
         raise ValueError('Coverage check failed: units do not rejoin to the sermon text exactly once')
     distances = [m['distance'] for m in placed['moves']]
-    result = seal(dict(plan, implementation=state(), source_sha256=sermon.source_sha256, leaf_sha256=file_sha256(leaf),
+    result = seal(dict(plan, implementation=state(), source_sha256=sermon.source_sha256, leaf_sha256=file_sha256(leaf) if leaf else None, set_id=set_id,
                        constants=dict(gain_margin=GAIN_MARGIN, min_pieces=MIN_PIECES, max_characters=MAX_CHARACTERS, split_percentile=SPLIT_PERCENTILE,
                                       split_separation=SPLIT_SEPARATION, peak_radius=PEAK_RADIUS),
                        arms=arms, summaries=summaries, placement=dict(
@@ -242,6 +255,33 @@ def run(base_dir: Path, *, check_only: bool = False, factory: Callable = jev.def
     write_json(out / 'snap_sample.json', sample)
     return dict(plan, output=str(out / 'snap_result.json'), summaries=summaries, placement={k: v for k, v in result['placement'].items() if k != 'moves'},
                 split=result['split'], sample=dict(items=len(sample['items']), kinds={k: sum(i['kind'] == k for i in sample['items']) for k in ('edge_pair', 'split', 'unit')}))
+
+
+def pair_sermons(base_dir: Path, set_id: str, top: int = 3) -> list[int]:
+    """The sermons that hold flagged pairs, in video order: the only ones section 28 snaps."""
+    from . import public_set
+    pairs = read_json(public_set.set_dir(base_dir, set_id) / public_set.pairs_name(top))['pairs']
+    return sorted({int(pair['video_id']) for pair in pairs})
+
+
+def run_pair_sermons(base_dir: Path, set_id: str, *, check_only: bool = False, factory: Callable = jev.default_factory,
+                     state: Callable[[], dict[str, Any]] = git_state, top: int = 3) -> dict[str, Any]:
+    """Snap every sermon that holds a flagged pair, one folder and ledger per sermon. Check-only sends nothing and totals the estimate; a failure stops the loop."""
+    results = {}
+    for video in pair_sermons(base_dir, set_id, top):
+        results[video] = run(base_dir, check_only=check_only, factory=factory, state=state, video=video, set_id=set_id)
+    summary = dict(sermons=len(results))
+    if check_only:
+        summary.update(requests=sum(r['requests'] for r in results.values()), questions=sum(r['questions'] for r in results.values()),
+                       cached=sum(r['cached'] for r in results.values()),
+                       estimated_usd=str(sum(Decimal(r['estimated_usd']) for r in results.values())),
+                       worst_case_reserved_usd=str(sum(Decimal(r['worst_case_reserved_usd']) for r in results.values())),
+                       per_sermon_ceiling=dict(usd=str(ARMS_CEILING_USD), attempts=ARMS_CEILING_ATTEMPTS))
+    else:
+        summary.update(dropped_edges={v: r['placement']['dropped_edges'] for v, r in results.items() if r['placement']['dropped_edges']},
+                       guard_violations={v: r['placement']['guard_violations'] for v, r in results.items() if r['placement']['guard_violations']})
+    return dict(summary, per_sermon={str(v): {k: r[k] for k in ('characters', 'candidates', 'edges', 'requests', 'estimated_usd', 'worst_case_reserved_usd') if k in r}
+                                     for v, r in results.items()})
 
 
 # ---- blind grading packet ----------------------------------------------------------------------------------------------

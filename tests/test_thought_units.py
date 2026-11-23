@@ -393,3 +393,47 @@ class StageTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PublicSetSnapTests(unittest.TestCase):
+    """Section 28 Stage 0b: the snap runs on public-set sermons through their own loader, folder and ledger."""
+
+    def setUp(self):
+        from unittest import mock
+        from pastor_transcript_extractor.bound_claims.common import write_json
+        from pastor_transcript_extractor.object_position import sermon as sermon_module
+        from pastor_transcript_extractor.thought_units import public_set
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.base = Path(directory.name)
+        pieces = cand.split_pieces(SNAP_TEXT)
+        starts = [0, pieces[9].end + 12, pieces[19].end + 12, pieces[29].end + 12]
+        ends = [*starts[1:], len(SNAP_TEXT)]
+        blocks = tuple((f'b{i:04d}', a, b, 10.0 * i) for i, (a, b) in enumerate(zip(starts, ends)))
+        self.loaded = []
+
+        def load(base_dir, video_id, set_id='v1'):
+            self.loaded.append((video_id, set_id))
+            return sermon_module.Sermon(video_id=video_id, title='t', url='u', source_sha256='x', text=SNAP_TEXT, blocks=blocks)
+        patcher = mock.patch.object(public_set, 'load_sermon', load)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.public_set = public_set
+        folder = public_set.set_dir(self.base, 'v2')
+        write_json(folder / public_set.pairs_name(3), dict(pairs=[dict(video_id=9, key='a'), dict(video_id=7, key='b'), dict(video_id=9, key='c')]))
+
+    def test_only_sermons_with_pairs_are_snapped_in_video_order(self):
+        self.assertEqual([7, 9], snap.pair_sermons(self.base, 'v2'))
+
+    def test_check_only_totals_the_estimate_without_a_provider_and_keeps_a_folder_per_sermon(self):
+        result = snap.run_pair_sermons(self.base, 'v2', check_only=True, factory=lambda model: self.fail('check-only must not call the provider'))
+        self.assertEqual(2, result['sermons'])
+        self.assertEqual(sorted(result['per_sermon']), ['7', '9'])
+        self.assertEqual([(7, 'v2'), (9, 'v2')], self.loaded)
+        self.assertGreater(result['requests'], 0)
+        self.assertEqual(result['requests'], sum(v['requests'] for v in result['per_sermon'].values()))
+        self.assertNotEqual(snap.set_snap_dir(self.base, 'v2', 7), snap.set_snap_dir(self.base, 'v2', 9))
+
+    def test_a_set_snap_without_a_sermon_is_refused(self):
+        with self.assertRaises(ValueError):
+            snap.run(self.base, check_only=True, set_id='v2')
