@@ -185,7 +185,10 @@ COMPARE = {arm: Scope(f'compare_{arm}', Decimal('1.00'), 80, arm) for arm in uni
 DEVELOPMENT3 = Scope('development_top3', Decimal('1.00'), 60, half='development', pairs_file='pairs-top3.json')
 HELD_OUT3 = Scope('held_out_top3', Decimal('1.50'), 100, half='held_out', pairs_file='pairs-top3.json')
 CONFIRM3 = Scope('confirm_top3', Decimal('1.50'), 100, half='all', pairs_file='pairs-top3.json', set_id='v2', fit_longest=True)
-SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, DEVELOPMENT3, HELD_OUT3, CONFIRM3, *COMPARE.values())}
+# Section 28.8, Stage 3: the same 54 pairs on block (again), snapped unit, the one sub-unit holding the target point, and every sub-unit. Pairs files are built by `stage3`.
+STAGE3 = {arm: Scope(f'stage3_{arm}', Decimal(usd), attempts, half='all', pairs_file=f'stage3/pairs-{arm}.json', set_id='v2')
+          for arm, usd, attempts in (('b2', '1.00', 60), ('u', '1.00', 60), ('x1', '1.00', 60), ('x2', '2.00', 130))}
+SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, DEVELOPMENT3, HELD_OUT3, CONFIRM3, *COMPARE.values(), *STAGE3.values())}
 
 RECORD_SCHEMA: dict[str, Any] = copy.deepcopy(bound.CLAIM_SCHEMA)
 RECORD_SCHEMA['required'] = [*bound.FIELDS, *EXTRA_FIELDS]

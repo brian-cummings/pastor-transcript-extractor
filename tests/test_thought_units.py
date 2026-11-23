@@ -460,3 +460,36 @@ class Stage0Tests(unittest.TestCase):
             self.assertEqual(dict(start=110, end=340), table[0]['point'])
             self.assertEqual((2, 2), (table[0]['records'], table[0]['anchored']))
             self.assertIsNone(table[1]['point'])
+
+
+class Stage3Tests(unittest.TestCase):
+    """Section 28.8: the matched record and where a block lies after the snap."""
+
+    def setUp(self):
+        from pastor_transcript_extractor.thought_units import stage3
+        self.stage3 = stage3
+
+    def claim(self, start, end):
+        return dict(sermon_start=start, sermon_end=end)
+
+    def test_matched_record_needs_half_of_the_shorter_span_and_takes_the_largest_overlap(self):
+        point = dict(start=100, end=200)
+        self.assertIsNone(self.stage3.matched_record([], point))
+        self.assertIsNone(self.stage3.matched_record([self.claim(300, 350)], point))                       # elsewhere in the unit
+        self.assertIsNone(self.stage3.matched_record([self.claim(190, 400)], point))                       # 10 of the shorter 100 characters
+        self.assertEqual(self.claim(150, 180), self.stage3.matched_record([self.claim(150, 180)], point))   # inside the point: the whole shorter span overlaps
+        both = [self.claim(95, 130), self.claim(120, 210)]
+        self.assertEqual(self.claim(120, 210), self.stage3.matched_record(both, point))                     # 80 characters against 30
+        tie = [self.claim(100, 130), self.claim(150, 180)]
+        self.assertEqual(self.claim(100, 130), self.stage3.matched_record(tie, point))                      # the earlier record on a tie
+
+    def test_block_range_follows_the_moved_edges_and_reports_a_merge(self):
+        blocks = [('b0', 0, 100, 0.0), ('b1', 100, 200, 1.0), ('b2', 200, 300, 2.0)]
+        result = dict(placement=dict(moves=[dict(edge=0, placed=110), dict(edge=1, placed=190)], dropped_edges=[]))
+        self.assertEqual((0, 110), self.stage3.block_range(result, blocks, 0, 300))
+        self.assertEqual((110, 190), self.stage3.block_range(result, blocks, 1, 300))
+        self.assertEqual((190, 300), self.stage3.block_range(result, blocks, 2, 300))
+        dropped = dict(placement=dict(moves=[dict(edge=0, placed=110)], dropped_edges=[1]))
+        self.assertIsNone(self.stage3.block_range(dropped, blocks, 1, 300))                                  # an edge next to it was dropped
+        self.assertIsNone(self.stage3.block_range(dropped, blocks, 2, 300))
+        self.assertEqual((0, 110), self.stage3.block_range(dropped, blocks, 0, 300))

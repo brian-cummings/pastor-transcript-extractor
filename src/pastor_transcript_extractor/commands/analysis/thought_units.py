@@ -119,6 +119,31 @@ def set_stage0_check(base_dir: Path = BASE, set_id: str = SET, top: int = typer.
         raise typer.BadParameter(str(error)) from error
 
 
+ARM3 = typer.Option(..., '--arm', help='b2 (blocks again), u (snapped units), x1 (the sub-unit holding the target point) or x2 (every sub-unit).')
+
+
+@app.command('stage3-build')
+def stage3_build(base_dir: Path = BASE, set_id: str = SET):
+    """Section 28.8 (offline): write the four arms' pairs from the saved snap results and the frozen target points, and check every integrity rule; no provider call."""
+    from ...thought_units import stage3
+    try:
+        _echo(stage3.build_pairs(base_dir, set_id))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('stage3-extract')
+def stage3_extract(base_dir: Path = BASE, arm: str = ARM3, check_only: bool = typer.Option(False, '--check-only', help='Report counts, requests and estimated cost; sends nothing.')):
+    """Section 28.8: run the frozen v4 instruction on one arm's pairs (own folder and ledger, one run, no retry)."""
+    from ...thought_units import leaf_evidence
+    try:
+        if arm not in leaf_evidence.STAGE3:
+            raise ValueError('--arm must be b2, u, x1 or x2')
+        _echo(leaf_evidence.run(base_dir, check_only=check_only, variant=leaf_evidence.V4, scope=leaf_evidence.STAGE3[arm]))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @app.command('snap-review')
 def snap_review(base_dir: Path = BASE, grader: str = typer.Option('brian', '--grader', help='Name recorded with the judgments.'),
                 limit: int = typer.Option(15, '--limit', help='Edge comparisons to judge (the calibration set).')):
