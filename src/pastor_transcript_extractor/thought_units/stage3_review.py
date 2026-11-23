@@ -33,7 +33,7 @@ SAMPLE_PER_ARM, BOOTSTRAP, BOOTSTRAP_SEED = 6, 2000, 20251122
 def paths(base_dir: Path, set_id: str = 'v2') -> dict[str, Path]:
     folder = public_set.set_dir(base_dir, set_id) / 'stage3'
     return dict(folder=folder, queue=folder / 'review-queue.json', versions=folder / 'review-versions.json', decisions=folder / 'decisions.jsonl',
-                sample=folder / 'review-sample.json', human=folder / 'decisions-human.jsonl', report_md=folder / 'STAGE3_REPORT.md', report_json=folder / 'STAGE3_REPORT.json')
+                sample=folder / 'review-sample.json', human=folder / 'decisions-human.jsonl', second=folder / 'decisions-second.jsonl', report_md=folder / 'STAGE3_REPORT.md', report_json=folder / 'STAGE3_REPORT.json')
 
 
 # ---- what each arm returned -------------------------------------------------------------------------------------------------
@@ -155,6 +155,24 @@ def distinct_items(base_dir: Path, set_id: str, versions: dict[str, list[str]]) 
             items.setdefault(iid, dict(id=iid, kind='distinct', group=key, summaries=[c['summary'] for c in claims], anchors=[c['claim']['anchor_text'] for c in claims]))
             versions.setdefault(iid, []).append(arm)
     return sorted(items.values(), key=lambda i: digest(i['id']))
+
+
+SECOND_GROUPS = 12
+
+
+def second_groups(queue: Mapping[str, Any]) -> list[str]:
+    """The second rater's pairs by rule (28.14): the first SECOND_GROUPS pair keys in sha256 order, with every item of those pairs."""
+    return sorted((g['key'] for g in queue['groups']), key=digest)[:SECOND_GROUPS]
+
+
+def second_agreement(queue: Mapping[str, Any], main: Mapping[str, Mapping[str, Any]], second: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    """The second rater against the rater of record on the items both labeled: level agreement for every item, focus and fit for records, and the disagreements."""
+    items = [i for i in queue['items'] if i['id'] in second and i['id'] in main]
+    records = [i for i in items if i['kind'] == 'record']
+    same = lambda field, rows: sum(main[i['id']].get(field) == second[i['id']].get(field) for i in rows)
+    return dict(items=len(items), level_agree=same('level', items), records=len(records), focus_agree=same('focus', records), fit_agree=same('fit', records),
+                disagreements=[dict(item=i['id'][:10], kind=i['kind'], main=main[i['id']]['level'], second=second[i['id']]['level']) for i in items
+                               if main[i['id']]['level'] != second[i['id']]['level']])
 
 
 def sample_ids(queue: Mapping[str, Any], versions: Mapping[str, Any]) -> list[str]:
@@ -388,6 +406,9 @@ def report(base_dir: Path, set_id: str = 'v2') -> dict[str, Any]:
     human = leaf_review.load_decisions(base_dir, leaf_evidence.V4, dict(decisions=out['human']))
     if human:
         result['brian_sample'] = sample_agreement(queue, versions, decided, human)
+    second = leaf_review.load_decisions(base_dir, leaf_evidence.V4, dict(decisions=out['second']))
+    if second:
+        result['second_rater'] = second_agreement(queue, decided, second)
     write_json(out['report_json'], result)
     out['report_md'].write_text(render_report(result))
     return dict(result, report_md=str(out['report_md']), report_json=str(out['report_json']))
@@ -411,6 +432,8 @@ def render_report(result: Mapping[str, Any]) -> str:
               '**Production question (no verdict):**'] + [f"- {name.replace('_', ' ')}: {fmt(c)}" for name, c in result['production_question'].items()]
     lines += ['', '**Guards:** ' + '; '.join(f"{arm}: {g}" for arm, g in result['guards'].items()), '', '**Without sermon 1502:** ' + '; '.join(f"{n.replace('_', ' ')}: {fmt(c)}" for n, c in result['without_sermon_1502'].items()),
               '', f"**Padding (distinct points, multi-record pairs):** {result['padding']}", '', f"**Requests with no result (transport failure, left out of that arm):** {result['missing_requests']}"]
+    if 'second_rater' in result:
+        lines += ['', f"**Second rater (Claude) against the rater of record:** {result['second_rater']}"]
     if 'brian_sample' in result:
         lines += ['', f"**Brian's sample:** {result['brian_sample']['agree']} of {result['brian_sample']['items']} levels agree; per arm: {result['brian_sample']['per_arm']}; disagreements: {result['brian_sample']['disagreements']}"]
     return '\n'.join(lines) + '\n'

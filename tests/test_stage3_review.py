@@ -63,3 +63,16 @@ class ReadingTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SecondRaterTests(unittest.TestCase):
+    def test_second_groups_are_the_first_twelve_pair_keys_by_hash_and_agreement_lists_differences(self):
+        queue = dict(groups=[dict(key=f'v1-b{n}-x') for n in range(30)], items=[dict(id='a' * 20, kind='record'), dict(id='b' * 20, kind='distinct')])
+        chosen = review.second_groups(queue)
+        self.assertEqual(12, len(chosen))
+        self.assertEqual(chosen, review.second_groups(dict(queue, groups=list(reversed(queue['groups'])))))
+        main = {'a' * 20: dict(level='complete', focus='on_point', fit=True), 'b' * 20: dict(level='distinct')}
+        second = {'a' * 20: dict(level='accurate_incomplete', focus='on_point', fit=True), 'b' * 20: dict(level='distinct')}
+        result = review.second_agreement(queue, main, second)
+        self.assertEqual((2, 1, 1, 1, 1), (result['items'], result['level_agree'], result['records'], result['focus_agree'], result['fit_agree']))
+        self.assertEqual([dict(item='a' * 10, kind='record', main='complete', second='accurate_incomplete')], result['disagreements'])
