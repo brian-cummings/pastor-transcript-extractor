@@ -63,6 +63,10 @@ BOUND_CLAIM_POLICIES={
     # Object-position check: one whole-sermon request. The input cap is sized to the frozen sermon's request bytes plus the
     # 4096 allowance (62547 + 4096 < 73728); `maximum_usd` is twice one attempt (73728 in, 8192 out at V4 Pro list prices).
     DEEPINFRA_BOUND_CLAIM_VERSIONS[2]:{**POLICY,'input_cap':73728,'output_cap':8192,'reasoning_effort':'none','maximum_usd':'0.2342912'},
+    # Thought-unit stage 3 (docs/THOUGHT_UNIT_EXPERIMENT.md 28.12): the same model, prices, reasoning and output cap as [1], only the input cap is 32768 so that a snapped unit and its two
+    # neighbours fit under the longest instruction. `maximum_usd` is twice one attempt (32768 in, 8192 out at the Flash list prices) for the one bounded whitespace-loop recovery,
+    # exactly as [1]'s 0.016384 is for 16384 in. Per-run attempt ceilings and one attempt per pair still bound duplicates and runaways.
+    DEEPINFRA_BOUND_CLAIM_VERSIONS[3]:{**DIRECT_POLICY,'input_cap':32768,'output_cap':8192,'maximum_usd':'0.0229376'},
 }
 
 

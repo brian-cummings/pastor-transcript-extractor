@@ -104,7 +104,7 @@ def build_pairs(base_dir: Path, set_id: str = 'v2') -> dict[str, Any]:
                                       preceding=around(split_ranges, i, -1), following=around(split_ranges, i, 1)))
     # Section 24.6's rule, applied here before any output exists: a pair whose request cannot fit the provider's input cap (no truncation allowed) in ANY arm is
     # excluded from EVERY arm, by input size alone. Snapped units and their neighbors can be longer than the blocks they came from.
-    unfit = {name: sorted({p.get('source_key', p['key']) for p in arms_pairs[name] if not leaf_evidence.fits_cap(p)}) for name in ARM_KEYS}
+    unfit = {name: sorted({p.get('source_key', p['key']) for p in arms_pairs[name] if not leaf_evidence.fits_cap(p, leaf_evidence.PRODUCER_32K)}) for name in ARM_KEYS}
     excluded = sorted({key for keys in unfit.values() for key in keys})
     if excluded:
         arms_pairs = {name: [p for p in pairs if p.get('source_key', p['key']) not in excluded] for name, pairs in arms_pairs.items()}

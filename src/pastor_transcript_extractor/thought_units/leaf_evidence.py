@@ -31,6 +31,7 @@ CATEGORY = 'society_public_life'
 CEILING_USD, CEILING_ATTEMPTS = Decimal('0.50'), 60
 STEP = main_point.STEP
 PRODUCER_VERSION = main_point.PRODUCER_VERSION
+PRODUCER_32K = requests.DEEPINFRA_BOUND_CLAIM_VERSIONS[3]   # section 28.12: the same producer with an input cap of 32768, for stage 3 only
 EXTRA_FIELDS = ('summary', 'target')
 # The shared request policy requires this label for bound-claim request versions; it checks the name only, so the added fields need no policy change.
 SCHEMA_NAME = 'bound_claims'
@@ -174,6 +175,7 @@ class Scope:
     half: str | None = None         # section 23: a half of the new set read from the three-leaf pairs file
     pairs_file: str = 'pairs.json'
     set_id: str = public_set.DEFAULT_SET     # section 24: the confirmatory set of unused sermons is `v2`
+    producer: str = PRODUCER_VERSION    # the request policy; the earlier scopes keep their frozen 16384 input cap
     fit_longest: bool = False       # section 24.6: drop pairs whose request cannot fit the input cap under the longest instruction (v4), for every version alike
 
 
@@ -186,8 +188,8 @@ DEVELOPMENT3 = Scope('development_top3', Decimal('1.00'), 60, half='development'
 HELD_OUT3 = Scope('held_out_top3', Decimal('1.50'), 100, half='held_out', pairs_file='pairs-top3.json')
 CONFIRM3 = Scope('confirm_top3', Decimal('1.50'), 100, half='all', pairs_file='pairs-top3.json', set_id='v2', fit_longest=True)
 # Section 28.8, Stage 3: the same 54 pairs on block (again), snapped unit, the one sub-unit holding the target point, and every sub-unit. Pairs files are built by `stage3`.
-STAGE3 = {arm: Scope(f'stage3_{arm}', Decimal(usd), attempts, half='all', pairs_file=f'stage3/pairs-{arm}.json', set_id='v2')
-          for arm, usd, attempts in (('b2', '1.00', 60), ('u', '1.00', 60), ('x1', '1.00', 60), ('x2', '2.00', 130))}
+STAGE3 = {arm: Scope(f'stage3_{arm}', Decimal(usd), attempts, half='all', pairs_file=f'stage3/pairs-{arm}.json', set_id='v2', producer=PRODUCER_32K)
+          for arm, usd, attempts in (('b2', '1.50', 60), ('u', '1.50', 60), ('x1', '1.00', 44), ('x2', '3.00', 113))}
 SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, DEVELOPMENT3, HELD_OUT3, CONFIRM3, *COMPARE.values(), *STAGE3.values())}
 
 RECORD_SCHEMA: dict[str, Any] = copy.deepcopy(bound.CLAIM_SCHEMA)
@@ -247,11 +249,11 @@ def pair_inputs(base_dir: Path, scope: Scope = ARMS) -> list[dict[str, Any]]:
     return [p for p in pairs if fits_cap(p)] if scope.fit_longest else pairs
 
 
-def fits_cap(pair: Mapping[str, Any]) -> bool:
+def fits_cap(pair: Mapping[str, Any], producer: str = PRODUCER_VERSION) -> bool:
     """Whether the pair's request passes the provider's input cap under the longest instruction (v4). The cap allows no truncation, so a pair that does not fit cannot be
     sent; it is excluded for every version, by input size alone and before any output exists (section 24.6)."""
     try:
-        build_request(pair, V4)
+        build_request(pair, V4, producer)
     except ValueError as error:
         if 'input exceeds reservation' in str(error):
             return False
@@ -267,8 +269,8 @@ def units_identity(base_dir: Path, scope: Scope = ARMS) -> str:
     return file_sha256(arms.arms_paths(base_dir)['units'] if scope is ARMS else public_set.set_dir(base_dir, scope.set_id) / scope.pairs_file)
 
 
-def build_request(pair: Mapping[str, Any], variant: Variant = V1) -> requests.RequestSpec:
-    policy = provider.policy_for(PRODUCER_VERSION)
+def build_request(pair: Mapping[str, Any], variant: Variant = V1, producer: str = PRODUCER_VERSION) -> requests.RequestSpec:
+    policy = provider.policy_for(producer)
     body = dict(
         model=policy['model'],
         messages=[dict(role='system', content=variant.prompt),
@@ -277,7 +279,7 @@ def build_request(pair: Mapping[str, Any], variant: Variant = V1) -> requests.Re
         response_format=dict(type='json_schema', json_schema=dict(name=SCHEMA_NAME, strict=True, schema=RESPONSE_SCHEMA)),
         temperature=0, top_p=1, stream=False, n=1, reasoning_effort=policy['reasoning_effort'])
     spec = requests.RequestSpec('source_reading', body, dict(coordinate=pair['key'], leaf=pair['leaf'], contract=variant.version),
-                                namespace=PRODUCER_VERSION, version=PRODUCER_VERSION, runtime_identity=dict(policy))
+                                namespace=producer, version=producer, runtime_identity=dict(policy))
     return provider.streaming_request(spec)
 
 
@@ -302,7 +304,7 @@ def decode(response: Mapping[str, Any], pair: Mapping[str, Any], variant: Varian
 def freeze_identity(base_dir: Path, pairs: list[Mapping[str, Any]], variant: Variant = V1, scope: Scope = ARMS) -> dict[str, Any]:
     here = Path(__file__).parent
     return dict(instruction_sha256=digest(variant.prompt), instruction_version=variant.version, schema_sha256=digest(RESPONSE_SCHEMA), category=dict(name=CATEGORY, meaning=category_meaning()),
-                scope=scope.key, pairs_sha256=arms.pairs_digest(pairs), units_sha256=units_identity(base_dir, scope), producer=provider.policy_for(PRODUCER_VERSION),
+                scope=scope.key, pairs_sha256=arms.pairs_digest(pairs), units_sha256=units_identity(base_dir, scope), producer=provider.policy_for(scope.producer),
                 code_sha256=digest([file_sha256(here / name) for name in ('leaf_evidence.py', 'main_point.py', 'arms.py', 'public_set.py', 'unit_compare.py')]),
                 **({} if scope is ARMS else dict(inputs_sha256=digest(list(pairs)))))
 
@@ -332,8 +334,8 @@ def run(base_dir: Path, *, check_only: bool = False, transport: Callable | None 
         metadata: Callable[[str], Mapping[str, Any]] = provider.public_model_metadata, variant: Variant = V1, scope: Scope = ARMS) -> dict[str, Any]:
     out, ledger = leaf_dir(base_dir, variant, scope), ledger_for(base_dir, variant, scope)
     pairs = pair_inputs(base_dir, scope)
-    policy = provider.policy_for(PRODUCER_VERSION)
-    specs = {pair['key']: build_request(pair, variant) for pair in pairs}
+    policy = provider.policy_for(scope.producer)
+    specs = {pair['key']: build_request(pair, variant, scope.producer) for pair in pairs}
     reservation = provider.reserved_usd(next(iter(specs.values())).version) if specs else Decimal(0)
     root = out / 'extract'
 
@@ -362,7 +364,7 @@ def run(base_dir: Path, *, check_only: bool = False, transport: Callable | None 
             row.update(status='lost_attempt', error='A prior attempt has no receipt; uncertain spend, never retried')
         else:
             if not receipt(pair).exists():
-                ledger.reserve(entry, STEP, reservation, coordinate=key, version=PRODUCER_VERSION)
+                ledger.reserve(entry, STEP, reservation, coordinate=key, version=scope.producer)
             response = failure = None
             try:
                 response = requests.execute(spec, provider.OneRequestLedger(str(reservation), spec.version), store, send)
@@ -372,7 +374,7 @@ def run(base_dir: Path, *, check_only: bool = False, transport: Callable | None 
                 usage = _physical_usage(store)
                 ledger.resolve(entry, actual_usd=(list_price_usd(usage['input_tokens'], usage['output_tokens'],
                     policy['input_usd_per_million'], policy['output_usd_per_million'])
-                    + usage['unmetered_attempts'] * provider.reserved_usd(PRODUCER_VERSION) if usage else None), **usage)
+                    + usage['unmetered_attempts'] * provider.reserved_usd(scope.producer) if usage else None), **usage)
             if failure is None:
                 try:
                     row.update(status='ok', usage=response['usage'], **decode(response, pair, variant))

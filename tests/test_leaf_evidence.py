@@ -288,3 +288,26 @@ class InputCapTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class StageThreeProducerTests(unittest.TestCase):
+    """Section 28.12: the stage 3 scopes use a 32768-byte input cap; every earlier scope keeps its frozen 16384 cap."""
+
+    def test_stage_three_scopes_use_the_raised_cap_and_earlier_scopes_do_not(self):
+        from pastor_transcript_extractor import deepinfra_requests as provider
+        self.assertEqual(16384, provider.policy_for(leaf_evidence.PRODUCER_VERSION)['input_cap'])
+        self.assertEqual(32768, provider.policy_for(leaf_evidence.PRODUCER_32K)['input_cap'])
+        self.assertTrue(all(scope.producer == leaf_evidence.PRODUCER_32K for scope in leaf_evidence.STAGE3.values()))
+        self.assertTrue(all(scope.producer == leaf_evidence.PRODUCER_VERSION for key, scope in leaf_evidence.SCOPES.items() if key not in {s.key for s in leaf_evidence.STAGE3.values()}))
+
+    def test_only_the_cap_and_the_reservation_differ_between_the_two_producers(self):
+        from pastor_transcript_extractor import deepinfra_requests as provider
+        old, new = provider.policy_for(leaf_evidence.PRODUCER_VERSION), provider.policy_for(leaf_evidence.PRODUCER_32K)
+        self.assertEqual({'input_cap', 'maximum_usd'}, {key for key in {*old, *new} if old.get(key) != new.get(key)})
+
+    def test_a_pair_that_overflows_the_old_cap_fits_the_raised_one_and_the_request_body_is_unchanged(self):
+        pair = dict(key='k', leaf='P:theological', probability=0.9, preceding_text='a ' * 2300, text='b ' * 1100, following_text='c ' * 1000)
+        self.assertFalse(leaf_evidence.fits_cap(pair))
+        self.assertTrue(leaf_evidence.fits_cap(pair, leaf_evidence.PRODUCER_32K))
+        small = dict(pair, preceding_text='a', text='b', following_text='c')
+        self.assertEqual(leaf_evidence.build_request(small, leaf_evidence.V4).body, leaf_evidence.build_request(small, leaf_evidence.V4, leaf_evidence.PRODUCER_32K).body)
