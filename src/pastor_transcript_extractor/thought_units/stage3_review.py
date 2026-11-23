@@ -33,7 +33,7 @@ SAMPLE_PER_ARM, BOOTSTRAP, BOOTSTRAP_SEED = 6, 2000, 20251122
 def paths(base_dir: Path, set_id: str = 'v2') -> dict[str, Path]:
     folder = public_set.set_dir(base_dir, set_id) / 'stage3'
     return dict(folder=folder, queue=folder / 'review-queue.json', versions=folder / 'review-versions.json', decisions=folder / 'decisions.jsonl',
-                sample=folder / 'review-sample.json', human=folder / 'decisions-human.jsonl', second=folder / 'decisions-second.jsonl', report_md=folder / 'STAGE3_REPORT.md', report_json=folder / 'STAGE3_REPORT.json')
+                sample=folder / 'review-sample.json', human=folder / 'decisions-human.jsonl', second=folder / 'decisions-second.jsonl', queue_extra=folder / 'review-queue-extra.json', versions_extra=folder / 'review-versions-extra.json', decisions_extra=folder / 'decisions-extra.jsonl', report_md=folder / 'STAGE3_REPORT.md', report_json=folder / 'STAGE3_REPORT.json')
 
 
 # ---- what each arm returned -------------------------------------------------------------------------------------------------
@@ -91,11 +91,41 @@ def item_id(key: str, claim: Mapping[str, Any]) -> str:
     return digest(['record', key, claim['summary'], claim['claim']['proposition'], claim['sermon_start'], claim['sermon_end']])
 
 
-def build(base_dir: Path, set_id: str = 'v2') -> dict[str, Any]:
+def _record_item(key: str, claim: Mapping[str, Any]) -> dict[str, Any]:
+    record = claim['claim']
+    return dict(id=item_id(key, claim), kind='record', group=key, summary=claim['summary'], proposition=record['proposition'], target=claim['target'],
+                conditions=record['conditions'], qualifications=record['qualifications'], reasons=record['reasons'], anchor_text=record['anchor_text'])
+
+
+def _assemble(base_dir: Path, set_id: str, by_pair: dict[str, list[dict[str, Any]]], multi: Sequence[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The groups (each pair once, with the shared reference span and the target point marked when the pair has one) and the items in group order."""
     folder = public_set.set_dir(base_dir, set_id)
-    points, table = point_table(base_dir, set_id), matched(base_dir, set_id)
+    points = point_table(base_dir, set_id)
     block_pairs = {p['key']: p for p in read_json(folder / stage3.pairs_file('b2'))['pairs']}
     unit_pairs = {p['key']: p for p in read_json(folder / stage3.pairs_file('u'))['pairs']}
+    sermons: dict[int, Any] = {}
+    groups, items = [], []
+    for key in sorted({*by_pair, *(i['group'] for i in multi)}, key=digest):
+        block, unit, point = block_pairs[key], unit_pairs[key], points[key]['point']
+        video = int(block['video_id'])
+        if video not in sermons:
+            sermons[video] = public_set.load_sermon(base_dir, video, set_id)
+        text = sermons[video].text
+        start, end = min(block['unit_start'], unit['unit_start']), max(block['unit_start'] + len(block['text']), unit['unit_start'] + len(unit['text']))
+        if point:
+            start, end = min(start, point['start']), max(end, point['end'])
+        lo, hi = max(0, start - WINDOW), min(len(text), end + WINDOW)
+        passage = (text[lo:point['start']] + '⟦POINT⟧' + text[point['start']:point['end']] + '⟦/POINT⟧' + text[point['end']:hi]) if point else text[lo:hi]
+        mine = sorted(by_pair.get(key, []), key=lambda i: digest(i['id']))
+        groups.append(dict(key=key, leaf=block['leaf'], leaf_meaning=main_point.leaf_meaning(block['leaf']), passage=passage, has_point=bool(point),
+                           watch_url=sermons[video].link_at(point['start'] if point else block['unit_start']), record_ids=[i['id'] for i in mine]))
+        items.extend(mine)
+        items.extend(i for i in multi if i['group'] == key)
+    return groups, items
+
+
+def build(base_dir: Path, set_id: str = 'v2') -> dict[str, Any]:
+    points, table = point_table(base_dir, set_id), matched(base_dir, set_id)
     versions: dict[str, list[str]] = {}
     by_pair: dict[str, list[dict[str, Any]]] = {}
     for key in points:
@@ -107,38 +137,91 @@ def build(base_dir: Path, set_id: str = 'v2') -> dict[str, Any]:
                 continue
             iid = item_id(key, claim)
             if iid not in versions:
-                record = claim['claim']
                 versions[iid] = []
-                by_pair.setdefault(key, []).append(dict(id=iid, kind='record', group=key, summary=claim['summary'], proposition=record['proposition'], target=claim['target'],
-                                                        conditions=record['conditions'], qualifications=record['qualifications'], reasons=record['reasons'], anchor_text=record['anchor_text']))
+                by_pair.setdefault(key, []).append(_record_item(key, claim))
             versions[iid].append(arm)
     multi = distinct_items(base_dir, set_id, versions)
-    for item in multi:
-        by_pair.setdefault(item['group'], [])
-    sermons: dict[int, Any] = {}
-    groups, items = [], []
-    for key in sorted(by_pair, key=digest):
-        block, unit, point = block_pairs[key], unit_pairs[key], points[key]['point']
-        video = int(block['video_id'])
-        if video not in sermons:
-            sermons[video] = public_set.load_sermon(base_dir, video, set_id)
-        text = sermons[video].text
-        start, end = min(block['unit_start'], unit['unit_start']), max(block['unit_start'] + len(block['text']), unit['unit_start'] + len(unit['text']))
-        if point:
-            start, end = min(start, point['start']), max(end, point['end'])
-        lo, hi = max(0, start - WINDOW), min(len(text), end + WINDOW)
-        passage = (text[lo:point['start']] + '⟦POINT⟧' + text[point['start']:point['end']] + '⟦/POINT⟧' + text[point['end']:hi]) if point else text[lo:hi]
-        mine = sorted(by_pair[key], key=lambda i: digest(i['id']))
-        groups.append(dict(key=key, leaf=block['leaf'], leaf_meaning=main_point.leaf_meaning(block['leaf']), passage=passage, has_point=bool(point),
-                           watch_url=sermons[video].link_at(point['start'] if point else block['unit_start']), record_ids=[i['id'] for i in mine]))
-        items.extend(mine)
-        items.extend(i for i in multi if i['group'] == key)
+    groups, items = _assemble(base_dir, set_id, by_pair, multi)
     queue = seal(dict(version=VERSION, set_id=set_id, window=WINDOW, item_count=len(items), groups=groups, items=items))
     out = paths(base_dir, set_id)
     write_json(out['queue'], queue)
     write_json(out['versions'], seal(dict(version=VERSION, arms={k: sorted(v) for k, v in versions.items()})))
     return dict(queue=str(out['queue']), groups=len(groups), items=len(items), record_items=sum(i['kind'] == 'record' for i in items),
                 distinct_items=sum(i['kind'] == 'distinct' for i in items), arms_sharing_a_record=sum(len(v) > 1 for v in versions.values() if v and v[0] in ARMS))
+
+
+def build_extra(base_dir: Path, set_id: str = 'v2') -> dict[str, Any]:
+    """28.17: every record an arm returned that the main queue did not hold (a record on another point, or a further record of a multi-record request), to be graded the same way."""
+    out = paths(base_dir, set_id)
+    main = leaf_review._sealed(out['queue'])
+    known = {i['id'] for i in main['items']}
+    versions: dict[str, list[str]] = {}
+    by_pair: dict[str, list[dict[str, Any]]] = {}
+    for arm in ARMS:
+        for entry in load_arm(base_dir, arm, set_id):
+            if entry['state'] == 'missing':
+                continue
+            for claim in entry['claims']:
+                iid = item_id(entry['source'], claim)
+                if iid in known:
+                    continue
+                if iid not in versions:
+                    versions[iid] = []
+                    by_pair.setdefault(entry['source'], []).append(_record_item(entry['source'], claim))
+                versions[iid].append(arm)
+    groups, items = _assemble(base_dir, set_id, by_pair, [])
+    queue = seal(dict(version=VERSION, set_id=set_id, window=WINDOW, item_count=len(items), groups=groups, items=items))
+    write_json(out['queue_extra'], queue)
+    write_json(out['versions_extra'], seal(dict(version=VERSION, arms={k: sorted(v) for k, v in versions.items()})))
+    return dict(queue=str(out['queue_extra']), groups=len(groups), items=len(items), by_arm={a: sum(a in v for v in versions.values()) for a in ARMS})
+
+
+def queue_text(queue: Mapping[str, Any], keys: Sequence[str] | None = None) -> str:
+    """The queue as plain text for a grader who is not given the files: pairs in order, ids shortened to 10 characters, no arm anywhere."""
+    parts = []
+    for group in queue['groups']:
+        if keys is not None and group['key'] not in keys:
+            continue
+        parts.append('=' * 78 + f"\nPAIR {group['key']}\nLEAF {group['leaf']}: {group['leaf_meaning']}\n\nPASSAGE (the target point, when there is one, is marked ⟦POINT⟧ ... ⟦/POINT⟧):\n{group['passage']}\n" + '-' * 78)
+        for item in (i for i in queue['items'] if i['group'] == group['key']):
+            if item['kind'] == 'record':
+                lines = [f"\nRECORD ITEM id={item['id'][:10]}", f"SUMMARY: {item['summary']}", f"PROPOSITION: {item['proposition']}", f"TARGET: {item['target']}"]
+                lines += [name.upper() + ': ' + ('; '.join(item[name]) or '(none)') for name in ('conditions', 'qualifications', 'reasons')]
+                lines.append('ANCHOR: «' + item['anchor_text'] + '»')
+            else:
+                lines = [f"\nDISTINCT ITEM id={item['id'][:10]}  (several records of this pair)"] + [f'  {n}. {text}' for n, text in enumerate(item['summaries'], 1)]
+            parts.append('\n'.join(lines))
+    return '\n'.join(parts) + '\n'
+
+
+def answered(base_dir: Path, decided: Mapping[str, Mapping[str, Any]], set_id: str = 'v2') -> dict[str, Any]:
+    """28.17 (pure over the labels): per arm, how many requests returned at least one valid record (not wrong, fit true) and how good the records were, with no target point."""
+    result: dict[str, Any] = {}
+    per_arm: dict[str, dict[str, dict[str, Any]]] = {}
+    for arm in ARMS:
+        per_arm[arm] = {}
+        for entry in load_arm(base_dir, arm, set_id):
+            if entry['state'] == 'missing':
+                continue
+            labels = [decided[item_id(entry['source'], c)] for c in entry['claims']]
+            valid = [lab for lab in labels if lab['level'] != 'wrong' and lab.get('fit')]
+            per_arm[arm][entry['source']] = dict(records=len(labels), valid=len(valid), not_wrong=sum(lab['level'] != 'wrong' for lab in labels), fit=sum(bool(lab.get('fit')) for lab in labels))
+
+    def rate(arm: str, keys: Sequence[str]) -> dict[str, Any]:
+        rows = [per_arm[arm][k] for k in keys if k in per_arm[arm]]
+        n, hit, recs = len(rows), sum(r_['valid'] > 0 for r_ in rows), sum(r_['records'] for r_ in rows)
+        return dict(requests=n, answered=hit, share=(hit / n) if n else None, interval=gate_check.wilson(hit, n), records=recs, records_valid=sum(r_['valid'] for r_ in rows),
+                    not_wrong_share=(sum(r_['not_wrong'] for r_ in rows) / recs) if recs else None, fit_share=(sum(r_['fit'] for r_ in rows) / recs) if recs else None)
+    all_keys = sorted(set(per_arm['b1']) | set(per_arm['u']))
+    x_keys = sorted(per_arm['x1'])
+    result['all_pairs'] = {arm: rate(arm, all_keys) for arm in ('b1', 'b2', 'u')}
+    result['x1_pairs'] = {arm: rate(arm, x_keys) for arm in ('b1', 'b2', 'u', 'x1')}
+    def reading(arm: str, block: Mapping[str, Any]) -> str:
+        low, high = min(block['b1']['share'], block['b2']['share']), max(block['b1']['share'], block['b2']['share'])
+        share = block[arm]['share']
+        return 'better' if share >= high + 0.10 - 1e-9 else ('no worse' if share >= low - 0.05 - 1e-9 else 'worse')
+    result['reading'] = dict(u=reading('u', result['all_pairs']), x1=reading('x1', result['x1_pairs']))
+    return result
 
 
 def distinct_items(base_dir: Path, set_id: str, versions: dict[str, list[str]]) -> list[dict[str, Any]]:
