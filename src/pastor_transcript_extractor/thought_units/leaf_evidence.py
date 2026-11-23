@@ -237,7 +237,7 @@ STAGE3 = {arm: Scope(f'stage3_{arm}', Decimal(usd), attempts, half='all', pairs_
 PIPELINE = {arm: Scope(f'pipeline_{arm}', Decimal(usd), attempts, half='all', pairs_file=f'pipeline/pairs-{arm}.json', set_id='v2', producer=PRODUCER_32K)
             for arm, usd, attempts in (('u', '1.00', 35), ('s', '1.00', 43))}      # request count plus 6, as in 28.12
 # Section 31: the whole sermon through the whole pipeline, per arm (b: the saved blocks, u: the snapped units); pairs files are built by `whole_sermon`. The ceilings are set from the pair counts.
-WHOLE_CEILINGS = {'b': ('3.00', 400), 'u': ('3.00', 400)}
+WHOLE_CEILINGS = {'b': ('8.50', 368), 'u': ('7.60', 331)}      # 362 and 325 pairs at the 32k policy's $0.0229376 reservation per request, plus 6 attempts each (31.3)
 WHOLE = {arm: Scope(f'whole_{arm}', Decimal(usd), attempts, half='all', pairs_file=f'whole/pairs-{arm}.json', set_id='v2', producer=PRODUCER_32K)
          for arm, (usd, attempts) in WHOLE_CEILINGS.items()}
 SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, DEVELOPMENT3, HELD_OUT3, CONFIRM3, *COMPARE.values(), *STAGE3.values(), *PIPELINE.values(), *WHOLE.values())}
