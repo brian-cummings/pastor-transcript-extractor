@@ -190,7 +190,10 @@ CONFIRM3 = Scope('confirm_top3', Decimal('1.50'), 100, half='all', pairs_file='p
 # Section 28.8, Stage 3: the same 54 pairs on block (again), snapped unit, the one sub-unit holding the target point, and every sub-unit. Pairs files are built by `stage3`.
 STAGE3 = {arm: Scope(f'stage3_{arm}', Decimal(usd), attempts, half='all', pairs_file=f'stage3/pairs-{arm}.json', set_id='v2', producer=PRODUCER_32K)
           for arm, usd, attempts in (('b2', '1.50', 60), ('u', '1.50', 60), ('x1', '1.00', 44), ('x2', '3.00', 113))}
-SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, DEVELOPMENT3, HELD_OUT3, CONFIRM3, *COMPARE.values(), *STAGE3.values())}
+# Section 30: the full pipeline per unit arm (own gate, own flags) on the three sermons of the end-to-end test; pairs files are built by `pipeline_arms`.
+PIPELINE = {arm: Scope(f'pipeline_{arm}', Decimal(usd), attempts, half='all', pairs_file=f'pipeline/pairs-{arm}.json', set_id='v2', producer=PRODUCER_32K)
+            for arm, usd, attempts in (('u', '1.50', 60), ('s', '2.50', 100))}
+SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, DEVELOPMENT3, HELD_OUT3, CONFIRM3, *COMPARE.values(), *STAGE3.values(), *PIPELINE.values())}
 
 RECORD_SCHEMA: dict[str, Any] = copy.deepcopy(bound.CLAIM_SCHEMA)
 RECORD_SCHEMA['required'] = [*bound.FIELDS, *EXTRA_FIELDS]

@@ -171,6 +171,44 @@ def stage3_report(base_dir: Path = BASE, set_id: str = SET):
         raise typer.BadParameter(str(error)) from error
 
 
+PIPE_ARM = typer.Option(..., '--arm', help='u (snapped units) or s (the units of the interior split).')
+
+
+@app.command('pipeline-score')
+def pipeline_score(base_dir: Path = BASE, arm: str = PIPE_ARM, letter: str = typer.Option(..., '--pack', help='T (topic pack, every unit) or P (public-life leaf pack, units at the frozen topic gate).'),
+                   check_only: bool = typer.Option(False, '--check-only', help='Report units, cache misses and the worst-case reservation; sends nothing.')):
+    """Section 30: score one arm's units with Jev (the three test sermons); the topic pack first, then the leaf pack on the gated units. Own cache and ledger."""
+    from ...thought_units import pipeline_arms
+    try:
+        if arm not in pipeline_arms.ARM_PREFIX or letter not in ('T', 'P'):
+            raise ValueError('--arm must be u or s and --pack T or P')
+        _echo(pipeline_arms.score(base_dir, arm, letter, check_only=check_only))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('pipeline-pairs')
+def pipeline_pairs(base_dir: Path = BASE, arm: str = PIPE_ARM, top: int = typer.Option(3, '--top', help='Leaves kept per unit (3, as the earlier runs).')):
+    """Section 30 (offline): apply the frozen flag rule to one arm's scored units and write its pairs; no provider call."""
+    from ...thought_units import pipeline_arms
+    try:
+        _echo(pipeline_arms.build_pairs(base_dir, arm, top))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command('pipeline-extract')
+def pipeline_extract(base_dir: Path = BASE, arm: str = PIPE_ARM, check_only: bool = typer.Option(False, '--check-only', help='Report counts, requests and estimated cost; sends nothing.')):
+    """Section 30: run the frozen v4 instruction on one arm's own flagged pairs (own folder and ledger, one run, no retry)."""
+    from ...thought_units import leaf_evidence
+    try:
+        if arm not in leaf_evidence.PIPELINE:
+            raise ValueError('--arm must be u or s')
+        _echo(leaf_evidence.run(base_dir, check_only=check_only, variant=leaf_evidence.V4, scope=leaf_evidence.PIPELINE[arm]))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @app.command('snap-review')
 def snap_review(base_dir: Path = BASE, grader: str = typer.Option('brian', '--grader', help='Name recorded with the judgments.'),
                 limit: int = typer.Option(15, '--limit', help='Edge comparisons to judge (the calibration set).')):

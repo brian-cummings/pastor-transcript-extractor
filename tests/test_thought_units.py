@@ -493,3 +493,21 @@ class Stage3Tests(unittest.TestCase):
         self.assertIsNone(self.stage3.block_range(dropped, blocks, 1, 300))                                  # an edge next to it was dropped
         self.assertIsNone(self.stage3.block_range(dropped, blocks, 2, 300))
         self.assertEqual((0, 110), self.stage3.block_range(dropped, blocks, 0, 300))
+
+
+class PipelineArmsTests(unittest.TestCase):
+    """Section 30: units cut from the sermon text carry the segments and times of the saved blocks they overlap."""
+
+    def test_unit_records_take_segments_and_times_from_overlapped_blocks(self):
+        from pastor_transcript_extractor.thought_units import pipeline_arms
+        text = 'a' * 100
+        originals = [dict(start=0, end=40, segment_indexes=[0, 1], start_seconds=0.0, end_seconds=30.0),
+                     dict(start=42, end=100, segment_indexes=[2, 3], start_seconds=31.0, end_seconds=60.0)]
+        records = pipeline_arms.unit_records(originals, [(0, 30), (30, 70), (70, 100)], text, 'u')
+        self.assertEqual(['u0000', 'u0001', 'u0002'], [r['id'] for r in records])
+        self.assertEqual([[0, 1], [0, 1, 2, 3], [2, 3]], [r['segment_indexes'] for r in records])
+        self.assertEqual((0.0, 60.0), (records[1]['start_seconds'], records[1]['end_seconds']))
+        self.assertEqual((70, 100, 30), (records[2]['start'], records[2]['end'], len(records[2]['text'])))
+        self.assertEqual([0, 1, 2], [r['block_id'] for r in records])
+        with self.assertRaises(ValueError):
+            pipeline_arms.unit_records(originals[:1], [(50, 60)], text, 'u')
