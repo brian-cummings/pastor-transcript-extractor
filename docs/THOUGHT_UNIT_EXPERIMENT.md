@@ -1274,3 +1274,17 @@ What it changes: nothing in 26.3's conclusions. If Brian's reading held across t
 ### 26.5 Decision (2026-11-22, Brian)
 
 **The moral leaf is left as it is: no stricter or separate gate, no rule that withholds moral claims from borderline units, and no further rating of moral pairs.** Basis: Brian rated all 12 second-rater pairs "shows" and read the three that I rated borderline more generously (26.4), so my 17 borderline moral pairs are probably not a defect of the gate. My 0.32 strict figure for the moral leaf stays on record as a conservative lower bound from one rater, not as a finding that the leaf misfires. The frozen flag rule, the instructions and every earlier result are unchanged.
+
+## 27. Boundary diagnostic on the incomplete summaries (2026-11-22; descriptive, no pre-stated rule, no spend)
+
+**Question (Brian's hypothesis that coherent units would give more complete, more summarizable results):** for the 7 pilot summaries graded accurate but incomplete (25.5), was the omitted material inside the block the extractor saw (an extractor choice) or across its boundary, in the neighbor text (a boundary effect)? Saved data only; grader Claude (source `claude`), who graded these summaries earlier and so is not blind to them; 7 items, so the counts below are an illustration, not a rate.
+| Item | Leaf | Omitted material | Where |
+| --- | --- | --- | --- |
+| 1 (flag) | moral | persecution of the minority when church and state unite | inside the block |
+| 2 | supportive | the preacher's call to treat people with disabilities with the respect Jesus showed; his family story | inside the block |
+| 3 (flag) | supportive | his stated reasons: pride in paying taxes for the schools, wanting children to have the opportunity | inside the block (the strongest statement of support is in the preceding block) |
+| 4 | prescriptive | the First Amendment premise ("Congress cannot favor one...") and its conclusion that the public school system needs to be neutral | **across the boundary**: the block ends mid-sentence on the premise and the ought-claim is in the next block |
+| 5 | critical | the contrast with Jesus' example and the conclusion (a recurring failure to recognize human dignity) | the contrast inside; the **conclusion across the boundary** |
+| 6 | theological | revival cannot be legislated, the link to Sunday laws and Rome's authority | inside the block |
+| 7 | theological | what the predicted change consists of (freedoms slowly taken away) | **across the boundary**; the five earlier points are inside |
+**Reading:** 4 of 7 omissions lie wholly inside the block shown, so the extractor chose a short summary of a point whose grounds it had; 3 of 7 (items 4, 5, 7) involve material that continues past the block's edge, and in items 4 and 7 the block ends mid-sentence on the very claim being summarized. Most of the 7 blocks also begin mid-sentence. So block boundaries contribute to incompleteness in a minority of these cases and cannot be the whole explanation; a completeness instruction for the extractor addresses the larger share, and units could address the rest. This is consistent with Brian's hypothesis for a part of the effect and not a test of it: the test is units against blocks on the same passages with the same extractor (22.7 did this for 31 passages of one sermon with v2).
