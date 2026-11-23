@@ -1422,3 +1422,18 @@ Pairs files are written under `public-life-set-v2/stage3/` (sealed; each pair ke
 - **Measure (one rule for every arm, no target point):** each request is scored by what it returned. A record is **valid** if the subagent labels it not wrong and fit true. A request is **answered** if it has at least one valid record. Reported per arm: requests answered (share, Wilson interval), records returned, records valid, share of records not wrong, share of fit. All 54 ungraded records are graded by the subagent of record with the same rubric; the earlier labels stand.
 - **Reading, fixed now:** U (and X1, on its own pairs, with the blocks restricted to the same pairs) is **no worse than blocks** if its share of requests answered is at least the lower of B1's and B2's minus 5 points; **better** if at least the higher of them plus 10 points; otherwise **worse**. B2 against B1 is the noise floor. No significance test: the numbers are reported with their intervals and read in that plain way, as Brian's standard (generally accurate) asks.
 - **Limits:** one rater of record whose completeness calls are more lenient than Claude's and stricter than Brian's; fit on the moral leaf is where raters differ most; one run per arm.
+
+### 28.18 Result of scoring everything an arm returned (2026-11-22; the 54 extra records graded by a fresh Sonnet subagent; rule of 28.17, fixed before grading; `stage3/ANSWERED_REPORT.json`)
+Labels of the 54: 37 complete, 15 accurate but incomplete, 2 wrong; fit false on 13. With every returned record counted (no target point):
+| Arm | requests | answered (valid record) | share (95% interval) | records | not wrong | fit |
+| --- | --- | --- | --- | --- | --- | --- |
+| B1 | 54 | 38 | 70% (0.57 to 0.81) | 55 | 91% | 82% |
+| B2 | 54 | 41 | 76% (0.63 to 0.85) | 54 | 96% | 85% |
+| U | 54 | 36 | 67% (0.53 to 0.78) | 55 | 93% | 78% |
+| on X1's 37 pairs: B1 | 37 | 27 | 73% | 39 | 87% | 80% |
+| B2 | 37 | 28 | 76% | 37 | 97% | 84% |
+| U | 37 | 26 | 70% | 42 | 90% | 76% |
+| X1 | 37 | 25 | 68% (0.52 to 0.80) | 37 | 92% | 76% |
+- **Reading as fixed in 28.17: U is no worse than blocks** (67% against a floor of 70% minus 5 points); **X1 is worse by the letter of the rule**, by half a request (68% against 68.0%: 25 answered against 27 and 28 for the blocks). The two block runs differ by 3 requests of 54, so the gap between any two arms here is of the size of run-to-run noise. This replaces the "harmed" of 28.15 as the fair reading of whether snapped units answer less often: they do not.
+- **Common to every arm:** only about 70% to 76% of requests return a valid record, and the invalid share is mostly fit false (a record about something the leaf does not describe, mostly the moral leaf) and requests with no record; this is the gate and leaf definition limit of 26, the same for blocks and units, not a property of the unit.
+- **Conclusion for production:** snapped units and interior splits neither help nor hurt in any measure used (quality where both answer, share answered, accuracy 90 to 96% of records). Production uses blocks with v4: simpler, already extracted, and no corpus re-run. The unit line stops here; nothing further is run on it.
