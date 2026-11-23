@@ -24,7 +24,7 @@ SET_ID = 'v2'
 VIDEOS = (1502, 1634, 321)                     # the three sermons of the end-to-end test (29)
 ARM_PREFIX = dict(u='u', s='s')                # u: snapped units (`jev` cuts); s: the interior split (`jev_split` cuts)
 ARM_CUTS = dict(u='jev', s='jev_split')
-CEILING_USD, CEILING_ATTEMPTS = Decimal('3.00'), 1200
+CEILING_USD, CEILING_ATTEMPTS = Decimal('1.00'), 300      # per arm and across its topic and leaf passes: at most 110 and a few dozen requests are expected (30)
 
 
 def arm_dir(base_dir: Path, arm: str) -> Path:
