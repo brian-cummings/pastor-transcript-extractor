@@ -1464,3 +1464,19 @@ Labels of the 54: 37 complete, 15 accurate but incomplete, 2 wrong; fit false on
 - **Flagged pairs by the frozen rule (offline, `pipeline-pairs`):** snapped units **29 pairs** (1502: 17 pairs in 12 units, 17% of the text; 1634: 7 pairs, 3 units, 5%; 321: 5 pairs, 2 units, 12%); split units **37 pairs** (20 in 14 units, 13%; 13 in 6 units, 5%; 4 in 2 units, 4%). The block pipeline had 30 pairs in these sermons (19, 6 after the old size exclusion, 5) and 7% to 13% of the text. **Whatever the cut, the gate flags the same small share of each sermon (4% to 17%): coverage of the whole sermon is not something the units change.**
 - **Next (Brian runs):** `pipeline-extract --arm u` (29 requests, $0.67 reserved, ceiling $1.00 and 35 attempts) and `--arm s` (37 requests, $0.85 reserved, ceiling $1.00 and 43 attempts); each arm its own folder and ledger, one attempt per pair, no retry. Then: a findings-only summary per arm from all its records (arm-blind writers, as in 29), the same blind judge against the unchanged whole-sermon control, and the reading fixed in 30.
 - **What this test can and cannot say:** it compares the three pipelines end to end, including what each gate lets through, on three sermons with one writer and one judge per arm. It cannot raise coverage above what the frozen gate flags; that is a gate decision (26 measured precision, 29 showed recall is the limit, and the thresholds are frozen until Brian decides).
+
+### 30.2 Result of the pipeline test (2026-11-23; artifacts under `stage3/end-to-end-pipeline/`)
+- **Extraction (Brian ran it; no stop, no lost attempt):** snapped units (U) 29 pairs, 33 records, one schema failure ($0.018); split units (S) 37 pairs, 39 records, one anchor failure ($0.031). Blocks (B1, B2) are the saved summaries from 29.
+- **Judge:** the same blind Sonnet judge, the unchanged whole-sermon control and the same 21 control points; four shuffled candidates per sermon (B1, B2, U, S); arm-blind findings-only writers, all records returned.
+
+| Arm | mean closeness | mean rank | control points full / partly / not (of 21) | errors |
+| --- | --- | --- | --- | --- |
+| U (snapped, own gate) | 3.00 | 1.33 | 13 / 2 / 6 | 0 |
+| S (split, own gate) | 3.00 | 2.67 | 11 / 4 / 6 | 0 |
+| B1 (blocks, saved run) | 3.00 | 2.67 | 10 / 4 / 7 | 0 |
+| B2 (blocks again) | 2.67 | 3.33 | 11 / 3 / 7 | 1 |
+
+- **Reading by the rule fixed in 30:** no arm is more than 0.5 closer than another (0.33 at most, the same as the gap between the two block runs), so **all arms are level**. U leads in rank and in points fully conveyed (13 against 10 to 11) but not in closeness, and with three sermons one writer and one judge per arm this is a direction, not a finding.
+- **Errors:** one, again an absence claim ("no qualifications, conditions or concessions are recorded" in B2, sermon 321). Sermon 321's qualification that laws change circumstances, not hearts, and the immigrant passages stayed missing from every arm: the gate never flagged them, as in 29.
+- **Coverage:** the arms flag the same small share of each sermon (4% to 17%); 33 and 39 records against about 30 pairs for blocks. The pipeline test therefore confirms 29: how the sermon is cut does not change what the frozen gate lets through, and findings convey about half the control's points fully in every arm.
+- **Decision this supports:** production stays on blocks with v4 (units and splits neither help nor hurt, and cost an extra snap). The open decision for Brian is the gate (recall and thresholds, frozen), with the free measurement of gate recall on these three sermons as the next step; the profile must not state that something is absent.
