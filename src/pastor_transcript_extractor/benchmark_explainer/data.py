@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 
 from ..pastor_fit import corpus
+from ..sermon_analysis import _load_sermon_source
 from . import BENCHMARK_PASTORS
 
 BENCHMARK_SQL = """
@@ -37,7 +38,9 @@ def benchmark_key(pastor_id: int) -> str:
     return f'b{pastor_id}'
 
 
-def load(database: Path) -> list[Sermon]:
+def load(database: Path, excluded: list | None = None) -> list[Sermon]:
+    """Pool and benchmark sermons. A benchmark extraction with no identified sermon window (for example one the
+    recording verifier rejected as a multi-speaker program) is left out and listed in `excluded`."""
     pool = [Sermon(s.video_id, s.youtube_video_id, pool_key(s.profile_id), s.source_id, s.extraction_path)
             for s in corpus.load_population(database)]
     connection = sqlite3.connect(f'file:{database}?mode=ro', uri=True)
@@ -51,6 +54,12 @@ def load(database: Path) -> list[Sermon]:
     for pastor_id, video_id, youtube_id, source_id, path in rows:
         if video_id in pooled:
             raise ValueError(f'Benchmark video {video_id} is also in an analyzed profile')
+        try:
+            _load_sermon_source(Path(path))
+        except (ValueError, OSError) as error:
+            if excluded is not None:
+                excluded.append(dict(video_id=int(video_id), pastor=benchmark_key(int(pastor_id)), reason=str(error)))
+            continue
         benchmarks.append(Sermon(int(video_id), str(youtube_id), benchmark_key(int(pastor_id)), int(source_id), str(path)))
     return pool + benchmarks
 

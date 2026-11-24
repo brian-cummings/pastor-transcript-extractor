@@ -33,9 +33,10 @@ def _need(path: Path, step: str) -> dict:
 
 def census(base_dir: Path) -> dict:
     _, _, database = _paths(base_dir)
-    sermons = data.load(database)
+    excluded: list = []
+    sermons = data.load(database, excluded)
     by = Counter(s.pastor for s in sermons)
-    return dict(pool_profiles=sum(1 for p in by if p.startswith('p')), pool_sermons=sum(n for p, n in by.items() if p.startswith('p')),
+    return dict(excluded_without_sermon_window=excluded, pool_profiles=sum(1 for p in by if p.startswith('p')), pool_sermons=sum(n for p, n in by.items() if p.startswith('p')),
                 benchmarks={BENCHMARK_PASTORS[int(p[1:])]: n for p, n in by.items() if p.startswith('b')})
 
 
@@ -46,12 +47,16 @@ def sermon_check(base_dir: Path, echo=print) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     if (out / 'sermon_check.json').exists():
         raise ValueError('sermon_check.json already exists; this step runs once')
-    sermons = data.as_dicts(data.load(database))
+    excluded: list = []
+    sermons = data.as_dicts(data.load(database, excluded))
     counters, measured = {}, {}
     for number, sermon in enumerate(sermons, 1):
         text, _ = corpus.window_text(Path(sermon['extraction_path']))
         counters[sermon['video_id']] = Counter(tokens(text))
-        measured[str(sermon['video_id'])] = free.measure(Path(sermon['extraction_path']))
+        try:
+            measured[str(sermon['video_id'])] = free.measure(Path(sermon['extraction_path']))
+        except (ValueError, KeyError, TypeError) as error:   # free dimensions only: the sermon stays in, its values are missing
+            measured[str(sermon['video_id'])] = {name: None for name in free.DIMENSIONS} | {'error': f'{type(error).__name__}: {error}'}
         if number % 25 == 0:
             echo(f'{number}/{len(sermons)} sermons read and measured')
     fp = Fingerprints(counts_from_counters(counters), {}, {})
@@ -73,8 +78,10 @@ def sermon_check(base_dir: Path, echo=print) -> dict:
                            flagged=credit['expected_rank'] > FLAG_RANK, nearest=nearest))
     write_json(out / 'sermons.json', sermons)
     write_json(out / 'measured.json', measured)
-    write_json(out / 'sermon_check.json', dict(flag_rule=f'own benchmark ranked below {FLAG_RANK} of {len(pool) + 1}', checks=checks))
-    return dict(sermons=len(sermons), benchmark_sermons=len(checks), flagged=sum(c['flagged'] for c in checks))
+    write_json(out / 'sermon_check.json', dict(flag_rule=f'own benchmark ranked below {FLAG_RANK} of {len(pool) + 1}', checks=checks,
+                                               excluded_without_sermon_window=excluded))
+    return dict(sermons=len(sermons), benchmark_sermons=len(checks), flagged=sum(c['flagged'] for c in checks),
+                excluded_without_sermon_window=[e['video_id'] for e in excluded])
 
 
 def sermon_review(base_dir: Path, ask: Callable[[str], str] = input, echo=print) -> dict:
