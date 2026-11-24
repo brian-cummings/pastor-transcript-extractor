@@ -102,7 +102,8 @@ def propose(title: str, benchmark_name: str) -> tuple[str, str]:
     return 'drop', f'the title names someone else ({match.group(1)})'
 
 
-def sermon_review(base_dir: Path, ask: Callable[[str], str] = input, echo=print, all_recordings: bool = False) -> dict:
+def sermon_review(base_dir: Path, ask: Callable[[str], str] = input, echo=print, all_recordings: bool = False,
+                  open_url: Callable[[str], object] | None = None) -> dict:
     """Keep or drop benchmark recordings: the flagged ones, or with `all_recordings` every one, each with a proposal
     from its title (Enter accepts the proposal). Undecided recordings are kept."""
     out, _, database = _paths(base_dir)
@@ -119,6 +120,8 @@ def sermon_review(base_dir: Path, ask: Callable[[str], str] = input, echo=print,
              f"  His own sermons rank {check['own_rank']:.1f} for this sermon's wording; nearest: "
              + ', '.join(names[p] for p in check['nearest'])
              + f"\n  Proposed: {proposal} ({reason})")
+        if open_url is not None:
+            open_url(check['url'])
         answer = None
         while answer not in ('k', 'd'):
             answer = ask('  Is this him preaching? Enter = proposed, k = keep, d = drop: ').strip().lower() or proposal[0]

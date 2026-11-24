@@ -117,10 +117,12 @@ class SermonReviewTests(unittest.TestCase):
             checks = [dict(video_id=v, pastor='b65', title=t, url='u', own_rank=1.0, flagged=False, nearest=['b65'])
                       for v, t in ((1, 'A [Ty Gibson]'), (2, 'B [Ty Gibson, David Asscherick]'), (3, 'Year in review'))]
             write_json(out / 'sermon_check.json', dict(checks=checks))
-            answers = iter(['', '', 'd'])
+            answers, opened = iter(['', '', 'd']), []
             with mock.patch.object(runner, '_paths', return_value=(out, out, out / 'db')), \
                     mock.patch.object(runner.data, 'pastor_names', return_value={'b65': 'Ty Gibson'}):
                 self.assertEqual(runner.sermon_review(out, echo=lambda *_: None)['dropped'], 0)  # nothing flagged
-                result = runner.sermon_review(out, ask=lambda _: next(answers), echo=lambda *_: None, all_recordings=True)
+                result = runner.sermon_review(out, ask=lambda _: next(answers), echo=lambda *_: None, all_recordings=True,
+                                              open_url=opened.append)
             self.assertEqual(result['dropped_videos'], [2, 3])
+            self.assertEqual(len(opened), 3)
             self.assertEqual(read_json(out / 'sermon_decisions.json'), {'1': 'keep', '2': 'drop', '3': 'drop'})
