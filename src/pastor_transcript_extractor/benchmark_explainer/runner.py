@@ -132,13 +132,47 @@ def sermon_review(base_dir: Path, ask: Callable[[str], str] = input, echo=print,
                 dropped_videos=sorted(int(k) for k, v in decisions.items() if v == 'drop'))
 
 
+def _parse_decision(decision: str) -> str:
+    if decision in ('keep', 'drop'):
+        return decision
+    if decision.startswith('file:') and decision[5:].isdigit() and int(decision[5:]) in BENCHMARK_PASTORS:
+        return decision
+    raise ValueError(f'decision must be keep, drop or file:<benchmark pastor id> ({", ".join(map(str, BENCHMARK_PASTORS))}); got {decision!r}')
+
+
+def sermon_decide(base_dir: Path, video_ids: list[int], decision: str) -> dict:
+    """Record one decision for several benchmark recordings without the interactive review: keep, drop, or
+    `file:<pastor id>` to count a recording as the other benchmark's (a sermon filed under the wrong channel)."""
+    out, _, _ = _paths(base_dir)
+    decision = _parse_decision(decision)
+    checks = {str(c['video_id']): c for c in _need(out / 'sermon_check.json', 'sermon-check')['checks']}
+    unknown = [v for v in video_ids if str(v) not in checks]
+    if unknown:
+        raise ValueError(f'not benchmark recordings: {unknown}')
+    path = out / 'sermon_decisions.json'
+    decisions = read_json(path) if path.exists() else {}
+    for video in video_ids:
+        decisions[str(video)] = decision
+    write_json(path, decisions)
+    return dict(Counter(decisions.get(key, 'keep') for key in checks))
+
+
 def _active_sermons(out: Path) -> list[dict]:
+    """Kept benchmark recordings, with any `file:<pastor id>` decision applied to the recording's benchmark."""
     sermons = _need(out / 'sermons.json', 'sermon-check')
     checks = _need(out / 'sermon_check.json', 'sermon-check')['checks']
     decisions = read_json(out / 'sermon_decisions.json') if (out / 'sermon_decisions.json').exists() else {}
     if any(c['flagged'] and str(c['video_id']) not in decisions for c in checks):
         raise ValueError('Flagged benchmark sermons await your decision: run `pte analysis benchmark-explainer sermon-review`')
-    return [s for s in sermons if decisions.get(str(s['video_id']), 'keep') == 'keep']
+    active = []
+    for sermon in sermons:
+        decision = _parse_decision(decisions.get(str(sermon['video_id']), 'keep'))
+        if decision == 'drop':
+            continue
+        if decision.startswith('file:'):
+            sermon = dict(sermon, pastor=data.benchmark_key(int(decision[5:])))
+        active.append(sermon)
+    return active
 
 
 # ---- step 3: Jev --------------------------------------------------------------------------------------------------------

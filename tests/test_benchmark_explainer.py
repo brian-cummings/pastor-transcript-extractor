@@ -126,3 +126,23 @@ class SermonReviewTests(unittest.TestCase):
             self.assertEqual(result['dropped_videos'], [2, 3])
             self.assertEqual(len(opened), 3)
             self.assertEqual(read_json(out / 'sermon_decisions.json'), {'1': 'keep', '2': 'drop', '3': 'drop'})
+
+    def test_decide_files_a_recording_under_the_other_benchmark(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from pastor_transcript_extractor.benchmark_explainer import runner
+        from pastor_transcript_extractor.bound_claims.common import write_json
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            write_json(out / 'sermons.json', [_sermon(v, p) for v, p in ((1, 'b65'), (2, 'b65'), (3, 'b66'))])
+            write_json(out / 'sermon_check.json', dict(checks=[dict(video_id=v, flagged=False) for v in (1, 2, 3)]))
+            with mock.patch.object(runner, '_paths', return_value=(out, out, out / 'db')):
+                runner.sermon_decide(out, [2], 'file:66')
+                runner.sermon_decide(out, [3], 'drop')
+                with self.assertRaises(ValueError):
+                    runner.sermon_decide(out, [1], 'file:99')
+                with self.assertRaises(ValueError):
+                    runner.sermon_decide(out, [7], 'drop')
+            active = runner._active_sermons(out)
+            self.assertEqual([(s['video_id'], s['pastor']) for s in active], [(1, 'b65'), (2, 'b66')])

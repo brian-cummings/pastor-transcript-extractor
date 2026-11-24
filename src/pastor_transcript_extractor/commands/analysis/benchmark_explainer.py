@@ -46,6 +46,15 @@ def sermon_review(base_dir: Path = BASE,
           open_url=(lambda url: webbrowser.open(url, new=2, autoraise=True)) if open_browser else None)
 
 
+@app.command('sermon-decide')
+def sermon_decide(base_dir: Path = BASE,
+                  video: list[int] = typer.Option(..., '--video', help='Benchmark recording (video id); repeatable.'),
+                  decision: str = typer.Option(..., '--decision', help='keep, drop, or file:<benchmark pastor id> to count it as that benchmark.')):
+    """Record one keep/drop/file decision for the given benchmark recordings, without the interactive review."""
+    from ...benchmark_explainer import runner
+    _call(runner.sermon_decide, base_dir, video, decision)
+
+
 @app.command('score')
 def score(base_dir: Path = BASE,
           check_only: bool = typer.Option(False, '--check-only', help='Count saved answers and worst-case requests; sends nothing and copies nothing.')):
