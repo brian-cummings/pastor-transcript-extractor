@@ -11,3 +11,4 @@ from pastor_transcript_extractor.commands.analysis import bound_claims as _bound
 from pastor_transcript_extractor.commands.analysis import object_position as _object_position
 from pastor_transcript_extractor.commands.analysis import thought_units as _thought_units
 from pastor_transcript_extractor.commands.analysis import pastor_fit as _pastor_fit
+from pastor_transcript_extractor.commands.analysis import benchmark_explainer as _benchmark_explainer

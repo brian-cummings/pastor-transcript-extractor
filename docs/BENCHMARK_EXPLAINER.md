@@ -117,3 +117,33 @@ because both reuse `pastor_fit`.
    10 ranking judgments (step 9).
 3. Confirm that the comparison pool is the 47 analyzed pastors. Adding the other 271 registry profiles needs
    their sermons analyzed first, which is a separate decision.
+
+## 10. Approval and implementation (2026-11-24; Brian: "ok proceed"; fixed before any result exists)
+
+Approved: section 9 as written. That is the design and pass marks, a Jev spend of about $7 to $10 under a **$15 ceiling** for one run, the
+review load, and the 47 analyzed pastors as the pool. Code: `src/pastor_transcript_extractor/benchmark_explainer/`; tests:
+`tests/test_benchmark_explainer.py`. CLI: `pte analysis benchmark-explainer census | sermon-check | sermon-review |
+score [--check-only] | explain | review | rank | report`.
+
+Details fixed here:
+
+- **Blocks:** none of the benchmark sermons and only 11 of the 293 pool sermons have a saved topic analysis, so blocks are
+  rebuilt from each extraction's saved classifier blocks (the final pass, labeled sermon; median 89 seconds). The rule is
+  the one the thought-unit experiment verified (`public_set.sermon_blocks`, `arms.transcript_blocks`), giving
+  12,138 blocks in all. Saved Jev answers are copied in only when their whole identity matches (`arms.seed_from_pilot`) from
+  the extraction's own inference cache and the public-life set caches. The new cache is `<out>/cache/v<video>`.
+- **Dollar ceiling:** each request reserves its worst case (65,536 input tokens) before dispatch, and the ledger refuses any
+  reservation that would pass $15. The whole-run worst case (about $45 if every block missed and routed) is far above
+  real usage (about a tenth), so it is reported, not required to fit up front. The attempt ceiling is the census's
+  worst-case requests plus 6.
+- **Failures:** a failed pack call is recorded and the run continues. The run stops if failed calls exceed 5% (at least two;
+  `exceeds_failure_rate`). A sermon with any failed call is not saved. One resume is allowed (two invocations in all), which
+  is the bounded retry. Uncommitted source changes block the paid run.
+- **Routing:** T, H, L and M on every block; S where `T:salvation_gospel` is at least 0.55; P where `T:society_public_life`
+  is at least 0.55. In values, blocks off the route count as below the floor.
+- **Free dimensions:** computed in memory on caption-normalized units (Scripture detection with the production detector,
+  pronoun rates, MATTR, length). Nothing is written to the database.
+- **Sermon check:** stylometry over the 300 most frequent words. A benchmark sermon is flagged when its own benchmark's
+  other sermons rank worse than 5th of 48 candidates.
+- **Scale fallback:** where the pool's MAD is 0 (common for rare leaves), the scale is 1.2533 × the mean absolute deviation
+  from the median. If that is 0 too, the dimension is "not enough evidence".
