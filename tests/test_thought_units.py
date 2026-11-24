@@ -622,3 +622,25 @@ class WholeReportTests(unittest.TestCase):
             self.assertEqual(3, result['points_not_fully_conveyed']['outside_pipeline_categories']['b'])
             self.assertEqual(3, result['better_per_sermon']['u'])
             self.assertIn('closer', w.render_report(result))
+
+
+class WholeCalibrationTests(unittest.TestCase):
+    def test_ceiling_and_records_to_summary_crossing(self):
+        import tempfile
+        from pathlib import Path
+        from pastor_transcript_extractor.bound_claims.common import write_json
+        from pastor_transcript_extractor.thought_units import whole_sermon as w
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            here = w.report_dir(root)
+            write_json(here / '_arm_codes_DO_NOT_SHARE.json', {str(v): {'b': 'K', 'u': 'M'} for v in w.VIDEOS})
+            for video in w.VIDEOS:
+                write_json(here / 'calibration' / f'judge3_{video}.json', dict(control_points=[dict(n=1, K='partly', M='not', C='full')],
+                                                                              K=dict(errors=['x'], closeness=3), M=dict(errors=[], closeness=3), C=dict(errors=[], closeness=4)))
+                write_json(here / 'calibration' / f'recall_{video}.json', dict(points=[dict(n=1, K='full', M='absent')]))
+                write_json(here / f'judge_{video}.json', dict(control_points=[dict(n=1, K='partly', M='not')]))
+            result = w.score_calibration(root)
+            self.assertEqual((3, 4.0), (result['ceiling']['ceiling']['full'], result['ceiling']['ceiling']['mean_closeness']))
+            self.assertEqual(3, result['ceiling']['b']['errors'])
+            self.assertEqual({'records full -> summary partly': 3}, result['records_to_summary']['b'])
+            self.assertEqual({'records absent -> summary not': 3}, result['records_to_summary']['u'])

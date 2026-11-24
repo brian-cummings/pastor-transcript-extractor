@@ -284,6 +284,16 @@ def whole_report(base_dir: Path = BASE):
         raise typer.BadParameter(str(error)) from error
 
 
+@app.command('whole-calibration')
+def whole_calibration(base_dir: Path = BASE):
+    """Section 31 (offline): from the saved calibration files, write CALIBRATION_REPORT.md and .json (the full-transcript ceiling and whether the records state each control point); no provider call."""
+    from ...thought_units import whole_sermon
+    try:
+        _echo(whole_sermon.write_calibration(base_dir))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @app.command('snap-review')
 def snap_review(base_dir: Path = BASE, grader: str = typer.Option('brian', '--grader', help='Name recorded with the judgments.'),
                 limit: int = typer.Option(15, '--limit', help='Edge comparisons to judge (the calibration set).')):

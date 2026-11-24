@@ -404,3 +404,50 @@ def write_report(base_dir: Path) -> dict[str, Any]:
     write_json(here / 'WHOLE_SERMON_REPORT.json', seal(result))
     (here / 'WHOLE_SERMON_REPORT.md').write_text(render_report(result))
     return dict(output=str(here / 'WHOLE_SERMON_REPORT.md'), reading=result['reading'], arms=result['arms'])
+
+
+# ---- calibration of the whole-sermon test (31.7) ---------------------------------------------------------------------------------------
+def score_calibration(base_dir: Path) -> dict[str, Any]:
+    """Offline, from the saved calibration files (`report/calibration/`): (1) the ceiling, a summary of each whole transcript by an independent writer (C), judged with the two arms' summaries on one
+    scale (`judge3_<video>.json`); (2) recall, whether each control point is stated by the records themselves (`recall_<video>.json`), crossed with what the arm's summary conveyed (`report/judge_<video>.json`)."""
+    here = report_dir(base_dir)
+    codes = read_json(here / '_arm_codes_DO_NOT_SHARE.json')
+    ceiling = {name: dict(full=0, partly=0, **{'not': 0}, closeness=[], errors=0) for name in (*ARMS, 'ceiling')}
+    recall = {arm: {} for arm in ARMS}
+    for video in VIDEOS:
+        code = codes[str(video)]
+        judged = read_json(here / 'calibration' / f'judge3_{video}.json')
+        for name, letter in (('b', code['b']), ('u', code['u']), ('ceiling', 'C')):
+            for verdict in JUDGE_VERDICTS:
+                ceiling[name][verdict] += sum(point[letter] == verdict for point in judged['control_points'])
+            ceiling[name]['closeness'].append(judged[letter]['closeness'])
+            ceiling[name]['errors'] += len(judged[letter]['errors'])
+        present = {point['n']: point for point in read_json(here / 'calibration' / f'recall_{video}.json')['points']}
+        conveyed = {point['n']: point for point in read_json(here / f'judge_{video}.json')['control_points']}
+        for arm in ARMS:
+            for number, point in present.items():
+                key = f"records {point[code[arm]]} -> summary {conveyed[number][code[arm]]}"
+                recall[arm][key] = recall[arm].get(key, 0) + 1
+    for name, total in ceiling.items():
+        total['mean_closeness'] = round(sum(total['closeness']) / len(total['closeness']), 2)
+        del total['closeness']
+    return dict(version=VERSION, scale_note='The ceiling writer saw the whole transcript; arms B and U were re-judged in the same pass, so their counts differ slightly from the scored report (judge noise)',
+                ceiling=ceiling, records_to_summary=recall)
+
+
+def write_calibration(base_dir: Path) -> dict[str, Any]:
+    result = score_calibration(base_dir)
+    here = report_dir(base_dir)
+    write_json(here / 'CALIBRATION_REPORT.json', seal(result))
+    lines = ['# Whole-sermon test: calibration', '', result['scale_note'] + '.', '',
+             '| Candidate | control points full / partly / not (of 36) | mean closeness | errors |', '| --- | --- | --- | --- |']
+    for name, label in (('ceiling', 'Ceiling (summary from the whole transcript)'), ('b', 'B (blocks)'), ('u', 'U (snapped units)')):
+        c = result['ceiling'][name]
+        lines.append(f"| {label} | {c['full']} / {c['partly']} / {c['not']} | {c['mean_closeness']:.2f} | {c['errors']} |")
+    lines += ['', '## From the records to the summary (each control point, per arm)', '', '| Arm | records state the point | summary conveys it | points |', '| --- | --- | --- | --- |']
+    for arm in ARMS:
+        for key, count in sorted(result['records_to_summary'][arm].items()):
+            present, conveyed = key.removeprefix('records ').split(' -> summary ')
+            lines.append(f'| {arm.upper()} | {present} | {conveyed} | {count} |')
+    (here / 'CALIBRATION_REPORT.md').write_text('\n'.join(lines) + '\n')
+    return dict(output=str(here / 'CALIBRATION_REPORT.md'), ceiling=result['ceiling'], records_to_summary=result['records_to_summary'])
