@@ -238,12 +238,67 @@ def build_retry_pairs(base_dir: Path, arm: str) -> dict[str, Any]:
     return dict(output=str(path), pairs=len(pairs), keys=[pair['key'] for pair in pairs])
 
 
-def merged_rows(base_dir: Path, arm: str) -> list[dict[str, Any]]:
-    """The arm's extraction rows with each retried pair's retry row replacing its transport-failure row (marked `retry_of_transport_failure`); every other row is the original."""
+def merged(base_dir: Path, arm: str) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """(pair, row) for every pair of the arm, a retried pair's row replacing its transport-failure row (marked `retry_of_transport_failure`); every other row is the original."""
     from . import leaf_evidence
     keyed = _keyed_rows(base_dir, leaf_evidence.WHOLE[arm], f'pairs-{arm}.json')
     retry_scope = leaf_evidence.WHOLE_RETRY.get(arm)
     if retry_scope is None or not extraction_path(base_dir, retry_scope).exists():
-        return [row for _, row in keyed]
+        return keyed
     retried = {pair['key']: dict(row, retry_of_transport_failure=True) for pair, row in _keyed_rows(base_dir, retry_scope, f'pairs-{arm}-retry.json') if row['status'] != 'pending'}
-    return [retried.get(pair['key'], row) if row['status'] == 'transport_failure' else row for pair, row in keyed]
+    return [(pair, retried.get(pair['key'], row) if row['status'] == 'transport_failure' else row) for pair, row in keyed]
+
+
+def merged_rows(base_dir: Path, arm: str) -> list[dict[str, Any]]:
+    return [row for _, row in merged(base_dir, arm)]
+
+
+# ---- the aggregate (31) -------------------------------------------------------------------------------------------------------------
+RECORD_FIELDS = ('summary', 'target')
+CLAIM_FIELDS = ('proposition', 'polarity', 'voiced_by', 'preacher_adoption', 'speech_role', 'qualifications', 'conditions', 'reasons')
+M_FLOOR = LEAF_FLOOR
+
+
+def _weighted(units: Sequence[Mapping[str, Any]], signals: Mapping[str, Mapping[str, float]], prefix: str) -> dict[str, float]:
+    total = sum(len(u['text']) for u in units) or 1
+    names = sorted({name for u in units for name in signals.get(u['id'], {}) if name.startswith(prefix)})
+    return {name: round(sum(len(u['text']) * signals.get(u['id'], {}).get(name, 0.0) for u in units) / total, 3) for name in names}
+
+
+def build_aggregate(base_dir: Path, arm: str, video: int) -> dict[str, Any]:
+    """One sermon's aggregate for one arm (31): the topic profile (text-weighted mean topic probability and the units at the product route), the style profile, the source-material counts
+    and every extracted record labeled by branch and ordered by position. No sermon text, no anchors, no unit ids and nothing a grader touched; the two arms use one format."""
+    sermon = arm_sermon(base_dir, video, arm)
+    units = sermon['units']
+    total = sum(len(u['text']) for u in units) or 1
+    span = units[-1]['end'] or 1       # a record's position is its unit's start as a share of the sermon
+    signals = {letter: read_signals(base_dir, arm, letter, video, required=letter in 'TSPL') for letter in 'TMH'}
+    topics = _weighted(units, signals['T'], 'T:')
+    at_route = {name: sum(1 for u in units if signals['T'].get(u['id'], {}).get(name, 0.0) >= TOPIC_ROUTE) for name in topics}
+    records, statuses, covered = [], {}, set()
+    for pair, row in merged(base_dir, arm):
+        if pair['video_id'] != video:
+            continue
+        statuses[row['status']] = statuses.get(row['status'], 0) + 1
+        for found in row['claims']:
+            covered.add(pair['unit'])
+            claim = found['claim']
+            records.append(dict(position=round(pair['unit_start'] / span, 3),
+                                branch=pair['branch'], leaf=pair['leaf'], summary=found['summary'], target=found['target'], **{name: claim[name] for name in CLAIM_FIELDS}))
+    records.sort(key=lambda r: (r['position'], r['branch'], r['leaf']))
+    return dict(version=VERSION, video_id=video, text_characters=total, topic_profile=dict(sorted(topics.items(), key=lambda item: -item[1])),
+                topic_units_at_route=dict(sorted(at_route.items(), key=lambda item: -item[1])),
+                style_profile=_weighted(units, signals['H'], 'H:'),
+                source_material_units_at_floor={name: sum(1 for u in units if signals['M'].get(u['id'], {}).get(name, 0.0) >= M_FLOOR) for name in sorted(next(iter(signals['M'].values())))},
+                extraction=dict(statuses=statuses, records=len(records), share_of_text_in_units_with_a_record=round(sum(len(u['text']) for u in units if u['id'] in covered) / total, 3)),
+                records=records)
+
+
+def write_aggregates(base_dir: Path, arm: str) -> dict[str, Any]:
+    out = arm_dir(base_dir, arm)
+    summary = {}
+    for video in VIDEOS:
+        document = seal(build_aggregate(base_dir, arm, video))
+        write_json(out / f'aggregate_v{video}.json', document)
+        summary[video] = dict(records=document['extraction']['records'], statuses=document['extraction']['statuses'], text_share=document['extraction']['share_of_text_in_units_with_a_record'])
+    return dict(arm=arm, output=str(out), sermons=summary)

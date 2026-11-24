@@ -588,3 +588,12 @@ class WholeRetryTests(unittest.TestCase):
         self.assertGreaterEqual(scope.ceiling_attempts, 14)
         self.assertGreaterEqual(scope.ceiling_usd, 14 * e.provider.reserved_usd(e.PRODUCER_32K))
         self.assertLessEqual(scope.ceiling_attempts, 16)
+
+
+class WholeAggregateTests(unittest.TestCase):
+    def test_the_topic_mass_is_the_text_weighted_mean_and_names_are_filtered_by_prefix(self):
+        from pastor_transcript_extractor.thought_units import whole_sermon as w
+        units = [dict(id='a', text='x' * 30), dict(id='b', text='x' * 10)]
+        signals = {'a': {'T:grace': 1.0, 'H:style': 0.2}, 'b': {'T:grace': 0.0, 'H:style': 0.6}}
+        self.assertEqual({'T:grace': 0.75}, w._weighted(units, signals, 'T:'))
+        self.assertEqual({'H:style': 0.3}, w._weighted(units, signals, 'H:'))

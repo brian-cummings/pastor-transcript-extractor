@@ -262,6 +262,18 @@ def whole_retry(base_dir: Path = BASE, arm: str = WHOLE_ARM, check_only: bool = 
         raise typer.BadParameter(str(error)) from error
 
 
+@app.command('whole-aggregate')
+def whole_aggregate(base_dir: Path = BASE, arm: str = WHOLE_ARM):
+    """Section 31 (offline): write each sermon's aggregate for one arm (topic profile, style, source-material counts and every extracted record, retried pairs merged); no provider call."""
+    from ...thought_units import whole_sermon
+    try:
+        if arm not in whole_sermon.ARMS:
+            raise ValueError('--arm must be b or u')
+        _echo(whole_sermon.write_aggregates(base_dir, arm))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @app.command('snap-review')
 def snap_review(base_dir: Path = BASE, grader: str = typer.Option('brian', '--grader', help='Name recorded with the judgments.'),
                 limit: int = typer.Option(15, '--limit', help='Edge comparisons to judge (the calibration set).')):
