@@ -169,4 +169,4 @@ Details fixed here:
   Asscherick's recordings are co-hosted Ellen White book studies (`DA with DA`, `COL with DA`), so "denominational
   source" and "80-minute length" describe the format. Step 1 missed this because it compares each recording with the
   benchmark's other recordings, which share the same channel and mix, so the check was circular.
-- Review is paused pending Brian's decision on the sermon sets (section 12 of the handoff reply).
+- Review is paused until Brian decides how to fix the benchmark sermon sets.
