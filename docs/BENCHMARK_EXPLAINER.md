@@ -176,3 +176,10 @@ Details fixed here:
   against 1.94 and 2.52 for Asscherick's DWELL solos; the same check puts every titled solo with its own speaker). The
   year-in-review video (4258) has no speaker in its title, so it is dropped by hand. Asscherick keeps all 25, and his
   explanation describes his co-hosted book-study series. Pass marks and dimension list are unchanged; no new Jev calls.
+- **Revised (Brian, 2026-11-24: option 1).** Asscherick's own preaching is the 3 DWELL sermons filed under Gibson's channel
+  (4259, 4265, 4266), now filed under him with `sermon-decide --decision file:66`. His 25 book studies are dropped
+  (not preaching). Final sets: Gibson 5 (halves 3 and 2), Asscherick 3 (halves 2 and 1, so his results are thin). Re-run
+  `explain` (free): 10 dimensions each. The pre-fix explanation is kept as `EXPLAINER.before-sermon-fix.md`.
+  Caveat for the readings: each set is essentially one or two series (Gibson: *The End* and DWELL; Asscherick: DWELL), so
+  topic dimensions can reflect the series as much as the preacher. Both "Asks listeners to: give" passages are Light
+  Bearers donation inserts. `review` now shows and opens each evidence passage on YouTube.

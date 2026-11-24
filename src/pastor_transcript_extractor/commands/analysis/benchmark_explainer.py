@@ -71,10 +71,13 @@ def explain(base_dir: Path = BASE):
 
 
 @app.command('review')
-def review(base_dir: Path = BASE):
+def review(base_dir: Path = BASE,
+           open_browser: bool = typer.Option(True, '--open/--no-open', help='Open each evidence passage on YouTube at its start.')):
     """Step 7: mark each explained dimension true, not true or can't tell (resumable)."""
+    import webbrowser
     from ...benchmark_explainer import runner
-    _call(runner.review, base_dir, echo=typer.echo)
+    _call(runner.review, base_dir, echo=typer.echo,
+          open_url=(lambda url: webbrowser.open(url, new=2, autoraise=True)) if open_browser else None)
 
 
 @app.command('rank')

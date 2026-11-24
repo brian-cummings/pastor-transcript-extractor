@@ -47,7 +47,10 @@ def dimension_card(name_of_pastor: str, row, details=None) -> str:
              f"z {row['z']:+.1f}, halves {row['z_halves'][0]:+.1f} / {row['z_halves'][1]:+.1f}"]
     for item in row.get('evidence', []):
         if 'text' in item:
-            lines.append(f"  Example: \"{item['text'][:400]}\"")
+            detail = details.get(item['video_id'])
+            source = (f"\n    — {detail['title']} {watch_url(detail['url'], item['start_seconds'])}"
+                      if detail and detail.get('url') else '')
+            lines.append(f"  Example: \"{item['text'][:400]}\"{source}")
         else:
             lines.append(f"  Sermon value: {show(row['dimension'], item['sermon_value'])}")
     return '\n'.join(lines)

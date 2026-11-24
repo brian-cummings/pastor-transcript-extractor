@@ -210,18 +210,27 @@ def explain(base_dir: Path) -> Path:
     return out / 'EXPLAINER.md'
 
 
-def review(base_dir: Path, ask: Callable[[str], str] = input, echo=print) -> dict:
+def review(base_dir: Path, ask: Callable[[str], str] = input, echo=print,
+           open_url: Callable[[str], object] | None = None) -> dict:
+    """Mark each explained dimension; with `open_url`, each evidence passage opens on YouTube at its start."""
+    from ..bound_claims.common import watch_url
     out, _, database = _paths(base_dir)
     explanations = _need(out / 'explain.json', 'explain')['explanations']
     path = out / 'explain_review.json'
     decisions = read_json(path) if path.exists() else {}
     names = data.pastor_names(database, sorted(explanations))
+    details = data.video_details(database, sorted({item['video_id'] for result in explanations.values()
+                                                   for row in result['explained'] for item in row.get('evidence', [])}))
     for benchmark, result in explanations.items():
         for row in result['explained']:
             key = f"{benchmark}/{row['dimension']}"
             if key in decisions:
                 continue
-            echo('\n' + render.dimension_card(names[benchmark], row))
+            echo('\n' + render.dimension_card(names[benchmark], row, details))
+            if open_url is not None:
+                for item in row.get('evidence', []):
+                    if 'text' in item and details.get(item['video_id'], {}).get('url'):
+                        open_url(watch_url(details[item['video_id']]['url'], item['start_seconds']))
             answer = ''
             while answer not in ('t', 'n', 'c'):
                 answer = ask('  True of him? t = true, n = not true, c = can\'t tell: ').strip().lower()
