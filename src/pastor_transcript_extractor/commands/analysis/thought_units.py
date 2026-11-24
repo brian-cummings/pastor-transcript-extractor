@@ -274,6 +274,16 @@ def whole_aggregate(base_dir: Path = BASE, arm: str = WHOLE_ARM):
         raise typer.BadParameter(str(error)) from error
 
 
+@app.command('whole-report')
+def whole_report(base_dir: Path = BASE):
+    """Section 31 (offline): unblind the saved judgments and write WHOLE_SERMON_REPORT.md and .json with the fixed reading (closer or level); no provider call."""
+    from ...thought_units import whole_sermon
+    try:
+        _echo(whole_sermon.write_report(base_dir))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @app.command('snap-review')
 def snap_review(base_dir: Path = BASE, grader: str = typer.Option('brian', '--grader', help='Name recorded with the judgments.'),
                 limit: int = typer.Option(15, '--limit', help='Edge comparisons to judge (the calibration set).')):

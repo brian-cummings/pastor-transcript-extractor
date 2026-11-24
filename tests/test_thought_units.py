@@ -597,3 +597,28 @@ class WholeAggregateTests(unittest.TestCase):
         signals = {'a': {'T:grace': 1.0, 'H:style': 0.2}, 'b': {'T:grace': 0.0, 'H:style': 0.6}}
         self.assertEqual({'T:grace': 0.75}, w._weighted(units, signals, 'T:'))
         self.assertEqual({'H:style': 0.3}, w._weighted(units, signals, 'H:'))
+
+
+class WholeReportTests(unittest.TestCase):
+    def test_unblinding_and_the_fixed_reading(self):
+        import tempfile
+        from pathlib import Path
+        from pastor_transcript_extractor.bound_claims.common import write_json
+        from pastor_transcript_extractor.thought_units import whole_sermon as w
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            here = w.report_dir(root)
+            write_json(here / '_arm_codes_DO_NOT_SHARE.json', {str(v): {'b': 'K', 'u': 'M'} for v in w.VIDEOS})
+            for video in w.VIDEOS:
+                points = [dict(n=i, category='none' if i == 2 else 'god_character_action', K='partly', M='full', note='') for i in (1, 2)]
+                write_json(here / f'judge_{video}.json', dict(control_points=points, K=dict(errors=['x'], closeness=3), M=dict(errors=[], closeness=4), better='M'))
+                for code in 'KM':
+                    (here / f'sum_{code}_{video}.txt').write_text('word ' * (410 if code == 'K' else 390))
+                for arm in 'bu':
+                    write_json(w.arm_dir(root, arm) / f'aggregate_v{video}.json', dict(extraction=dict(records=5, share_of_text_in_units_with_a_record=0.5, statuses={'ok': 5})))
+            result = w.score_report(root)
+            self.assertEqual('U (snapped units) closer', result['reading']['result'])      # gap 1.0 and more points fully conveyed
+            self.assertEqual((0, 6, 0), (result['arms']['b']['full'], result['arms']['b']['partly'], result['arms']['b']['not_conveyed']))
+            self.assertEqual(3, result['points_not_fully_conveyed']['outside_pipeline_categories']['b'])
+            self.assertEqual(3, result['better_per_sermon']['u'])
+            self.assertIn('closer', w.render_report(result))

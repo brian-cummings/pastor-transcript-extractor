@@ -302,3 +302,105 @@ def write_aggregates(base_dir: Path, arm: str) -> dict[str, Any]:
         write_json(out / f'aggregate_v{video}.json', document)
         summary[video] = dict(records=document['extraction']['records'], statuses=document['extraction']['statuses'], text_share=document['extraction']['share_of_text_in_units_with_a_record'])
     return dict(arm=arm, output=str(out), sermons=summary)
+
+
+# ---- the report (31.6) ---------------------------------------------------------------------------------------------------------------
+CLOSER_BY, JUDGE_VERDICTS = 0.5, ('full', 'partly', 'not')
+
+
+def report_dir(base_dir: Path) -> Path:
+    return public_set.set_dir(base_dir, SET_ID) / 'whole' / 'report'
+
+
+def score_report(base_dir: Path) -> dict[str, Any]:
+    """Unblind the saved judgments (`report/judge_<video>.json`, `_arm_codes_DO_NOT_SHARE.json`) and score each arm by the reading fixed in 31: an arm is closer if its mean closeness is
+    higher by at least 0.5 and it conveys at least as many control points fully; otherwise the arms are level. Offline."""
+    here = report_dir(base_dir)
+    codes = read_json(here / '_arm_codes_DO_NOT_SHARE.json')
+    arms_ = {arm: dict(full=0, partly=0, **{'not': 0}, closeness=[], errors=0, words=[], records=0, text_share=[], failures={}) for arm in ARMS}
+    sermons, categories, better = {}, {}, {arm: 0 for arm in (*ARMS, 'tie')}
+    for video in VIDEOS:
+        judged = read_json(here / f'judge_{video}.json')
+        by_code = {codes[str(video)][arm]: arm for arm in ARMS}
+        row = dict(points=len(judged['control_points']), arms={})
+        for code, arm in by_code.items():
+            counts = {name: sum(point[code] == name for point in judged['control_points']) for name in JUDGE_VERDICTS}
+            words = len((here / f'sum_{code}_{video}.txt').read_text().split())
+            aggregate = read_json(arm_dir(base_dir, arm) / f'aggregate_v{video}.json')
+            row['arms'][arm] = dict(code=code, **counts, closeness=judged[code]['closeness'], errors=judged[code]['errors'], words=words,
+                                    records=aggregate['extraction']['records'], share_of_text_in_units_with_a_record=aggregate['extraction']['share_of_text_in_units_with_a_record'],
+                                    statuses=aggregate['extraction']['statuses'])
+            total = arms_[arm]
+            for name in JUDGE_VERDICTS:
+                total[name] += counts[name]
+            total['closeness'].append(judged[code]['closeness'])
+            total['errors'] += len(judged[code]['errors'])
+            total['words'].append(words)
+            total['records'] += aggregate['extraction']['records']
+            total['text_share'].append(aggregate['extraction']['share_of_text_in_units_with_a_record'])
+            for status, count in aggregate['extraction']['statuses'].items():
+                total['failures'][status] = total['failures'].get(status, 0) + count
+        row['better'] = by_code.get(judged['better'], 'tie')
+        better[row['better']] += 1
+        sermons[video] = row
+        for point in judged['control_points']:
+            bucket = categories.setdefault(point['category'], {arm: dict(full=0, partly=0, **{'not': 0}) for arm in ARMS})
+            for code, arm in by_code.items():
+                bucket[arm][point[code]] += 1
+    summary = {}
+    for arm, total in arms_.items():
+        mean = lambda values: round(sum(values) / len(values), 2)
+        summary[arm] = dict(full=total['full'], partly=total['partly'], not_conveyed=total['not'], mean_closeness=mean(total['closeness']), errors=total['errors'], mean_words=mean(total['words']),
+                            records=total['records'], mean_share_of_text_in_units_with_a_record=mean(total['text_share']), statuses=total['failures'])
+    gap = round(summary['u']['mean_closeness'] - summary['b']['mean_closeness'], 2)
+    leader = 'u' if gap > 0 else 'b'
+    closer = abs(gap) >= CLOSER_BY and summary[leader]['full'] >= summary['b' if leader == 'u' else 'u']['full']
+    outside = {arm: sum(categories.get('none', {}).get(arm, {}).get(name, 0) for name in ('partly', 'not')) for arm in ARMS}
+    lost = {arm: summary[arm]['partly'] + summary[arm]['not_conveyed'] for arm in ARMS}
+    return dict(version=VERSION, reading=dict(rule=f'closer if mean closeness is higher by at least {CLOSER_BY} and at least as many control points are conveyed fully; otherwise level',
+                                              closeness_gap_u_minus_b=gap, result=f'{arm_name(leader)} closer' if closer else 'level'),
+                arms=summary, per_sermon=sermons, better_per_sermon=better, categories=categories,
+                points_not_fully_conveyed=dict(total=lost, outside_pipeline_categories=outside, inside=({arm: lost[arm] - outside[arm] for arm in ARMS})))
+
+
+def arm_name(arm: str) -> str:
+    return {'b': 'B (blocks)', 'u': 'U (snapped units)'}[arm]
+
+
+def render_report(result: Mapping[str, Any]) -> str:
+    arms_, reading = result['arms'], result['reading']
+    lines = ['# Whole-sermon aggregate test: blocks (B) against snapped units (U)', '',
+             f"**Reading (rule fixed before any output):** {reading['rule']}.", '',
+             f"**Result: {reading['result']}** (mean closeness U minus B = {reading['closeness_gap_u_minus_b']:+.2f}).", '',
+             '| Arm | mean closeness | control points full / partly / not (of 36) | errors | records | share of text in units with a record | mean candidate words |', '| --- | --- | --- | --- | --- | --- | --- |']
+    for arm in ARMS:
+        a = arms_[arm]
+        lines.append(f"| {arm_name(arm)} | {a['mean_closeness']:.2f} | {a['full']} / {a['partly']} / {a['not_conveyed']} | {a['errors']} | {a['records']} | {a['mean_share_of_text_in_units_with_a_record']:.2f} | {a['mean_words']:.0f} |")
+    lines += ['', '## Per sermon', '', '| Sermon | arm | closeness | full / partly / not | errors | records | words | better |', '| --- | --- | --- | --- | --- | --- | --- | --- |']
+    for video, row in result['per_sermon'].items():
+        for arm in ARMS:
+            a = row['arms'][arm]
+            lines.append(f"| {video} | {arm.upper()} | {a['closeness']} | {a['full']} / {a['partly']} / {a['not']} | {len(a['errors'])} | {a['records']} | {a['words']} | {'yes' if row['better'] == arm else ('tie' if row['better'] == 'tie' else '')} |")
+    lost = result['points_not_fully_conveyed']
+    lines += ['', '## Where the losses fall', '',
+              f"Control points not fully conveyed: B {lost['total']['b']}, U {lost['total']['u']}. Of these, outside every category the pipeline extracts (judge label `none`): B {lost['outside_pipeline_categories']['b']}, U {lost['outside_pipeline_categories']['u']}.", '',
+              '| Control-point category | B full / partly / not | U full / partly / not |', '| --- | --- | --- |']
+    for name, bucket in sorted(result['categories'].items()):
+        lines.append(f"| {name} | {bucket['b']['full']} / {bucket['b']['partly']} / {bucket['b']['not']} | {bucket['u']['full']} / {bucket['u']['partly']} / {bucket['u']['not']} |")
+    lines += ['', '## Errors the judge listed', '']
+    for video, row in result['per_sermon'].items():
+        for arm in ARMS:
+            for error in row['arms'][arm]['errors']:
+                lines.append(f"- {video} {arm.upper()}: {error}")
+    lines += ['', '## Limits', '', '- Three sermons, one writer and one judge per arm and sermon, one control writer per sermon: a direction, not a finding.',
+              f"- The writers were asked for 250 to 400 words; {sum(row['arms'][arm]['words'] > 400 for row in result['per_sermon'].values() for arm in ARMS)} of 6 candidates were longer (see the words columns), and the judge was told not to reward length.",
+              '- "Inside" a pipeline category is broad: the topic pack has 20 topics, so only a point that fits none counts as outside.']
+    return '\n'.join(lines) + '\n'
+
+
+def write_report(base_dir: Path) -> dict[str, Any]:
+    result = score_report(base_dir)
+    here = report_dir(base_dir)
+    write_json(here / 'WHOLE_SERMON_REPORT.json', seal(result))
+    (here / 'WHOLE_SERMON_REPORT.md').write_text(render_report(result))
+    return dict(output=str(here / 'WHOLE_SERMON_REPORT.md'), reading=result['reading'], arms=result['arms'])
