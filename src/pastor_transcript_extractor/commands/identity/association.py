@@ -134,6 +134,18 @@ def shadow_associate_speakers_command(
     base_dir: Path | None = typer.Option(
         None, help="Override app data directory."
     ),
+    text_prefilter_top: int | None = typer.Option(
+        None,
+        "--text-prefilter-top",
+        min=1,
+        help=(
+            "Opt-in: keep only the N stylometrically closest profiles (plus every "
+            "profile without usable text) in the cross-source voice pool. Source, "
+            "name and confirmation routes are never pruned; text never decides "
+            "identity. Off by default; check recall first with "
+            "`pte identity text-prefilter-check`."
+        ),
+    ),
 ) -> tuple[Path, ...]:
     evaluation_root = runtime_option(
         evaluation_root, paths=build_paths(base_dir), relative="speaker-pairs",
@@ -164,6 +176,7 @@ def shadow_associate_speakers_command(
         cache_dir=cache_dir or paths.evaluation / "speaker-pairs/cache",
         output_root=output_root or paths.evaluation / "speaker-associations/shadow-runs",
         base_dir=base_dir,
+        text_prefilter_top=text_prefilter_top,
     )
     try:
         validate_shadow_association_request(request)

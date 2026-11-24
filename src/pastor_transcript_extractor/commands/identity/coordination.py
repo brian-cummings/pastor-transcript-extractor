@@ -258,6 +258,7 @@ def dispatch_associations_command(
                 cache_dir=evaluation_root_for(paths, base_dir) / "speaker-pairs/cache",
                 output_root=association_root,
                 base_dir=base_dir,
+                text_prefilter_top=None,
             )
             succeeded += 1
         except Exception as error:
@@ -530,6 +531,7 @@ def coordinate_identity_command(
                     cache_dir=cache_dir,
                     output_root=association_root,
                     base_dir=base_dir,
+                    text_prefilter_top=None,
                 )
                 executed_association = True
                 audit_result = audit()

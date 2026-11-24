@@ -23,7 +23,11 @@ MIN_CHUNK_WORDS = 10
 
 
 def word_counts(texts: Mapping[int, str]) -> dict:
-    counts = {video_id: Counter(tokens(text)) for video_id, text in texts.items()}
+    return counts_from_counters({video_id: Counter(tokens(text)) for video_id, text in texts.items()})
+
+
+def counts_from_counters(counts: Mapping[int, Counter]) -> dict:
+    """Saved count form from per-text token counters: kept vocabulary plus kept counts and totals."""
     corpus: Counter = Counter()
     for value in counts.values():
         corpus.update(value)

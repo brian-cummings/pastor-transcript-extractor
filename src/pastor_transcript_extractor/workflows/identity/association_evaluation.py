@@ -573,6 +573,8 @@ def plan_exhaustive_validation(
         payload["confirmation_priority_profile_ids"] = list(
             routing.confirmation_priority_profile_ids
         )
+    if "text_prefilter" in route_plan.routing_payload:
+        payload["text_prefilter"] = route_plan.routing_payload["text_prefilter"]
     return AssociationEvaluationPass(
         profiles=profiles,
         routing_payload=payload,

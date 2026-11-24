@@ -67,7 +67,11 @@ def population_fingerprint(sermons: list[Sermon]) -> str:
 
 def sermon_text(sermon: Sermon) -> tuple[str, dict]:
     """Return the sermon-window text and how it was produced."""
-    path = Path(sermon.extraction_path)
+    return window_text(Path(sermon.extraction_path))
+
+
+def window_text(path: Path) -> tuple[str, dict]:
+    """Sermon-window text of one extraction JSON, with legacy rolling captions normalized."""
     raw = path.read_bytes()
     payload = json.loads(raw)
     segments, _, _ = _load_sermon_source(path)

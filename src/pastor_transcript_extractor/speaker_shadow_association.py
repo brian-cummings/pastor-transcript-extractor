@@ -263,8 +263,13 @@ def select_staged_association_profiles(
     exemplar_centroids: Mapping[int, Sequence[float]],
     maximum_global_profiles: int = 1,
     confirmation_priority_profile_ids: frozenset[int] = frozenset(),
+    text_pruned_profile_ids: frozenset[int] | None = None,
 ) -> StagedAssociationRouting:
-    """Prefer local routes and use a bounded cross-source fallback only if needed."""
+    """Prefer local routes and use a bounded cross-source fallback only if needed.
+
+    `text_pruned_profile_ids` (opt-in text pre-filter) removes profiles from the
+    cross-source pool only; source, name and confirmation routes are never pruned.
+    """
     if maximum_global_profiles < 1:
         raise ValueError("global association shortlist must contain a profile")
     routable_by_id = {
@@ -318,6 +323,10 @@ def select_staged_association_profiles(
         and item[0].shadow_ready
         and "discovery_candidate_unconfirmed"
         not in item[0].automatic_blockers
+        and (
+            text_pruned_profile_ids is None
+            or item[0].profile_id not in text_pruned_profile_ids
+        )
     ]
 
     def profile_similarity(
@@ -439,8 +448,21 @@ def select_staged_association_profiles(
                 policy_exclusion_reasons.append(
                     "profile_not_globally_routable_without_local_route"
                 )
+        text_entry = {}
+        if text_pruned_profile_ids is not None:
+            text_entry["text_prefilter_pruned"] = (
+                profile_id in text_pruned_profile_ids
+                and profile_id not in priority_ids
+            )
+            if (
+                text_entry["text_prefilter_pruned"]
+                and globally_routable
+                and profile_id not in routable_ids
+            ):
+                policy_exclusion_reasons.append("text_prefilter_pruned")
         candidate_funnel_entries.append(
             {
+                **text_entry,
                 "profile_id": profile_id,
                 "retrieval_sources": retrieval_sources,
                 "source_match": source_match,

@@ -369,6 +369,7 @@ def execute_association_stage(
         cache_dir=request.cache_dir,
         output_root=request.output_root,
         base_dir=request.base_dir,
+        text_prefilter_top=None,
     )
     return tuple(reports)
 

@@ -4552,12 +4552,39 @@ def shadow_associate_speakers_service(
             console.print("No candidate observation passed strict association admission; no exemplar audio was prepared.")
             return ()
         raise typer.BadParameter("No eligible unassigned candidate observation was selected.")
+    text_prefilter_decisions = None
+    if request.text_prefilter_top is not None:
+        from pastor_transcript_extractor import identity_text_prefilter
+
+        text_prefilter_decisions = identity_text_prefilter.plan_text_prefilter(
+            database,
+            {p.profile_id: p.member_observation_ids for p in readiness},
+            (
+                item.eligibility.observation.id
+                for item in span_preparation_inputs
+                if item.eligibility.observation is not None
+            ),
+            top=request.text_prefilter_top,
+            cache_root=cache_root / "text-prefilter-v1",
+        )
+        decisions = tuple(text_prefilter_decisions.values())
+        console.print(
+            "Text pre-filter "
+            f"({identity_text_prefilter.TEXT_PREFILTER_VERSION}, top "
+            f"{request.text_prefilter_top}; ordering and pruning of the "
+            "cross-source pool only): "
+            f"candidates={len(decisions)} "
+            f"with_usable_text={sum(d.query_has_text for d in decisions)} "
+            f"pruned_profile_routes="
+            f"{sum(len(d.pruned_profile_ids) for d in decisions)}"
+        )
     preparation_scope = plan_association_preparation_scope(
         readiness, requested_videos,
         observations_by_video_id=current_observation_by_video_id,
         observations_by_id=observations_by_id,
         candidate_names_by_observation=candidate_names_by_observation,
         source_id_by_video_id=source_id_by_video_id,
+        text_prefilter_by_observation=text_prefilter_decisions,
     )
     exemplar_state_cache = identity_exemplar_preparation.ExemplarPreparationStateCache(cache_root)
     prepared_profile_cache = PreparedProfileCache(cache_root)
@@ -5015,6 +5042,11 @@ def shadow_associate_speakers_service(
                 candidate_centroid=candidate_centroids.get(observation.id, ()),
                 exemplar_centroids=exemplar_centroids,
                 confirmation_profile_ids=confirmation_priority_profile_ids,
+                text_prefilter=(
+                    text_prefilter_decisions.get(observation.id)
+                    if text_prefilter_decisions is not None
+                    else None
+                ),
             )
             planned.routing_payload["preparation_scope"] = {
                 "local_route_first": preparation_scope.local_route_first,

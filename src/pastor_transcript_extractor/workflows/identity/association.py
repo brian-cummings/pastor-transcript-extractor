@@ -10,6 +10,9 @@ from pastor_transcript_extractor.identity_leverage import (
 from pastor_transcript_extractor.identity_attribution import (
     title_byline_selection_hint,
 )
+from pastor_transcript_extractor.identity_text_prefilter import (
+    TextPrefilterDecision,
+)
 from pastor_transcript_extractor.media_artifacts import (
     MediaVerificationCache,
     media_artifact_availability,
@@ -76,6 +79,8 @@ class ShadowAssociationRequest:
     cache_dir: Path
     output_root: Path
     base_dir: Path | None
+    # Opt-in stylometric pre-filter of the cross-source pool; None keeps behavior unchanged.
+    text_prefilter_top: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,8 +262,13 @@ class AssociationPreparationScope:
 def plan_association_preparation_scope(
     readiness, videos, *, observations_by_video_id,
     observations_by_id, candidate_names_by_observation, source_id_by_video_id,
+    text_prefilter_by_observation: Mapping[int, TextPrefilterDecision] | None = None,
 ) -> AssociationPreparationScope:
-    """Choose source/name routes using metadata before opening exemplar audio."""
+    """Choose source/name routes using metadata before opening exemplar audio.
+
+    With the opt-in text pre-filter, a cross-source profile is left unprepared only when
+    text pruned it for every requested video; a video without a decision prunes nothing.
+    """
     profile_sources = {
         p.profile_id: {source_id_by_video_id.get(observations_by_id[oid].video_id)
                        for oid in p.member_observation_ids if oid in observations_by_id}
@@ -282,6 +292,16 @@ def plan_association_preparation_scope(
                 local_ids.add(profile.profile_id)
     globally_routable = tuple(p for p in readiness if p.review_ready and p.shadow_ready
                               and "discovery_candidate_unconfirmed" not in p.automatic_blockers)
+    if text_prefilter_by_observation is not None:
+        pruned_everywhere: frozenset[int] | None = None
+        for video in videos:
+            observation = observations_by_video_id.get(video.id)
+            decision = text_prefilter_by_observation.get(observation.id) if observation else None
+            pruned = decision.pruned_profile_ids if decision is not None else frozenset()
+            pruned_everywhere = pruned if pruned_everywhere is None else pruned_everywhere & pruned
+        pruned_everywhere = pruned_everywhere or frozenset()
+        globally_routable = tuple(p for p in globally_routable
+                                  if p.profile_id not in pruned_everywhere or p.profile_id in local_ids)
     metadata_only_ids = {p.profile_id for p in readiness if not p.review_ready}
     if not local_ids:
         # Global centroid retrieval is needed immediately when no local route exists.
@@ -671,6 +691,7 @@ def plan_association_profile_route(
     candidate_centroid: Sequence[float],
     exemplar_centroids: Mapping[int, Sequence[float]],
     confirmation_profile_ids: frozenset[int] = frozenset(),
+    text_prefilter: TextPrefilterDecision | None = None,
 ) -> AssociationProfileRoutePlan:
     """Plan one candidate's profile route without acoustic comparisons."""
     explicit_candidate_names = tuple(
@@ -746,6 +767,11 @@ def plan_association_profile_route(
         exemplar_centroids=exemplar_centroids,
         maximum_global_profiles=maximum_global_profiles,
         confirmation_priority_profile_ids=confirmation_profile_ids,
+        text_pruned_profile_ids=(
+            text_prefilter.pruned_profile_ids
+            if text_prefilter is not None
+            else None
+        ),
     )
     payload: dict[str, Any] = {
         "route": routing.route,
@@ -781,6 +807,10 @@ def plan_association_profile_route(
         payload["confirmation_priority_profile_ids"] = list(
             routing.confirmation_priority_profile_ids
         )
+    if text_prefilter is not None:
+        # Present only when the opt-in pre-filter ran, so default fingerprints are unchanged
+        # and a pruned report is never reused by a default run (or the reverse).
+        payload["text_prefilter"] = text_prefilter.payload()
     return AssociationProfileRoutePlan(
         routing=routing,
         routing_payload=payload,
