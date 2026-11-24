@@ -159,3 +159,14 @@ Details fixed here:
   10,800 requests (worst case about 14,100), **about $6 to $7 actual**, under the $15 per-request ceiling. Expect about
   15 to 20 minutes of counting and seeding before the first request, then 1 to 1.5 hours.
 - Next (Brian): `caffeinate -i pte analysis benchmark-explainer score --base-dir <base>`, then `explain`, `review`, `rank`, `report`.
+- `score` (Brian, 2026-11-24): complete in one invocation. 340 sermons, 12,090 blocks, 10,677 requests, 0 failed calls,
+  0 incomplete sermons, **$8.52** against the $15 ceiling (above the $6 to $7 estimate, within the approved $7 to $10).
+- `explain` (free): Gibson 6 distinctive, stable dimensions (3 not stable); Asscherick 7 (1 not stable).
+- **Defect found before review: the benchmark sermon sets are not him preaching.** Of Gibson's 22 recordings, only 5
+  are titled as his alone (4243, 4244, 4260, 4264, 4268). 11 are panels with Asscherick and Grasso, 3 are Asscherick solo
+  (4259, 4265, 4266), 2 are Rosario solo (4261, 4262) and 1 is a ministry year-in-review (4258). His evidence shows it:
+  a "give" passage is Asscherick's donation ad, and a doctrine passage comes from an Asscherick sermon. All 25 of
+  Asscherick's recordings are co-hosted Ellen White book studies (`DA with DA`, `COL with DA`), so "denominational
+  source" and "80-minute length" describe the format. Step 1 missed this because it compares each recording with the
+  benchmark's other recordings, which share the same channel and mix, so the check was circular.
+- Review is paused pending Brian's decision on the sermon sets (section 12 of the handoff reply).
