@@ -183,3 +183,7 @@ Details fixed here:
   Caveat for the readings: each set is essentially one or two series (Gibson: *The End* and DWELL; Asscherick: DWELL), so
   topic dimensions can reflect the series as much as the preacher. Both "Asks listeners to: give" passages are Light
   Bearers donation inserts. `review` now shows and opens each evidence passage on YouTube.
+- `review` (Brian): 20 of 20 dimensions marked true (Gibson 10, Asscherick 10), so **E1 passes for both**. Caveat for the
+  readings: the sets are small and series-bound, so E1 confirms that the named traits are recognizable, not that
+  they are typical across his whole preaching. `rank` now shows each trait's direction (MORE or LESS than most) and opens
+  the shortlist examples.

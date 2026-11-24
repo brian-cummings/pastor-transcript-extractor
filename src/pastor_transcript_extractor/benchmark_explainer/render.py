@@ -101,14 +101,22 @@ def explainer(explanations, names, details) -> str:
     return '\n'.join(lines)
 
 
+def pick_line(row) -> str:
+    """One pick-list line: the dimension, its direction and the numbers, so a 'less than most' trait reads as one."""
+    return (f"{label(row['dimension'])} — {'MORE' if row['z'] > 0 else 'LESS'} than most pastors "
+            f"({show(row['dimension'], row['value'])} vs {show(row['dimension'], row['pool_median'])})")
+
+
 def shortlist_card(names, benchmark, row, table, details) -> str:
     lines = [f"{names[row['pastor']]} for someone like {names[benchmark]} (distance {row['distance']:.2f})"]
     for name, value in row['values'].items():
         lines.append(f"  {label(name)}: {show(name, value)} (him: {show(name, table[benchmark][name]['value'])})")
         for item in row['evidence'].get(name, []):
-            title = details.get(item['video_id'], {}).get('title', '')
+            detail = details.get(item['video_id'], {})
             if 'text' in item:
-                lines.append(f"    Example from \"{title}\": \"{item['text'][:350]}\"")
+                link = f" {watch_url(detail['url'], item['start_seconds'])}" if detail.get('url') else ''
+                lines.append(f"    Example from \"{detail.get('title', '')}\"{link}: \"{item['text'][:350]}\"")
+    lines.append(f"  Question: from these numbers and examples, is this pastor similar to {names[benchmark]} on these traits?")
     return '\n'.join(lines)
 
 

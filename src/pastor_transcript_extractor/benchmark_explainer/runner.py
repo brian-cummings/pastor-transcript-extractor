@@ -239,7 +239,10 @@ def review(base_dir: Path, ask: Callable[[str], str] = input, echo=print,
     return dict(Counter(decisions.values()))
 
 
-def rank(base_dir: Path, ask: Callable[[str], str] = input, echo=print) -> dict:
+def rank(base_dir: Path, ask: Callable[[str], str] = input, echo=print,
+         open_url: Callable[[str], object] | None = None) -> dict:
+    """Pick dimensions per benchmark, then judge the shortlist; with `open_url`, each shortlist example opens on YouTube."""
+    from ..bound_claims.common import watch_url
     out, database, sermons, scored, measured, dimensions, table = _loaded(base_dir)
     explanations = _need(out / 'explain.json', 'explain')['explanations']
     marks = _need(out / 'explain_review.json', 'review')
@@ -261,8 +264,9 @@ def rank(base_dir: Path, ask: Callable[[str], str] = input, echo=print) -> dict:
         chosen = saved.get(benchmark, {}).get('chosen')
         if not chosen:
             echo(f"\n{names[benchmark]}: dimensions you marked true")
+            rows = {r['dimension']: r for r in result['explained']}
             for i, name in enumerate(true_dims, 1):
-                echo(f'  {i}. {render.label(name)}')
+                echo(f'  {i}. {render.pick_line(rows[name])}')
             while True:
                 picked = ask('  Pick 2 to 5 you would want in a pastor (numbers separated by commas): ')
                 try:
@@ -280,6 +284,11 @@ def rank(base_dir: Path, ask: Callable[[str], str] = input, echo=print) -> dict:
             if row['pastor'] in saved[benchmark]['judgments']:
                 continue
             echo('\n' + render.shortlist_card(names, benchmark, row, table, details))
+            if open_url is not None:
+                for items in row['evidence'].values():
+                    for item in items:
+                        if 'text' in item and details.get(item['video_id'], {}).get('url'):
+                            open_url(watch_url(details[item['video_id']]['url'], item['start_seconds']))
             answer = ''
             while answer not in ('s', 'n'):
                 answer = ask('  Does the evidence support "similar on these dimensions"? s = supported, n = not: ').strip().lower()

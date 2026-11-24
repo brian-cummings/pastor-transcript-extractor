@@ -81,10 +81,13 @@ def review(base_dir: Path = BASE,
 
 
 @app.command('rank')
-def rank(base_dir: Path = BASE):
+def rank(base_dir: Path = BASE,
+         open_browser: bool = typer.Option(True, '--open/--no-open', help="Open each shortlisted pastor's examples on YouTube.")):
     """Steps 8 and 9: pick dimensions you'd want, then judge the top 5 pastors' evidence (resumable)."""
+    import webbrowser
     from ...benchmark_explainer import runner
-    _call(runner.rank, base_dir, echo=typer.echo)
+    _call(runner.rank, base_dir, echo=typer.echo,
+          open_url=(lambda url: webbrowser.open(url, new=2, autoraise=True)) if open_browser else None)
 
 
 @app.command('report')
