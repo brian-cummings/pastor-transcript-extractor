@@ -15,6 +15,27 @@ def label(name: str) -> str:
     return f"{FAMILY.get(family, family)}: {leaf.replace('_', ' ')}"
 
 
+def meaning(name: str) -> str:
+    """What Jev was asked for this dimension, in the pack's own wording ('' when there is none, e.g. free measures)."""
+    family, _, leaf = name.partition(':')
+    try:
+        if family == 'T':
+            from ..sermon_topics import TOPIC_SPECS
+            return TOPIC_SPECS[leaf].definition
+        if family == 'S':
+            from ..sermon_salvation_relationships import SALVATION_RELATIONSHIP_SPECS
+            return SALVATION_RELATIONSHIP_SPECS[leaf].description
+        if family == 'H':
+            from ..sermon_semantic_dimensions import SEMANTIC_DIMENSION_SPECS
+            return SEMANTIC_DIMENSION_SPECS[leaf].description
+        if family in ('P', 'L', 'M'):
+            from ..sermon_leaf_packs import LISTENER_DIRECTIVES, PUBLIC_LIFE_TREATMENT, SOURCE_MATERIAL
+            return {'P': PUBLIC_LIFE_TREATMENT, 'L': LISTENER_DIRECTIVES, 'M': SOURCE_MATERIAL}[family].definitions[leaf]
+    except (KeyError, AttributeError):
+        return ''
+    return ''
+
+
 def show(name: str, value) -> str:
     if value is None:
         return 'n/a'
@@ -42,9 +63,13 @@ def _evidence_lines(name: str, items, details) -> list[str]:
 
 def dimension_card(name_of_pastor: str, row, details=None) -> str:
     details = details or {}
-    lines = [f"{name_of_pastor} — {label(row['dimension'])}",
+    lines = [f"{name_of_pastor} — {label(row['dimension'])}"]
+    if meaning(row['dimension']):
+        lines.append(f"  Means: a block that {meaning(row['dimension'])}" if row['dimension'][0] == 'P' else f"  Means: {meaning(row['dimension'])}")
+    lines += [
              f"  {show(row['dimension'], row['value'])}, {_direction(row)} the typical pastor ({show(row['dimension'], row['pool_median'])}); "
-             f"z {row['z']:+.1f}, halves {row['z_halves'][0]:+.1f} / {row['z_halves'][1]:+.1f}"]
+             f"z {row['z']:+.1f}, halves {row['z_halves'][0]:+.1f} / {row['z_halves'][1]:+.1f}",
+              f"  Question: is he {'more' if row['z'] > 0 else 'less'} given to this than most pastors, in your experience of him?"]
     for item in row.get('evidence', []):
         if 'text' in item:
             detail = details.get(item['video_id'])
