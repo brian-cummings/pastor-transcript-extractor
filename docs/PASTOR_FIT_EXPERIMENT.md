@@ -223,3 +223,34 @@ Details fixed here, before any result exists:
   voice-and-review label.
 - **Timing check:** loading three real sermons and encoding 20 chunks took 0.08 s per chunk with the
   locked single-thread encoder (no Jev or provider call).
+
+## 12. Result (2026-11-24; Brian ran all four steps; `<base>/evaluation/pastor-fit-v1/REPORT.md`)
+
+Run: 293 sermons (263 caption-normalized), about 17k chunks embedded, $0 provider cost.
+
+| Fingerprint | Part 1 overall | Part 1 same church | Part 1b | Part 2 |
+| --- | --- | --- | --- | --- |
+| Stylometry | fail (top-1 61%, channel-only text also 61%) | **PASS** (14 of 14) | **PASS** (89% in top 5, median rank 1) | fail (2 of 16 in top 5, median rank 25) |
+| Embeddings | fail (45%; channel-only 53%) | fail (10 of 14) | fail (63%) | fail (6 of 16, median rank 18.5) |
+
+With at least 6 sermons, stylometry reaches 85% top-1 (20 profiles) and 6 of 6 same-church wins.
+
+- **Part 1 overall fails by the frozen rule.** The channel-only text matched as well as the clean text. The rule did not
+  anticipate why: on the 29 channels with one analyzed preacher, "channel vocabulary" (words in at least half of a
+  channel's sermons and rare elsewhere) is that preacher's own recurring vocabulary, so the baseline is not channel-only
+  there. The same-church control, where channel material cannot separate two preachers (channel-only 9.5 of 14),
+  is the informative test, and stylometry passes it 14 of 14. The words driving correct matches are function and discourse
+  words ("things", "still", "should", "friends", "got", "we've"), not church names. The verdict stays fail; no rerun.
+- **Part 1b passes for stylometry:** a held-out sermon's voice-assigned profile is in the text top 5 for 89% of
+  sermons among 47 profiles. Unmeasured at the registry's 318 profiles.
+- **Part 2 fails:** preachers on the same channel are not more alike than preachers elsewhere. Embeddings place
+  6 of 16 in the top 5 against a chance rate of about 1.8, but well below the bar. The ground truth was weaker
+  than assumed: other preachers on a channel are often guest or occasional speakers, not people the church chose as
+  its pastor. Some embedding hits may come from transcript format (channel 36 is lowercase and unpunctuated).
+- **Data quality, seen again:** sermon windows still hold song lyrics, "[Music]" markers and welcomes (for example
+  channel 28's welcome). Boilerplate removal took only 0.3% of words, because few such passages repeat word for word.
+
+Acceptance record: criterion advanced: pastor distinctness is shown for the "how they talk" fingerprint, including
+the within-church control, and the text pre-filter passes. New evidence: similarity to a church's other preachers is
+not a fit signal at this depth, so fit has to come from stated needs (Part 3), as section 6 says. Next action justified:
+Brian's approval of the Part 3 needs list. The stylometric identity pre-filter is a separate, later proposal for `pte identity`.
