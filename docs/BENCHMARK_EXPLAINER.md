@@ -187,3 +187,22 @@ Details fixed here:
   readings: the sets are small and series-bound, so E1 confirms that the named traits are recognizable, not that
   they are typical across his whole preaching. `rank` now shows each trait's direction (MORE or LESS than most) and opens
   the shortlist examples.
+
+## 12. Widening the benchmark sets (Brian, 2026-11-24: option A)
+
+The sets above are one or two series each, so the explanation shows what is unusual about those series. Brian adds
+chosen recordings one at a time:
+
+1. `pte source add '<watch URL>' --target-pastor <ty-gibson | david-asscherick>` (prints the new source id), then
+   `pte run --source-id <id>`: intake, captions or transcription, and extraction.
+2. `pte analysis benchmark-explainer add-sermons` (free): appends benchmark recordings extracted since `sermon-check`,
+   measures the free dimensions and runs the sermon check against the reviewed sets. The pool is fixed; the step refuses
+   if it changed.
+3. `sermon-review --all`: only undecided recordings are asked (earlier decisions stand).
+4. `score-added [--check-only] [--ceiling-usd 2.00]` (Jev): scores kept sermons without signals in its own round
+   under `added-rounds/round-<n>/`, with its own plan, ledger and per-request dollar ceiling, and one resume. The approved
+   $15 run's files are never touched. About $0.0007 per block (section 11), so about $0.04 per sermon.
+5. `explain`, `review` (only new dimensions are asked; marks are about the pastor, so they carry over), `rank`, `report`.
+
+A speaker-profile basis (benchmarks as profiles 144 and 145, filled by the identity workflow) is the reusable design;
+those profiles are currently empty placeholders, so it is deferred until the benchmark idea passes.

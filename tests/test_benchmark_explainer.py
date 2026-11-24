@@ -146,3 +146,60 @@ class SermonReviewTests(unittest.TestCase):
                     runner.sermon_decide(out, [7], 'drop')
             active = runner._active_sermons(out)
             self.assertEqual([(s['video_id'], s['pastor']) for s in active], [(1, 'b65'), (2, 'b66')])
+
+
+class WideningTests(unittest.TestCase):
+    def test_added_rounds_have_their_own_files_and_ceiling_and_leave_the_approved_run_alone(self):
+        import tempfile
+        from decimal import Decimal
+        from pathlib import Path
+        from unittest import mock
+        from pastor_transcript_extractor.benchmark_explainer import score
+        from pastor_transcript_extractor.bound_claims.common import read_json, write_json
+        plan = dict(sermons=1, blocks=1, cache_misses={}, reusable_saved_answers=0, worst_case_requests=3,
+                    worst_case_reserved_usd='0', ceiling_usd='15.00')
+        fake = lambda out, sermon, client, failures, echo: dict(video_id=sermon['video_id'], pastor=sermon['pastor'], calls=1, blocks=[])
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            write_json(out / 'score.json', {'approved': True})
+            with mock.patch.object(score, 'census', return_value=dict(plan)), mock.patch.object(score, 'score_sermon', fake):
+                first = score.run_round(out, out, [_sermon(1, 'b65')], ceiling_usd=Decimal('2.00'),
+                                        client_factory=lambda model: None, echo=lambda *_: None)
+                second = score.run_round(out, out, [_sermon(2, 'b66')], ceiling_usd=Decimal('2.00'),
+                                         client_factory=lambda model: None, echo=lambda *_: None)
+            self.assertEqual(read_json(out / 'score.json'), {'approved': True})
+            self.assertEqual(first['incomplete_sermons'], [])
+            round_1, round_2 = out / 'added-rounds' / 'round-1', out / 'added-rounds' / 'round-2'
+            self.assertEqual(read_json(round_1 / 'score_plan.json')['ceiling_usd'], '2.00')
+            self.assertEqual(read_json(round_1 / 'score_plan.json')['video_ids'], [1])
+            self.assertEqual(read_json(round_2 / 'score_plan.json')['video_ids'], [2])
+            self.assertTrue((round_2 / 'score.json').exists() and (out / 'signals' / 'v2.json').exists())
+            self.assertEqual(second['plan']['invocations'], 1)
+
+    def test_add_sermons_appends_only_new_benchmark_recordings(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from pastor_transcript_extractor.benchmark_explainer import runner
+        from pastor_transcript_extractor.bound_claims.common import read_json, write_json
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            before = [dict(_sermon(1, 'p1'), extraction_path='x'), dict(_sermon(2, 'b65'), extraction_path='x')]
+            write_json(out / 'sermons.json', before)
+            write_json(out / 'measured.json', {'1': {}, '2': {}})
+            write_json(out / 'sermon_check.json', dict(checks=[dict(video_id=2, pastor='b65', flagged=False)],
+                                                       excluded_without_sermon_window=[]))
+            now = before + [dict(_sermon(3, 'b66'), extraction_path='x')]
+            check = lambda sermons, targets, database, echo: [dict(video_id=t['video_id'], pastor=t['pastor'], title='t',
+                                                                   url='u', own_rank=1.0, flagged=False, nearest=[]) for t in targets]
+            with mock.patch.object(runner, '_paths', return_value=(out, out, out / 'db')), \
+                    mock.patch.object(runner.data, 'load', return_value=[]), \
+                    mock.patch.object(runner.data, 'as_dicts', return_value=now), \
+                    mock.patch.object(runner, '_measure', return_value={'m': 1}), \
+                    mock.patch.object(runner, '_checks', check):
+                result = runner.add_sermons(out, echo=lambda *_: None)
+                again = runner.add_sermons(out, echo=lambda *_: None)
+            self.assertEqual([a['video_id'] for a in result['added']], [3])
+            self.assertEqual(again['added'], [])
+            self.assertEqual([s['video_id'] for s in read_json(out / 'sermons.json')], [1, 2, 3])
+            self.assertEqual(read_json(out / 'measured.json')['3'], {'m': 1})

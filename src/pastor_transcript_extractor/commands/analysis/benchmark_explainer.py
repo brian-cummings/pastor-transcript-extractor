@@ -1,4 +1,4 @@
-"""Benchmark explainer CLI (docs/BENCHMARK_EXPLAINER.md). Only `score` calls a provider (Jev)."""
+"""Benchmark explainer CLI (docs/BENCHMARK_EXPLAINER.md). Only `score` and `score-added` call a provider (Jev)."""
 from pathlib import Path
 import json
 
@@ -61,6 +61,22 @@ def score(base_dir: Path = BASE,
     """Step 3 (Jev, paid; $15 ceiling): every pack on the blocks of every kept sermon, reusing saved answers."""
     from ...benchmark_explainer import runner
     _call(runner.run_score, base_dir, check_only=check_only, echo=typer.echo)
+
+
+@app.command('add-sermons')
+def add_sermons(base_dir: Path = BASE):
+    """Free: add benchmark recordings extracted since sermon-check (e.g. after `pte source add <watch URL> --target-pastor <slug>` and `pte run --source-id <id>`), measure them and run the sermon check."""
+    from ...benchmark_explainer import runner
+    _call(runner.add_sermons, base_dir, echo=typer.echo)
+
+
+@app.command('score-added')
+def score_added(base_dir: Path = BASE,
+                ceiling_usd: str = typer.Option('2.00', '--ceiling-usd', help='Dollar ceiling for this round, enforced per request (its own ledger).'),
+                check_only: bool = typer.Option(False, '--check-only', help='Count worst-case requests for the unscored sermons; sends nothing.')):
+    """Jev, paid: score kept sermons that have no signals yet, in a separately capped round (one resume allowed)."""
+    from ...benchmark_explainer import runner
+    _call(runner.run_score_added, base_dir, ceiling_usd=ceiling_usd, check_only=check_only, echo=typer.echo)
 
 
 @app.command('explain')

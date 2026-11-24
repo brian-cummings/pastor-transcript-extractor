@@ -43,31 +43,29 @@ def census(base_dir: Path) -> dict:
 
 # ---- step 1 and 2: sermon check and free dimensions -------------------------------------------------------------------
 
-def sermon_check(base_dir: Path, echo=print) -> dict:
-    out, _, database = _paths(base_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    if (out / 'sermon_check.json').exists():
-        raise ValueError('sermon_check.json already exists; this step runs once')
-    excluded: list = []
-    sermons = data.as_dicts(data.load(database, excluded))
-    counters, measured = {}, {}
+def _measure(sermon: dict) -> dict:
+    try:
+        return free.measure(Path(sermon['extraction_path']))
+    except (ValueError, KeyError, TypeError) as error:   # free dimensions only: the sermon stays in, its values are missing
+        return {name: None for name in free.DIMENSIONS} | {'error': f'{type(error).__name__}: {error}'}
+
+
+def _checks(sermons: list[dict], targets: list[dict], database: Path, echo=print) -> list[dict]:
+    """Stylometric sermon check (spec step 1) for `targets`, each against its benchmark's other sermons and the pool."""
+    counters = {}
     for number, sermon in enumerate(sermons, 1):
         text, _ = corpus.window_text(Path(sermon['extraction_path']))
         counters[sermon['video_id']] = Counter(tokens(text))
-        try:
-            measured[str(sermon['video_id'])] = free.measure(Path(sermon['extraction_path']))
-        except (ValueError, KeyError, TypeError) as error:   # free dimensions only: the sermon stays in, its values are missing
-            measured[str(sermon['video_id'])] = {name: None for name in free.DIMENSIONS} | {'error': f'{type(error).__name__}: {error}'}
-        if number % 25 == 0:
-            echo(f'{number}/{len(sermons)} sermons read and measured')
+        if number % 50 == 0:
+            echo(f'{number}/{len(sermons)} sermons read')
     fp = Fingerprints(counts_from_counters(counters), {}, {})
     by_pastor: dict[str, list[int]] = defaultdict(list)
     for sermon in sermons:
         by_pastor[sermon['pastor']].append(sermon['video_id'])
     pool = sorted(p for p in by_pastor if p.startswith('p'))
-    details = data.video_details(database, [s['video_id'] for s in sermons if s['pastor'].startswith('b')])
+    details = data.video_details(database, [s['video_id'] for s in targets])
     checks = []
-    for sermon in (s for s in sermons if s['pastor'].startswith('b')):
+    for sermon in targets:
         own = sermon['pastor']
         candidates = pool + [own]
         groups = [fp.style([v for v in by_pastor[c] if v != sermon['video_id']]) for c in candidates]
@@ -77,12 +75,60 @@ def sermon_check(base_dir: Path, echo=print) -> dict:
         checks.append(dict(video_id=sermon['video_id'], pastor=own, title=details[sermon['video_id']]['title'],
                            url=details[sermon['video_id']]['url'], own_rank=credit['expected_rank'],
                            flagged=credit['expected_rank'] > FLAG_RANK, nearest=nearest))
+    return checks
+
+
+def sermon_check(base_dir: Path, echo=print) -> dict:
+    out, _, database = _paths(base_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    if (out / 'sermon_check.json').exists():
+        raise ValueError('sermon_check.json already exists; this step runs once (use add-sermons for new recordings)')
+    excluded: list = []
+    sermons = data.as_dicts(data.load(database, excluded))
+    measured = {str(s['video_id']): _measure(s) for s in sermons}
+    checks = _checks(sermons, [s for s in sermons if s['pastor'].startswith('b')], database, echo)
     write_json(out / 'sermons.json', sermons)
     write_json(out / 'measured.json', measured)
-    write_json(out / 'sermon_check.json', dict(flag_rule=f'own benchmark ranked below {FLAG_RANK} of {len(pool) + 1}', checks=checks,
-                                               excluded_without_sermon_window=excluded))
+    write_json(out / 'sermon_check.json', dict(flag_rule=f'own benchmark ranked below {FLAG_RANK} of {len(set(s["pastor"] for s in sermons if s["pastor"].startswith("p"))) + 1}',
+                                               checks=checks, excluded_without_sermon_window=excluded))
     return dict(sermons=len(sermons), benchmark_sermons=len(checks), flagged=sum(c['flagged'] for c in checks),
                 excluded_without_sermon_window=[e['video_id'] for e in excluded])
+
+
+def add_sermons(base_dir: Path, echo=print) -> dict:
+    """Add benchmark recordings that gained an extraction since sermon-check (free): measure them, run the sermon
+    check on them, and append them. The pool is unchanged. New recordings are then reviewed with
+    `sermon-review --all` and scored with `score-added`."""
+    out, _, database = _paths(base_dir)
+    sermons = _need(out / 'sermons.json', 'sermon-check')
+    check_file = _need(out / 'sermon_check.json', 'sermon-check')
+    known = {s['video_id'] for s in sermons} | {e['video_id'] for e in check_file.get('excluded_without_sermon_window', [])}
+    excluded: list = []
+    current = data.as_dicts(data.load(database, excluded))
+    pool_now = {s['video_id'] for s in current if s['pastor'].startswith('p')}
+    pool_before = {s['video_id'] for s in sermons if s['pastor'].startswith('p')}
+    if pool_now != pool_before:
+        raise ValueError('The comparison pool changed since sermon-check; this explainer compares against a fixed pool')
+    added = [s for s in current if s['pastor'].startswith('b') and s['video_id'] not in known]
+    new_excluded = [e for e in excluded if e['video_id'] not in known]
+    if not added:
+        if new_excluded:
+            check_file.setdefault('excluded_without_sermon_window', []).extend(new_excluded)
+            write_json(out / 'sermon_check.json', check_file)
+        return dict(added=[], excluded_without_sermon_window=[e['video_id'] for e in new_excluded])
+    measured = read_json(out / 'measured.json')
+    for sermon in added:
+        measured[str(sermon['video_id'])] = _measure(sermon)
+    # Reference groups use the reviewed sets (drops and re-filings applied), so a new recording is compared with him.
+    checks = _checks(_active_sermons(out) + added, added, database, echo)
+    check_file['checks'].extend(checks)
+    check_file.setdefault('excluded_without_sermon_window', []).extend(new_excluded)
+    write_json(out / 'measured.json', measured)
+    write_json(out / 'sermon_check.json', check_file)
+    write_json(out / 'sermons.json', sermons + added)
+    return dict(added=[dict(video_id=c['video_id'], benchmark=c['pastor'], title=c['title'], flagged=c['flagged']) for c in checks],
+                excluded_without_sermon_window=[e['video_id'] for e in new_excluded],
+                next='pte analysis benchmark-explainer sermon-review --all, then score-added')
 
 
 _BRACKET = re.compile(r'\[([^\]]+)\]')
@@ -188,10 +234,28 @@ def run_score(base_dir: Path, *, check_only: bool, echo=print) -> dict:
 
 # ---- steps 4 to 9 -------------------------------------------------------------------------------------------------------
 
+def run_score_added(base_dir: Path, *, ceiling_usd: str, check_only: bool = False, echo=print) -> dict:
+    """A separately capped Jev round for kept sermons that have no signals yet (recordings from add-sermons)."""
+    out, evaluation, _ = _paths(base_dir)
+    _need(out / 'score.json', 'score')
+    missing = [s for s in _active_sermons(out) if not (out / 'signals' / f"v{s['video_id']}.json").exists()]
+    if not missing:
+        raise ValueError('Every kept sermon is already scored; nothing to add')
+    if check_only:
+        return score.census(out, evaluation, missing, seed=False) | dict(ceiling_usd=ceiling_usd)
+    from decimal import Decimal
+    from ..bound_claims.extract import git_state
+    return score.run_round(out, evaluation, missing, ceiling_usd=Decimal(ceiling_usd), state=git_state, echo=echo)
+
+
 def _loaded(base_dir: Path):
     out, _, database = _paths(base_dir)
     _need(out / 'score.json', 'score')
     sermons = _active_sermons(out)
+    unscored = [s['video_id'] for s in sermons if not (out / 'signals' / f"v{s['video_id']}.json").exists()]
+    if unscored:
+        raise ValueError(f'{len(unscored)} kept sermons are not scored yet ({unscored[:5]}...): run '
+                         '`pte analysis benchmark-explainer score-added`, or drop them with sermon-decide')
     scored = {s['video_id']: read_json(out / 'signals' / f"v{s['video_id']}.json") for s in sermons}
     measured = {int(k): v for k, v in read_json(out / 'measured.json').items()}
     dimensions = values.jev_dimensions(scored.values())
