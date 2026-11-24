@@ -36,10 +36,11 @@ def sermon_check(base_dir: Path = BASE):
 
 
 @app.command('sermon-review')
-def sermon_review(base_dir: Path = BASE):
-    """Keep or drop each flagged benchmark sermon (resumable)."""
+def sermon_review(base_dir: Path = BASE,
+                  all_recordings: bool = typer.Option(False, '--all', help='Review every benchmark recording, not only flagged ones, each with a proposal from its title.')):
+    """Keep or drop each flagged benchmark sermon, or every one with --all (resumable; Enter accepts the proposal)."""
     from ...benchmark_explainer import runner
-    _call(runner.sermon_review, base_dir, echo=typer.echo)
+    _call(runner.sermon_review, base_dir, echo=typer.echo, all_recordings=all_recordings)
 
 
 @app.command('score')

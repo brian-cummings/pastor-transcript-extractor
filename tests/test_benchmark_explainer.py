@@ -96,3 +96,31 @@ class BenchmarkExplainerTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SermonReviewTests(unittest.TestCase):
+    def test_proposal_follows_the_speakers_named_in_the_title(self):
+        from pastor_transcript_extractor.benchmark_explainer.runner import propose
+        self.assertEqual(propose('Sanctuary Defiled | DWELL S09 [Ty Gibson]', 'Ty Gibson')[0], 'keep')
+        self.assertEqual(propose('Overthinking | S2 E01 [Ty Gibson, David Asscherick, Angelo Grasso]', 'Ty Gibson')[0], 'drop')
+        self.assertEqual(propose('Home at Last | DWELL S10 [David Asscherick]', 'Ty Gibson')[0], 'drop')
+        self.assertEqual(propose('Politics at the End  |  The End.', 'Ty Gibson')[0], 'keep')
+
+    def test_all_reviews_every_recording_and_enter_accepts_the_proposal(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from pastor_transcript_extractor.benchmark_explainer import runner
+        from pastor_transcript_extractor.bound_claims.common import read_json, write_json
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            checks = [dict(video_id=v, pastor='b65', title=t, url='u', own_rank=1.0, flagged=False, nearest=['b65'])
+                      for v, t in ((1, 'A [Ty Gibson]'), (2, 'B [Ty Gibson, David Asscherick]'), (3, 'Year in review'))]
+            write_json(out / 'sermon_check.json', dict(checks=checks))
+            answers = iter(['', '', 'd'])
+            with mock.patch.object(runner, '_paths', return_value=(out, out, out / 'db')), \
+                    mock.patch.object(runner.data, 'pastor_names', return_value={'b65': 'Ty Gibson'}):
+                self.assertEqual(runner.sermon_review(out, echo=lambda *_: None)['dropped'], 0)  # nothing flagged
+                result = runner.sermon_review(out, ask=lambda _: next(answers), echo=lambda *_: None, all_recordings=True)
+            self.assertEqual(result['dropped_videos'], [2, 3])
+            self.assertEqual(read_json(out / 'sermon_decisions.json'), {'1': 'keep', '2': 'drop', '3': 'drop'})

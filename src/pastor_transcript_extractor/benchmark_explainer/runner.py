@@ -4,6 +4,7 @@ Free steps: census, sermon-check, sermon-review, explain, review, rank, report. 
 """
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Callable
@@ -84,7 +85,26 @@ def sermon_check(base_dir: Path, echo=print) -> dict:
                 excluded_without_sermon_window=[e['video_id'] for e in excluded])
 
 
-def sermon_review(base_dir: Path, ask: Callable[[str], str] = input, echo=print) -> dict:
+_BRACKET = re.compile(r'\[([^\]]+)\]')
+
+
+def propose(title: str, benchmark_name: str) -> tuple[str, str]:
+    """Proposed keep or drop for a benchmark recording, from the speakers its title names in brackets."""
+    surname = benchmark_name.split()[-1].lower()
+    match = _BRACKET.search(title or '')
+    if not match:
+        return 'keep', "the title doesn't name a speaker"
+    names = [name.strip() for name in match.group(1).split(',') if name.strip()]
+    if len(names) == 1 and surname in names[0].lower():
+        return 'keep', 'the title names him alone'
+    if any(surname in name.lower() for name in names):
+        return 'drop', f'the title names him with others ({match.group(1)})'
+    return 'drop', f'the title names someone else ({match.group(1)})'
+
+
+def sermon_review(base_dir: Path, ask: Callable[[str], str] = input, echo=print, all_recordings: bool = False) -> dict:
+    """Keep or drop benchmark recordings: the flagged ones, or with `all_recordings` every one, each with a proposal
+    from its title (Enter accepts the proposal). Undecided recordings are kept."""
     out, _, database = _paths(base_dir)
     checks = _need(out / 'sermon_check.json', 'sermon-check')['checks']
     decisions_path = out / 'sermon_decisions.json'
@@ -92,20 +112,22 @@ def sermon_review(base_dir: Path, ask: Callable[[str], str] = input, echo=print)
     names = data.pastor_names(database, sorted({p for c in checks for p in c['nearest']} | {c['pastor'] for c in checks}))
     for check in checks:
         key = str(check['video_id'])
-        if not check['flagged'] or key in decisions:
+        if not (check['flagged'] or all_recordings) or key in decisions:
             continue
-        echo(f"\n{names[check['pastor']]}: \"{check['title']}\"\n  {check['url']}\n"
+        proposal, reason = propose(check['title'], names[check['pastor']])
+        echo(f"\n{names[check['pastor']]}: \"{check['title']}\" (video {key})\n  {check['url']}\n"
              f"  His own sermons rank {check['own_rank']:.1f} for this sermon's wording; nearest: "
-             + ', '.join(names[p] for p in check['nearest']))
-        answer = ''
+             + ', '.join(names[p] for p in check['nearest'])
+             + f"\n  Proposed: {proposal} ({reason})")
+        answer = None
         while answer not in ('k', 'd'):
-            answer = ask('  Is this him preaching? k = keep, d = drop: ').strip().lower()
+            answer = ask('  Is this him preaching? Enter = proposed, k = keep, d = drop: ').strip().lower() or proposal[0]
         decisions[key] = 'keep' if answer == 'k' else 'drop'
         write_json(decisions_path, decisions)
-    for check in checks:
-        decisions.setdefault(str(check['video_id']), 'keep')
     write_json(decisions_path, decisions)
-    return dict(kept=sum(v == 'keep' for v in decisions.values()), dropped=sum(v == 'drop' for v in decisions.values()))
+    final = [decisions.get(str(c['video_id']), 'keep') for c in checks]
+    return dict(kept=final.count('keep'), dropped=final.count('drop'),
+                dropped_videos=sorted(int(k) for k, v in decisions.items() if v == 'drop'))
 
 
 def _active_sermons(out: Path) -> list[dict]:

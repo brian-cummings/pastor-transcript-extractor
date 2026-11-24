@@ -170,3 +170,9 @@ Details fixed here:
   source" and "80-minute length" describe the format. Step 1 missed this because it compares each recording with the
   benchmark's other recordings, which share the same channel and mix, so the check was circular.
 - Review is paused until Brian decides how to fix the benchmark sermon sets.
+- **Fix approved (Brian, 2026-11-24: A to D).** `sermon-review --all` lists every benchmark recording with a proposal from
+  the speakers its title names (Enter accepts). Gibson keeps 4243, 4244, 4260, 4264 and 4268. 4243 and 4244 name no
+  speaker; both are single-voice and their wording is nearest Gibson's titled solo recordings (style distance 1.81 and 2.23,
+  against 1.94 and 2.52 for Asscherick's DWELL solos; the same check puts every titled solo with its own speaker). The
+  year-in-review video (4258) has no speaker in its title, so it is dropped by hand. Asscherick keeps all 25, and his
+  explanation describes his co-hosted book-study series. Pass marks and dimension list are unchanged; no new Jev calls.
