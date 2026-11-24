@@ -77,6 +77,7 @@ from pastor_transcript_extractor.commands.identity.coordination import (
 from pastor_transcript_extractor.commands.identity import assignments as _identity_assignment_commands
 from pastor_transcript_extractor.commands.identity import workflow as _identity_workflow_commands
 from pastor_transcript_extractor.commands.identity import association as _identity_association_commands
+from pastor_transcript_extractor.commands.identity import text_prefilter as _identity_text_prefilter_commands  # noqa: F401
 from pastor_transcript_extractor.commands.identity.association import (
     shadow_associate_speakers_command,
 )

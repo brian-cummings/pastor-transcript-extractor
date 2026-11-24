@@ -254,3 +254,64 @@ Acceptance record: criterion advanced: pastor distinctness is shown for the "how
 the within-church control, and the text pre-filter passes. New evidence: similarity to a church's other preachers is
 not a fit signal at this depth, so fit has to come from stated needs (Part 3), as section 6 says. Next action justified:
 Brian's approval of the Part 3 needs list. The stylometric identity pre-filter is a separate, later proposal for `pte identity`.
+
+## 13. Identity text pre-filter (2026-11-24; built, off by default, check not yet run)
+
+**What was added.** An opt-in stylometric pre-filter for `pte identity shadow-associate-speakers`:
+`--text-prefilter-top N` (default: off). Code: `src/pastor_transcript_extractor/identity_text_prefilter.py`
+(scorer, reusing the `pastor_fit` text loader, word counts, Delta and fingerprints) and
+`identity_text_prefilter_check.py` (the check). Tests: `tests/test_identity_text_prefilter.py`,
+`tests/test_identity_text_prefilter_check.py`.
+
+**Where it acts, and why there.** Shadow association already narrows candidates before voice work: source-local,
+explicit-name and pending-confirmation routes are compared directly, and only a candidate with no such route (or
+with a weak local result) goes to the **cross-source pool**. There, every shadow-ready profile's exemplars are prepared
+and given retrieval centroids, then the acoustically closest profile (`--maximum-global-profiles`, default 1) gets
+the pairwise policy comparisons. The cross-source pool is the only enumeration that grows with the registry, so the
+pre-filter acts there and nowhere else (`select_staged_association_profiles`, with the matching batch preparation scope
+in `plan_association_preparation_scope`). Pairwise comparisons per compared profile, decision policy, thresholds,
+existing assignments and review events are untouched. What text saves is exemplar preparation and retrieval-centroid
+work for pruned profiles; most of it on single-video runs and cold caches, since embeddings are cached. In a batch a
+profile is left unprepared only when text pruned it for every requested video.
+
+**Rules.** Text never decides identity; it only orders and prunes the cross-source pool.
+- The N closest profiles by Burrows' Delta (300 most frequent words of sermon-window text, rolling captions
+  normalized, scorer `identity_text_prefilter_v1`) are kept; the rest of the pool is pruned.
+- A profile without usable text (under 500 words after leaving out the candidate's own video) is never pruned. A
+  candidate without usable text prunes nothing. Missing text is never a mismatch.
+- Source, name and confirmation routes are never pruned.
+- Audit: when the option is on, the association report's `routing.text_prefilter` records the scorer, N, the text
+  ranking and distances, and the kept, pruned and pass-through profiles; each funnel entry carries
+  `text_prefilter_pruned`. The block is part of the input fingerprint, so pruned and default reports are never reused
+  for each other. Shadow association does not change the registry; pruned reports are found by `routing.text_prefilter`.
+  There is no rollback keyed on text use yet (`rollback-machine-assignments` works by policy fingerprint).
+- Without the option, routing, payloads and fingerprints are byte-for-byte unchanged. `pte identity run` and
+  `pte identity coordinate` do not pass the option, so they stay unchanged.
+
+**Check (free).** `pte identity text-prefilter-check` ranks each labeled video's sermon-window text against every
+registry profile with labeled recordings (169 profiles, 1,034 videos on 2026-11-24, counted from `app.db`), leaving that
+video out of every profile. It reports, per N in {3, 5, 10}: how often the assigned profile is in the text top N, the
+same counting pass-through profiles as kept, profile comparisons pruned, and an estimate of exemplar centroids avoided,
+plus the smallest N reaching 95%. Truth is existing registry membership and active machine assignments.
+**Circularity rule:** only assignments text played no part in are truth. Any observation with an association report
+that ran the pre-filter is excluded, as a query and as profile text. Today that excludes nothing, and the report says so.
+Output: `<base>/evaluation/identity-text-prefilter-v1/REPORT.md` and `report.json`.
+
+**Acceptance (fixed before the run).** Recommend turning the pre-filter on by default only if, at N = 5, the assigned
+profile is in the text top 5 for at least 95% of observations where both the observation and its assigned profile have
+usable text. If lower, report the N that reaches 95% and the comparisons it saves, and leave the pre-filter opt-in.
+Either way Brian decides; the check changes no default. Part 1b's 89% (47 profiles) suggests N = 5 may fall short at
+169 profiles.
+
+**Commands.**
+
+```console
+pte identity text-prefilter-check --base-dir /Users/briancummings/Documents/PastorSearchData
+pte identity shadow-associate-speakers --youtube-video-id VIDEO_ID --text-prefilter-top 5 --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+**Limits.** Sermon windows can include other voices (section 8), which affects text and voice alike. Labels from
+profile-discovery promotion and same-source consolidation are voice- and review-made, but their quality is the
+registry's. The check's pool is every profile with labeled recordings; the production pool is the shadow-ready subset,
+so production prunes somewhat less. The first run reads about 1,000 extraction files; word counts are cached under
+`<base>/evaluation/speaker-pairs/cache/text-prefilter-v1/`.
