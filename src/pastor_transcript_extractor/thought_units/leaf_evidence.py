@@ -240,7 +240,9 @@ PIPELINE = {arm: Scope(f'pipeline_{arm}', Decimal(usd), attempts, half='all', pa
 WHOLE_CEILINGS = {'b': ('8.50', 368), 'u': ('7.60', 331)}      # 362 and 325 pairs at the 32k policy's $0.0229376 reservation per request, plus 6 attempts each (31.3)
 WHOLE = {arm: Scope(f'whole_{arm}', Decimal(usd), attempts, half='all', pairs_file=f'whole/pairs-{arm}.json', set_id='v2', producer=PRODUCER_32K)
          for arm, (usd, attempts) in WHOLE_CEILINGS.items()}
-SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, DEVELOPMENT3, HELD_OUT3, CONFIRM3, *COMPARE.values(), *STAGE3.values(), *PIPELINE.values(), *WHOLE.values())}
+# Section 31.4: one authorised retry of arm u's 14 transport failures (Brian, 2026-11-23: "let's retry them"). Own folder, ledger and receipts; the original run is untouched, schema failures are not retried.
+WHOLE_RETRY = {'u': Scope('whole_u_retry', Decimal('0.40'), 16, half='all', pairs_file='whole/pairs-u-retry.json', set_id='v2', producer=PRODUCER_32K)}   # 14 pairs at $0.0229376 reserved, plus 2 attempts
+SCOPES = {scope.key: scope for scope in (ARMS, DEVELOPMENT, HELD_OUT, DEVELOPMENT3, HELD_OUT3, CONFIRM3, *COMPARE.values(), *STAGE3.values(), *PIPELINE.values(), *WHOLE.values(), *WHOLE_RETRY.values())}
 
 RECORD_SCHEMA: dict[str, Any] = copy.deepcopy(bound.CLAIM_SCHEMA)
 RECORD_SCHEMA['required'] = [*bound.FIELDS, *EXTRA_FIELDS]

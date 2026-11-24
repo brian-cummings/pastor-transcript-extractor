@@ -249,6 +249,19 @@ def whole_extract(base_dir: Path = BASE, arm: str = WHOLE_ARM, check_only: bool 
         raise typer.BadParameter(str(error)) from error
 
 
+@app.command('whole-retry')
+def whole_retry(base_dir: Path = BASE, arm: str = WHOLE_ARM, check_only: bool = typer.Option(False, '--check-only', help='Build the retry pairs and report counts, requests and estimated cost; sends nothing.')):
+    """Section 31.4: retry once the pairs of one arm's whole-sermon run that ended in a transport failure (own folder and ledger; schema failures are not retried)."""
+    from ...thought_units import leaf_evidence, whole_sermon
+    try:
+        if arm not in leaf_evidence.WHOLE_RETRY:
+            raise ValueError('--arm must be u (the only arm with transport failures)')
+        built = whole_sermon.build_retry_pairs(base_dir, arm)
+        _echo(dict(built, **leaf_evidence.run(base_dir, check_only=check_only, variant=leaf_evidence.V5, scope=leaf_evidence.WHOLE_RETRY[arm])))
+    except ERRORS as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @app.command('snap-review')
 def snap_review(base_dir: Path = BASE, grader: str = typer.Option('brian', '--grader', help='Name recorded with the judgments.'),
                 limit: int = typer.Option(15, '--limit', help='Edge comparisons to judge (the calibration set).')):

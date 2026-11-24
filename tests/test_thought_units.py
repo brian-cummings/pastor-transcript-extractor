@@ -549,3 +549,42 @@ class WholeSermonTests(unittest.TestCase):
         self.assertIn('counts_when', message['leaf'])
         self.assertNotIn('probability', json.dumps(message))
         self.assertTrue(e.build_request(pair, e.V5, e.PRODUCER_32K).fingerprint)
+
+
+class WholeRetryTests(unittest.TestCase):
+    def _base(self, root):
+        import tempfile  # noqa: F401
+        from pastor_transcript_extractor.bound_claims.common import write_json
+        from pastor_transcript_extractor.collector_retrieval_json_v1_1 import seal
+        from pastor_transcript_extractor.thought_units import arms, leaf_evidence as e, public_set
+        pairs = [dict(unit=f'u{i % 3}', leaf='T:x', key=f'v{i}-u{i % 3}-T-x') for i in range(4)]    # unit ids repeat across sermons
+        write_json(public_set.set_dir(root, 'v2') / 'whole' / 'pairs-u.json', seal(dict(pairs=pairs, pairs_sha256=arms.pairs_digest(pairs))))
+        statuses = ['ok', 'transport_failure', 'schema_failure', 'transport_failure']
+        rows = [dict(unit=p['unit'], leaf=p['leaf'], status=s, claims=[]) for p, s in zip(pairs, statuses)]
+        write_json(e.leaf_dir(root, e.V5, e.WHOLE['u']) / 'extraction.json', dict(rows=rows))
+        return e
+
+    def test_retry_pairs_are_only_the_transport_failures_and_the_merge_replaces_only_them(self):
+        import tempfile
+        from pathlib import Path
+        from pastor_transcript_extractor.bound_claims.common import write_json
+        from pastor_transcript_extractor.thought_units import whole_sermon as w
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            e = self._base(root)
+            built = w.build_retry_pairs(root, 'u')
+            self.assertEqual(['v1-u1-T-x', 'v3-u0-T-x'], built['keys'])
+            self.assertEqual(['transport_failure', 'schema_failure'], [r['status'] for r in w.merged_rows(root, 'u')][1:3])      # no retry output yet: unchanged
+            write_json(w.extraction_path(root, e.WHOLE_RETRY['u']), dict(rows=[dict(unit='u1', leaf='T:x', status='ok', claims=[1]), dict(unit='u0', leaf='T:x', status='transport_failure', claims=[])]))
+            merged = w.merged_rows(root, 'u')
+            self.assertEqual(['ok', 'ok', 'schema_failure', 'transport_failure'], [r['status'] for r in merged])
+            self.assertTrue(merged[1]['retry_of_transport_failure'] and merged[3]['retry_of_transport_failure'] and 'retry_of_transport_failure' not in merged[0])
+            with self.assertRaises(ValueError):
+                w.build_retry_pairs(root, 'b')
+
+    def test_the_retry_ceiling_covers_fourteen_requests_and_stays_small(self):
+        from pastor_transcript_extractor.thought_units import leaf_evidence as e
+        scope = e.WHOLE_RETRY['u']
+        self.assertGreaterEqual(scope.ceiling_attempts, 14)
+        self.assertGreaterEqual(scope.ceiling_usd, 14 * e.provider.reserved_usd(e.PRODUCER_32K))
+        self.assertLessEqual(scope.ceiling_attempts, 16)

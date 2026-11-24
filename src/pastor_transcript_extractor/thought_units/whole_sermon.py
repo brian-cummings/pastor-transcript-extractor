@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from pastor_transcript_extractor.bound_claims.common import read_json, write_json
+from pastor_transcript_extractor.bound_claims.common import file_sha256, read_json, write_json
 from pastor_transcript_extractor.bound_claims.extract import git_state
 from pastor_transcript_extractor.bound_claims.leaf_pass import CheckOnlyClient, JEV_REQUEST_RESERVATION, LedgeredClient, PACKS, SIGNAL_COUNTS, signals_for, worst_case_requests
 from pastor_transcript_extractor.bound_claims.ledger import PilotLedger
@@ -204,3 +204,46 @@ def build_pairs(base_dir: Path, arm: str) -> dict[str, Any]:
     path = public_set.set_dir(base_dir, SET_ID) / 'whole' / f'pairs-{arm}.json'
     write_json(path, document)
     return dict(output=str(path), pairs=len(pairs), excluded_over_input_cap=len(excluded), per_sermon=per_sermon)
+
+
+# ---- the authorised retry of transport failures (31.4) --------------------------------------------------------------------------------
+def extraction_path(base_dir: Path, scope: Any) -> Path:
+    from . import leaf_evidence
+    return leaf_evidence.leaf_dir(base_dir, leaf_evidence.V5, scope) / 'extraction.json'
+
+
+def _keyed_rows(base_dir: Path, scope: Any, pairs_name: str) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """(pair, row) in order. Unit ids repeat across sermons, so a row belongs to the pair at its position, checked by unit and leaf; the run writes one row per pair in order."""
+    source = read_json(public_set.set_dir(base_dir, SET_ID) / 'whole' / pairs_name)['pairs']
+    rows = read_json(extraction_path(base_dir, scope))['rows']
+    if len(rows) != len(source) or any((p['unit'], p['leaf']) != (r['unit'], r['leaf']) for p, r in zip(source, rows)):
+        raise ValueError(f'{scope.key}: extraction rows do not match {pairs_name} position by position')
+    return list(zip(source, rows))
+
+
+def build_retry_pairs(base_dir: Path, arm: str) -> dict[str, Any]:
+    """Offline: the arm's pairs whose first attempt ended in a transport failure, sealed with the extraction they come from. Schema and anchor failures are not included."""
+    from . import leaf_evidence
+    if arm not in leaf_evidence.WHOLE_RETRY:
+        raise ValueError(f'no retry is authorised for arm {arm}')
+    scope = leaf_evidence.WHOLE[arm]
+    pairs = [pair for pair, row in _keyed_rows(base_dir, scope, f'pairs-{arm}.json') if row['status'] == 'transport_failure']
+    if not pairs:
+        raise ValueError('no transport failures to retry')
+    source = read_json(public_set.set_dir(base_dir, SET_ID) / 'whole' / f'pairs-{arm}.json')
+    document = seal(dict(version=VERSION, arm=arm, retry_of=dict(extraction_sha256=file_sha256(extraction_path(base_dir, scope)), pairs_sha256=source['pairs_sha256']),
+                         pairs=pairs, pairs_sha256=arms.pairs_digest(pairs)))
+    path = public_set.set_dir(base_dir, SET_ID) / 'whole' / f'pairs-{arm}-retry.json'
+    write_json(path, document)
+    return dict(output=str(path), pairs=len(pairs), keys=[pair['key'] for pair in pairs])
+
+
+def merged_rows(base_dir: Path, arm: str) -> list[dict[str, Any]]:
+    """The arm's extraction rows with each retried pair's retry row replacing its transport-failure row (marked `retry_of_transport_failure`); every other row is the original."""
+    from . import leaf_evidence
+    keyed = _keyed_rows(base_dir, leaf_evidence.WHOLE[arm], f'pairs-{arm}.json')
+    retry_scope = leaf_evidence.WHOLE_RETRY.get(arm)
+    if retry_scope is None or not extraction_path(base_dir, retry_scope).exists():
+        return [row for _, row in keyed]
+    retried = {pair['key']: dict(row, retry_of_transport_failure=True) for pair, row in _keyed_rows(base_dir, retry_scope, f'pairs-{arm}-retry.json') if row['status'] != 'pending'}
+    return [retried.get(pair['key'], row) if row['status'] == 'transport_failure' else row for pair, row in keyed]
