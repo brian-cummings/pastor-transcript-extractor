@@ -147,3 +147,15 @@ Details fixed here:
   other sermons rank worse than 5th of 48 candidates.
 - **Scale fallback:** where the pool's MAD is 0 (common for rare leaves), the scale is 1.2533 × the mean absolute deviation
   from the median. If that is 0 too, the dimension is "not enough evidence".
+
+## 11. Run status (2026-11-24)
+
+- `sermon-check` (Brian): video 4249 (Gibson) left out, with no sermon window (the recording verifier rejected it as a
+  multi-speaker program). The remaining 47 benchmark sermons (Gibson 22, Asscherick 25) all rank their own pastor first
+  (median rank 1 of 48), with 0 flagged, so `sermon-review` has nothing to do. Free measures computed for all 340 sermons
+  without error.
+- `score --check-only` ran more than 10 minutes (it rebuilds about 12,100 block contexts and checks 6 packs against 3
+  caches) and was stopped at Brian's request. Estimate from a 3-sermon sample and the section 31 ledgers: about
+  10,800 requests (worst case about 14,100), **about $6 to $7 actual**, under the $15 per-request ceiling. Expect about
+  15 to 20 minutes of counting and seeding before the first request, then 1 to 1.5 hours.
+- Next (Brian): `caffeinate -i pte analysis benchmark-explainer score --base-dir <base>`, then `explain`, `review`, `rank`, `report`.

@@ -1,5 +1,16 @@
 # Current agent handoff
 
+**2026-11-24 — direction: church-to-pastor matching.** The end goal is helping a church find a pastor who fits its
+needs; profiles are a means. Read, in order:
+1. [PASTOR_FIT_EXPERIMENT.md](PASTOR_FIT_EXPERIMENT.md) sections 12 and 13. Stylometry tells preachers apart, and the
+   opt-in `pte identity` text pre-filter is built, with Brian's free check pending. Similarity to a church's other
+   preachers is not a fit signal.
+2. [BENCHMARK_EXPLAINER.md](BENCHMARK_EXPLAINER.md). The approved concerns framework (want or avoid concerns, observable
+   indicators, no labels; Christian nationalism is the first avoid concern) and the benchmark explainer for Ty Gibson and
+   David Asscherick. Built; sermon check done; the paid Jev `score` run is next (Brian runs it, $15 ceiling).
+The bound-claim pilot and the thought-unit experiment are closed (see their docs). The entries below are history.
+
+---
 **2026-11-15 — bound-claim pilot approved; implement it next.**
 Read [BOUND_CLAIM_PILOT.md](BOUND_CLAIM_PILOT.md) in full. Implement §9 in the
 order of §5 with the tests in §10, committing per step. Do not run any paid
