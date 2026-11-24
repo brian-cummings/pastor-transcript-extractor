@@ -38,7 +38,7 @@ any more paid extraction is spent.
    which technique? This part produces a list for approval, not a run.
 
 Parts 1 and 2 use **no LLM, no Jev call and no voice processing**. They run locally on Brian's
-machine in minutes.
+machine (about an hour, almost all of it embedding; section 11).
 
 ## 3. Data (counted read-only from `app.db`, 2026-11-24)
 
@@ -59,7 +59,8 @@ machine in minutes.
 | Preachers at churches with several preachers, at least 3 sermons, and the church's other preachers with at least 3 sermons in all | 16 cases at 7 churches | Part 2 |
 
 Same-church pairs in Part 1 (both at least 4 sermons): channel 15 (105, 111), channel 20 (60,
-98, 102), channel 36 (77, 78). That gives 5 pairs, or **10 directional comparisons**: a small control,
+98, 102), channel 36 (77, 78), and profile 119 (4 sermons on channels 32 and 48) with 112 and with 57.
+That gives 7 pairs, or **14 directional comparisons** (corrected by the census, section 11): a small control,
 read as a direction.
 
 ## 4. Steps and the technique used for each
@@ -71,7 +72,7 @@ read as a direction.
 | 3 | Remove **channel vocabulary** (Part 2 and the stripped runs) | Per channel, words used in at least half of that channel's sermons and in under 5% of other channels' sermons (church names, places, ministries, local series titles) | Lists are saved and shown in the report |
 | 4 | Split each pastor in two (Part 1) | Code: sermons ordered by a fixed hash of the video id, alternated into halves A and B | Fixed and replayable |
 | 5a | Fingerprint: **how they talk** | Stylometry: relative frequencies of the 300 most frequent words in the corpus, z-scored; **Burrows' Delta** (mean absolute z difference) | Pure Python. Mostly function words, so it is largely blind to topic |
-| 5b | Fingerprint: **what they talk about** | Sentence embeddings with the local MiniLM encoder already in the repo (`collector_retrieval_encoder.py`, `sentence-transformers/all-MiniLM-L6-v2`, ONNX, CPU); about 200-word chunks, averaged per half or profile; cosine similarity | About 12k chunks, a few minutes on CPU. General-purpose model, not tuned for theology |
+| 5b | Fingerprint: **what they talk about** | Sentence embeddings with the local MiniLM encoder already in the repo (`collector_retrieval_encoder.py`, `sentence-transformers/all-MiniLM-L6-v2`, ONNX, CPU); 150-word chunks, averaged per half or profile; cosine similarity | About 20k chunks per text variant, about an hour on CPU in all. General-purpose model, not tuned for theology |
 | 5c | Fingerprint: **where they sit theologically** | Reference-text scaling (Wordscores-style) on the same embeddings: axes from contrasting reference documents | **Deferred:** runs only after Brian approves the reference documents (section 9). Parts 1 and 2 report 5a and 5b first |
 | 6 | **Channel-only baseline** | Steps 5a and 5b on the boilerplate and channel vocabulary removed in steps 2 and 3 | Shows how much matching channel habits alone can do |
 | 7 | Match | Rank by distance (Delta for 5a, cosine for 5b) | One run per fingerprint |
@@ -109,7 +110,7 @@ wants something else. Part 3 is where stated needs replace that assumption.
 | Part | Measure | Pass | Chance |
 | --- | --- | --- | --- |
 | 1 (33 profiles) | top-1 accuracy, best of 5a and 5b | at least 50%, and at least 20 points above the channel-only baseline | 3% |
-| 1 (same church) | right pastor beats the same-church preacher | at least 8 of 10 | 5 of 10 |
+| 1 (same church) | right pastor beats the same-church preacher | at least 80% of the 14 comparisons | 50% |
 | 1b | voice-assigned profile in text top 5 | at least 80% of held-out sermons | about 11% |
 | 2 | held-out preacher in top 5, stripped text | at least 8 of 16, and median rank 5 or better | about 2 of 16 |
 
@@ -183,5 +184,42 @@ is part of the later spec.
 - CLI under `pte analysis pastor-fit` (name checked against the generated CLI reference):
   `census` (eligible profiles and cases, no computation), `fingerprints`, `match` (Parts 1 and 1b),
   `church-fit` (Part 2), `report` (Markdown and JSON, project report format).
-- Cost: $0 provider; local CPU, minutes. Brian runs `fingerprints`, `match` and `church-fit`
+- Cost: $0 provider; local CPU, about an hour. Brian runs `fingerprints`, `match` and `church-fit`
   (corpus-wide). One run per part; results are not rerun to improve them.
+
+## 11. Implementation (2026-11-24, Brian: "let's give it a try"; committed before any run)
+
+Approved scope: Parts 1, 1b and 2 with fingerprints 5a and 5b. 5c and Part 3 wait for Brian's
+decisions in section 9. Code: `src/pastor_transcript_extractor/pastor_fit/`; tests
+`tests/test_pastor_fit.py` (synthetic, 9 tests). CLI: `pte analysis pastor-fit census |
+fingerprints | match | church-fit | report`. Outputs: `<base>/evaluation/pastor-fit-v1/`.
+
+Details fixed here, before any result exists:
+
+- **Population:** each profile's latest `profile-scripture-usage` run (version 4, 2026-09-07):
+  47 profiles, 293 sermons, 37 channels. Profile membership is as of that run.
+- **Text:** the analyzed extraction's sermon window. None of the 293 has a saved canonical
+  transcript, so the existing rolling-caption normalizer (`normalize_caption_fragments`) is applied
+  at load for legacy captions, as extraction does for prompts.
+- **Boilerplate units:** sentences, or 40-word pieces where captions lack punctuation. A unit is
+  removed if any of its words lies inside a channel boilerplate sequence of the whole sermon.
+  Channel vocabulary is computed only for channels with at least 3 sermons. A pastor's own repeated
+  catchphrase on a channel he dominates can be removed as boilerplate, which works against
+  Part 1 (conservative).
+- **Stylometry:** word counts kept for the 2,000 most frequent words of each text variant; Delta
+  uses the top 300, z-scored over the groups in each comparison.
+- **Ties and empty fingerprints:** a rank with `b` strictly closer and `t` tied candidates scores
+  expected rank 1 + b + t/2 and top-k credit clamp((k - b)/(t + 1), 0, 1). An empty fingerprint is
+  infinitely far from everything.
+- **Which text each verdict uses:** Part 1 and 1b on clean text (boilerplate removed), Part 2 on
+  stripped text (boilerplate and channel vocabulary removed). All three texts are reported for each.
+- **Verdicts per fingerprint:** Part 1 overall passes if top-1 is at least 50% and at least 20
+  points above the same fingerprint on the channel-only text. The same-church control, 1b and 2 are
+  judged separately against section 6.
+- **Part 2 cases:** a preacher with at least 3 sermons on the channel, and the channel's other
+  preachers with at least 3 sermons in all: 16 cases at 7 channels (census). The preacher's own
+  fingerprint uses all of their sermons; candidates exclude the church's other preachers.
+- **Circularity rule (1b):** no profile assignment has used text, so every current label is a
+  voice-and-review label.
+- **Timing check:** loading three real sermons and encoding 20 chunks took 0.08 s per chunk with the
+  locked single-thread encoder (no Jev or provider call).
