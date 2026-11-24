@@ -116,15 +116,14 @@ def sermon_review(base_dir: Path, ask: Callable[[str], str] = input, echo=print,
         if not (check['flagged'] or all_recordings) or key in decisions:
             continue
         proposal, reason = propose(check['title'], names[check['pastor']])
-        echo(f"\n{names[check['pastor']]}: \"{check['title']}\" (video {key})\n  {check['url']}\n"
-             f"  His own sermons rank {check['own_rank']:.1f} for this sermon's wording; nearest: "
-             + ', '.join(names[p] for p in check['nearest'])
-             + f"\n  Proposed: {proposal} ({reason})")
+        echo(f"\nVideo {key}: \"{check['title']}\"\n  {check['url']}\n"
+             f"  Filed under: {names[check['pastor']]}\n"
+             f"  PROPOSED: {proposal.upper()} ({reason})")
         if open_url is not None:
             open_url(check['url'])
         answer = None
         while answer not in ('k', 'd'):
-            answer = ask('  Is this him preaching? Enter = proposed, k = keep, d = drop: ').strip().lower() or proposal[0]
+            answer = ask(f"  Is this {names[check['pastor']]} preaching alone? Enter = {proposal}, k = keep, d = drop: ").strip().lower() or proposal[0]
         decisions[key] = 'keep' if answer == 'k' else 'drop'
         write_json(decisions_path, decisions)
     write_json(decisions_path, decisions)
