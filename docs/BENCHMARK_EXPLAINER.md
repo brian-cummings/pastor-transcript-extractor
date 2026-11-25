@@ -261,3 +261,7 @@ First reading:
 - **A1 (partisan or political):** it flagged only Gibson, and both of his passages are religious-liberty warnings, which
   are exactly the "does not count" case. So the A1 measures over-match, and passages must be read.
 - **A2:** not yet measured.
+- **First plausibility check (Brian, 2026-11-24):** Denny Grady, Peachtree Hills's own pastor, ranks 34 of 49 against
+  the church's stated wants. Brian: "it's probably not wrong." That is one informal agreement, not a validation.
+  Names applied since the first reading: 97 Maurice T. Battle, Jr.; 108 Paul Carlson; 139 Henry Johnson; 88 and 110
+  Aaron L Trelfa (merge pending); 94 Denny Grady.
