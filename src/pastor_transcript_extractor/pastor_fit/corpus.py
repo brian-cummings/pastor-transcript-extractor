@@ -17,27 +17,47 @@ from ..sermon_analysis import _load_sermon_source
 
 PROFILE_ANALYZER = 'profile-scripture-usage'
 
-# A merged profile (latest redirect event is 'redirect') keeps its old run, whose sermons now belong to the
-# profile it was merged into; once that profile is analyzed the same video would sit in two profiles. Only
-# profiles that are not redirected count.
+# Every profile's latest run counts. A merged profile keeps its old run, and the profile it was merged into
+# lists the same videos once it is re-analyzed, so each profile is resolved through its latest redirect and
+# each video is kept once, from the newest run that lists it (load_population).
 _POPULATION_SQL = """
 WITH latest AS (
     SELECT profile_id, MAX(id) AS run_id
     FROM speaker_profile_analysis_runs
     WHERE analyzer_key = ?
-      AND profile_id NOT IN (
-        SELECT e.from_profile_id FROM speaker_profile_redirect_events AS e
-        WHERE e.action = 'redirect'
-          AND e.id = (SELECT MAX(id) FROM speaker_profile_redirect_events WHERE from_profile_id = e.from_profile_id))
     GROUP BY profile_id
 )
-SELECT latest.profile_id, videos.id, videos.youtube_video_id, videos.source_id, runs.source_path
+SELECT latest.profile_id, latest.run_id, videos.id, videos.youtube_video_id, videos.source_id, runs.source_path
 FROM latest
 JOIN speaker_profile_analysis_inputs AS inputs ON inputs.profile_analysis_run_id = latest.run_id
 JOIN sermon_analysis_runs AS runs ON runs.id = inputs.sermon_analysis_run_id
 JOIN videos ON videos.id = inputs.video_id
 ORDER BY latest.profile_id, videos.id
 """
+
+_REDIRECT_SQL = """
+SELECT from_profile_id, action, to_profile_id FROM speaker_profile_redirect_events AS e
+WHERE id = (SELECT MAX(id) FROM speaker_profile_redirect_events WHERE from_profile_id = e.from_profile_id)
+"""
+
+
+def profile_resolver(connection: sqlite3.Connection):
+    """Map a profile id to the profile it now resolves to, following each profile's latest redirect event
+    (as `Database.resolve_speaker_profile_id` does)."""
+    tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    latest = ({int(source): (action, target) for source, action, target in connection.execute(_REDIRECT_SQL)}
+              if 'speaker_profile_redirect_events' in tables else {})
+
+    def resolve(profile_id: int) -> int:
+        seen = set()
+        while profile_id in latest and latest[profile_id][0] == 'redirect' and latest[profile_id][1] is not None:
+            if profile_id in seen:
+                raise ValueError(f'Speaker profile redirect cycle at {profile_id}')
+            seen.add(profile_id)
+            profile_id = int(latest[profile_id][1])
+        return profile_id
+
+    return resolve
 
 
 @dataclass(frozen=True)
@@ -53,15 +73,17 @@ def load_population(database: Path) -> list[Sermon]:
     connection = sqlite3.connect(f'file:{database}?mode=ro', uri=True)
     try:
         rows = connection.execute(_POPULATION_SQL, (PROFILE_ANALYZER,)).fetchall()
+        resolve = profile_resolver(connection)
     finally:
         connection.close()
-    seen: set[int] = set()
-    sermons = []
-    for profile_id, video_id, youtube_id, source_id, path in rows:
-        if video_id in seen:
-            raise ValueError(f'Video {video_id} belongs to more than one analyzed profile')
-        seen.add(video_id)
-        sermons.append(Sermon(int(video_id), str(youtube_id), int(profile_id), int(source_id), str(path)))
+    # One entry per video: the newest run that lists it wins (it reflects current membership), and the
+    # profile is the one that run's profile resolves to, so a merged profile's videos count under the survivor.
+    newest: dict[int, tuple[int, Sermon]] = {}
+    for profile_id, run_id, video_id, youtube_id, source_id, path in rows:
+        sermon = Sermon(int(video_id), str(youtube_id), resolve(int(profile_id)), int(source_id), str(path))
+        if int(video_id) not in newest or int(run_id) > newest[int(video_id)][0]:
+            newest[int(video_id)] = (int(run_id), sermon)
+    sermons = sorted((sermon for _, sermon in newest.values()), key=lambda s: (s.profile_id, s.video_id))
     if not sermons:
         raise ValueError('No analyzed profiles found')
     return sermons

@@ -276,11 +276,13 @@ First reading:
 
 Goal: rank the church's candidates against a wider pool. The profile audit found 33 named profiles with at least 3
 sermons (209 sermons) that are not in the pool, and existing pool pastors have newer recordings.
-- **Population fix.** The pool is each profile's latest `profile-scripture-usage` run (`pastor_fit/corpus.py`). A
-  merged profile keeps its old run, so analyzing the profile it was merged into would put one video in two profiles
-  and stop every consumer. Profiles whose latest redirect event is `redirect` are now left out. Today that drops
-  107, 113, 137, 138 and 88 (16 sermons). Their explainer scores stay and still count under the canonical profile
-  through `canonical_pool`.
+- **Population fix (video deduplication; Brian, 2026-11-25: "switch to video deduplication").** The pool is each
+  profile's latest `profile-scripture-usage` run (`pastor_fit/corpus.py`). A merged profile keeps its old run, so
+  analyzing the profile it was merged into would list one video twice and stop every consumer. Every run still
+  counts. Each profile resolves through its latest redirect (`corpus.profile_resolver`, shared with `canonical_pool`),
+  and each video is kept once, from the newest run that lists it. No sermon leaves the pool: today 293 sermons and 45
+  pastors, with Trelfa as profile 110 with 7 sermons (4 from 88). An earlier version of this fix skipped merged
+  profiles' runs instead, which hid their videos until re-analysis; it was replaced the same day.
 - **`add-pool` (free).** It runs after `pte analysis backfill --all-attached` and appends to the explainer pool sermons
   that profile analysis has and the explainer lacks: new sermons of pool pastors, plus the sermons of newly analyzed
   named profiles (unnamed ones only with `--include-unnamed`). It measures the free dimensions and estimates the Jev

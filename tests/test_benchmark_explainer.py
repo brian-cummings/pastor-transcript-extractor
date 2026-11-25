@@ -257,7 +257,7 @@ class AddPoolTests(unittest.TestCase):
 
 
 class PopulationTests(unittest.TestCase):
-    def test_merged_profiles_leave_the_population(self):
+    def _population(self, runs, inputs, redirects):
         import sqlite3, tempfile
         from pathlib import Path
         from pastor_transcript_extractor.pastor_fit import corpus
@@ -270,16 +270,26 @@ class PopulationTests(unittest.TestCase):
                 CREATE TABLE speaker_profile_analysis_inputs (profile_analysis_run_id INT, sermon_analysis_run_id INT, video_id INT);
                 CREATE TABLE sermon_analysis_runs (id INTEGER PRIMARY KEY, source_path TEXT);
                 CREATE TABLE videos (id INTEGER PRIMARY KEY, youtube_video_id TEXT, source_id INT);
-                INSERT INTO videos VALUES (1, 'y1', 1), (2, 'y2', 1);
-                INSERT INTO sermon_analysis_runs VALUES (1, 'a'), (2, 'b');
-                -- 107 was analyzed, then merged into 195, which now has its own run with the same video.
-                INSERT INTO speaker_profile_analysis_runs VALUES (1, 107, 'profile-scripture-usage'), (2, 195, 'profile-scripture-usage');
-                INSERT INTO speaker_profile_analysis_inputs VALUES (1, 1, 1), (2, 1, 1), (2, 2, 2);
-                INSERT INTO speaker_profile_redirect_events (from_profile_id, to_profile_id, action) VALUES (107, 195, 'redirect');
+                INSERT INTO videos VALUES (1, 'y1', 1), (2, 'y2', 1), (3, 'y3', 1);
+                INSERT INTO sermon_analysis_runs VALUES (1, 'a'), (2, 'b'), (3, 'c');
             """)
+            con.executemany("INSERT INTO speaker_profile_analysis_runs VALUES (?, ?, 'profile-scripture-usage')", runs)
+            con.executemany('INSERT INTO speaker_profile_analysis_inputs VALUES (?, ?, ?)', inputs)
+            con.executemany('INSERT INTO speaker_profile_redirect_events (from_profile_id, to_profile_id, action) VALUES (?, ?, ?)', redirects)
             con.commit(); con.close()
-            sermons = corpus.load_population(db)
-            self.assertEqual([(s.profile_id, s.video_id) for s in sermons], [(195, 1), (195, 2)])
+            return [(s.profile_id, s.video_id) for s in corpus.load_population(db)]
+
+    def test_merged_profile_videos_count_once_under_the_survivor(self):
+        # 107 was analyzed, merged into 195, and 195 was re-analyzed with the same video plus its own.
+        both = self._population([(1, 107), (2, 195)], [(1, 1, 1), (2, 1, 1), (2, 2, 2)], [(107, 195, 'redirect')])
+        self.assertEqual(both, [(195, 1), (195, 2)])
+        # Before 195 is re-analyzed, 107's videos still count, under 195.
+        before = self._population([(1, 107), (2, 195)], [(1, 1, 1), (2, 2, 2)], [(107, 195, 'redirect')])
+        self.assertEqual(before, [(195, 1), (195, 2)])
+
+    def test_a_video_listed_by_two_profiles_belongs_to_the_newest_run(self):
+        moved = self._population([(1, 5), (2, 6)], [(1, 3, 3), (2, 3, 3), (2, 1, 1)], [])
+        self.assertEqual(moved, [(6, 1), (6, 3)])
 
 
 class BreadthTests(unittest.TestCase):

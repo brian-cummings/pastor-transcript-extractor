@@ -6,7 +6,8 @@
   2,280 canonical-clip manifests; clips are now found at the migrated location and still hash-checked (`15087e9`).
 - The text pre-filter failed v1 (84.8% in top 5 against a 95% bar). v2 ranks only the cross-source voice pool, in
   production and in the check (`fa7329e`). Brian re-runs `pte identity text-prefilter-check`; it stays off unless v2 passes.
-- Pool expansion (`8cb0c79`): merged profiles leave the population, and the new step is `benchmark-explainer add-pool`.
+- Pool expansion (`8cb0c79`, then video deduplication): every profile run counts, profiles resolve through their merges
+  and each video is kept once, from its newest run. The new step is `benchmark-explainer add-pool`.
   Brian's sequence: `backfill --all-attached --dry-run`, `backfill --all-attached`, `add-pool`, then
   `score-added --ceiling-usd <cap>` (paid, about $5), then `church-fit`.
 - Still open: 30 exact names for unnamed profiles (profile audit), shadow association of the 13 new benchmark
