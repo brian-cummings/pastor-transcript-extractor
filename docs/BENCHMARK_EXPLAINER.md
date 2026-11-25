@@ -292,3 +292,46 @@ sermons (209 sermons) that are not in the pool, and existing pool pastors have n
   ceiling enforced on every request. The audit estimate is about $5.
 - **Acceptance.** `church-fit` ranks the wider pool with unchanged rules. Every added pastor appears once, and none of
   the merged profiles appears separately. Whether the ranking is *right* is still unvalidated (section 13).
+
+## 15. Question-level answer reuse (Brian, 2026-11-25: "I definitely want smart re-use of questions versus large, unnecessary corpus re-runs")
+
+Status: approved direction; not built. It starts after the `score-added` round for the wider pool finishes.
+
+**Problem.** Saved Jev answers are keyed per pack. The key includes the pack version, its inventory digest and the
+whole question list. Editing one question therefore re-asks every question of that pack on every block. `score-added`
+skips sermons that already have signals, so a revised question would never reach them. The explainer saves to its own
+folder (`benchmark-explainer-v1/cache/`), which the profile pipeline (`profile_evidence_supply.py`, bound-claims slice)
+does not read; the reverse copy exists (`score.seed_roots`).
+
+**Cost evidence (round-1 ledger, 825 blocks).** Input tokens per block grow with question count, about 270 to 485 per
+question: topics have 20 questions and 9,703 tokens per block; homiletic style has 4 questions and 1,082 tokens. Cost
+is set by questions times eligible blocks, not by the shared context, so pack boundaries do not drive cost.
+
+**Design.**
+1. Each answer is keyed by model, that question's exact wording and criteria, block identity, and the context
+   identity when the question reads context. Pack version labels and sibling questions are not part of the key.
+2. Requests ask only the missing questions per block; blocks are grouped by their missing-question set.
+3. Each question carries its own eligibility rule (S and P keep topic at least 0.55). A widened rule asks only newly
+   eligible blocks; a narrowed one keeps answers saved and unused.
+4. One shared answer store per sermon (the sermon's `inference-cache`), read and written by every consumer.
+   Experiment folders keep only plans, ledgers and outputs.
+5. A paid `pte` revision step lists every missing (block, question) pair across kept sermons, reports counts and
+   estimated dollars per changed question, runs under its own dollar ceiling with one resume, and rebuilds the
+   affected signals. Changes to answer-to-signal rules or concerns recompute from saved answers and report "no
+   requests needed".
+6. A one-time conversion splits existing pack files into per-question answers; both formats are readable during the
+   switch. Compatibility is never relaxed: a different question, block, context or model is a miss.
+
+**Acceptance checks (fixed before building).**
+- Unit tests: editing one question's wording misses only that question on every block; changing a shared template
+  misses every question using it; a revised question is found missing in already-scored sermons; an answer saved by
+  the explainer is a hit for another consumer with identical question, block and context, and a miss when any differs.
+- Conversion: every existing pack answer converts with no request and reproduces the current signals exactly.
+- Independence check (paid, Brian runs, cents): about 50 blocks asked one question alone versus inside its pack. If
+  answers differ beyond the run-to-run noise, per-question reuse across packs stops and is reported, not tuned.
+- Block-cut comparison: report whether the profile pipeline's blocks and contexts match the explainer's, and how much
+  reuse a mismatch costs. Answers are not matched across different cuts.
+
+**First use.** Christian nationalism (A2): its four approved indicators become four new questions on public-life
+blocks (about 5% of blocks), estimated at $0.05 for the current pool and about $0.15 at about 40,000 blocks, after a
+small sample-passage check.
