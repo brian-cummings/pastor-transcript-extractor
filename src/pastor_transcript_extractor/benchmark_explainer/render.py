@@ -163,3 +163,24 @@ def report(result, names) -> str:
     run = result['jev_run']
     lines += ['## Jev run', '', f"Failed pack calls: {run['failed_calls']}. Incomplete sermons: {len(run['incomplete_sermons'])}.", '']
     return '\n'.join(lines)
+
+
+def trait_checks(result, names, details) -> str:
+    lines = ['# Trait checks (benchmark-explainer-v1)', '',
+             'Pattern: on his side of the typical pastor in at least half of his sermons, and (for MORE traits counted in '
+             'blocks) his top 3 sermons hold at most 60% of the hits. Passages are for the content check.', '']
+    for benchmark, rows in result.items():
+        lines += [f'## {names[benchmark]}', '', '| Trait | Sermons on his side | Top-3 share | Pattern |', '| --- | --- | --- | --- |']
+        for row in rows:
+            share = f"{100 * row['top3_share']:.0f}%" if row.get('top3_share') is not None else '—'
+            lines.append(f"| {label(row['dimension'])} ({'MORE' if row['z'] > 0 else 'LESS'}) | {row['on_his_side']} of {row['sermons']} | "
+                         f"{share} | {'yes' if row['pattern'] else 'no'} |")
+        lines.append('')
+        for row in rows:
+            if row.get('passages'):
+                lines += [f"### {label(row['dimension'])}", '', f"Means: {meaning(row['dimension'])}", '']
+                for item in row['passages']:
+                    lines += [f"- *{details.get(item['video_id'], {}).get('title', item['video_id'])}* "
+                              f"(p {item['probability']:.2f}): \"{item['text'][:500]}\"", '']
+    return '\n'.join(lines)
+

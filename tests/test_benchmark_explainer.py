@@ -203,3 +203,16 @@ class WideningTests(unittest.TestCase):
             self.assertEqual(again['added'], [])
             self.assertEqual([s['video_id'] for s in read_json(out / 'sermons.json')], [1, 2, 3])
             self.assertEqual(read_json(out / 'measured.json')['3'], {'m': 1})
+
+
+class BreadthTests(unittest.TestCase):
+    def test_breadth_separates_a_pattern_from_a_few_sermons(self):
+        def sermon(hits, n=20):
+            return {'blocks': [{'signals': {'M:personal_testimony': 0.9 if i < hits else 0.1}} for i in range(n)]}
+        row = {'dimension': 'M:personal_testimony', 'z': 2.0, 'pool_median': 0.05}
+        spread = {v: sermon(3) for v in range(1, 9)}
+        lumped = {1: sermon(18), 2: sermon(17), 3: sermon(16), **{v: sermon(0) for v in range(4, 9)}}
+        self.assertTrue(values.breadth(row, list(spread), spread, {})['pattern'])
+        result = values.breadth(row, list(lumped), lumped, {})
+        self.assertFalse(result['pattern'])
+        self.assertEqual(result['on_his_side'], 3)

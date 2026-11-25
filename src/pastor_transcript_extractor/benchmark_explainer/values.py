@@ -176,3 +176,36 @@ def pair_distance_percentile(a: str, b: str, dimensions: Sequence[str], values: 
     return dict(distance=target, pairs=len(others), pairs_closer=closer,
                 percentile=(closer / len(others)) if target is not None and others else None,
                 median_pair_distance=statistics.median(others) if others else None)
+
+
+BREADTH_MIN_SHARE = 0.5      # on his side of the typical pastor in at least half of his sermons
+CONCENTRATION_MAX = 0.6      # for a MORE trait counted in blocks: his top 3 sermons hold at most 60% of the hits
+
+
+def breadth(row: Mapping, videos: Sequence[int], scored: Mapping[int, Mapping], measured: Mapping[int, Mapping]) -> dict:
+    """Whether an explained dimension is a pattern across his sermons rather than a few of them (fixed 2026-11-24,
+    before any result; replaces Brian's per-dimension mark at his request)."""
+    name, more = row['dimension'], row['z'] > 0
+    per = {}
+    for video in videos:
+        if name in free.DIMENSIONS:
+            value = measured.get(video, {}).get(name)
+            if value is not None:
+                per[video] = dict(value=value)
+        elif video in scored:
+            blocks = scored[video]['blocks']
+            hits = sum(1 for b in blocks if b['signals'].get(name, 0.0) >= floor_for(name))
+            per[video] = dict(value=hits / len(blocks) if blocks else 0.0, hits=hits)
+    median = row['pool_median']
+    on_side = sum(1 for p in per.values() if (p['value'] > median if more else p['value'] < median))
+    out = dict(sermons=len(per), on_his_side=on_side, breadth_ok=bool(per) and on_side / len(per) >= BREADTH_MIN_SHARE)
+    if more and name not in free.DIMENSIONS:
+        hits = sorted((p['hits'] for p in per.values()), reverse=True)
+        total = sum(hits)
+        out['top3_share'] = sum(hits[:3]) / total if total else None
+        out['concentration_ok'] = bool(total) and sum(hits[:3]) / total <= CONCENTRATION_MAX
+    else:
+        out['concentration_ok'] = True
+    out['pattern'] = out['breadth_ok'] and out['concentration_ok']
+    return out
+

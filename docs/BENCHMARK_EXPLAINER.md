@@ -219,3 +219,18 @@ those profiles are currently empty placeholders, so it is deferred until the ben
   - **Reading:** Brian marked all 20 narrow-set dimensions true, yet most of them turned out to be series effects. So
     the narrow-set E1 pass is weak evidence, and the verdict should come from the widened sets. Marks on carried-over
     dimensions stand; only new dimensions are asked.
+- **E1 replaced at Brian's request (2026-11-24):** "you probably don't need my judgement". A short clip cannot show a
+  pattern, so the per-dimension mark became two checks, fixed before they were computed. (1) **Breadth**
+  (`check-traits`, free): on his side of the typical pastor in at least half of his sermons, and for a MORE dimension
+  counted in blocks his top 3 sermons hold at most 60% of the hits. (2) **Content** (Claude reads up to 6 top passages
+  per MORE dimension): does the measure count what its definition says? Brian's earlier marks are kept but no longer
+  gate anything.
+  - **Gibson, 4 of 9 pass breadth:**
+    - Obedience as consequence or evidence: 10 of 15 sermons, top 3 hold 56%. Content about 4 of 6 on target (grace
+      first, changed life follows), with one passage a critique of merit theology and one ambiguous.
+    - Denominational sources: 11 of 15, 57%. Content 5 of 6 are Ellen White quotations.
+    - Less discipleship: 15 of 15.
+    - Longer sermons: 14 of 15.
+    - Failed: public life illustrative, critical and supportive (4 to 5 sermons, mostly *The End*), justification
+      (2 sermons), and Adventist identity (top 3 hold 60.5%, just over).
+  - **Asscherick, 0 of 4 pass.** With 9 sermons each trait sits in 3 to 6 of them, so his set is not yet characterized.

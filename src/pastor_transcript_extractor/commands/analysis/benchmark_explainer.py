@@ -86,6 +86,13 @@ def explain(base_dir: Path = BASE):
     _call(runner.explain, base_dir)
 
 
+@app.command('check-traits')
+def check_traits(base_dir: Path = BASE):
+    """Free: breadth of each explained trait across his sermons, with passages for the content check (TRAIT_CHECKS.md)."""
+    from ...benchmark_explainer import runner
+    _call(runner.check_traits, base_dir)
+
+
 @app.command('review')
 def review(base_dir: Path = BASE,
            open_browser: bool = typer.Option(True, '--open/--no-open', help='Open each evidence passage on YouTube at its start.')):

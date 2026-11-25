@@ -274,6 +274,32 @@ def explain(base_dir: Path) -> Path:
     return out / 'EXPLAINER.md'
 
 
+def check_traits(base_dir: Path) -> Path:
+    """Free: breadth of each explained dimension across his sermons, plus up to 6 top passages per MORE dimension
+    (one per sermon) for the content check. Writes trait_checks.json and TRAIT_CHECKS.md."""
+    out, database, sermons, scored, measured, dimensions, table = _loaded(base_dir)
+    explanations = _need(out / 'explain.json', 'explain')['explanations']
+    names = data.pastor_names(database, sorted(table))
+    by_pastor: dict[str, list[int]] = defaultdict(list)
+    for sermon in sermons:
+        by_pastor[sermon['pastor']].append(sermon['video_id'])
+    result = {}
+    for benchmark, explained in explanations.items():
+        rows = []
+        for row in explained['explained']:
+            item = dict(dimension=row['dimension'], z=row['z'], value=row['value'], pool_median=row['pool_median'],
+                        **values.breadth(row, by_pastor[benchmark], scored, measured))
+            if row['z'] > 0 and row['dimension'] not in free.DIMENSIONS:
+                item['passages'] = values.evidence(row['dimension'], by_pastor[benchmark], scored, measured, limit=6)
+            rows.append(item)
+        result[benchmark] = rows
+    details = data.video_details(database, [s['video_id'] for s in sermons if s['pastor'].startswith('b')])
+    write_json(out / 'trait_checks.json', dict(breadth_min_share=values.BREADTH_MIN_SHARE,
+                                               concentration_max=values.CONCENTRATION_MAX, benchmarks=result))
+    (out / 'TRAIT_CHECKS.md').write_text(render.trait_checks(result, names, details))
+    return out / 'TRAIT_CHECKS.md'
+
+
 def review(base_dir: Path, ask: Callable[[str], str] = input, echo=print,
            open_url: Callable[[str], object] | None = None) -> dict:
     """Mark each explained dimension; with `open_url`, each evidence passage opens on YouTube at its start."""
