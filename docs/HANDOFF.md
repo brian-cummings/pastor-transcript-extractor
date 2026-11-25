@@ -1,5 +1,45 @@
 # Current agent handoff
 
+**2026-11-24 (evening): church fit reading built; benchmark track stopped.** Read
+[BENCHMARK_EXPLAINER.md](BENCHMARK_EXPLAINER.md) sections 11 to 13 first.
+
+Where things stand:
+- **Benchmark explainer (stopped before ranking).**
+  - Jev score: $8.52, plus an added round of $0.59.
+  - The sets were corrected and widened. Gibson has 15 solo sermons and Asscherick 9 (the "with DA" book studies were
+    dropped). This used `sermon-review --all`, `sermon-decide`, `add-sermons` and `score-added`.
+  - A breadth check (`check-traits`) replaced Brian's per-trait marks. The narrow-set traits turned out to be series
+    effects.
+  - Brian: these traits are not what makes a pastor fit his church. So E2 was not run.
+- **Church fit (current track).**
+  - Concerns come from Peachtree Hills's 2026 conference questionnaire, which ranks preaching 1st and equipping 2nd:
+    wants W1 to W7, avoid A1 (partisan or political) and avoid A2 (Christian nationalism, not yet measured).
+  - The concerns file is `<base>/evaluation/church-concerns/peachtree-hills-v1.json`. The command is
+    `pte analysis church-fit --concerns <file> --base-dir <base>` (free). Output: `<base>/evaluation/church-fit/peachtree-hills-v1/FIT.md`.
+  - The pool resolves merged profiles (`data.canonical_pool`): 46 pool pastors plus the 2 benchmarks, all named.
+  - Top: Maurice T. Battle, Jr. (3 sermons), Jonathan Michael (15), Andrew Korp, Mark Waters, Tony Kimbley.
+  - The one plausibility check: Denny Grady (Peachtree Hills's pastor) ranks 34; Brian: "probably not wrong."
+  - A1 over-matches Gibson's religious-liberty warnings, so avoid concerns need passage reading.
+- **Profiles.**
+  - Named this session: 97 Maurice T. Battle, Jr.; 108 Paul Carlson; 139 Henry Johnson; 88 and 110 Aaron L Trelfa
+    (same person, merge pending); 94 Denny Grady.
+  - Brian named 78 Ronald Isreal, 102 Bruce Hehn, 77 Wesley Tuya, 112 Damian Francis, 133 Myron Jenkins and
+    140 Jeffrey Skaggs.
+  - 193 and 293 (Rodney Herra and Rodney Herra Jr.) are recorded as different speakers.
+  - Benchmark profiles: Gibson is 177 (144 redirects to it); Asscherick is 156 (145 redirects to it).
+- **Blocked on the archive drive** (`/Volumes/home/SermonExtractorAudio`; the local `normalized.wav` files are
+  symlinks). The merges 158→156 and 88→110, then shadow association and confirmation for the 13 new benchmark videos.
+  Exact commands: `<base>/evaluation/identity-pending-commands.md`.
+- **Open decisions for Brian.** All the counts come from the read-only audit at
+  `<base>/evaluation/profile-audit/profile-audit-2026-11-24.md`.
+  1. Apply its 30 exact names for unnamed profiles (free).
+  2. Pool expansion: 33 named, ready profiles (209 sermons). `pte analysis backfill --all-attached` is free, and the
+     backfill must not put a video in two pool profiles. It also needs a new explainer step that adds pool pastors and
+     scores them, at about $5 of Jev.
+  3. Measure A2 by reading passages.
+- **Environment.** `yt-dlp` was upgraded to 2026.11.23 (older versions got 403s). `pte` remembers the last
+  `--base-dir`, and a test run once left it at a temp folder. Always pass `--base-dir /Users/briancummings/Documents/PastorSearchData`.
+
 **2026-11-24 — direction: church-to-pastor matching.** The end goal is helping a church find a pastor who fits its
 needs; profiles are a means. Read, in order:
 1. [PASTOR_FIT_EXPERIMENT.md](PASTOR_FIT_EXPERIMENT.md) sections 12 and 13. Stylometry tells preachers apart, and the
