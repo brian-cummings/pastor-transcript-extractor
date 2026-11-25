@@ -1,6 +1,7 @@
 """Steps of the benchmark explainer; outputs under `<base>/evaluation/benchmark-explainer-v1/` (spec section 8).
 
-Free steps: census, sermon-check, sermon-review, explain, review, rank, report. Paid step: score (Jev).
+Free steps: census, sermon-check, add-sermons, add-pool, sermon-review, explain, review, rank, report.
+Paid steps: score and score-added (Jev).
 """
 from __future__ import annotations
 
@@ -107,8 +108,9 @@ def add_sermons(base_dir: Path, echo=print) -> dict:
     current = data.as_dicts(data.load(database, excluded))
     pool_now = {s['video_id'] for s in current if s['pastor'].startswith('p')}
     pool_before = {s['video_id'] for s in sermons if s['pastor'].startswith('p')}
-    if pool_now != pool_before:
-        raise ValueError('The comparison pool changed since sermon-check; this explainer compares against a fixed pool')
+    if pool_now - pool_before:
+        raise ValueError(f'{len(pool_now - pool_before)} analyzed pool sermons are not in the explainer yet; '
+                         'run `pte analysis benchmark-explainer add-pool` first')
     added = [s for s in current if s['pastor'].startswith('b') and s['video_id'] not in known]
     new_excluded = [e for e in excluded if e['video_id'] not in known]
     if not added:
@@ -129,6 +131,65 @@ def add_sermons(base_dir: Path, echo=print) -> dict:
     return dict(added=[dict(video_id=c['video_id'], benchmark=c['pastor'], title=c['title'], flagged=c['flagged']) for c in checks],
                 excluded_without_sermon_window=[e['video_id'] for e in new_excluded],
                 next='pte analysis benchmark-explainer sermon-review --all, then score-added')
+
+
+USD_PER_BLOCK = 8.52 / 12_090   # section 11: the approved score run
+
+
+def _usd_per_minute(out: Path, sermons: list[dict], measured: dict) -> float:
+    """Jev dollars per sermon minute, from the blocks already scored (spec section 11's block price)."""
+    blocks = minutes = 0.0
+    for sermon in sermons:
+        path = out / 'signals' / f"v{sermon['video_id']}.json"
+        length = (measured.get(str(sermon['video_id'])) or {}).get('F:sermon_minutes')
+        if path.exists() and length:
+            blocks += len(read_json(path).get('blocks', []))
+            minutes += length
+    return USD_PER_BLOCK * blocks / minutes if minutes else USD_PER_BLOCK
+
+
+def add_pool(base_dir: Path, *, include_unnamed: bool = False, echo=print) -> dict:
+    """Free: add pool sermons that profile analysis has and the explainer lacks (after `pte analysis backfill`):
+    new sermons of pool pastors, and the sermons of newly analyzed named profiles (unnamed ones only with
+    `include_unnamed`). Measures them and appends them; `score-added` then scores them. A sermon already in the
+    explainer is never re-filed: if one now resolves to a different pastor, the step refuses."""
+    out, _, database = _paths(base_dir)
+    sermons = _need(out / 'sermons.json', 'sermon-check')
+    known = {s['video_id'] for s in sermons}
+    before = {s['video_id']: s['pastor'] for s in data.canonical_pool(database, [s for s in sermons if s['pastor'].startswith('p')])}
+    current = data.canonical_pool(database, [s for s in data.as_dicts(data.load(database)) if s['pastor'].startswith('p')])
+    moved = sorted(s['video_id'] for s in current if s['video_id'] in before and before[s['video_id']] != s['pastor'])
+    if moved:
+        raise ValueError(f'{len(moved)} explainer sermons now belong to a different profile ({moved[:5]}); '
+                         'resolve the profile change before adding to the pool')
+    in_pool = set(before.values())
+    new = [s for s in current if s['video_id'] not in known]
+    names = data.pastor_names(database, sorted({s['pastor'] for s in new}))
+    skipped = Counter(s['pastor'] for s in new
+                      if s['pastor'] not in in_pool and not include_unnamed and names[s['pastor']].startswith('profile '))
+    added = [s for s in new if s['pastor'] not in skipped]
+    retired = sorted(set(before) - {s['video_id'] for s in current})
+    if added:
+        measured = read_json(out / 'measured.json')
+        for number, sermon in enumerate(added, 1):
+            measured[str(sermon['video_id'])] = _measure(sermon)
+            if number % 25 == 0:
+                echo(f'{number}/{len(added)} sermons measured')
+        write_json(out / 'measured.json', measured)
+        write_json(out / 'sermons.json', sermons + added)
+    else:
+        measured = read_json(out / 'measured.json')
+    minutes = sum((measured.get(str(s['video_id'])) or {}).get('F:sermon_minutes') or 0 for s in added)
+    by_pastor = Counter(s['pastor'] for s in added)
+    return dict(
+        added_sermons=len(added),
+        new_pastors={names[p]: n for p, n in sorted(by_pastor.items()) if p not in in_pool},
+        pool_pastors_with_new_sermons={names[p]: n for p, n in sorted(by_pastor.items()) if p in in_pool},
+        skipped_unnamed_profiles={p: n for p, n in sorted(skipped.items())},
+        no_longer_in_profile_analysis=len(retired),
+        sermon_minutes=round(minutes),
+        estimated_jev_usd=round(minutes * _usd_per_minute(out, sermons, measured), 2),
+        next='pte analysis benchmark-explainer score-added --ceiling-usd <about 1.5 x the estimate>')
 
 
 _BRACKET = re.compile(r'\[([^\]]+)\]')

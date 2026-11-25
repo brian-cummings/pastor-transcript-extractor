@@ -205,6 +205,83 @@ class WideningTests(unittest.TestCase):
             self.assertEqual(read_json(out / 'measured.json')['3'], {'m': 1})
 
 
+class AddPoolTests(unittest.TestCase):
+    def test_add_pool_appends_new_pool_sermons_and_skips_unnamed_new_profiles(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from pastor_transcript_extractor.benchmark_explainer import runner
+        from pastor_transcript_extractor.bound_claims.common import read_json, write_json
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            before = [dict(_sermon(1, 'p1'), extraction_path='x'), dict(_sermon(2, 'b65'), extraction_path='x')]
+            write_json(out / 'sermons.json', before)
+            write_json(out / 'measured.json', {'1': {'F:sermon_minutes': 40}, '2': {}})
+            (out / 'signals').mkdir()
+            write_json(out / 'signals' / 'v1.json', {'blocks': [{}] * 40})
+            # Now: p1 has a new sermon, named p2 and unnamed p3 are newly analyzed.
+            now = [dict(_sermon(v, p), extraction_path='x') for v, p in ((1, 'p1'), (3, 'p1'), (4, 'p2'), (5, 'p3'))]
+            names = lambda database, pastors: {p: {'p1': 'A', 'p2': 'B'}.get(p, f'profile {p[1:]}') for p in pastors}
+            with mock.patch.object(runner, '_paths', return_value=(out, out, out / 'db')), \
+                    mock.patch.object(runner.data, 'load', return_value=[]), \
+                    mock.patch.object(runner.data, 'as_dicts', return_value=now), \
+                    mock.patch.object(runner.data, 'canonical_pool', side_effect=lambda db, s: s), \
+                    mock.patch.object(runner.data, 'pastor_names', names), \
+                    mock.patch.object(runner, '_measure', return_value={'F:sermon_minutes': 30}):
+                result = runner.add_pool(out, echo=lambda *_: None)
+                again = runner.add_pool(out, echo=lambda *_: None)
+            self.assertEqual(result['added_sermons'], 2)
+            self.assertEqual(result['new_pastors'], {'B': 1})
+            self.assertEqual(result['pool_pastors_with_new_sermons'], {'A': 1})
+            self.assertEqual(result['skipped_unnamed_profiles'], {'p3': 1})
+            self.assertAlmostEqual(result['estimated_jev_usd'], round(60 * runner.USD_PER_BLOCK, 2))
+            self.assertEqual(again['added_sermons'], 0)
+            self.assertEqual([s['video_id'] for s in read_json(out / 'sermons.json')], [1, 2, 3, 4])
+
+    def test_add_pool_refuses_when_a_known_sermon_changed_pastor(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from pastor_transcript_extractor.benchmark_explainer import runner
+        from pastor_transcript_extractor.bound_claims.common import write_json
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            write_json(out / 'sermons.json', [dict(_sermon(1, 'p1'), extraction_path='x')])
+            write_json(out / 'measured.json', {})
+            with mock.patch.object(runner, '_paths', return_value=(out, out, out / 'db')), \
+                    mock.patch.object(runner.data, 'load', return_value=[]), \
+                    mock.patch.object(runner.data, 'as_dicts', return_value=[dict(_sermon(1, 'p2'), extraction_path='x')]), \
+                    mock.patch.object(runner.data, 'canonical_pool', side_effect=lambda db, s: s):
+                with self.assertRaises(ValueError):
+                    runner.add_pool(out, echo=lambda *_: None)
+
+
+class PopulationTests(unittest.TestCase):
+    def test_merged_profiles_leave_the_population(self):
+        import sqlite3, tempfile
+        from pathlib import Path
+        from pastor_transcript_extractor.pastor_fit import corpus
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / 'app.db'
+            con = sqlite3.connect(db)
+            con.executescript("""
+                CREATE TABLE speaker_profile_redirect_events (id INTEGER PRIMARY KEY, from_profile_id INT, to_profile_id INT, action TEXT);
+                CREATE TABLE speaker_profile_analysis_runs (id INTEGER PRIMARY KEY, profile_id INT, analyzer_key TEXT);
+                CREATE TABLE speaker_profile_analysis_inputs (profile_analysis_run_id INT, sermon_analysis_run_id INT, video_id INT);
+                CREATE TABLE sermon_analysis_runs (id INTEGER PRIMARY KEY, source_path TEXT);
+                CREATE TABLE videos (id INTEGER PRIMARY KEY, youtube_video_id TEXT, source_id INT);
+                INSERT INTO videos VALUES (1, 'y1', 1), (2, 'y2', 1);
+                INSERT INTO sermon_analysis_runs VALUES (1, 'a'), (2, 'b');
+                -- 107 was analyzed, then merged into 195, which now has its own run with the same video.
+                INSERT INTO speaker_profile_analysis_runs VALUES (1, 107, 'profile-scripture-usage'), (2, 195, 'profile-scripture-usage');
+                INSERT INTO speaker_profile_analysis_inputs VALUES (1, 1, 1), (2, 1, 1), (2, 2, 2);
+                INSERT INTO speaker_profile_redirect_events (from_profile_id, to_profile_id, action) VALUES (107, 195, 'redirect');
+            """)
+            con.commit(); con.close()
+            sermons = corpus.load_population(db)
+            self.assertEqual([(s.profile_id, s.video_id) for s in sermons], [(195, 1), (195, 2)])
+
+
 class BreadthTests(unittest.TestCase):
     def test_breadth_separates_a_pattern_from_a_few_sermons(self):
         def sermon(hits, n=20):

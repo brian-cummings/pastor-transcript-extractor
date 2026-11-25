@@ -17,11 +17,18 @@ from ..sermon_analysis import _load_sermon_source
 
 PROFILE_ANALYZER = 'profile-scripture-usage'
 
+# A merged profile (latest redirect event is 'redirect') keeps its old run, whose sermons now belong to the
+# profile it was merged into; once that profile is analyzed the same video would sit in two profiles. Only
+# profiles that are not redirected count.
 _POPULATION_SQL = """
 WITH latest AS (
     SELECT profile_id, MAX(id) AS run_id
     FROM speaker_profile_analysis_runs
     WHERE analyzer_key = ?
+      AND profile_id NOT IN (
+        SELECT e.from_profile_id FROM speaker_profile_redirect_events AS e
+        WHERE e.action = 'redirect'
+          AND e.id = (SELECT MAX(id) FROM speaker_profile_redirect_events WHERE from_profile_id = e.from_profile_id))
     GROUP BY profile_id
 )
 SELECT latest.profile_id, videos.id, videos.youtube_video_id, videos.source_id, runs.source_path

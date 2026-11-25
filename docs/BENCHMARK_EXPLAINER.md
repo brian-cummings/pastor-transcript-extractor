@@ -271,3 +271,22 @@ First reading:
   The pool is now 46 pastors plus the 2 benchmarks, so 48 are ranked. The top 5 is unchanged. "profile 138" (#9) is now
   Danail Tchakarov (#10, still on 3 old sermons), and Clouzet appears once (#45, 7 sermons). The canonical profiles'
   newer recordings are not analyzed yet; that is the pool expansion step.
+
+## 14. Pool expansion (Brian, 2026-11-25: "then we'll go to pool expansion")
+
+Goal: rank the church's candidates against a wider pool. The profile audit found 33 named profiles with at least 3
+sermons (209 sermons) that are not in the pool, and existing pool pastors have newer recordings.
+- **Population fix.** The pool is each profile's latest `profile-scripture-usage` run (`pastor_fit/corpus.py`). A
+  merged profile keeps its old run, so analyzing the profile it was merged into would put one video in two profiles
+  and stop every consumer. Profiles whose latest redirect event is `redirect` are now left out. Today that drops
+  107, 113, 137, 138 and 88 (16 sermons). Their explainer scores stay and still count under the canonical profile
+  through `canonical_pool`.
+- **`add-pool` (free).** It runs after `pte analysis backfill --all-attached` and appends to the explainer pool sermons
+  that profile analysis has and the explainer lacks: new sermons of pool pastors, plus the sermons of newly analyzed
+  named profiles (unnamed ones only with `--include-unnamed`). It measures the free dimensions and estimates the Jev
+  cost from scored blocks per sermon minute. It refuses if a sermon already in the explainer now resolves to a
+  different pastor. `add-sermons` now refuses only when unadded pool sermons exist ("run add-pool first").
+- **Scoring.** `score-added --ceiling-usd <cap>` scores them in its own round. It has its own ledger and a dollar
+  ceiling enforced on every request. The audit estimate is about $5.
+- **Acceptance.** `church-fit` ranks the wider pool with unchanged rules. Every added pastor appears once, and none of
+  the merged profiles appears separately. Whether the ranking is *right* is still unvalidated (section 13).

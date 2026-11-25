@@ -70,6 +70,14 @@ def add_sermons(base_dir: Path = BASE):
     _call(runner.add_sermons, base_dir, echo=typer.echo)
 
 
+@app.command('add-pool')
+def add_pool(base_dir: Path = BASE,
+             include_unnamed: bool = typer.Option(False, '--include-unnamed', help='Also add newly analyzed profiles that have no name yet.')):
+    """Free: after `pte analysis backfill`, add new pool sermons (new sermons of pool pastors and newly analyzed named profiles), measure them and estimate the Jev cost of scoring them."""
+    from ...benchmark_explainer import runner
+    _call(runner.add_pool, base_dir, include_unnamed=include_unnamed, echo=typer.echo)
+
+
 @app.command('score-added')
 def score_added(base_dir: Path = BASE,
                 ceiling_usd: str = typer.Option('2.00', '--ceiling-usd', help='Dollar ceiling for this round, enforced per request (its own ledger).'),
