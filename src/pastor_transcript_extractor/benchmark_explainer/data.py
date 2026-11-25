@@ -38,22 +38,44 @@ def benchmark_key(pastor_id: int) -> str:
     return f'b{pastor_id}'
 
 
-def load(database: Path, excluded: list | None = None) -> list[Sermon]:
+def benchmark_profiles(population, benchmark_videos: set[int], bound: set[int]) -> set[int]:
+    """Pool profiles that are a benchmark pastor: bound to one, or with at least half their sermons benchmark
+    sermons (an unbound duplicate of the benchmark's voice). They stay out of the pool, so a benchmark is never
+    compared with himself."""
+    by_profile: dict[int, list[int]] = {}
+    for sermon in population:
+        by_profile.setdefault(sermon.profile_id, []).append(sermon.video_id)
+    return {profile for profile, videos in by_profile.items()
+            if profile in bound or 2 * sum(v in benchmark_videos for v in videos) >= len(videos)}
+
+
+def load(database: Path, excluded: list | None = None, left_out: dict | None = None) -> list[Sermon]:
     """Pool and benchmark sermons. A benchmark extraction with no identified sermon window (for example one the
-    recording verifier rejected as a multi-speaker program) is left out and listed in `excluded`."""
-    pool = [Sermon(s.video_id, s.youtube_video_id, pool_key(s.profile_id), s.source_id, s.extraction_path)
-            for s in corpus.load_population(database)]
+    recording verifier rejected as a multi-speaker program) is left out and listed in `excluded`. Profiles that are
+    a benchmark pastor (`benchmark_profiles`) are left out of the pool, and any other pool copy of a benchmark
+    sermon is dropped; both are counted in `left_out`."""
+    population = corpus.load_population(database)
     connection = sqlite3.connect(f'file:{database}?mode=ro', uri=True)
     try:
-        rows = connection.execute(BENCHMARK_SQL.format(ids=','.join('?' * len(BENCHMARK_PASTORS))),
-                                  tuple(BENCHMARK_PASTORS)).fetchall()
+        marks = ','.join('?' * len(BENCHMARK_PASTORS))
+        rows = connection.execute(BENCHMARK_SQL.format(ids=marks), tuple(BENCHMARK_PASTORS)).fetchall()
+        tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        bound_rows = (connection.execute(f'SELECT profile_id FROM pastor_speaker_bindings WHERE pastor_id IN ({marks})',
+                                         tuple(BENCHMARK_PASTORS)).fetchall()
+                      if 'pastor_speaker_bindings' in tables else [])
+        resolve = corpus.profile_resolver(connection)
     finally:
         connection.close()
-    pooled = {s.video_id for s in pool}
+    benchmark_videos = {int(r[1]) for r in rows}
+    skipped = benchmark_profiles(population, benchmark_videos, {resolve(int(r[0])) for r in bound_rows})
+    pool = [Sermon(s.video_id, s.youtube_video_id, pool_key(s.profile_id), s.source_id, s.extraction_path)
+            for s in population if s.profile_id not in skipped and s.video_id not in benchmark_videos]
+    if left_out is not None:
+        left_out['benchmark_profiles'] = sorted(skipped)
+        left_out['benchmark_sermons_in_other_profiles'] = sorted(
+            s.video_id for s in population if s.profile_id not in skipped and s.video_id in benchmark_videos)
     benchmarks = []
     for pastor_id, video_id, youtube_id, source_id, path in rows:
-        if video_id in pooled:
-            raise ValueError(f'Benchmark video {video_id} is also in an analyzed profile')
         try:
             _load_sermon_source(Path(path))
         except (ValueError, OSError) as error:

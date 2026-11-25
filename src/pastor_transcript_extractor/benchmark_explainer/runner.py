@@ -157,7 +157,8 @@ def add_pool(base_dir: Path, *, include_unnamed: bool = False, echo=print) -> di
     sermons = _need(out / 'sermons.json', 'sermon-check')
     known = {s['video_id'] for s in sermons}
     before = {s['video_id']: s['pastor'] for s in data.canonical_pool(database, [s for s in sermons if s['pastor'].startswith('p')])}
-    current = data.canonical_pool(database, [s for s in data.as_dicts(data.load(database)) if s['pastor'].startswith('p')])
+    left_out: dict = {}
+    current = data.canonical_pool(database, [s for s in data.as_dicts(data.load(database, left_out=left_out)) if s['pastor'].startswith('p')])
     moved = sorted(s['video_id'] for s in current if s['video_id'] in before and before[s['video_id']] != s['pastor'])
     if moved:
         raise ValueError(f'{len(moved)} explainer sermons now belong to a different profile ({moved[:5]}); '
@@ -187,6 +188,8 @@ def add_pool(base_dir: Path, *, include_unnamed: bool = False, echo=print) -> di
         pool_pastors_with_new_sermons={names[p]: n for p, n in sorted(by_pastor.items()) if p in in_pool},
         skipped_unnamed_profiles={p: n for p, n in sorted(skipped.items())},
         no_longer_in_profile_analysis=len(retired),
+        benchmark_profiles_left_out=left_out.get('benchmark_profiles', []),
+        benchmark_sermons_dropped_from_other_profiles=left_out.get('benchmark_sermons_in_other_profiles', []),
         sermon_minutes=round(minutes),
         estimated_jev_usd=round(minutes * _usd_per_minute(out, sermons, measured), 2),
         next='pte analysis benchmark-explainer score-added --ceiling-usd <about 1.5 x the estimate>')

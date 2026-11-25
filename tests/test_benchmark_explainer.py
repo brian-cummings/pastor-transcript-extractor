@@ -292,6 +292,16 @@ class PopulationTests(unittest.TestCase):
         self.assertEqual(moved, [(6, 1), (6, 3)])
 
 
+class BenchmarkProfileTests(unittest.TestCase):
+    def test_benchmark_voices_stay_out_of_the_pool(self):
+        from types import SimpleNamespace as S
+        from pastor_transcript_extractor.benchmark_explainer import data
+        population = [S(profile_id=177, video_id=1), S(profile_id=177, video_id=9),   # bound benchmark, 1 non-benchmark
+                      S(profile_id=236, video_id=2), S(profile_id=236, video_id=3),   # unbound duplicate voice
+                      S(profile_id=50, video_id=4), S(profile_id=50, video_id=5), S(profile_id=50, video_id=6)]
+        self.assertEqual(data.benchmark_profiles(population, {1, 2, 3, 4}, {177}), {177, 236})
+
+
 class BreadthTests(unittest.TestCase):
     def test_breadth_separates_a_pattern_from_a_few_sermons(self):
         def sermon(hits, n=20):
