@@ -189,6 +189,7 @@ def add_pool(base_dir: Path, *, include_unnamed: bool = False, echo=print) -> di
         skipped_unnamed_profiles={p: n for p, n in sorted(skipped.items())},
         no_longer_in_profile_analysis=len(retired),
         benchmark_profiles_left_out=left_out.get('benchmark_profiles', []),
+        videos_listed_by_two_profiles=[f"{v['video_id']}: kept p{v['kept']}, also p{v['also_listed_by']}" for v in left_out.get('shared_videos', [])],
         benchmark_sermons_dropped_from_other_profiles=left_out.get('benchmark_sermons_in_other_profiles', []),
         sermon_minutes=round(minutes),
         estimated_jev_usd=round(minutes * _usd_per_minute(out, sermons, measured), 2),

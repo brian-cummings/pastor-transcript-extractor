@@ -54,7 +54,8 @@ def load(database: Path, excluded: list | None = None, left_out: dict | None = N
     recording verifier rejected as a multi-speaker program) is left out and listed in `excluded`. Profiles that are
     a benchmark pastor (`benchmark_profiles`) are left out of the pool, and any other pool copy of a benchmark
     sermon is dropped; both are counted in `left_out`."""
-    population = corpus.load_population(database)
+    shared: list = []
+    population = corpus.load_population(database, shared)
     connection = sqlite3.connect(f'file:{database}?mode=ro', uri=True)
     try:
         marks = ','.join('?' * len(BENCHMARK_PASTORS))
@@ -71,6 +72,7 @@ def load(database: Path, excluded: list | None = None, left_out: dict | None = N
     pool = [Sermon(s.video_id, s.youtube_video_id, pool_key(s.profile_id), s.source_id, s.extraction_path)
             for s in population if s.profile_id not in skipped and s.video_id not in benchmark_videos]
     if left_out is not None:
+        left_out['shared_videos'] = shared
         left_out['benchmark_profiles'] = sorted(skipped)
         left_out['benchmark_sermons_in_other_profiles'] = sorted(
             s.video_id for s in population if s.profile_id not in skipped and s.video_id in benchmark_videos)

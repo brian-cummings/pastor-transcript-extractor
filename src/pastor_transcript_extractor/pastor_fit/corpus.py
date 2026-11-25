@@ -69,21 +69,34 @@ class Sermon:
     extraction_path: str
 
 
-def load_population(database: Path) -> list[Sermon]:
+def load_population(database: Path, shared: list | None = None) -> list[Sermon]:
+    """Each video once. Profiles resolve through their merges, so a merged profile's videos count under the
+    survivor. A video that two current profiles both list (a duplicate profile over the same recordings) goes to
+    the profile with more sermons, then the lower (older) profile id; each such video is appended to `shared`."""
     connection = sqlite3.connect(f'file:{database}?mode=ro', uri=True)
     try:
         rows = connection.execute(_POPULATION_SQL, (PROFILE_ANALYZER,)).fetchall()
         resolve = profile_resolver(connection)
     finally:
         connection.close()
-    # One entry per video: the newest run that lists it wins (it reflects current membership), and the
-    # profile is the one that run's profile resolves to, so a merged profile's videos count under the survivor.
-    newest: dict[int, tuple[int, Sermon]] = {}
+    claims: dict[int, dict[int, tuple[int, Sermon]]] = {}   # video -> canonical profile -> (run id, sermon)
     for profile_id, run_id, video_id, youtube_id, source_id, path in rows:
-        sermon = Sermon(int(video_id), str(youtube_id), resolve(int(profile_id)), int(source_id), str(path))
-        if int(video_id) not in newest or int(run_id) > newest[int(video_id)][0]:
-            newest[int(video_id)] = (int(run_id), sermon)
-    sermons = sorted((sermon for _, sermon in newest.values()), key=lambda s: (s.profile_id, s.video_id))
+        canonical = resolve(int(profile_id))
+        sermon = Sermon(int(video_id), str(youtube_id), canonical, int(source_id), str(path))
+        current = claims.setdefault(int(video_id), {}).get(canonical)
+        if current is None or int(run_id) > current[0]:   # a merged profile's older run yields to the survivor's
+            claims[int(video_id)][canonical] = (int(run_id), sermon)
+    size: dict[int, int] = {}
+    for by_profile in claims.values():
+        for profile in by_profile:
+            size[profile] = size.get(profile, 0) + 1
+    sermons = []
+    for video_id, by_profile in claims.items():
+        chosen = min(by_profile, key=lambda profile: (-size[profile], profile))
+        sermons.append(by_profile[chosen][1])
+        if len(by_profile) > 1 and shared is not None:
+            shared.append(dict(video_id=video_id, kept=chosen, also_listed_by=sorted(p for p in by_profile if p != chosen)))
+    sermons.sort(key=lambda s: (s.profile_id, s.video_id))
     if not sermons:
         raise ValueError('No analyzed profiles found')
     return sermons

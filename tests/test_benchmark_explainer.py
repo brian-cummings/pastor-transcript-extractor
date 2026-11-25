@@ -287,9 +287,10 @@ class PopulationTests(unittest.TestCase):
         before = self._population([(1, 107), (2, 195)], [(1, 1, 1), (2, 2, 2)], [(107, 195, 'redirect')])
         self.assertEqual(before, [(195, 1), (195, 2)])
 
-    def test_a_video_listed_by_two_profiles_belongs_to_the_newest_run(self):
-        moved = self._population([(1, 5), (2, 6)], [(1, 3, 3), (2, 3, 3), (2, 1, 1)], [])
-        self.assertEqual(moved, [(6, 1), (6, 3)])
+    def test_a_duplicate_profile_over_the_same_recordings_yields_to_the_larger_one(self):
+        # 102 has videos 1-3; 204 (a newer duplicate) lists 1 and 2 only.
+        shared = self._population([(1, 102), (2, 204)], [(1, 1, 1), (1, 2, 2), (1, 3, 3), (2, 1, 1), (2, 2, 2)], [])
+        self.assertEqual(shared, [(102, 1), (102, 2), (102, 3)])
 
 
 class BenchmarkProfileTests(unittest.TestCase):
