@@ -239,3 +239,25 @@ those profiles are currently empty placeholders, so it is deferred until the ben
   measurably unusual about him (sermon length, Ellen White quotations, less discipleship talk), which mostly is not
   what a church chooses on. E2 was not run. The work moves to the concerns framework, using the church's own
   questionnaire. Draft: `<base>/evaluation/church-concerns/peachtree-hills-v1-draft.md`.
+
+## 13. Church fit reading (Brian, 2026-11-24: "looks right, build the fit reading")
+
+`pte analysis church-fit --concerns <file> --base-dir <base>` (free; `src/pastor_transcript_extractor/church_fit/`)
+ranks pastors on a church's approved want concerns and lists avoid-concern passages for review. The rules are in
+the module docstring, fixed before results:
+- z values are against the pool and clipped to plus or minus 3;
+- want concerns are importance-weighted (high 2, medium 1);
+- breadth is the share of sermons on the want side;
+- avoid matches are never netted against the want fit;
+- pastors with fewer than 3 sermons are left out.
+
+The first concerns file is `<base>/evaluation/church-concerns/peachtree-hills-v1.json`, from the church's 2026 profile
+questionnaire. Output: `<base>/evaluation/church-fit/peachtree-hills-v1/FIT.md`.
+
+First reading:
+- **Top 5:** profile 97 (Maurice Battle, by his titles; 3 sermons), Jonathan Michael (15), Andrew Korp (6), Mark Waters
+  (7) and Tony Kimbley (7).
+- **Benchmarks:** Gibson is 26th of 49 (low on discipleship and equipping), and Asscherick 42nd.
+- **A1 (partisan or political):** it flagged only Gibson, and both of his passages are religious-liberty warnings, which
+  are exactly the "does not count" case. So the A1 measures over-match, and passages must be read.
+- **A2:** not yet measured.

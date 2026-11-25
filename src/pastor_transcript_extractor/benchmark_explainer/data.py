@@ -78,15 +78,25 @@ def pastor_names(database: Path, pastors: list[str]) -> dict[str, str]:
     ids = [int(p[1:]) for p in pastors if p.startswith('p')]
     connection = sqlite3.connect(f'file:{database}?mode=ro', uri=True)
     try:
+        marks = ','.join('?' * len(ids))
         rows = dict(connection.execute(
-            f"SELECT id, display_label FROM speaker_profiles WHERE id IN ({','.join('?' * len(ids))})", ids).fetchall()) if ids else {}
+            f"SELECT id, display_label FROM speaker_profiles WHERE id IN ({marks})", ids).fetchall()) if ids else {}
+        # Unlabeled profiles: the reviewed name claim attached to the profile (latest event per claim is 'attach').
+        claimed = dict(connection.execute(f"""
+            SELECT e.profile_id, c.display_name FROM profile_name_claim_events AS e
+            JOIN speaker_name_claims AS c ON c.id = e.claim_id
+            WHERE e.profile_id IN ({marks}) AND e.action = 'attach'
+              AND e.id = (SELECT MAX(id) FROM profile_name_claim_events
+                          WHERE profile_id = e.profile_id AND claim_id = e.claim_id)
+            ORDER BY e.id""", ids).fetchall()) if ids else {}
     finally:
         connection.close()
     names = {}
     for pastor in pastors:
         number = int(pastor[1:])
         names[pastor] = (BENCHMARK_PASTORS[number] if pastor.startswith('b')
-                         else (rows.get(number) or f'profile {number}'))
+                         else (rows.get(number) or (f'{claimed[number]} (profile {number})' if number in claimed
+                                                    else f'profile {number}')))
     return names
 
 

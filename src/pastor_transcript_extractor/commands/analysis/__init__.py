@@ -12,3 +12,4 @@ from pastor_transcript_extractor.commands.analysis import object_position as _ob
 from pastor_transcript_extractor.commands.analysis import thought_units as _thought_units
 from pastor_transcript_extractor.commands.analysis import pastor_fit as _pastor_fit
 from pastor_transcript_extractor.commands.analysis import benchmark_explainer as _benchmark_explainer
+from pastor_transcript_extractor.commands.analysis import church_fit as _church_fit
