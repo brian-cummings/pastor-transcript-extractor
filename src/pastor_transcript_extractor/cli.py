@@ -4557,10 +4557,17 @@ def shadow_associate_speakers_service(
     text_prefilter_decisions = None
     if request.text_prefilter_top is not None:
         from pastor_transcript_extractor import identity_text_prefilter
+        from pastor_transcript_extractor.workflows.identity.association import (
+            globally_routable_profiles,
+        )
 
+        # Rank only the cross-source pool, the only profiles text can prune.
         text_prefilter_decisions = identity_text_prefilter.plan_text_prefilter(
             database,
-            {p.profile_id: p.member_observation_ids for p in readiness},
+            {
+                p.profile_id: p.member_observation_ids
+                for p in globally_routable_profiles(readiness)
+            },
             (
                 item.eligibility.observation.id
                 for item in span_preparation_inputs

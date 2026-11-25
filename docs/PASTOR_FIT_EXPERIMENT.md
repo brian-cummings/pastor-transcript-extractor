@@ -324,3 +324,13 @@ other recording, 62% with 2 or 3, and 94.9% with 4 or more.
 - A rule chosen after seeing this result (never prune profiles with fewer than 5 recordings, top 5 among the rest)
   would keep about 96% by the saved rows but prune only about 44% of the pool (94 of 167 kept), not 97%. Because it was
   chosen after the result, it would need a fresh check before use. It is not built.
+
+**v2 check (2026-11-25, Brian: "go ahead and make the change").** v1 ranked every registry profile, but production can
+prune only the cross-source voice pool (reviewed, shadow-ready, confirmed; at least 3 members). Two changes, made after
+seeing the v1 result and recorded as such; the bar is unchanged (95% in the top 5):
+- Production ranks only the cross-source pool (`globally_routable_profiles`), so a profile text can never prune cannot
+  take a top-N place.
+- `pte identity text-prefilter-check` (now `identity-text-prefilter-v2`; v1's report is kept) ranks each video against
+  the profiles with at least 3 recordings besides it. Videos whose assigned profile is smaller are counted, not queried.
+  From v1's saved rows, assigned profiles with 3+ other recordings were in the top 5 for 92.6% even with small profiles
+  competing.

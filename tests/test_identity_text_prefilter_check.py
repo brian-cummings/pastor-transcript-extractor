@@ -87,13 +87,30 @@ class SelectionTests(unittest.TestCase):
 
 
 class MeasureTests(unittest.TestCase):
+    def test_pool_holds_only_profiles_large_enough_for_voice_matching(self) -> None:
+        # Profiles 1 and 2 have four recordings; profile 3 has two and is never in the pool.
+        queries = {10 * k + i: k for k in (1, 2) for i in range(1, 5)}
+        queries.update({31: 3, 32: 3})
+        counts = {o: style(p) for o, p in queries.items()}
+        # Profile 3's text is a copy of profile 1's, so in v1 it would compete with profile 1.
+        counts[31] = counts[32] = style(1)
+        index = TextStyleIndex(counts, {o: o for o in counts})
+        result = measure(index, queries, (1,), minimum_pool_recordings=3)
+        rows = {r["observation_id"]: r for r in result["rows"]}
+        self.assertNotIn(31, rows)
+        self.assertNotIn(32, rows)
+        self.assertEqual(2, result["summary"]["assigned_profile_below_pool_minimum"])
+        for observation_id in (11, 12, 13, 14):
+            self.assertEqual(2, rows[observation_id]["ranked"])
+            self.assertEqual(0, rows[observation_id]["better"] + rows[observation_id]["ties"])
+
     def test_measure_ranks_with_leave_one_out(self) -> None:
         # Four speakers, two videos each; observation id 10k + i, video id = observation id.
         queries = {10 * k + i: k for k in range(1, 5) for i in (1, 2)}
         queries[61] = 6  # a one-recording profile: passes through when it is the query
         counts = {o: style(p) for o, p in queries.items()}
         index = TextStyleIndex(counts, {o: o for o in counts})
-        result = measure(index, queries, (1, 3))
+        result = measure(index, queries, (1, 3), minimum_pool_recordings=0)  # v1: every profile
         rows = {r["observation_id"]: r for r in result["rows"]}
         self.assertTrue(rows[61]["assigned_profile_passes_through"])
         for observation_id in (11, 12, 21, 22, 31, 32, 41, 42):

@@ -1,9 +1,12 @@
 """Registry-scale recall check for the identity text pre-filter (docs/PASTOR_FIT_EXPERIMENT.md section 13).
 
 For every video whose speaker observation has an existing voice- or review-made profile
-assignment, the observation's sermon-window text is ranked against every registry profile's
-pooled text (that video's recordings left out of every profile), exactly as the opt-in
-pre-filter ranks them. Measured per N: how often the assigned profile is kept (in the text top N,
+assignment, the observation's sermon-window text is ranked against the pooled text of every
+profile that would be in the cross-source voice pool (at least MINIMUM_POOL_RECORDINGS
+recordings besides the queried video, matching `--minimum-profile-members`), exactly as the
+opt-in pre-filter ranks them. v1 ranked every registry profile; v2 matches production, which
+ranks only the cross-source pool. Videos whose assigned profile is too small for that pool are
+counted but not queried, because text can never prune such a profile. Measured per N: how often the assigned profile is kept (in the text top N,
 or passed through because it has no usable text), and how many profile comparisons in the
 cross-source voice pool text would have removed.
 
@@ -28,7 +31,8 @@ from .identity_text_prefilter import (
     load_index,
 )
 
-EXPERIMENT = "identity-text-prefilter-v1"
+EXPERIMENT = "identity-text-prefilter-v2"
+MINIMUM_POOL_RECORDINGS = 3  # shadow-associate-speakers --minimum-profile-members default
 DEFAULT_TOPS = (3, 5, 10)
 ACCEPTANCE = {"top": 5, "minimum_kept_share": 0.95, "measure": "kept_share_assigned_profile_has_text",
               "rule": "Recommend default-on only if, among observations with usable text whose assigned profile "
@@ -101,15 +105,24 @@ def select_queries(labels: Mapping[int, set[int]], video_by_observation: Mapping
 
 # ---------- measurement (pure) ----------
 
-def measure(index: TextStyleIndex, queries: Mapping[int, int], tops: Iterable[int]) -> dict[str, Any]:
-    """Rank each query against all labeled profiles; summarize kept share and pruning per N."""
+def measure(index: TextStyleIndex, queries: Mapping[int, int], tops: Iterable[int],
+            minimum_pool_recordings: int = MINIMUM_POOL_RECORDINGS) -> dict[str, Any]:
+    """Rank each query against the profiles in its cross-source pool; summarize kept share and
+    pruning per N. A profile is in the pool when it has at least `minimum_pool_recordings`
+    recordings besides the queried video (one query per video, so only the query is left out)."""
     tops = sorted(set(tops) | {ACCEPTANCE["top"]})
     members: dict[int, list[int]] = defaultdict(list)
     for observation_id, profile_id in queries.items():
         members[profile_id].append(observation_id)
     rows = []
+    not_in_pool = 0
     for observation_id, true_profile in sorted(queries.items()):
-        ranking = index.rank(observation_id, members)
+        pool_members = {p: m for p, m in members.items()
+                        if sum(o != observation_id for o in m) >= minimum_pool_recordings}
+        if true_profile not in pool_members:
+            not_in_pool += 1
+            continue
+        ranking = index.rank(observation_id, pool_members)
         row: dict[str, Any] = {"observation_id": observation_id, "profile_id": true_profile,
                                "query_has_text": ranking.query_has_text,
                                "pool": len(ranking.ranked) + len(ranking.pass_through_profile_ids),
@@ -128,7 +141,10 @@ def measure(index: TextStyleIndex, queries: Mapping[int, int], tops: Iterable[in
             row["pruned_exemplars_by_top"] = {
                 str(n): sum(min(MAXIMUM_EXEMPLARS, len(members[p])) for p in order[n:]) for n in tops}
         rows.append(row)
-    return {"rows": rows, "summary": summarize(rows, tops)}
+    summary = summarize(rows, tops)
+    summary["assigned_profile_below_pool_minimum"] = not_in_pool
+    summary["minimum_pool_recordings"] = minimum_pool_recordings
+    return {"rows": rows, "summary": summary}
 
 
 def kept_credit(row: Mapping[str, Any], top: int) -> float:
@@ -159,8 +175,8 @@ def summarize(rows: list[dict], tops: Iterable[int]) -> dict[str, Any]:
                   if _share(sum(kept_credit(r, n) for r in ranked_cases), len(ranked_cases))
                   >= ACCEPTANCE["minimum_kept_share"]), None)
     by_size = {}
-    for label, low, high in (("1 other recording", 1, 1), ("2-3 other recordings", 2, 3),
-                             ("4+ other recordings", 4, 10 ** 9)):
+    for label, low, high in (("1-2 other recordings", 1, 2), ("3 other recordings", 3, 3),
+                             ("4-6 other recordings", 4, 6), ("7+ other recordings", 7, 10 ** 9)):
         group = [r for r in usable if low <= r["other_recordings"] <= high]
         by_size[label] = {"n": len(group), "kept_share_top5": _share(sum(kept_credit(r, 5) for r in group), len(group))}
     acceptance_top = str(ACCEPTANCE["top"])
@@ -290,6 +306,9 @@ def markdown(report: Mapping[str, Any]) -> str:
         "", "## Population", "",
         f"- Registry profiles with labeled recordings: {pop['registry_profiles_with_labeled_recordings']}",
         f"- Labeled observations: {pop['labeled_observations']}; queried videos (one per video): {pop['queried_videos']}",
+        f"- Videos not queried because their assigned profile has fewer than "
+        f"{s.get('minimum_pool_recordings', MINIMUM_POOL_RECORDINGS)} other recordings (never in the "
+        f"cross-source pool, so text cannot prune it): {s.get('assigned_profile_below_pool_minimum', 0)}",
         f"- Label sources: {', '.join(f'{k} {v}' for k, v in sorted(pop['label_sources'].items())) or 'none'}",
         f"- Videos skipped for conflicting labels: {pop.get('videos_with_conflicting_labels', 0)}",
         f"- Observations without usable text (under {pop['minimum_usable_words']} words or no sermon window): "
@@ -306,8 +325,10 @@ def markdown(report: Mapping[str, Any]) -> str:
         "source, name or confirmation route, or after a weak local result. Pairwise policy comparisons (up to "
         f"{MAXIMUM_EXEMPLARS} per compared profile) are unchanged; text removes exemplar preparation and retrieval "
         "centroids for pruned profiles.",
-        "- The pool here is every registry profile with labeled recordings; the production pool is the subset "
-        "that is shadow-ready, so production pruning is somewhat smaller.",
+        "- The pool for each video is every labeled profile with at least "
+        f"{s.get('minimum_pool_recordings', MINIMUM_POOL_RECORDINGS)} recordings besides that video, matching "
+        "production, which ranks only the cross-source pool. Production also requires reviewed, confirmed "
+        "members, so its pool can be smaller still. v1 ranked every profile (84.8% in the top 5).",
         "- Each profile's text leaves out the queried video, so a sermon never matches itself.", "",
     ]
     return "\n".join(lines)

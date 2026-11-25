@@ -259,6 +259,16 @@ class AssociationPreparationScope:
     local_route_first: bool = False
 
 
+def globally_routable_profiles(readiness):
+    """Profiles in the cross-source voice pool: reviewed, shadow-ready and confirmed.
+
+    The text pre-filter ranks only these, so a profile that can never be pruned
+    cannot take a top-N place from one that can.
+    """
+    return tuple(p for p in readiness if p.review_ready and p.shadow_ready
+                 and "discovery_candidate_unconfirmed" not in p.automatic_blockers)
+
+
 def plan_association_preparation_scope(
     readiness, videos, *, observations_by_video_id,
     observations_by_id, candidate_names_by_observation, source_id_by_video_id,
@@ -290,8 +300,7 @@ def plan_association_preparation_scope(
         if profile.profile_id not in local_ids and profile.review_ready:
             if any(profile_name_route_match(names, profile) for names in routing_name_sets):
                 local_ids.add(profile.profile_id)
-    globally_routable = tuple(p for p in readiness if p.review_ready and p.shadow_ready
-                              and "discovery_candidate_unconfirmed" not in p.automatic_blockers)
+    globally_routable = globally_routable_profiles(readiness)
     if text_prefilter_by_observation is not None:
         pruned_everywhere: frozenset[int] | None = None
         for video in videos:
