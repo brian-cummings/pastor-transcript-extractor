@@ -1,5 +1,21 @@
 # Current agent handoff
 
+**2026-11-25 (later): wider-pool Jev round handed to Brian; question-level reuse approved.**
+- Brian runs `add-pool`, then `score-added --ceiling-usd 17.00` (about $11 for 491 sermons). Little reuse is
+  expected: 589 of the 627 waiting sermons have no Jev answers anywhere (production only ran Gemma window passes), and
+  no other unused answer store exists. Then `church-fit`.
+- Next build: question-level answer reuse and one shared per-sermon answer store
+  ([BENCHMARK_EXPLAINER.md](BENCHMARK_EXPLAINER.md) section 15, with its acceptance checks). Christian nationalism
+  (A2) is its first use.
+- **Future enhancement (Brian: "video deduplication should occur at ingestion"; not to be fixed downstream in the
+  explainer or church fit).** The same sermon can be ingested as separate videos, and every consumer then counts it
+  more than once. Rolling-caption normalization is in use and works; this is a different, cross-video problem. A
+  wording-overlap check on 2026-11-25 found pairs at 90-100%: p210 videos 944, 945 and 946; p241 2302 and 2303; p78
+  606 and 617; p121 1530 and 1532; p77 371 and 601 (already scored). p56 210 and 211 overlap 63% and need review.
+  Reuse the existing equivalence policy in `sermon_salvation_exact_cohort.py` (shared source-audio hash means the same
+  recording; same title plus transcript containment means the same sermon likely; one representative per group),
+  which today is hard-coded to profiles 117, 80 and 130. Unclear overlaps go to Brian for review.
+
 **2026-11-25: merges done; pool expansion built, Brian's runs pending.** Read
 [BENCHMARK_EXPLAINER.md](BENCHMARK_EXPLAINER.md) section 14.
 - Merges 158→156 and 88→110 are done without the archive drive. The evaluation migration had left old repo paths in
