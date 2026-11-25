@@ -13,3 +13,4 @@ from pastor_transcript_extractor.commands.analysis import thought_units as _thou
 from pastor_transcript_extractor.commands.analysis import pastor_fit as _pastor_fit
 from pastor_transcript_extractor.commands.analysis import benchmark_explainer as _benchmark_explainer
 from pastor_transcript_extractor.commands.analysis import church_fit as _church_fit
+from pastor_transcript_extractor.commands.analysis import pastor_report as _pastor_report
