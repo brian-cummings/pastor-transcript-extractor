@@ -1,4 +1,4 @@
-"""Benchmark explainer CLI (docs/BENCHMARK_EXPLAINER.md). Only `score` and `score-added` call a provider (Jev)."""
+"""Benchmark explainer CLI (docs/BENCHMARK_EXPLAINER.md). Only `score`, `score-added`, `nationalism-probe` and `nationalism-add` call a provider (Jev)."""
 from pathlib import Path
 import json
 
@@ -85,6 +85,32 @@ def score_added(base_dir: Path = BASE,
     """Jev, paid: score kept sermons that have no signals yet, in a separately capped round (one resume allowed)."""
     from ...benchmark_explainer import runner
     _call(runner.run_score_added, base_dir, ceiling_usd=ceiling_usd, check_only=check_only, echo=typer.echo)
+
+
+@app.command('nationalism-probe')
+def nationalism_probe(base_dir: Path = BASE,
+                      ceiling_usd: str = typer.Option('0.05', '--ceiling-usd', help='Dollar ceiling for the sample-passage check (its own ledger).')):
+    """Jev, paid (cents): ask the four Christian nationalism questions on the authored sample passages; writes PROBES.md and pass/fail."""
+    from ...benchmark_explainer import runner
+    _call(runner.run_nationalism_probe, base_dir, ceiling_usd=ceiling_usd)
+
+
+@app.command('nationalism-add')
+def nationalism_add(base_dir: Path = BASE,
+                    ceiling_usd: str = typer.Option('0.50', '--ceiling-usd', help='Dollar ceiling for this round, enforced per request (its own ledger).'),
+                    check_only: bool = typer.Option(False, '--check-only', help='Count routed blocks and worst-case requests; sends nothing.')):
+    """Jev, paid: after a passed probe, ask the Christian nationalism questions on every scored sermon's public-life blocks; writes REVIEW.md (one resume allowed)."""
+    from ...benchmark_explainer import runner
+    _call(runner.run_nationalism_add, base_dir, ceiling_usd=ceiling_usd, check_only=check_only, echo=typer.echo)
+
+
+@app.command('nationalism-decide')
+def nationalism_decide(base_dir: Path = BASE,
+                       accept: bool = typer.Option(..., '--accept/--reject', help='Accept merges the answers into the signals and adds the questions to later rounds; reject changes no reader.'),
+                       note: str = typer.Option('', '--note', help='Why, in a sentence.')):
+    """Free: record your decision after reading the Christian nationalism REVIEW.md."""
+    from ...benchmark_explainer import runner
+    _call(runner.nationalism_decide, base_dir, decision='accept' if accept else 'reject', note=note)
 
 
 @app.command('explain')

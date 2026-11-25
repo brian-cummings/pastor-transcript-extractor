@@ -257,11 +257,56 @@ SOURCE_MATERIAL = NoulLeafPack(
 )
 
 
+# The four indicators of the first library avoid concern (docs/BENCHMARK_EXPLAINER.md sections 1 and 16; wording
+# approved by Brian 2026-11-25). The preacher's own endorsed view only; warnings, refutations and prophecy are not it.
+CHRISTIAN_NATIONALISM = NoulLeafPack(
+    version="christian-nationalism-v1-indicators",
+    state_key="christian_nationalism_blocks", question_prefix="christian_nationalism",
+    definitions={
+        "chosen_nation": (
+            "teach that a present-day nation holds a special covenant, chosen status, or divine mandate from God "
+            "as a Christian nation. Israel in Scripture, the church as God's people, and God's general rule over "
+            "all nations are excluded"
+        ),
+        "enforced_faith": (
+            "call for law or government to enforce Christian belief, worship, or practice, or to restrict or "
+            "disadvantage other faiths or non-believers. General public-morality laws and protecting religious "
+            "freedom for everyone are excluded"
+        ),
+        "partisan_faithfulness": (
+            "equate faithfulness to God with support for a political party, candidate, or movement, or cast "
+            "political opponents as enemies of God. Criticizing a specific policy on moral grounds is excluded"
+        ),
+        "christian_dominance": (
+            "present Christian control of government, law, or public institutions as a goal to pursue. "
+            "Christians taking part in public life, voting by conscience, and hope for Christ's coming kingdom "
+            "are excluded"
+        ),
+    },
+    task_template="In `{target}`, does the preacher, in their own voice, {definition}?",
+    positive_template="The preacher's own endorsed position in the target: they {definition}. {boundary}",
+    negative_criteria=(
+        "Not the preacher's own endorsed position in the target. Excluded: warning against or criticizing these "
+        "views, including Adventist prophetic warnings that a nation such as the United States will unite church "
+        "and state or enforce worship; quoting or describing these views in order to refute them; praying for "
+        "leaders; encouraging listeners to vote; defending religious liberty for everyone; gratitude for one's "
+        "country; prophecy about nations; and evidence present only in the surrounding context."
+    ),
+    evidence_subject="Christian-nationalism indicator", missing_evidence="indicator",
+    independence="Judge each indicator independently; several may coexist.",
+    boundary=(
+        "Count only a view the preacher holds and promotes, not one reported, quoted, predicted, or rejected. "
+        "Do not infer it from patriotism, political vocabulary, prophetic interpretation, or Old Testament "
+        "Israel alone."
+    ),
+)
+
+
 # Extend this registry for subsequent packs; transport/cache machinery stays shared.
 LEAF_PACKS = {spec.version: spec for spec in (
     LISTENER_DIRECTIVES_V1, LISTENER_DIRECTIVES_V2, LISTENER_DIRECTIVE_REFINEMENT_V2,
     LISTENER_DIRECTIVES, LISTENER_DIRECTIVE_REFINEMENT, PUBLIC_LIFE_TREATMENT_V1,
-    PUBLIC_LIFE_TREATMENT, PUBLIC_LIFE_REFINEMENT, SOURCE_MATERIAL,
+    PUBLIC_LIFE_TREATMENT, PUBLIC_LIFE_REFINEMENT, SOURCE_MATERIAL, CHRISTIAN_NATIONALISM,
 )}
 LISTENER_DIRECTIVE_ROUTE_VERSION = "listener-directive-route-eligible-v1-candidate"
 

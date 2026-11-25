@@ -13,7 +13,7 @@ from pastor_transcript_extractor.sermon_classification import TranscriptBlock
 from pastor_transcript_extractor.sermon_classifier_typesafe import (
     SALVATION_RELATIONSHIPS_PACK, TOPIC_PACK, TREATMENT_PACK, TypeSafeBlockAnswer, TypeSafeBlockCache,
 )
-from pastor_transcript_extractor.sermon_leaf_packs import LISTENER_DIRECTIVES, PUBLIC_LIFE_TREATMENT, SOURCE_MATERIAL
+from pastor_transcript_extractor.sermon_leaf_packs import CHRISTIAN_NATIONALISM, LISTENER_DIRECTIVES, PUBLIC_LIFE_TREATMENT, SOURCE_MATERIAL
 from pastor_transcript_extractor.sermon_salvation_relationships import SALVATION_RELATIONSHIPS
 from pastor_transcript_extractor.sermon_semantic_dimensions import SEMANTIC_DIMENSIONS
 from pastor_transcript_extractor.sermon_topics import (
@@ -42,12 +42,14 @@ PACKS: dict[str, tuple[str, str]] = {
     'L': (LISTENER_DIRECTIVES.version, 'listener directive'),
     'M': (SOURCE_MATERIAL.version, 'source material'),
     'H': (TREATMENT_PACK, 'homiletic style'),
+    'N': (CHRISTIAN_NATIONALISM.version, 'Christian nationalism indicator'),
 }
 # L and M are not read by any pilot step and their misses alone would exhaust the shared attempt
 # ceiling, so they are opt-in (`--packs TSPLMH`); T, S, P feed strata and H is fully cached.
 DEFAULT_PACKS = 'TSPH'
 SIGNAL_COUNTS = {'T': len(TOPICS), 'S': len(SALVATION_RELATIONSHIPS), 'P': len(PUBLIC_LIFE_TREATMENT.definitions),
-                 'L': len(LISTENER_DIRECTIVES.definitions), 'M': len(SOURCE_MATERIAL.definitions), 'H': len(SEMANTIC_DIMENSIONS)}
+                 'L': len(LISTENER_DIRECTIVES.definitions), 'M': len(SOURCE_MATERIAL.definitions), 'H': len(SEMANTIC_DIMENSIONS),
+                 'N': len(CHRISTIAN_NATIONALISM.definitions)}
 
 
 class CheckOnlyMiss(Exception):

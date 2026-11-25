@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..benchmark_explainer import data, render as explainer_render, runner as explainer
+from ..benchmark_explainer import data, free as explainer_free, render as explainer_render, runner as explainer
 from ..bound_claims.common import ensure_outside_repository, read_json, watch_url, write_json
 from . import reading
 
@@ -12,7 +12,12 @@ TOP = 10
 
 def run(base_dir: Path, concerns_path: Path) -> Path:
     concerns = read_json(concerns_path)
-    out, database, sermons, scored, measured, _dimensions, table = explainer._loaded(base_dir)
+    out, database, sermons, scored, measured, dimensions, table = explainer._loaded(base_dir)
+    unknown = sorted({n for c in concerns['concerns'] for n in [*c['for'], *c.get('against', [])]}
+                     - set(dimensions) - set(explainer_free.DIMENSIONS))
+    if unknown:
+        raise ValueError(f'No scored sermon has {unknown}; a concern would silently read as never found. Score them '
+                         'first (Christian nationalism: nationalism-probe, nationalism-add, nationalism-decide --accept)')
     result = reading(concerns, sermons, scored, measured, table)
     target = ensure_outside_repository(out.parent / 'church-fit' / concerns['version'])
     target.mkdir(parents=True, exist_ok=True)

@@ -313,6 +313,32 @@ def run_score_added(base_dir: Path, *, ceiling_usd: str, check_only: bool = Fals
     return score.run_round(out, evaluation, missing, ceiling_usd=Decimal(ceiling_usd), state=git_state, echo=echo)
 
 
+# ---- Christian nationalism indicators (section 16) ----------------------------------------------------------------
+
+def run_nationalism_probe(base_dir: Path, *, ceiling_usd: str) -> dict:
+    from decimal import Decimal
+    from ..bound_claims.extract import git_state
+    from . import nationalism
+    out, _, _ = _paths(base_dir)
+    return nationalism.probe(out, ceiling_usd=Decimal(ceiling_usd), state=git_state)
+
+
+def run_nationalism_add(base_dir: Path, *, ceiling_usd: str, check_only: bool = False, echo=print) -> dict:
+    from decimal import Decimal
+    from ..bound_claims.extract import git_state
+    from . import nationalism
+    out, _, _ = _paths(base_dir)
+    _need(out / 'score.json', 'score')
+    return nationalism.add(out, _active_sermons(out), ceiling_usd=Decimal(ceiling_usd), check_only=check_only,
+                           state=git_state, echo=echo)
+
+
+def nationalism_decide(base_dir: Path, *, decision: str, note: str) -> dict:
+    from . import nationalism
+    out, _, _ = _paths(base_dir)
+    return nationalism.decide(out, decision=decision, note=note)
+
+
 def _loaded(base_dir: Path):
     out, _, database = _paths(base_dir)
     _need(out / 'score.json', 'score')

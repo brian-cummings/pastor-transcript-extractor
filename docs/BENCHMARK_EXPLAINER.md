@@ -335,3 +335,30 @@ is set by questions times eligible blocks, not by the shared context, so pack bo
 **First use.** Christian nationalism (A2): its four approved indicators become four new questions on public-life
 blocks (about 5% of blocks), estimated at $0.05 for the current pool and about $0.15 at about 40,000 blocks, after a
 small sample-passage check.
+
+## 16. Christian nationalism indicators (Brian, 2026-11-25: "Approved, build it")
+
+Avoid concern A2 measured by Jev, with the four indicators of section 1 as four independent yes/no questions in their
+own pack, `christian-nationalism-v1-indicators` (`sermon_leaf_packs.CHRISTIAN_NATIONALISM`, letter N). Each asks whether
+the preacher, in their own voice, holds the view. Excluded in every question: warnings against these views (including
+Adventist warnings about church-state union and the Revelation 13 reading of the United States as the lamb-like beast,
+which Brian noted is the opposite of chosen-nation teaching), refutations, praying for leaders, encouraging voting,
+religious liberty for all, patriotism, prophecy about nations, and context-only evidence. It runs only on blocks at the
+public-life route (topic `society_public_life` at least 0.55, about 5% of blocks).
+
+Steps (`benchmark_explainer/nationalism.py`; each paid step has its own plan, ledger, dollar ceiling and one resume):
+1. `pte analysis benchmark-explainer nationalism-probe --ceiling-usd 0.05`: 17 authored sample passages
+   (`data/christian-nationalism-probes-v1.json`): two positives per indicator and nine that must not count, four of
+   them critical (church-state warning, Revelation 13, religious liberty, refuted quotation). **Pass:** at most one
+   passage wrong and no critical one wrong; a leaf is positive at 0.5. A failure is reported; the wording is not
+   revised to pass.
+2. `nationalism-add --ceiling-usd 0.50` (needs a passed probe and every kept sermon scored): the questions on every
+   routed block. Answers go to the explainer's caches and `nationalism-v1/round/signals.json`, not into the signals
+   that the explainer and church fit read. Every block at 0.5 or more on any leaf goes to `REVIEW.md` for Brian.
+3. `nationalism-decide --accept|--reject --note`: accept merges the answers into the signals files, and every later
+   scoring round asks N on routed blocks (`score.order`). Reject changes no reader. Scoring rounds refuse while a
+   finished review awaits the decision.
+
+Church fit: `<base>/evaluation/church-concerns/peachtree-hills-v2.json` is v1 with A2 reading N1 to N4 (church fit's
+leaf floor 0.8 applies); v1 is unchanged. `church-fit` now refuses a concern whose signals no scored sermon has, so A2
+can never read as "not found" before the answers are merged.

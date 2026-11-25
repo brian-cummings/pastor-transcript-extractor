@@ -4,9 +4,11 @@
 - Brian runs `add-pool`, then `score-added --ceiling-usd 17.00` (about $11 for 491 sermons). Little reuse is
   expected: 589 of the 627 waiting sermons have no Jev answers anywhere (production only ran Gemma window passes), and
   no other unused answer store exists. Then `church-fit`.
+- Christian nationalism (A2) built (section 16): Brian runs `nationalism-probe`, then after `score-added`,
+  `nationalism-add`, reads `REVIEW.md` and runs `nationalism-decide`. Concerns `peachtree-hills-v2.json` reads it.
 - Next build: question-level answer reuse and one shared per-sermon answer store
   ([BENCHMARK_EXPLAINER.md](BENCHMARK_EXPLAINER.md) section 15, with its acceptance checks). Christian nationalism
-  (A2) is its first use.
+  (A2) was built as its own pack instead, so it does not wait on this.
 - **Future enhancement (Brian: "video deduplication should occur at ingestion"; not to be fixed downstream in the
   explainer or church fit).** The same sermon can be ingested as separate videos, and every consumer then counts it
   more than once. Rolling-caption normalization is in use and works; this is a different, cross-video problem. A

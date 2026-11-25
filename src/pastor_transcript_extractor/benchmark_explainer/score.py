@@ -30,9 +30,20 @@ EXTRA_ATTEMPTS = 6
 MAX_INVOCATIONS = 2   # the run, plus one resume after an interruption or failed calls (a bounded retry)
 FAILURE_RATE = 0.05
 EVERY_BLOCK = 'THLM'
-ROUTED = {'S': 'T:salvation_gospel', 'P': 'T:society_public_life'}
+ROUTED = {'S': 'T:salvation_gospel', 'P': 'T:society_public_life', 'N': 'T:society_public_life'}
 ROUTE_MIN = 0.55
 ORDER = 'THLMSP'
+# Christian nationalism (N, section 16) joins every round only after Brian accepts its review.
+NATIONALISM_DIR = 'nationalism-v1'
+
+
+def nationalism_decision(out: Path) -> str | None:
+    path = out / NATIONALISM_DIR / 'decision.json'
+    return read_json(path)['decision'] if path.exists() else None
+
+
+def order(out: Path) -> str:
+    return ORDER + ('N' if nationalism_decision(out) == 'accept' else '')
 # Earlier caches whose saved answers may match exactly (copied in when their identity is identical).
 SEED_SETS = ('thought-unit-experiment-v1/public-life-set-v1', 'thought-unit-experiment-v1/public-life-set-v2')
 
@@ -57,7 +68,8 @@ def seed_roots(evaluation_root: Path, sermon: Mapping[str, Any]) -> list[Path]:
 
 def census(out: Path, evaluation_root: Path, sermons: list[dict], *, seed: bool) -> dict:
     """Seed reusable answers (when `seed`) and count what is still missing; never opens a client."""
-    misses = {letter: 0 for letter in ORDER}
+    letters = order(out)
+    misses = {letter: 0 for letter in letters}
     seeded = {'reusable': 0, 'already_here': 0}
     blocks_total = 0
     for sermon in sermons:
@@ -67,8 +79,8 @@ def census(out: Path, evaluation_root: Path, sermons: list[dict], *, seed: bool)
         roots = seed_roots(evaluation_root, sermon)
         if seed:
             for root in roots:
-                seeded['reusable'] += arms.seed_from_pilot(cache, root, blocks, contexts, ORDER, copy=True)['reusable']
-        for letter in ORDER:
+                seeded['reusable'] += arms.seed_from_pilot(cache, root, blocks, contexts, letters, copy=True)['reusable']
+        for letter in letters:
             # S and P: every block is the upper bound; only routed blocks are sent.
             pack = PACKS[letter][0]
             for block in blocks:
@@ -81,7 +93,7 @@ def census(out: Path, evaluation_root: Path, sermons: list[dict], *, seed: bool)
                     misses[letter] += 1
                 elif saved and not here and not seed:
                     seeded['reusable'] += 1
-    requests = worst_case_requests(misses, {letter: SIGNAL_COUNTS[letter] for letter in ORDER})
+    requests = worst_case_requests(misses, {letter: SIGNAL_COUNTS[letter] for letter in letters})
     return dict(sermons=len(sermons), blocks=blocks_total, cache_misses=misses, reusable_saved_answers=seeded['reusable'],
                 worst_case_requests=requests, worst_case_reserved_usd=str(JEV_REQUEST_RESERVATION * requests),
                 expected_usd_note='real usage has run at about a tenth of the reservation (section 31 ledgers)',
@@ -98,7 +110,7 @@ def score_sermon(out: Path, sermon: Mapping[str, Any], client, failures: list, e
     cache = cache_for(out, sermon['video_id'])
     table: dict[int, dict[str, float]] = {b.block_id: {} for b in blocks}
     calls = 0
-    for letter in ORDER:
+    for letter in order(out):
         chosen = blocks
         if letter in ROUTED:
             chosen = [b for b in blocks if table[b.block_id].get(ROUTED[letter], 0.0) >= ROUTE_MIN]
@@ -166,6 +178,9 @@ def _run(out: Path, evaluation_root: Path, sermons: list[dict], *, files: Path, 
         plan['invocations'] = 0
     if (files / 'score.json').exists():
         raise ValueError('score.json already exists; the Jev run is complete and runs once')
+    if (out / NATIONALISM_DIR / 'round' / 'result.json').exists() and nationalism_decision(out) is None:
+        raise ValueError('The Christian nationalism review awaits your decision: run '
+                         '`pte analysis benchmark-explainer nationalism-decide` before scoring more sermons')
     if plan['invocations'] >= MAX_INVOCATIONS:
         raise ValueError(f'The Jev run was already started {MAX_INVOCATIONS} times; unfinished sermons stay unscored (bounded retry)')
     plan['invocations'] += 1
