@@ -234,3 +234,8 @@ those profiles are currently empty placeholders, so it is deferred until the ben
     - Failed: public life illustrative, critical and supportive (4 to 5 sermons, mostly *The End*), justification
       (2 sermons), and Adventist identity (top 3 hold 60.5%, just over).
   - **Asscherick, 0 of 4 pass.** With 9 sermons each trait sits in 3 to 6 of them, so his set is not yet characterized.
+- **Benchmark track stopped before ranking (2026-11-24).** Brian: "I'm questioning whether these particular traits
+  are what would make a pastor a good fit for our church." Finding: starting from a liked pastor yields what is
+  measurably unusual about him (sermon length, Ellen White quotations, less discipleship talk), which mostly is not
+  what a church chooses on. E2 was not run. The work moves to the concerns framework, using the church's own
+  questionnaire. Draft: `<base>/evaluation/church-concerns/peachtree-hills-v1-draft.md`.
