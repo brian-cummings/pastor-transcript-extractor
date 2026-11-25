@@ -206,3 +206,16 @@ chosen recordings one at a time:
 
 A speaker-profile basis (benchmarks as profiles 144 and 145, filled by the identity workflow) is the reusable design;
 those profiles are currently empty placeholders, so it is deferred until the benchmark idea passes.
+- **Widened sets (2026-11-24).** Brian added 16 single recordings (19 requested; 2 never discovered, 1 had no sermon
+  window) and kept all 16 in `sermon-review`. The sermon check now compares against the reviewed sets: 15 of 16 ranked
+  their own pastor first, and 4629 was flagged (rank 18) but kept. `score-added` round 1: 637 requests, 0 failures,
+  **$0.59** (cap $2). Sets: Gibson 15 (halves 8 and 7), Asscherick 9 (halves 5 and 4).
+- `explain` on the wider sets (the narrow-set version is kept as `EXPLAINER.narrow-sets.md`):
+  - **Gibson:** 9 dimensions. 4 carried over (public life illustrative, critical and supportive; Adventist identity). 5 are
+    new: obedience as consequence or evidence, justification, denominational sources, longer sermons, less discipleship.
+    The prophecy and politics dimensions from *The End* dropped out or became unstable, so they were series effects.
+  - **Asscherick:** 4 dimensions (Adventist identity; faith as receiving; give, still DWELL donation inserts; and the new
+    creation and origins). 7 of his narrow-set dimensions dropped out.
+  - **Reading:** Brian marked all 20 narrow-set dimensions true, yet most of them turned out to be series effects. So
+    the narrow-set E1 pass is weak evidence, and the verdict should come from the widened sets. Marks on carried-over
+    dimensions stand; only new dimensions are asked.
