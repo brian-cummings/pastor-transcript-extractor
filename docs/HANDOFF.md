@@ -1,5 +1,17 @@
 # Current agent handoff
 
+**2026-11-25: merges done; pool expansion built, Brian's runs pending.** Read
+[BENCHMARK_EXPLAINER.md](BENCHMARK_EXPLAINER.md) section 14.
+- Merges 158→156 and 88→110 are done without the archive drive. The evaluation migration had left old repo paths in
+  2,280 canonical-clip manifests; clips are now found at the migrated location and still hash-checked (`15087e9`).
+- The text pre-filter failed v1 (84.8% in top 5 against a 95% bar). v2 ranks only the cross-source voice pool, in
+  production and in the check (`fa7329e`). Brian re-runs `pte identity text-prefilter-check`; it stays off unless v2 passes.
+- Pool expansion (`8cb0c79`): merged profiles leave the population, and the new step is `benchmark-explainer add-pool`.
+  Brian's sequence: `backfill --all-attached --dry-run`, `backfill --all-attached`, `add-pool`, then
+  `score-added --ceiling-usd <cap>` (paid, about $5), then `church-fit`.
+- Still open: 30 exact names for unnamed profiles (profile audit), shadow association of the 13 new benchmark
+  videos, and measuring A2.
+
 **2026-11-24 (evening): church fit reading built; benchmark track stopped.** Read
 [BENCHMARK_EXPLAINER.md](BENCHMARK_EXPLAINER.md) sections 11 to 13 first.
 
