@@ -255,7 +255,7 @@ the within-church control, and the text pre-filter passes. New evidence: similar
 not a fit signal at this depth, so fit has to come from stated needs (Part 3), as section 6 says. Next action justified:
 Brian's approval of the Part 3 needs list. The stylometric identity pre-filter is a separate, later proposal for `pte identity`.
 
-## 13. Identity text pre-filter (2026-11-24; built, off by default, check not yet run)
+## 13. Identity text pre-filter (2026-11-24; built, off by default; check failed 2026-11-25)
 
 **What was added.** An opt-in stylometric pre-filter for `pte identity shadow-associate-speakers`:
 `--text-prefilter-top N` (default: off). Code: `src/pastor_transcript_extractor/identity_text_prefilter.py`
@@ -315,3 +315,12 @@ profile-discovery promotion and same-source consolidation are voice- and review-
 registry's. The check's pool is every profile with labeled recordings; the production pool is the shadow-ready subset,
 so production prunes somewhat less. The first run reads about 1,000 extraction files; word counts are cached under
 `<base>/evaluation/speaker-pairs/cache/text-prefilter-v1/`.
+
+**Check result (Brian ran it, 2026-11-25; `<base>/evaluation/identity-text-prefilter-v1/REPORT.md`).** 1,025
+observations across 167 profiles. The assigned profile is in the text top 5 for **84.8%**, below the 95% bar; the
+smallest N reaching 95% is 59, which prunes little. Median rank is 1. The misses are small profiles: kept 31% with 1
+other recording, 62% with 2 or 3, and 94.9% with 4 or more.
+- The pre-filter stays off by default and is not forwarded through `pte identity run`.
+- A rule chosen after seeing this result (never prune profiles with fewer than 5 recordings, top 5 among the rest)
+  would keep about 96% by the saved rows but prune only about 44% of the pool (94 of 167 kept), not 97%. Because it was
+  chosen after the result, it would need a fresh check before use. It is not built.
