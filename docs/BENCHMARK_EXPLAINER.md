@@ -265,3 +265,9 @@ First reading:
   the church's stated wants. Brian: "it's probably not wrong." That is one informal agreement, not a validation.
   Names applied since the first reading: 97 Maurice T. Battle, Jr.; 108 Paul Carlson; 139 Henry Johnson; 88 and 110
   Aaron L Trelfa (merge pending); 94 Denny Grady.
+- **Pool fix (Brian approved, 2026-11-24).** 4 pool profiles had been merged into others: 107 into 195, 113 into 79,
+  137 into 130 and 138 into 135. They were counted as separate pastors, so Ron Clouzet appeared twice. The fix is
+  `data.canonical_pool`, which resolves each pool profile through its latest redirect, and `_loaded` applies it.
+  The pool is now 46 pastors plus the 2 benchmarks, so 48 are ranked. The top 5 is unchanged. "profile 138" (#9) is now
+  Danail Tchakarov (#10, still on 3 old sermons), and Clouzet appears once (#45, 7 sermons). The canonical profiles'
+  newer recordings are not analyzed yet; that is the pool expansion step.

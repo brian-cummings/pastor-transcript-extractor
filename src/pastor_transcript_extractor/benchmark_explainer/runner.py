@@ -251,7 +251,7 @@ def run_score_added(base_dir: Path, *, ceiling_usd: str, check_only: bool = Fals
 def _loaded(base_dir: Path):
     out, _, database = _paths(base_dir)
     _need(out / 'score.json', 'score')
-    sermons = _active_sermons(out)
+    sermons = data.canonical_pool(database, _active_sermons(out))
     unscored = [s['video_id'] for s in sermons if not (out / 'signals' / f"v{s['video_id']}.json").exists()]
     if unscored:
         raise ValueError(f'{len(unscored)} kept sermons are not scored yet ({unscored[:5]}...): run '

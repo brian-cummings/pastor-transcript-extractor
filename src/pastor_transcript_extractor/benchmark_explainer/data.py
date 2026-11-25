@@ -102,3 +102,26 @@ def pastor_names(database: Path, pastors: list[str]) -> dict[str, str]:
 
 def as_dicts(sermons: list[Sermon]) -> list[dict]:
     return [asdict(s) for s in sermons]
+
+
+def canonical_pool(database: Path, sermons: list[dict]) -> list[dict]:
+    """Count a merged (redirected) pool profile under the profile it now resolves to, so one person is one pastor.
+    Follows the latest redirect event per profile, as `Database.resolve_speaker_profile_id` does."""
+    connection = sqlite3.connect(f'file:{database}?mode=ro', uri=True)
+    try:
+        latest = {int(source): (action, target) for source, action, target in connection.execute(
+            "SELECT from_profile_id, action, to_profile_id FROM speaker_profile_redirect_events AS e "
+            "WHERE id = (SELECT MAX(id) FROM speaker_profile_redirect_events WHERE from_profile_id = e.from_profile_id)")}
+    finally:
+        connection.close()
+
+    def resolve(profile_id: int) -> int:
+        seen = set()
+        while profile_id in latest and latest[profile_id][0] == 'redirect' and latest[profile_id][1] is not None:
+            if profile_id in seen:
+                raise ValueError(f'Speaker profile redirect cycle at {profile_id}')
+            seen.add(profile_id)
+            profile_id = int(latest[profile_id][1])
+        return profile_id
+
+    return [dict(s, pastor=pool_key(resolve(int(s['pastor'][1:])))) if s['pastor'].startswith('p') else s for s in sermons]

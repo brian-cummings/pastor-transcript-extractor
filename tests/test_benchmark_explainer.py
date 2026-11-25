@@ -216,3 +216,19 @@ class BreadthTests(unittest.TestCase):
         result = values.breadth(row, list(lumped), lumped, {})
         self.assertFalse(result['pattern'])
         self.assertEqual(result['on_his_side'], 3)
+
+
+class CanonicalPoolTests(unittest.TestCase):
+    def test_redirected_pool_profiles_count_under_their_canonical_profile(self):
+        import sqlite3, tempfile
+        from pathlib import Path
+        from pastor_transcript_extractor.benchmark_explainer import data
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / 'app.db'
+            con = sqlite3.connect(db)
+            con.execute('CREATE TABLE speaker_profile_redirect_events (id INTEGER PRIMARY KEY, from_profile_id INT, to_profile_id INT, action TEXT)')
+            con.executemany('INSERT INTO speaker_profile_redirect_events (from_profile_id, to_profile_id, action) VALUES (?, ?, ?)',
+                            [(137, 130, 'redirect'), (182, 125, 'redirect'), (125, 130, 'redirect')])
+            con.commit(); con.close()
+            out = data.canonical_pool(db, [_sermon(1, 'p137'), _sermon(2, 'p130'), _sermon(3, 'p182'), _sermon(4, 'b65'), _sermon(5, 'p9')])
+            self.assertEqual([s['pastor'] for s in out], ['p130', 'p130', 'p130', 'b65', 'p9'])
