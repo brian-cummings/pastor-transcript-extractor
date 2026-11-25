@@ -458,6 +458,60 @@ class CanonicalAudioPreparationTests(unittest.TestCase):
         self.assertEqual(clip_sha256, loaded[0].wav_sha256)
         self.assertTrue(loaded[0].cache_hit)
 
+    def test_clips_moved_by_evaluation_migration_load_from_new_root(self) -> None:
+        relative = Path("speaker-pairs/cache/canonical-audio/spans/moved.wav")
+        legacy = self.root / "legacy-repo" / "evaluation" / relative
+        legacy.parent.mkdir(parents=True)
+        legacy.write_bytes(b"moved-canonical-clip")
+        clip_sha256 = hashlib.sha256(legacy.read_bytes()).hexdigest()
+        legacy.with_suffix(".json").write_text(
+            json.dumps(
+                {
+                    "input": {
+                        "observation_fingerprint": self.observation.input_fingerprint
+                    },
+                    "span": {
+                        "observation_fingerprint": self.observation.input_fingerprint,
+                        "start_seconds": 100.0,
+                        "end_seconds": 112.0,
+                        "wav_path": str(legacy.resolve()),
+                        "wav_sha256": clip_sha256,
+                        "duration_seconds": 12.0,
+                        "rms_dbfs": -30.0,
+                        "clipped_fraction": 0.0,
+                        "non_silent_fraction": 0.8,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        write_canonical_clip_preparation_manifest(
+            self.paths, self.artifact, self.observation, clip_paths=(legacy,)
+        )
+        # Simulate the migration: files move, the manifest keeps the old path.
+        moved = self.paths.evaluation / relative
+        moved.parent.mkdir(parents=True)
+        legacy.rename(moved)
+        legacy.with_suffix(".json").rename(moved.with_suffix(".json"))
+
+        self.assertEqual(
+            (), load_verified_canonical_clips(self.artifact, self.observation)
+        )
+        loaded = load_verified_canonical_clips(
+            self.artifact, self.observation, evaluation_root=self.paths.evaluation
+        )
+        self.assertEqual(1, len(loaded))
+        self.assertEqual(str(moved.resolve()), loaded[0].wav_path)
+        self.assertEqual(clip_sha256, loaded[0].wav_sha256)
+
+        moved.write_bytes(b"different-audio")
+        self.assertEqual(
+            (),
+            load_verified_canonical_clips(
+                self.artifact, self.observation, evaluation_root=self.paths.evaluation
+            ),
+        )
+
     def test_existing_valid_manifest_accepts_review_clip_variation(self) -> None:
         first_clip = self.root / "canonical-first.wav"
         second_clip = self.root / "review-second.wav"

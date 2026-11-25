@@ -14,6 +14,7 @@ import time
 from typing import Callable
 
 from pastor_transcript_extractor.config import AppPaths
+from pastor_transcript_extractor.evaluation_storage import generated_relative_path
 from pastor_transcript_extractor.filesystem_capacity import (
     FilesystemCapacity,
     filesystem_capacity,
@@ -1204,13 +1205,40 @@ def _canonical_clip_preparation_status(artifact, observation, policy_version: st
     return "stale" if saw_manifest else "missing"
 
 
+def _relocated_clip_path(recorded: Path, evaluation_root: Path | None) -> Path:
+    """Find a clip recorded under the pre-migration repository evaluation/ tree.
+
+    Evaluation storage moved generated caches from ``<repo>/evaluation`` to the
+    configured evaluation root, but immutable clip manifests still name the old
+    absolute paths. Only generated prefixes are mapped, and every caller still
+    checks the clip's SHA-256, so a relocated path cannot admit different audio.
+    """
+    if evaluation_root is None or recorded.is_file():
+        return recorded
+    parts = recorded.parts
+    for index in range(len(parts) - 1, 0, -1):
+        if parts[index] != "evaluation":
+            continue
+        relative = generated_relative_path(recorded, repo_root=Path(*parts[:index]))
+        if relative is not None:
+            relocated = evaluation_root / relative
+            if relocated.is_file():
+                return relocated
+    return recorded
+
+
 def load_verified_canonical_clips(
     artifact: MediaArtifact,
     observation,
     *,
     policy_version: str = CANONICAL_CLIP_PREPARATION_POLICY_VERSION,
+    evaluation_root: Path | None = None,
 ) -> tuple[CachedSpan, ...]:
-    """Load immutable observation-bound clips without opening parent audio."""
+    """Load immutable observation-bound clips without opening parent audio.
+
+    With ``evaluation_root``, clips recorded under the legacy repository
+    evaluation/ tree are found at their migrated location (hash-checked).
+    """
     directory = Path(artifact.manifest_path).parent / "canonical-clips"
     expected = {
         "normalized_audio_sha256": artifact.content_sha256,
@@ -1227,13 +1255,14 @@ def load_verified_canonical_clips(
         except (OSError, json.JSONDecodeError):
             continue
         if payload.get("input") != expected or not _canonical_clip_payload_is_current(
-            payload
+            payload, evaluation_root=evaluation_root
         ):
             continue
         prepared: list[CachedSpan] = []
         try:
             for item in payload["clips"]:
-                clip_path = Path(str(item["path"])).expanduser().resolve()
+                recorded_path = Path(str(item["path"])).expanduser().resolve()
+                clip_path = _relocated_clip_path(recorded_path, evaluation_root).resolve()
                 companion = json.loads(
                     clip_path.with_suffix(".json").read_text(encoding="utf-8")
                 )
@@ -1242,28 +1271,38 @@ def load_verified_canonical_clips(
                     companion.get("input", {}).get("observation_fingerprint")
                     != observation.input_fingerprint
                     or Path(str(span.get("wav_path", ""))).expanduser().resolve()
-                    != clip_path
+                    not in {recorded_path, clip_path}
                     or span.get("wav_sha256") != item.get("sha256")
                 ):
                     raise ValueError("canonical clip provenance mismatch")
-                prepared.append(CachedSpan(**{**span, "cache_hit": True}))
+                prepared.append(
+                    CachedSpan(**{**span, "wav_path": str(clip_path), "cache_hit": True})
+                )
         except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
             continue
         return tuple(sorted(prepared, key=lambda clip: clip.start_seconds))
     return ()
 
 
-def _canonical_clip_payload_is_current(payload: object) -> bool:
+def _canonical_clip_payload_is_current(
+    payload: object, *, evaluation_root: Path | None = None
+) -> bool:
     if not isinstance(payload, dict):
         return False
     clips = payload.get("clips")
+
+    def located(item: dict) -> Path:
+        return _relocated_clip_path(
+            Path(str(item.get("path", ""))).expanduser(), evaluation_root
+        )
+
     return bool(
         isinstance(clips, list)
         and clips
         and all(
             isinstance(item, dict)
-            and Path(str(item.get("path", ""))).is_file()
-            and _sha256_file(Path(str(item["path"]))) == item.get("sha256")
+            and located(item).is_file()
+            and _sha256_file(located(item)) == item.get("sha256")
             for item in clips
         )
     )

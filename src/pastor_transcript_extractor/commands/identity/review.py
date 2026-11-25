@@ -16,7 +16,7 @@ from rich.table import Table
 from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.evaluation_storage import runtime_option
 from pastor_transcript_extractor.commands.apps import identity_app
-from pastor_transcript_extractor.config import AppPaths, build_paths
+from pastor_transcript_extractor.config import AppPaths, build_paths, evaluation_root_for
 from pastor_transcript_extractor.ground_truth_review import format_timestamp
 from pastor_transcript_extractor.media_archive import (
     load_verified_canonical_clips,
@@ -333,7 +333,9 @@ def review_speaker_pair(
         ]
         canonical_clips = [
             (
-                load_verified_canonical_clips(artifact, observation)
+                load_verified_canonical_clips(
+                    artifact, observation, evaluation_root=evaluation_root_for(paths)
+                )
                 if artifact is not None
                 else ()
             )

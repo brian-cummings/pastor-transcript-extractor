@@ -1327,6 +1327,7 @@ def consolidate_source_profiles_command(
                 load_verified_canonical_clips(
                     cached_eligibility.media_artifact,
                     observation,
+                    evaluation_root=paths.evaluation,
                 )
                 if cached_eligibility.eligible
                 and cached_eligibility.media_artifact is not None
